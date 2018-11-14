@@ -1,0 +1,5 @@
+intel-media-driver-non-free (18.3.0+ds1-1) UNRELEASED; urgency=medium
+
+  * Initial release. (Closes: #909984)
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Wed, 14 Nov 2018 23:30:00 +0100

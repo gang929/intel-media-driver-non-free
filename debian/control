@@ -1,0 +1,49 @@
+Source: intel-media-driver-non-free
+Section: non-free/video
+Priority: optional
+Maintainer: Debian Multimedia Maintainers <debian-multimedia@lists.debian.org>
+Uploaders:
+ Sebastian Ramacher <sramacher@debian.org>
+Build-Depends:
+ debhelper (>= 11),
+ libva-dev (>= 2.3),
+ libigdgmm-dev,
+ libpciaccess-dev,
+ cmake
+Standards-Version: 4.2.1
+Homepage: https://github.com/intel/media-driver
+Vcs-Browser: https://salsa.debian.org/multimedia-team/intel-media-driver
+Vcs-Git: https://salsa.debian.org/multimedia-team/intel-media-driver.git
+XS-Autobuild: yes
+Rules-Requires-Root: no
+
+Package: intel-media-va-driver-non-free
+Architecture: amd64 i386 x32
+Multi-Arch: same
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends}
+Provides:
+ va-driver
+Conflicts:
+ intel-media-va-driver
+Enhances:
+ libva2
+Description: VAAPI driver for Intel GEN8+ Graphics family
+ The VA-API (Video Acceleration API) enables hardware accelerated video
+ decode/encode at various entry-points (VLD, IDCT, Motion Compensation
+ etc.) for the prevailing coding standards today (MPEG-2, MPEG-4
+ ASP/H.263, MPEG-4 AVC/H.264, and VC-1/WMV3). It provides an interface
+ to fully expose the video decode capabilities in today's GPUs.
+ .
+ This package contains the video decode and encode driver backend for the
+ Intel HD Graphics of the Intel Core processor family. The supported platforms
+ include:
+  * Broadwell
+  * Skylake
+  * Broxton
+  * Apollo Lake
+  * Kaby Lake
+  * Coffee Lake
+  * Cannon Lake
+  * Ice Lake
