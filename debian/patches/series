@@ -1,2 +1,2 @@
-do-not-build-crmtlib
-integrate.patch
+0001-Do-not-build-cmrtlib.patch
+0002-Integrate-unit-tests-in-cmake-s-test-framework.patch
