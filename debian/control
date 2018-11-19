@@ -6,10 +6,12 @@ Uploaders:
  Sebastian Ramacher <sramacher@debian.org>
 Build-Depends:
  debhelper (>= 11),
- libva-dev (>= 2.3),
+ cmake,
  libigdgmm-dev,
  libpciaccess-dev,
- cmake
+ libva-dev (>= 2.3),
+ libx11-dev,
+ pkg-config,
 Standards-Version: 4.2.1
 Homepage: https://github.com/intel/media-driver
 Vcs-Browser: https://salsa.debian.org/multimedia-team/intel-media-driver-non-free
