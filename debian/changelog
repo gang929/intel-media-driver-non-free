@@ -1,3 +1,12 @@
+intel-media-driver-non-free (18.3.0+ds1-2) unstable; urgency=medium
+
+  * debian/: Fix build on i386. (Closes: #915572)
+    - debian/patches: Do not define __AMD64__ and avoid -m64 when building for
+      i386.
+    - debian/rules: Enable LFS support.
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Mon, 10 Dec 2018 23:10:55 +0100
+
 intel-media-driver-non-free (18.3.0+ds1-1) unstable; urgency=medium
 
   * Initial release. (Closes: #909984)
