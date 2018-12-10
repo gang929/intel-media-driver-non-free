@@ -1,2 +1,3 @@
 0001-Do-not-build-cmrtlib.patch
 0002-Integrate-unit-tests-in-cmake-s-test-framework.patch
+0003-Remove-settings-based-on-ARCH.patch
