@@ -45,5 +45,6 @@ Description: VAAPI driver for the Intel GEN8+ Graphics family
   * Apollo Lake
   * Kaby Lake
   * Coffee Lake
+  * Whiskey Lake
   * Cannon Lake
   * Ice Lake
