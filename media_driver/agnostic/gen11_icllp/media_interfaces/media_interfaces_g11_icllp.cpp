@@ -26,7 +26,9 @@
 
 #include "media_interfaces_g11_icllp.h"
 #include "codechal_encoder_base.h"
+#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 #include "igcodeckrn_g11.h"
+#endif
 
 extern template class MediaInterfacesFactory<MhwInterfaces>;
 extern template class MediaInterfacesFactory<MmdDevice>;
@@ -445,7 +447,9 @@ MOS_STATUS CodechalInterfacesG11Icllp::Initialize(
                 m_codechalDevice = encoder;
             }
 
+#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
             encoder->m_kernelBase = (uint8_t*)IGCODECKRN_G11;
+#endif
         }
         else
 #endif
@@ -510,7 +514,8 @@ MOS_STATUS CMHalInterfacesG11Icllp::Initialize(CM_HAL_STATE *pCmState)
     m_cmhalDevice->SetGenPlatformInfo(PLATFORM_INTEL_ICLLP, PLATFORM_INTEL_GT2, "ICLLP");
     uint32_t cisaID = GENX_ICLLP;
     m_cmhalDevice->AddSupportedCisaIDs(&cisaID);
-    m_cmhalDevice->EnableSliceShutdown(true);
+    m_cmhalDevice->SetOverridePowerOptionPerGpuContext(true);
+    m_cmhalDevice->SetRequestShutdownSubslicesForVmeUsage(true);
     return MOS_STATUS_SUCCESS;
 }
 

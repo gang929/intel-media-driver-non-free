@@ -278,6 +278,7 @@ public:
     void EnableColor() { m_cscEnableColor = 1; }
     void EnableMmc() { m_cscEnableMmc = 1; }
     void EnableSfc() { m_cscEnableSfc = 1; }
+    void DisableSfc() { m_cscEnableSfc = 0; }
     void ResetCscFlag() { m_cscFlag = 0; }
     //! \endcond
 
@@ -520,6 +521,7 @@ protected:
         uint32_t                dwMBVProcStatsBottomFieldOffset = 0;
         bool                    bCurrPicIsFrame = false;
         bool                    bPreEncInUse = false;
+        bool                    bEnable8x8Statistics = false;
     };
 
     //!
@@ -542,6 +544,17 @@ protected:
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
     virtual MOS_STATUS InitKernelStateDS();
+
+    //!
+    //! \brief    Set SurfaceParamsDS for DS kernel
+    //!
+    //! \param    params
+    //!           KernelParams pointer from caller
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS SetSurfaceParamsDS(KernelParams* params);
 
     //!
     //! \brief    Setup Curbe for DS kernel

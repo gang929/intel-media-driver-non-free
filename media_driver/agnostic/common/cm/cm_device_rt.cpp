@@ -44,6 +44,7 @@
 #include "cm_surface_3d_rt.h"
 #include "cm_vebox_rt.h"
 #include "cm_printf_host.h"
+#include "cm_execution_adv.h"
 
 struct CM_SET_CAPS
 {
@@ -61,6 +62,7 @@ struct CM_SET_CAPS
     };
 };
 
+extern uint64_t HalCm_GetTsFrequency(PMOS_INTERFACE pOsInterface);
 namespace CMRT_UMD
 {
 CSync CmDeviceRT::m_globalCriticalSectionSurf2DUserDataLock = CSync();
@@ -173,6 +175,7 @@ CmDeviceRT::CmDeviceRT(uint32_t options):
     m_threadSpaceCount( 0 ),
     m_hJITDll(nullptr),
     m_fJITCompile(nullptr),
+    m_fJITCompile_v2(nullptr),
     m_fFreeBlock(nullptr),
     m_fJITVersion(nullptr),
     m_ddiVersion( 0 ),
@@ -199,7 +202,9 @@ CmDeviceRT::CmDeviceRT(uint32_t options):
     m_nGPUFreqMin(0),
     m_nGPUFreqMax(0),
     m_vtuneOn(false),
-    m_isDriverStoreEnabled(0)
+    m_isDriverStoreEnabled(0),
+    m_hasGpuCopyKernel(false),
+    m_hasGpuInitKernel(false)
 {
     //Initialize Dev Create Param
     InitDevCreateOption( m_cmHalCreateOption, options );
@@ -426,27 +431,27 @@ int32_t CmDeviceRT::Initialize(MOS_CONTEXT *mosContext)
         return result;
     }
 
-    if( result != CM_SUCCESS )
-    {
-        CM_ASSERTMESSAGE("Error: Create CmQueue failure.");
-        return result;
-    }
-
     ReadVtuneProfilingFlag();
 
     // Load Predefined Kernels
     CmProgram* tmpProgram = nullptr;
     int32_t ret = 0;
     ret = LoadPredefinedCopyKernel(tmpProgram);
-    if (ret != CM_SUCCESS)
+    if (ret == CM_SUCCESS)
     {
-        return ret;
+        m_hasGpuCopyKernel = true;
     }
     ret = LoadPredefinedInitKernel(tmpProgram);
-    if (ret != CM_SUCCESS)
+    if (ret == CM_SUCCESS)
     {
-        return ret;
+        m_hasGpuInitKernel = true;
     }
+
+    // get the last tracker
+    PCM_HAL_STATE state = (( PCM_CONTEXT_DATA )m_accelData)->cmHalState;
+    m_surfaceMgr->SetLatestRenderTrackerAddr(state->renderHal->trackerResource.data);
+    m_surfaceMgr->SetLatestFastTrackerAddr(state->advExecutor->GetLatestFastTracker());
+    m_surfaceMgr->SetLatestVeboxTrackerAddr(state->renderHal->veBoxTrackerRes.data);
 
     if (m_notifierGroup != nullptr)
     {
@@ -952,7 +957,7 @@ CM_RT_API int32_t CmDeviceRT::GetSurface2DInfo(uint32_t width,
     PCM_CONTEXT_DATA            cmData;
     PCM_HAL_STATE               cmHalState;
 
-    CMCHK_HR(m_surfaceMgr->Surface2DSanityCheck(width, height, format));
+    CM_CHK_CMSTATUS_GOTOFINISH(m_surfaceMgr->Surface2DSanityCheck(width, height, format));
 
     CmSafeMemSet( &inParam, 0, sizeof( CM_HAL_SURFACE2D_UP_PARAM ) );
     inParam.width  = width;
@@ -961,7 +966,7 @@ CM_RT_API int32_t CmDeviceRT::GetSurface2DInfo(uint32_t width,
 
     cmData = (PCM_CONTEXT_DATA)GetAccelData();
     cmHalState = cmData->cmHalState;
-    CHK_MOSSTATUS_RETURN_CMERROR(cmHalState->pfnGetSurface2DPitchAndSize(cmHalState, &inParam));
+    CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmHalState->pfnGetSurface2DPitchAndSize(cmHalState, &inParam));
 
     pitch = inParam.pitch;
     physicalSize = inParam.physicalSize;
@@ -1080,10 +1085,10 @@ int32_t CmDeviceRT::GetCapsInternal(void  *caps, uint32_t *size)
     }
 
     cmData = (PCM_CONTEXT_DATA)GetAccelData();
-    CMCHK_NULL(cmData);
+    CM_CHK_NULL_GOTOFINISH_CMERROR(cmData);
 
     cmHalState = cmData->cmHalState;
-    CMCHK_NULL(cmHalState);
+    CM_CHK_NULL_GOTOFINISH_CMERROR(cmHalState);
 
     switch (queryCaps->type)
     {
@@ -1091,11 +1096,11 @@ int32_t CmDeviceRT::GetCapsInternal(void  *caps, uint32_t *size)
         queryCaps->hRegistration   = QueryRegHandleInternal(cmHalState);
         break;
     case CM_QUERY_MAX_VALUES:
-        CHK_MOSSTATUS_RETURN_CMERROR(cmHalState->pfnGetMaxValues(cmHalState, &queryCaps->maxValues));
+        CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmHalState->pfnGetMaxValues(cmHalState, &queryCaps->maxValues));
         break;
 
     case CM_QUERY_MAX_VALUES_EX:
-        CHK_MOSSTATUS_RETURN_CMERROR(cmHalState->pfnGetMaxValuesEx(cmHalState, &queryCaps->maxValuesEx));
+        CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmHalState->pfnGetMaxValuesEx(cmHalState, &queryCaps->maxValuesEx));
         break;
 
     case CM_QUERY_GPU:
@@ -1120,7 +1125,7 @@ int32_t CmDeviceRT::GetCapsInternal(void  *caps, uint32_t *size)
         break;
 
     case CM_QUERY_PLATFORM_INFO:
-        CHK_MOSSTATUS_RETURN_CMERROR(cmHalState->pfnGetPlatformInfo(cmHalState, &queryCaps->platformInfo, false));
+        CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmHalState->pfnGetPlatformInfo(cmHalState, &queryCaps->platformInfo, false));
         break;
     default:
         hr = CM_FAILURE;
@@ -1743,7 +1748,37 @@ CM_RT_API int32_t CmDeviceRT::CreateQueue(CmQueue* & queue)
     }
     m_criticalSectionQueue.Release();
 
-    CM_QUEUE_CREATE_OPTION queueCreateOption = CM_DEFAULT_QUEUE_CREATE_OPTION;
+    CM_QUEUE_CREATE_OPTION queueCreateOption = {};
+
+    // Check queue type redirect is needed.
+    PCM_CONTEXT_DATA cmData = (PCM_CONTEXT_DATA)GetAccelData();
+    CM_CHK_NULL_RETURN_CMERROR(cmData);
+    CM_CHK_NULL_RETURN_CMERROR(cmData->cmHalState);
+    CM_CHK_NULL_RETURN_CMERROR(cmData->cmHalState->cmHalInterface);
+    if (cmData->cmHalState->cmHalInterface->IsRedirectRcsToCcs())
+    {
+        queueCreateOption.QueueType = CM_QUEUE_TYPE_COMPUTE;
+    }
+    else
+    {
+        queueCreateOption.QueueType = CM_QUEUE_TYPE_RENDER;
+    }
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+    // Check queue type override for debugging is needed.
+    MOS_USER_FEATURE_VALUE_DATA UserFeatureData = {0};
+    if( MOS_UserFeature_ReadValue_ID( nullptr,
+            __MEDIA_USER_FEATURE_VALUE_MDF_DEFAULT_CM_QUEUE_TYPE_ID,
+            &UserFeatureData) == MOS_STATUS_SUCCESS )
+    {
+        if (UserFeatureData.u32Data == CM_QUEUE_TYPE_RENDER
+         || UserFeatureData.u32Data == CM_QUEUE_TYPE_COMPUTE)
+        {
+            queueCreateOption.QueueType = (CM_QUEUE_TYPE)UserFeatureData.u32Data;
+        }
+    }
+#endif
+
     int32_t result = CreateQueueEx(tmpQueue, queueCreateOption);
 
     if (result != CM_SUCCESS)
@@ -2006,11 +2041,11 @@ CM_RT_API int32_t CmDeviceRT::SetVmeSurfaceStateParam(SurfaceIndex* vmeIndex, CM
     CmSurface *cmSurface = nullptr;
     CmSurfaceVme *vmeSurface = nullptr;
 
-    CMCHK_NULL(vmeIndex);
-    CMCHK_NULL(surfStateParam);
+    CM_CHK_NULL_GOTOFINISH_CMERROR(vmeIndex);
+    CM_CHK_NULL_GOTOFINISH_CMERROR(surfStateParam);
 
     m_surfaceMgr->GetSurface(vmeIndex->get_data(), cmSurface);
-    CMCHK_NULL(cmSurface);
+    CM_CHK_NULL_GOTOFINISH_CMERROR(cmSurface);
 
     // check if it is a vme index
     if (cmSurface->Type() != CM_ENUM_CLASS_TYPE_CMSURFACEVME)
@@ -2155,7 +2190,7 @@ int32_t CmDeviceRT::RegisterSamplerState(const CM_SAMPLER_STATE& samplerState,
     param.minFilter = samplerState.minFilterType;
     param.handle = 0;
 
-    CHK_MOSSTATUS_RETURN_CMERROR(cmData->cmHalState->pfnRegisterSampler(cmData->cmHalState, &param));
+    CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmData->cmHalState->pfnRegisterSampler(cmData->cmHalState, &param));
 
     index = param.handle;
 
@@ -2204,7 +2239,7 @@ CmDeviceRT::RegisterSamplerStateEx(const CM_SAMPLER_STATE_EX& samplerState,
             param.borderColorAlphaF = samplerState.BorderColorAlphaF;
     }
 
-    CHK_MOSSTATUS_RETURN_CMERROR(cmData->cmHalState->pfnRegisterSampler(cmData->cmHalState, &param));
+    CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmData->cmHalState->pfnRegisterSampler(cmData->cmHalState, &param));
 
     index = param.handle;
 
@@ -2222,7 +2257,7 @@ int32_t CmDeviceRT::UnregisterSamplerState(uint32_t index)
 
     PCM_CONTEXT_DATA cmData = (PCM_CONTEXT_DATA)GetAccelData();
 
-    CHK_MOSSTATUS_RETURN_CMERROR(cmData->cmHalState->pfnUnRegisterSampler(cmData->cmHalState, index));
+    CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmData->cmHalState->pfnUnRegisterSampler(cmData->cmHalState, index));
 
 finish:
     return hr;
@@ -2358,7 +2393,6 @@ CmDeviceRT::CreateSampler8x8SurfaceEx(CmSurface2D* surface2d,
                                       CM_FLAG* flag)
 {
     INSERT_API_CALL_LOG();
-    CM_ROTATION rotationFlag = CM_ROTATION_IDENTITY;
 
     CmSurface2DRT* currentRT = static_cast<CmSurface2DRT *>(surface2d);
     if (!currentRT)  {
@@ -2551,7 +2585,7 @@ int32_t CmDeviceRT::RegisterSampler8x8State(
         case CM_SAMPLER8X8_CONV:
             dst = (void *)&(param.sampler8x8State.convolveState);
             src = (void *)sampler8x8State.conv;
-            CmFastMemCopy( dst, src, sizeof( CM_CONVOLVE_STATE_MSG));
+            CmSafeMemCopy( dst, src, sizeof( CM_CONVOLVE_STATE_MSG));
             break;
 
         case CM_SAMPLER8X8_MISC:
@@ -2582,7 +2616,7 @@ int32_t CmDeviceRT::RegisterSampler8x8State(
 
     PCM_CONTEXT_DATA cmData = (PCM_CONTEXT_DATA)GetAccelData();
 
-    CHK_MOSSTATUS_RETURN_CMERROR(cmData->cmHalState->pfnRegisterSampler8x8(cmData->cmHalState, &param));
+    CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmData->cmHalState->pfnRegisterSampler8x8(cmData->cmHalState, &param));
 
     index = param.handle >> 16;
 
@@ -2600,7 +2634,7 @@ int32_t CmDeviceRT::UnregisterSampler8x8State(uint32_t index)
 
     PCM_CONTEXT_DATA cmData = (PCM_CONTEXT_DATA)GetAccelData();
 
-    CHK_MOSSTATUS_RETURN_CMERROR(cmData->cmHalState->pfnUnRegisterSampler8x8(cmData->cmHalState, index));
+    CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmData->cmHalState->pfnUnRegisterSampler8x8(cmData->cmHalState, index));
 
 finish:
     return hr;
@@ -2716,6 +2750,10 @@ int32_t CmDeviceRT::LoadPredefinedCopyKernel(CmProgram*& program)
     uint32_t gpucopyKernelIsaSize;
 
     cmHalState->cmHalInterface->GetCopyKernelIsa(gpucopyKernelIsa, gpucopyKernelIsaSize);
+    if (gpucopyKernelIsa == nullptr || gpucopyKernelIsaSize == 0)
+    {
+        return CM_NOT_IMPLEMENTED;
+    }
 
     hr = LoadProgram((void *)gpucopyKernelIsa, gpucopyKernelIsaSize, program, "PredefinedGPUKernel");
     if (hr != CM_SUCCESS)
@@ -2749,6 +2787,10 @@ int32_t CmDeviceRT::LoadPredefinedInitKernel(CmProgram*& program)
     uint32_t gpuinitKernelIsaSize;
 
     cmHalState->cmHalInterface->GetInitKernelIsa(gpuinitKernelIsa, gpuinitKernelIsaSize);
+    if (gpuinitKernelIsa == nullptr || gpuinitKernelIsaSize == 0)
+    {
+        return CM_NOT_IMPLEMENTED;
+    }
 
     hr = LoadProgram((void *)gpuinitKernelIsa, gpuinitKernelIsaSize, program, "PredefinedGPUKernel");
     if (hr != CM_SUCCESS)
@@ -2772,7 +2814,7 @@ int32_t CmDeviceRT::GetGenStepInfo(char*& stepinfostr)
 
     cmHalState = ((PCM_CONTEXT_DATA)GetAccelData())->cmHalState;
 
-    CHK_MOSSTATUS_RETURN_CMERROR(cmHalState->cmHalInterface->GetGenStepInfo(stepinfostr));
+    CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmHalState->cmHalInterface->GetGenStepInfo(stepinfostr));
 
 finish:
     return hr;
@@ -2947,7 +2989,7 @@ CM_RT_API int32_t CmDeviceRT::SetSuggestedL3Config(L3_SUGGEST_CONFIG l3SuggestCo
     CM_RETURN_CODE  hr          = CM_SUCCESS;
 
     PCM_CONTEXT_DATA cmData = (PCM_CONTEXT_DATA)this->GetAccelData();
-    CHK_MOSSTATUS_RETURN_CMERROR(cmData->cmHalState->cmHalInterface->SetSuggestedL3Conf(l3SuggestConfig));
+    CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmData->cmHalState->cmHalInterface->SetSuggestedL3Conf(l3SuggestConfig));
 
 finish:
     return hr;
@@ -2989,7 +3031,7 @@ int32_t CmDeviceRT::SetCaps(CM_DEVICE_CAP_NAME capName,
                 return CM_INVALID_HARDWARE_THREAD_NUMBER;
             }
 
-            if( *(uint32_t *)capValue <= 0 )
+            if( *(int32_t *)capValue <= 0 )
             {
                 CM_ASSERTMESSAGE("Error: Failed to set caps with CAP_HW_THREAD_COUNT.");
                 return CM_INVALID_HARDWARE_THREAD_NUMBER;
@@ -3030,7 +3072,7 @@ int32_t CmDeviceRT::SetCaps(CM_DEVICE_CAP_NAME capName,
     }
 
     PCM_CONTEXT_DATA cmData = (PCM_CONTEXT_DATA)this->GetAccelData();
-    CHK_MOSSTATUS_RETURN_CMERROR(cmData->cmHalState->pfnSetCaps(cmData->cmHalState, (PCM_HAL_MAX_SET_CAPS_PARAM)&setCaps));
+    CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmData->cmHalState->pfnSetCaps(cmData->cmHalState, (PCM_HAL_MAX_SET_CAPS_PARAM)&setCaps));
 
 finish:
     return hr;
@@ -3050,7 +3092,7 @@ int32_t CmDeviceRT::RegisterSyncEvent(void *syncEventHandle)
     PCM_CONTEXT_DATA  cmData = (PCM_CONTEXT_DATA)GetAccelData();
     PCM_HAL_STATE  cmHalState = cmData->cmHalState;
     // Call HAL layer to wait for Task finished with event-driven mechanism
-    CHK_MOSSTATUS_RETURN_CMERROR(cmHalState->pfnRegisterUMDNotifyEventHandle(cmHalState, &syncParam));
+    CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmHalState->pfnRegisterUMDNotifyEventHandle(cmHalState, &syncParam));
 
     m_osSyncEvent = syncParam.osSyncEvent;
 
@@ -3434,7 +3476,7 @@ int32_t CmDeviceRT::InitDevCreateOption(CM_HAL_CREATE_PARAM & cmHalCreateParam,
     // [10] request slice shutdown
     cmHalCreateParam.requestSliceShutdown = (option & CM_DEVICE_CONFIG_SLICESHUTDOWN_ENABLE ) ? true:false;
 
-    // [12] request custom gpu context
+    // [12] request custom gpu context. This flag is deprecated since GPU context is decoupled with cmhal for supporting multiple context.
     cmHalCreateParam.requestCustomGpuContext = (option & CM_DEVICE_CONFIG_GPUCONTEXT_ENABLE) ? true:false;
 
     // [20:13] calculate size in GSH reserved for kernel binary
@@ -3446,6 +3488,9 @@ int32_t CmDeviceRT::InitDevCreateOption(CM_HAL_CREATE_PARAM & cmHalCreateParam,
     kernelBinarySizeInGSH = kernelBinarySizeInGSH * CM_KERNELBINARY_BLOCKSIZE_2MB;
     cmHalCreateParam.kernelBinarySizeinGSH = kernelBinarySizeInGSH;
 
+    // [30] fast path
+    cmHalCreateParam.refactor = (option & CM_DEVICE_CONFIG_FAST_PATH_ENABLE)?true:false;
+    
     return CM_SUCCESS;
 }
 
@@ -3469,8 +3514,9 @@ int32_t CmDeviceRT::SetSurfaceArraySizeForAlias()
 std::string CmDeviceRT::Log()
 {
     std::ostringstream  oss;
-
-    uint32_t nSize = sizeof(int);
+    PCM_HAL_STATE       cmHalState;
+    uint64_t            timeStampBase = 0;
+    uint32_t            nSize = sizeof(int);
 
     GetCaps( CAP_GPU_CURRENT_FREQUENCY, nSize, &m_nGPUFreqOriginal );
     GetCaps( CAP_MIN_FREQUENCY, nSize, &m_nGPUFreqMin );
@@ -3479,8 +3525,11 @@ std::string CmDeviceRT::Log()
     int gtInfo;
     GetCaps( CAP_GT_PLATFORM,   nSize, &gtInfo        );
 
-    oss << "Device Creation "<<std::endl;
+    cmHalState  = ((PCM_CONTEXT_DATA)GetAccelData())->cmHalState; 
+    CM_CHK_NULL_RETURN(cmHalState,"cmHalState is null pointer");
+    timeStampBase = HalCm_ConvertTicksToNanoSeconds(cmHalState,1);
 
+    oss << "Device Creation "<<std::endl;
     // Hw Information
     oss << "Platform :" << m_platform << std::endl;
     oss << "GT Info :"<< gtInfo << std::endl;
@@ -3495,6 +3544,7 @@ std::string CmDeviceRT::Log()
     oss << "Max Buffer Table Size " << m_halMaxValues.maxBufferTableSize << std::endl;
     oss << "Max Threads per Task  " << m_halMaxValues.maxUserThreadsPerTask << std::endl;
     oss << "Max Threads Per Task no Thread Arg " << m_halMaxValues.maxUserThreadsPerTaskNoThreadArg << std::endl;
+    oss << "MDF timestamp base " << timeStampBase << "ns" << std::endl;
 
     return oss.str();
 }
@@ -3746,4 +3796,33 @@ int32_t CmDeviceRT::GetVISAVersion(uint32_t& majorVersion,
 
     return CM_SUCCESS;
 }
+
+CM_RT_API int32_t CmDeviceRT::UpdateBuffer(PMOS_RESOURCE mosResource,
+                                           CmBuffer* &surface)
+{
+    if (surface)
+    {
+        CmBuffer_RT *bufferRT = static_cast<CmBuffer_RT *>(surface);
+        return bufferRT->UpdateResource(mosResource);
+    }
+    else
+    {
+        return CreateBuffer(mosResource, surface);
+    }
+}
+
+CM_RT_API int32_t CmDeviceRT::UpdateSurface2D(PMOS_RESOURCE mosResource,
+                                          CmSurface2D* &surface)
+{
+    if (surface)
+    {
+        CmSurface2DRT *surfaceRT = static_cast<CmSurface2DRT *>(surface);
+        return surfaceRT->UpdateResource(mosResource);
+    }
+    else
+    {
+        return CreateSurface2D(mosResource, surface);
+    }
+}
+
 }  // namespace

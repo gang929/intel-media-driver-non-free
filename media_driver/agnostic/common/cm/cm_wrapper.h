@@ -128,6 +128,7 @@ struct CM_CREATEQUEUE_PARAM
     unsigned int            queueType;           // [in]
     bool                    runAloneMode;        // [in]
     unsigned int            gpuContext;          // [in]
+    unsigned int            sseuUsageHint;       // [in]
     void                   *queueHandle;         // [out]
     int32_t                 returnValue;           // [out]
 };
@@ -531,6 +532,7 @@ enum CM_FUNCTION_ID
     CM_FN_CMDEVICE_CONFIGVMESURFACEDIMENSION  = 0x113E,
     CM_FN_CMDEVICE_CREATEHEVCVMESURFACEG10    = 0x113F,
     CM_FN_CMDEVICE_GETVISAVERSION             = 0x1140,
+    CM_FN_CMDEVICE_CREATEQUEUEEX              = 0x1141,
 
     CM_FN_CMQUEUE_ENQUEUE           = 0x1500,
     CM_FN_CMQUEUE_DESTROYEVENT      = 0x1501,
@@ -541,6 +543,9 @@ enum CM_FUNCTION_ID
     CM_FN_CMQUEUE_ENQUEUECOPY_L2L   = 0x1507,
     CM_FN_CMQUEUE_ENQUEUEVEBOX      = 0x1508,
     CM_FN_CMQUEUE_ENQUEUEWITHHINTS  = 0x1509,
+    CM_FN_CMQUEUE_ENQUEUEFAST       = 0x150a,
+    CM_FN_CMQUEUE_DESTROYEVENTFAST  = 0x150b,
+    CM_FN_CMQUEUE_ENQUEUEWITHGROUPFAST = 0x150c,
 };
 
 //*-----------------------------------------------------------------------------

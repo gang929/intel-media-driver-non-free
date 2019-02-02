@@ -782,6 +782,12 @@ extern const MHW_SURFACE_PLANES g_cRenderHal_SurfacePlanes[RENDERHAL_PLANES_DEFI
         {
             { MHW_GENERIC_PLANE, 1, 1, 1, 1, 1, 0, MHW_GFX3DSTATE_SURFACEFORMAT_R8G8B8A8_UNORM }
         }
+    },
+        // RENDERHAL_PLANES_R32G32B32A32
+    {   1,
+        {
+            { MHW_GENERIC_PLANE, 1, 1, 1, 1, 0, 0, MHW_GFX3DSTATE_SURFACEFORMAT_R32G32B32A32_FLOAT }
+        }
     }
 };
 
@@ -1429,9 +1435,6 @@ MOS_STATUS RenderHal_AllocateStateHeaps(
                 pSettings->iSurfaceStates * pRenderHal->pRenderHalPltInterface->GetSurfaceStateCmdSize();
     pStateHeap->dwSshIntanceSize   = dwSizeSSH;
     pRenderHal->dwIndirectHeapSize = MOS_ALIGN_CEIL(dwSizeSSH, MHW_PAGE_SIZE);
-
-    // Set indirect heap size - limits the size of the command buffer available for rendering
-    MHW_RENDERHAL_CHK_STATUS(pRenderHal->pOsInterface->pfnSetIndirectStateSize(pRenderHal->pOsInterface, pRenderHal->dwIndirectHeapSize));
 
     // Allocate SSH buffer in system memory, not Gfx
     pStateHeap->dwSizeSSH  = dwSizeSSH; // Single SSH instance
@@ -3311,7 +3314,8 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
                 // The max value is 16383. So use PL3 kernel to avoid out of range when Y_Uoffset is larger than 16383.
                 // Use PL3 plane to avoid YV12 bleeding issue with DI enabled
                 PlaneDefinition = (pRenderHal->bEnableYV12SinglePass                              &&
-                                   (!pRenderHalSurface->pDeinterlaceParams)                       &&
+                                   !pRenderHalSurface->pDeinterlaceParams                         &&
+                                   !pRenderHalSurface->bInterlacedScaling                         &&
                                    pRenderHalSurface->SurfType != RENDERHAL_SURF_OUT_RENDERTARGET &&
                                    (pSurface->dwHeight * 2 + pSurface->dwHeight / 2) < RENDERHAL_MAX_YV12_PLANE_Y_U_OFFSET_G9)?
                                    RENDERHAL_PLANES_YV12 : RENDERHAL_PLANES_PL3;
@@ -3387,9 +3391,11 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
                 // On G8, NV12 format needs the width and Height to be a multiple
                 // of 4 for both 3D sampler and 8x8 sampler; G75 needs the width
                 // of NV12 input surface to be a multiple of 4 for 3D sampler;
-                // G9+ does not has such restriction; to simplify the implementation,
-                // we enable 2 plane NV12 for all of the platform when the width
-                // or Height is not a multiple of 4
+                // On G9+, width need to be a multiple of 2, while height still need
+                // be a multiple of 4; since G9 already post PV, just keep the old logic
+                // to enable 2 plane NV12 when the width or Height is not a multiple of 4.
+                // For G10+, enable 2 plane NV12 when width is not multiple of 2 or height
+                // is not multiple of 4.
                 if ( pRenderHalSurface->SurfType == RENDERHAL_SURF_OUT_RENDERTARGET   ||
                      (pParams->bWidthInDword_Y && pParams->bWidthInDword_UV)          ||
                      pParams->b2PlaneNV12NeededByKernel                               ||
@@ -3577,6 +3583,10 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
             case Format_A16R16G16B16F:
                 PlaneDefinition = RENDERHAL_PLANES_A16R16G16B16F;
                 break;
+            case Format_R32G32B32A32F:
+                PlaneDefinition = RENDERHAL_PLANES_R32G32B32A32F;
+                break;
+
             case Format_NV21:
                 PlaneDefinition = RENDERHAL_PLANES_NV21;
                 break;
@@ -3689,7 +3699,11 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
         // Adjust the width
         if (bWidthInDword)
         {
-            if (PlaneDefinition == RENDERHAL_PLANES_A16B16G16R16     ||
+            if (PlaneDefinition == RENDERHAL_PLANES_R32G32B32A32F)
+            {
+                dwSurfaceWidth = dwSurfaceWidth << 2;
+            }
+            else if (PlaneDefinition == RENDERHAL_PLANES_A16B16G16R16     ||
                 PlaneDefinition == RENDERHAL_PLANES_A16B16G16R16_ADV ||
                 PlaneDefinition == RENDERHAL_PLANES_A16B16G16R16F    ||
                 PlaneDefinition == RENDERHAL_PLANES_A16R16G16B16F    ||
@@ -5025,7 +5039,6 @@ MOS_STATUS RenderHal_Initialize(
     pStateBaseParams->dwGeneralStateSize            = pRenderHal->pStateHeap->dwSizeGSH;
     pStateBaseParams->presDynamicState              = &pRenderHal->pStateHeap->GshOsResource;
     pStateBaseParams->dwDynamicStateSize            = pRenderHal->pStateHeap->dwSizeGSH;
-    pStateBaseParams->dwDynamicStateMemObjCtrlState = 0;
     pStateBaseParams->bDynamicStateRenderTarget     = false;
     pStateBaseParams->presIndirectObjectBuffer      = &pRenderHal->pStateHeap->GshOsResource;
     pStateBaseParams->dwIndirectObjectBufferSize    = pRenderHal->pStateHeap->dwSizeGSH;
@@ -5269,6 +5282,11 @@ MOS_STATUS RenderHal_SendMediaStates(
     // Send State Base Address command
     MHW_RENDERHAL_CHK_STATUS(pRenderHal->pfnSendStateBaseAddress(pRenderHal, pCmdBuffer));
 
+    if (pRenderHal->bComputeContextInUse)
+    {
+        pRenderHal->pRenderHalPltInterface->SendTo3DStateBindingTablePoolAlloc(pRenderHal, pCmdBuffer);
+    }
+
     // Send Surface States
     MHW_RENDERHAL_CHK_STATUS(pRenderHal->pfnSendSurfaces(pRenderHal, pCmdBuffer));
 
@@ -5280,14 +5298,23 @@ MOS_STATUS RenderHal_SendMediaStates(
     }
 
     // Send VFE State
-    pVfeStateParams = pRenderHal->pRenderHalPltInterface->GetVfeStateParameters();
-    MHW_RENDERHAL_CHK_STATUS(pMhwRender->AddMediaVfeCmd(pCmdBuffer, pVfeStateParams));
+    if (!pRenderHal->bComputeContextInUse)
+    {
+        pVfeStateParams = pRenderHal->pRenderHalPltInterface->GetVfeStateParameters();
+        MHW_RENDERHAL_CHK_STATUS(pMhwRender->AddMediaVfeCmd(pCmdBuffer, pVfeStateParams));
+    }
 
     // Send CURBE Load
-    MHW_RENDERHAL_CHK_STATUS(pRenderHal->pfnSendCurbeLoad(pRenderHal, pCmdBuffer));
+    if (!pRenderHal->bComputeContextInUse)
+    {
+        MHW_RENDERHAL_CHK_STATUS(pRenderHal->pfnSendCurbeLoad(pRenderHal, pCmdBuffer));
+    }
 
     // Send Interface Descriptor Load
-    MHW_RENDERHAL_CHK_STATUS(pRenderHal->pfnSendMediaIdLoad(pRenderHal, pCmdBuffer));
+    if (!pRenderHal->bComputeContextInUse)
+    {
+        MHW_RENDERHAL_CHK_STATUS(pRenderHal->pfnSendMediaIdLoad(pRenderHal, pCmdBuffer));
+    }
 
     // Send Chroma Keys
     MHW_RENDERHAL_CHK_STATUS(pRenderHal->pfnSendChromaKey(pRenderHal, pCmdBuffer));
@@ -5302,9 +5329,16 @@ MOS_STATUS RenderHal_SendMediaStates(
             pCmdBuffer,
             pWalkerParams));
     }
-    else if (pGpGpuWalkerParams)
+    else if (pGpGpuWalkerParams && (!pRenderHal->bComputeContextInUse))
     {
         MHW_RENDERHAL_CHK_STATUS(pMhwRender->AddGpGpuWalkerStateCmd(
+            pCmdBuffer,
+            pGpGpuWalkerParams));
+    }
+    else if (pGpGpuWalkerParams && pRenderHal->bComputeContextInUse)
+    {
+        MHW_RENDERHAL_CHK_STATUS(pRenderHal->pRenderHalPltInterface->SendComputeWalker(
+            pRenderHal,
             pCmdBuffer,
             pGpGpuWalkerParams));
     }
@@ -5695,6 +5729,9 @@ MOS_STATUS RenderHal_SetupSurfaceStateOs(
     MOS_STATUS                      eStatus = MOS_STATUS_SUCCESS;
     MHW_SURFACE_TOKEN_PARAMS        TokenParams;
 
+    uint32_t additional_plane_offset = 0;
+    uint32_t vertical_offset_in_surface_state = 0;
+
     //-----------------------------------------
     MHW_RENDERHAL_CHK_NULL(pRenderHal);
     MHW_RENDERHAL_CHK_NULL(pRenderHalSurface);
@@ -5707,16 +5744,35 @@ MOS_STATUS RenderHal_SetupSurfaceStateOs(
     // Surface, plane, offset
     TokenParams.pOsSurface         = pSurface;
     TokenParams.YUVPlane           = pSurfaceEntry->YUVPlane;
+
     switch (pSurfaceEntry->YUVPlane)
     {
         case MHW_U_PLANE:
-            TokenParams.dwSurfaceOffset = pSurface->UPlaneOffset.iSurfaceOffset;
+            vertical_offset_in_surface_state = pSurface->UPlaneOffset.iYOffset;
+            vertical_offset_in_surface_state &= 0x1C;  // The offset value in surface state commands.
+            additional_plane_offset = pSurface->UPlaneOffset.iYOffset
+                    - vertical_offset_in_surface_state;
+            additional_plane_offset *= pSurface->dwPitch;
+            TokenParams.dwSurfaceOffset = pSurface->UPlaneOffset.iSurfaceOffset
+                    + additional_plane_offset;
             break;
         case MHW_V_PLANE:
-            TokenParams.dwSurfaceOffset = pSurface->VPlaneOffset.iSurfaceOffset;
+            vertical_offset_in_surface_state = pSurface->VPlaneOffset.iYOffset;
+            vertical_offset_in_surface_state &= 0x1C;
+            additional_plane_offset = pSurface->VPlaneOffset.iYOffset
+                    - vertical_offset_in_surface_state;
+            additional_plane_offset *= pSurface->dwPitch;
+            TokenParams.dwSurfaceOffset = pSurface->VPlaneOffset.iSurfaceOffset
+                    + additional_plane_offset;
             break;
         default:
-            TokenParams.dwSurfaceOffset = pSurface->dwOffset;
+            vertical_offset_in_surface_state = pSurface->YPlaneOffset.iYOffset;
+            vertical_offset_in_surface_state &= 0x1C;
+            additional_plane_offset = pSurface->YPlaneOffset.iYOffset
+                    - vertical_offset_in_surface_state;
+            additional_plane_offset *= pSurface->dwPitch;
+            TokenParams.dwSurfaceOffset
+                    = pSurface->dwOffset + additional_plane_offset;
             break;
     }
 
@@ -6012,23 +6068,24 @@ bool RenderHal_Is2PlaneNV12Needed(
     PRENDERHAL_SURFACE     pRenderHalSurface,
     RENDERHAL_SS_BOUNDARY  Boundary)
 {
+    PMOS_SURFACE pSurface;
     uint16_t wWidthAlignUnit;
     uint16_t wHeightAlignUnit;
     uint32_t dwSurfaceHeight;
     uint32_t dwSurfaceWidth;
+    bool bRet = false;
 
     //---------------------------------------------
     if (pRenderHal == nullptr
      || pRenderHalSurface == nullptr)
     {
         MHW_RENDERHAL_ASSERTMESSAGE("nullptr pointer detected.");
-        return false;
+        goto finish;
     }
     //---------------------------------------------
-    
-    PMOS_SURFACE pSurface = &pRenderHalSurface->OsSurface;
 
     pRenderHal->pfnGetAlignUnit(&wWidthAlignUnit, &wHeightAlignUnit, pRenderHalSurface);
+    pSurface = &pRenderHalSurface->OsSurface;
 
      switch (Boundary)
     {
@@ -6049,14 +6106,37 @@ bool RenderHal_Is2PlaneNV12Needed(
             break;
     }
 
-     if (!GFX_IS_GEN_10_OR_LATER(pRenderHal->Platform))
-     {
-         return (!MOS_IS_ALIGNED(dwSurfaceHeight, 4) || !MOS_IS_ALIGNED(dwSurfaceWidth, 4));
-     }
-     else
-     {
-         return (!MOS_IS_ALIGNED(dwSurfaceHeight, 2) || !MOS_IS_ALIGNED(dwSurfaceWidth, 2));
-     }
+    // On G8, NV12 format needs the width and Height to be a multiple
+    // of 4 for both 3D sampler and 8x8 sampler; G75 needs the width
+    // of NV12 input surface to be a multiple of 4 for 3D sampler.
+    // On G9+, width need to be a multiple of 2, while height still need
+    // be a multiple of 4. Since G9 already post PV, just keep the old logic
+    // to enable 2 plane NV12 when the width or Height is not a multiple of 4.
+    // For G10+, enable 2 plane NV12 when width is not multiple of 2 or height
+    // is not multiple of 4.
+    if (!GFX_IS_GEN_10_OR_LATER(pRenderHal->Platform))
+    {
+        bRet = (!MOS_IS_ALIGNED(dwSurfaceHeight, 4) || !MOS_IS_ALIGNED(dwSurfaceWidth, 4));
+    }
+    else
+    {
+        // For AVS sampler, no limitation for 4 alignment.
+        if (RENDERHAL_SCALING_AVS == pRenderHalSurface->ScalingMode)
+        {
+            bRet = (!MOS_IS_ALIGNED(dwSurfaceHeight, 2) || !MOS_IS_ALIGNED(dwSurfaceWidth, 2));
+        }
+        else
+        {
+            bRet = (!MOS_IS_ALIGNED(dwSurfaceHeight, 4) || !MOS_IS_ALIGNED(dwSurfaceWidth, 2));
+        }
+    }
+
+    // Note: Always using 2 plane NV12 as WA for the corruption of NV12 input
+    // of which the height is greater than 16352
+    bRet = bRet || (MEDIA_IS_WA(pRenderHal->pWaTable, Wa16KInputHeightNV12Planar420) && dwSurfaceHeight > 16352);
+
+finish:
+    return bRet;
 }
 
 //!
@@ -6812,6 +6892,7 @@ MOS_STATUS RenderHal_InitInterface(
     pRenderHal->bHasCombinedAVSSamplerState   = true;
     pRenderHal->bEnableYV12SinglePass         = pRenderHal->pRenderHalPltInterface->IsEnableYV12SinglePass(pRenderHal);
     pRenderHal->dwSamplerAvsIncrement         = pRenderHal->pRenderHalPltInterface->GetSizeSamplerStateAvs(pRenderHal);
+    pRenderHal->bComputeContextInUse          = pRenderHal->pRenderHalPltInterface->IsComputeContextInUse(pRenderHal);
 
     pRenderHal->dwMaskCrsThdConDataRdLn       = (uint32_t) -1;
     pRenderHal->dwMinNumberThreadsInGroup     = 1;

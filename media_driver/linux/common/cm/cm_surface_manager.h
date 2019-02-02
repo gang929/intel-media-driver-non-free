@@ -58,12 +58,14 @@ public:
 
     int32_t CreateBuffer(uint32_t size, CM_BUFFER_TYPE type, bool svmAllocatedByCm, CmBuffer_RT* &buffer, MOS_RESOURCE *mosResource, void* &sysMem, bool isConditionalBuffer, uint32_t comparisonValue );
     int32_t DestroySurface( CmBuffer_RT* &buffer, SURFACE_DESTROY_KIND destroyKind);
+    int32_t UpdateBuffer(MOS_RESOURCE * mosResource, int index, uint32_t handle);
 
     int32_t CreateSurface2DUP(uint32_t width, uint32_t height, CM_SURFACE_FORMAT format, void* sysMem, CmSurface2DUPRT* &surface);
     int32_t DestroySurface( CmSurface2DUPRT* &surface2dUP,  SURFACE_DESTROY_KIND destroyKind);
 
     int32_t CreateSurface2D(uint32_t width, uint32_t height, uint32_t pitch, bool createdByCm, CM_SURFACE_FORMAT format, CmSurface2DRT* &surface);
     int32_t CreateSurface2D(MOS_RESOURCE * mosResource, bool createdByCm, CmSurface2DRT* &surface);
+    int32_t UpdateSurface2D(MOS_RESOURCE * mosResource, int index, uint32_t handle);
 
     int32_t DestroySurface( CmSurface2DRT* &surface2d, SURFACE_DESTROY_KIND destroyKind);
     int32_t CreateSurface3D(uint32_t width, uint32_t height, uint32_t depth, CM_SURFACE_FORMAT format, CmSurface3DRT* &surface);
@@ -91,10 +93,9 @@ public:
     int32_t DestroySamplerSurface(SurfaceIndex* &samplerSurfaceIndex);
     int32_t DestroySurface( CmSurfaceSampler* &samplerSurface);
     uint32_t GetSurfacePoolSize();
-    uint32_t GetSurfaceState(int32_t * &surfaceState);
     int32_t IncreaseSurfaceUsage(uint32_t index);
     int32_t DecreaseSurfaceUsage(uint32_t index);
-    int32_t DestroySurfaceInPool(uint32_t &freeSurfaceCount, SURFACE_DESTROY_KIND destroyKind);
+    int32_t RefreshDelayDestroySurfaces(uint32_t &freeSurfaceCount);
     int32_t TouchSurfaceInPoolForDestroy();
     int32_t GetFreeSurfaceIndexFromPool(uint32_t &freeIndex);
     int32_t GetFreeSurfaceIndex(uint32_t &index);
@@ -130,6 +131,16 @@ public:
     uint32_t MaxIndirectSurfaceCount();
     uint32_t ValidSurfaceIndexStart();
     bool IsSupportedForSamplerSurface2D(CM_SURFACE_FORMAT format);
+
+    inline void SetLatestRenderTrackerAddr(uint32_t *tracker) {m_latestRenderTracker = tracker; }
+    inline void SetLatestFastTrackerAddr(uint32_t *tracker) {m_latestFastTracker = tracker; }
+    inline void SetLatestVeboxTrackerAddr(uint32_t *tracker) {m_latestVeboxTracker = tracker; }
+    inline uint32_t LatestRenderTracker() {return (m_latestRenderTracker == nullptr)?0:*m_latestRenderTracker; }
+    inline uint32_t LatestFastTracker() {return (m_latestFastTracker == nullptr)?0:*m_latestFastTracker; }
+    inline uint32_t LatestVeboxTracker() {return (m_latestVeboxTracker == nullptr)?0:*m_latestVeboxTracker; }
+
+    void AddToDelayDestroyList(CmSurface *surface);
+    void RemoveFromDelayDestroyList(CmSurface *surface);
 protected:
     CmSurfaceManager(CmDeviceRT* device);
     CmSurfaceManager();
@@ -168,8 +179,6 @@ protected:
 
     CmSurface** m_surfaceArray;
     uint32_t m_maxSurfaceIndexAllocated; // the max index allocated in the m_surfaceArray
-    int32_t *m_surfaceStates;         //Surface reference counting state.
-    bool* m_surfaceReleased; //Surface has been released by API
 
     int32_t *m_surfaceSizes;         // Size of each surface in surface array
 
@@ -199,6 +208,14 @@ protected:
     uint32_t m_garbageCollection3DSize;
 
     CM_SURFACE_BTI_INFO m_surfaceBTIInfo;
+
+    uint32_t *m_latestRenderTracker;
+    uint32_t *m_latestFastTracker;
+    uint32_t *m_latestVeboxTracker;
+
+    CmSurface *m_delayDestroyHead;
+    CmSurface *m_delayDestroyTail;
+    CSync m_delayDestoryListSync;
 
 private:
     CmSurfaceManager (const CmSurfaceManager& other);

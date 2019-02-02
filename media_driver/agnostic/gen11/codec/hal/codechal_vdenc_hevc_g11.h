@@ -122,7 +122,7 @@ struct CODECHAL_VDENC_HEVC_HUC_BRC_UPDATE_DMEM_G11
     uint32_t    Ref_L1_FrameID_U32[8];
     uint16_t    startGAdjFrame_U16[4];          // 10, 50, 100, 150
     uint16_t    TargetSliceSize_U16;
-    uint16_t    SLB_Data_SizeInBytes;
+    uint16_t    SLB_Data_SizeInBytes;           // Region12 group 3 batch buffer data size
     uint16_t    PIC_STATE_StartInBytes;         // PIC_STATE starts in byte. 0xFFFF means not available in SLB
     uint16_t    CMD2_StartInBytes;
     uint16_t    CMD1_StartInBytes;
@@ -306,7 +306,7 @@ class CodechalVdencHevcStateG11 : public CodechalVdencHevcState
 {
 public:
     static const uint32_t       m_minScaledSurfaceSize = 64;           //!< Minimum scaled surface size
-    static const uint32_t       m_brcPakStatsBufSize = 464;            //!< Pak statistic buffer size
+    static const uint32_t       m_brcPakStatsBufSize = 512;            //!< Pak statistic buffer size
     static const uint32_t       m_brcStatsBufSize = 1216;              //!< BRC Statistic buf size: 48DWs (3CLs) of HMDC Frame Stats + 256 DWs (16CLs) of Histogram Stats = 1216 bytes
     static const uint32_t       m_brcConstantSurfaceWidth = 64;        //!< BRC constant surface width
     static const uint32_t       m_brcConstantSurfaceHeight = 35;       //!< BRC constant surface height
@@ -366,6 +366,7 @@ public:
     CODECHAL_ENCODE_BUFFER                m_resPakSliceLevelStreamoutData;  //!< Surface for slice level stream out data from PAK
     CODECHAL_HEVC_VIRTUAL_ENGINE_OVERRIDE m_kmdVeOveride;                   //!< KMD override virtual engine index
     uint32_t                              m_numTiles = 1;                   //!< Number of tiles
+    uint32_t                              m_numLcu = 1;                     //!< LCU number
     CODECHAL_ENCODE_BUFFER                m_resHcpScalabilitySyncBuffer;    //!< Hcp sync buffer for scalability
     CODECHAL_ENCODE_BUFFER                m_resTileBasedStatisticsBuffer[CODECHAL_NUM_UNCOMPRESSED_SURFACE_HEVC];
     CODECHAL_ENCODE_BUFFER                m_resHuCPakAggregatedFrameStatsBuffer;
@@ -507,6 +508,7 @@ public:
     MOS_STATUS ExecuteSliceLevel();
     MOS_STATUS ConstructBatchBufferHuCCQP(PMOS_RESOURCE batchBuffer);
     MOS_STATUS ConstructBatchBufferHuCBRC(PMOS_RESOURCE batchBuffer);
+    MOS_STATUS ConstructBatchBufferHuCBRCForGroup3(PMOS_RESOURCE batchBuffer);
     MOS_STATUS ConstructHucCmdForBRC(PMOS_RESOURCE batchBuffer);
     MOS_STATUS SetDmemHuCBrcInitReset();
     MOS_STATUS SetConstDataHuCBrcUpdate();
@@ -813,6 +815,7 @@ protected:
     virtual MOS_STATUS DumpHucPakIntegrate();
     virtual MOS_STATUS DumpVdencOutputs();
     virtual MOS_STATUS DumpHucCqp();
+    virtual MOS_STATUS DumpHucBrcUpdate(bool isInput);
 #endif
 
 };

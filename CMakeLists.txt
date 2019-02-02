@@ -40,9 +40,33 @@ if("${os_name}" STREQUAL "clear-linux-os")
     set(CMAKE_INSTALL_SYSCONFDIR "usr/share/defaults/etc")
 endif()
 
+include(CMakeDependentOption)
+
+option (ENABLE_KERNELS "Build driver with shaders (kernels) support" ON)
+# ENABLE_NONFREE_KERNELS option permits to enable closed source EU shaders (kernels)
+# additionally to open source EU shaders and fixed function hardware.
+cmake_dependent_option( ENABLE_NONFREE_KERNELS
+    "Use closed source pre-built  binary shaders (kernels)" ON
+    "ENABLE_KERNELS" OFF)
+cmake_dependent_option( BUILD_KERNELS
+    "Rebuild shaders (kernels) from sources" OFF
+    "ENABLE_KERNELS;NOT ENABLE_NONFREE_KERNELS" OFF)
+option (BUILD_CMRTLIB "Build and Install cmrtlib together with media driver" ON)
+
 include(GNUInstallDirs)
 
-add_subdirectory(cmrtlib)
+if (BUILD_CMRTLIB)
+    add_subdirectory(cmrtlib)
+endif()
+
+if (BUILD_KERNELS)
+    find_program(IGA iga64)
+    if (NOT IGA)
+        message(FATAL_ERROR "Failed to find IGA")
+    endif()
+
+    add_subdirectory(Tools/MediaDriverTools)
+endif()
 
 add_subdirectory(media_driver)
 
@@ -52,9 +76,8 @@ endif()
 message(STATUS "LIBVA_DRIVERS_PATH = ${LIBVA_DRIVERS_PATH}")
 
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/media_driver/iHD_drv_video.so DESTINATION ${LIBVA_DRIVERS_PATH} COMPONENT media)
-install (FILES ${CMAKE_CURRENT_BINARY_DIR}/cmrtlib/linux/igfxcmrt64.so DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT media)
 
-option (INSTALL_DRIVER_SYSCONF "Install driver system configuration file" ON)
+option (INSTALL_DRIVER_SYSCONF "Install driver system configuration file" OFF)
 if (INSTALL_DRIVER_SYSCONF)
     configure_file (
         ${CMAKE_CURRENT_SOURCE_DIR}/media_driver/cmake/linux/intel-media.sh.in

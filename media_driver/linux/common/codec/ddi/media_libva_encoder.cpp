@@ -303,8 +303,7 @@ VAStatus DdiEncode_CreateContext(
     // - HEVCMain10 profile
     // - VAProfileVP9Profile2
     // - VAProfileVP9Profile3
-    if (profile == VAProfileHEVCMain10 ||
-        profile == VAProfileVP9Profile2 ||
+    if (profile == VAProfileVP9Profile2 ||
         profile == VAProfileVP9Profile3)
     {
         encCtx->m_encode->m_is10Bit = true;
@@ -336,6 +335,8 @@ VAStatus DdiEncode_CreateContext(
     encCtx->pCodecHal = pCodecHal;
 
     // Setup some initial data
+    encCtx->dworiFrameWidth   = picture_width;
+    encCtx->dworiFrameHeight  = picture_height;
     encCtx->wPicWidthInMB     = (uint16_t)(DDI_CODEC_NUM_MACROBLOCKS_WIDTH(picture_width));
     encCtx->wPicHeightInMB    = (uint16_t)(DDI_CODEC_NUM_MACROBLOCKS_HEIGHT(picture_height));
     encCtx->dwFrameWidth      = encCtx->wPicWidthInMB * CODECHAL_MACROBLOCK_WIDTH;
@@ -624,9 +625,8 @@ VAStatus DdiEncode_MfeSubmit(
             return VA_STATUS_ERROR_INVALID_PARAMETER;
         }
 
-        encoder->m_mfeEncodeParams.submitIndex  = 0;
-        encoder->m_mfeEncodeParams.submitNumber = 1; //By default we only use one stream
-        encoder->m_mfeEncodeParams.streamId  = 0;
+        encoder->m_mfeEncodeParams.submitIndex  = i;
+        encoder->m_mfeEncodeParams.submitNumber = num_contexts;
         encodeContexts.push_back(encodeContext);
         validContextNumber++;
     }

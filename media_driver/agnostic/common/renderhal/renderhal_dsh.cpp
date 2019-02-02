@@ -648,9 +648,6 @@ MOS_STATUS RenderHal_DSH_AllocateStateHeaps(
                             pRenderHal->pRenderHalPltInterface->GetSurfaceStateCmdSize();
     pRenderHal->dwIndirectHeapSize = MOS_ALIGN_CEIL(pStateHeap->dwSizeSSH, MHW_PAGE_SIZE);
 
-    // Set indirect heap size - limits the size of the command buffer available for rendering
-    MHW_RENDERHAL_CHK_STATUS(pRenderHal->pOsInterface->pfnSetIndirectStateSize(pRenderHal->pOsInterface, pRenderHal->dwIndirectHeapSize));
-
     // Allocate local copy of SSH
     pStateHeap->pSshBuffer = (uint8_t*)MOS_AllocAndZeroMemory(pStateHeap->dwSizeSSH);
     if (!pStateHeap->pSshBuffer)
@@ -2331,7 +2328,6 @@ MOS_STATUS RenderHal_DSH_SendStateBaseAddress(PRENDERHAL_INTERFACE pRenderHal, P
     PMOS_RESOURCE               pIshResource;
     uint32_t                    dwIshSize;
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
-    MHW_STATE_BASE_ADDR_PARAMS  StateBaseAddressParams;
     //----------------------------------------
     MHW_RENDERHAL_CHK_NULL(pCmdBuffer);
     MHW_RENDERHAL_CHK_NULL(pRenderHal);
@@ -2351,19 +2347,18 @@ MOS_STATUS RenderHal_DSH_SendStateBaseAddress(PRENDERHAL_INTERFACE pRenderHal, P
     pIshResource  = &(pRenderHal->pMhwStateHeap->GetISHPointer()->resHeap);
     dwIshSize     = pRenderHal->pMhwStateHeap->GetISHPointer()->dwSize;
 
-    StateBaseAddressParams.presGeneralState              = pGshResource;
-    StateBaseAddressParams.dwGeneralStateSize            = dwGshSize;
-    StateBaseAddressParams.presDynamicState              = pGshResource;
-    StateBaseAddressParams.dwDynamicStateSize            = dwGshSize;
-    StateBaseAddressParams.dwDynamicStateMemObjCtrlState = 0;
-    StateBaseAddressParams.bDynamicStateRenderTarget     = false;
-    StateBaseAddressParams.presIndirectObjectBuffer      = pGshResource;
-    StateBaseAddressParams.dwIndirectObjectBufferSize    = dwGshSize;
-    StateBaseAddressParams.presInstructionBuffer         = pIshResource;
-    StateBaseAddressParams.dwInstructionBufferSize       = dwIshSize;
+    pRenderHal->StateBaseAddressParams.presGeneralState              = pGshResource;
+    pRenderHal->StateBaseAddressParams.dwGeneralStateSize            = dwGshSize;
+    pRenderHal->StateBaseAddressParams.presDynamicState              = pGshResource;
+    pRenderHal->StateBaseAddressParams.dwDynamicStateSize            = dwGshSize;
+    pRenderHal->StateBaseAddressParams.bDynamicStateRenderTarget     = false;
+    pRenderHal->StateBaseAddressParams.presIndirectObjectBuffer      = pGshResource;
+    pRenderHal->StateBaseAddressParams.dwIndirectObjectBufferSize    = dwGshSize;
+    pRenderHal->StateBaseAddressParams.presInstructionBuffer         = pIshResource;
+    pRenderHal->StateBaseAddressParams.dwInstructionBufferSize       = dwIshSize;
 
     eStatus = pRenderHal->pMhwRenderInterface->AddStateBaseAddrCmd(pCmdBuffer,
-                                                                   &StateBaseAddressParams);
+                                                                   &pRenderHal->StateBaseAddressParams);
 finish:
     return eStatus;
 }

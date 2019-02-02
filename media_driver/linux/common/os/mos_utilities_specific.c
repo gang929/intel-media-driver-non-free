@@ -2600,6 +2600,7 @@ MOS_THREADHANDLE MOS_CreateThread(
     if (0 != pthread_create(&Thread, nullptr, (void *(*)(void *))ThreadFunction, ThreadData))
     {
         Thread = 0;
+        MOS_OS_ASSERTMESSAGE("Create thread failed.");
     }
 
     return Thread;
@@ -2622,8 +2623,14 @@ MOS_STATUS MOS_WaitThread(
 {
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
 
-    if (0 != pthread_join(hThread, nullptr))
+    if (hThread == 0)
     {
+        MOS_OS_ASSERTMESSAGE("MOS wait thread failed, invalid thread handle.");
+        eStatus = MOS_STATUS_INVALID_PARAMETER; 
+    }
+    else if (0 != pthread_join(hThread, nullptr))
+    {
+        MOS_OS_ASSERTMESSAGE("Failed to join thread.");
         eStatus = MOS_STATUS_UNKNOWN;
     }
 
@@ -2639,6 +2646,7 @@ PMOS_MUTEX MOS_CreateMutex()
     {
         if (pthread_mutex_init(pMutex, nullptr))
         {
+            MOS_FreeMemory(pMutex);
             pMutex = nullptr;
         }
     }
@@ -2664,6 +2672,8 @@ MOS_STATUS MOS_DestroyMutex(PMOS_MUTEX pMutex)
 
 MOS_STATUS MOS_LockMutex(PMOS_MUTEX pMutex)
 {
+    MOS_OS_CHK_NULL_RETURN(pMutex);
+
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
     if (pthread_mutex_lock(pMutex))
@@ -2676,6 +2686,8 @@ MOS_STATUS MOS_LockMutex(PMOS_MUTEX pMutex)
 
 MOS_STATUS MOS_UnlockMutex(PMOS_MUTEX pMutex)
 {
+    MOS_OS_CHK_NULL_RETURN(pMutex);
+
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
     if (pthread_mutex_unlock(pMutex))
@@ -2694,8 +2706,11 @@ PMOS_SEMAPHORE MOS_CreateSemaphore(
     MOS_UNUSED(uiMaximumCount);
 
     pSemaphore = (PMOS_SEMAPHORE)MOS_AllocMemory(sizeof(*pSemaphore));
+    if (!pSemaphore)
+        return nullptr;
     if (sem_init(pSemaphore, 0, uiInitialCount))
     {
+        MOS_SafeFreeMemory(pSemaphore);
         pSemaphore = nullptr;
     }
 
@@ -2785,6 +2800,18 @@ uint32_t MOS_WaitForMultipleObjects(
     MOS_UNUSED(bWaitAll);
     MOS_UNUSED(uiMilliseconds);
     return 0;
+}
+
+int32_t MOS_AtomicIncrement(
+    int32_t *pValue)
+{
+    return __sync_fetch_and_add(pValue, 1);
+}
+
+int32_t MOS_AtomicDecrement(
+    int32_t *pValue)
+{
+    return __sync_fetch_and_sub(pValue, 1);
 }
 
 VAStatus MOS_StatusToOsResult(
@@ -2923,17 +2950,17 @@ void MOS_GfxInfoClose()
     // not implemented
 }
 
-void MOS_GfxInfo(uint8_t ver, uint16_t compId, uint16_t tmtryID, char const* xmlTmtryStr)
+void MOS_GfxInfo_RTErr(uint8_t ver,
+    uint16_t    compId,
+    uint16_t    FtrId,
+    uint32_t    ErrorCode,
+    uint8_t     num_of_triples,
+    ...)
 {
     // not implemented
 }
 
-void MOS_GfxInfo_RTErr(uint8_t ver, uint16_t compId, uint16_t FtrId, uint32_t ErrorCode)
-{
-    // not implemented
-}
-
-void MOS_GfxInfo_Params(
+void MOS_GfxInfo(
     uint8_t         ver,
     uint16_t        compId,
     uint32_t        tmtryID,

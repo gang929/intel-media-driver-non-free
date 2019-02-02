@@ -25,7 +25,9 @@
 //!
 
 #include "media_interfaces_g8_bdw.h"
+#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 #include "igcodeckrn_g8.h"
+#endif
 
 #ifdef _HYBRID_HEVC_DECODE_SUPPORTED
 #include "codechal_decode_hybrid_hevc.h"

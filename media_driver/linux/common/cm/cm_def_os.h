@@ -20,8 +20,8 @@
 * OTHER DEALINGS IN THE SOFTWARE.
 */
 //!
-//! \file      cm_def_os.h 
-//! \brief     Contains CM definitions 
+//! \file      cm_def_os.h
+//! \brief     Contains CM definitions
 //!
 #pragma once
 
@@ -81,7 +81,7 @@ inline int memcpy_s(void *dst, size_t numberOfElements, const void *src, size_t 
 #define CM_CONTEXT_DATA  CM_CONTEXT
 #define PCM_CONTEXT_DATA PCM_CONTEXT
 
-#define CM_MAX_SURFACE2D_FORMAT_COUNT   23
+#define CM_MAX_SURFACE2D_FORMAT_COUNT   29
 #define CM_MAX_SURFACE2D_FORMAT_COUNT_INTERNAL   (CM_MAX_SURFACE2D_FORMAT_COUNT-1)
 
 typedef enum _CM_TEXTURE_ADDRESS_TYPE
@@ -113,7 +113,7 @@ namespace CMRT_UMD
 class SurfaceIndex
 {
 public:
-    CM_NOINLINE SurfaceIndex() { index = 0; };
+    CM_NOINLINE SurfaceIndex() { index = 0; extraByte = 0; };
     CM_NOINLINE SurfaceIndex(const SurfaceIndex& src) { index = src.index; };
     CM_NOINLINE SurfaceIndex(const unsigned int& n) { index = n; };
     CM_NOINLINE SurfaceIndex& operator = (const unsigned int& n) { this->index = n; return *this; };
@@ -142,7 +142,7 @@ private:
 class SamplerIndex
 {
 public:
-    CM_NOINLINE SamplerIndex() { index = 0; };
+    CM_NOINLINE SamplerIndex() { index = 0; extraByte = 0;};
     CM_NOINLINE SamplerIndex(SamplerIndex& src) { index = src.get_data(); };
     CM_NOINLINE SamplerIndex(const unsigned int& n) { index = n; };
     CM_NOINLINE SamplerIndex& operator = (const unsigned int& n) { this->index = n; return *this; };
