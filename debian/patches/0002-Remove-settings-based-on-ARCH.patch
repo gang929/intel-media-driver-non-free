@@ -7,12 +7,12 @@ Subject: Remove settings based on ARCH
  1 file changed, 11 deletions(-)
 
 diff --git a/media_driver/cmake/linux/media_compile_flags_linux.cmake b/media_driver/cmake/linux/media_compile_flags_linux.cmake
-index 8efb9ec..96c8f09 100644
+index 9e85fdb..c338d68 100755
 --- a/media_driver/cmake/linux/media_compile_flags_linux.cmake
 +++ b/media_driver/cmake/linux/media_compile_flags_linux.cmake
-@@ -66,9 +66,6 @@ set(MEDIA_COMPILER_FLAGS_COMMON
-     -fdata-sections
+@@ -69,9 +69,6 @@ set(MEDIA_COMPILER_FLAGS_COMMON
      -ffunction-sections
+     -Wl,--gc-sections
  
 -    # -m32 or -m64
 -    -m${ARCH}
@@ -20,7 +20,7 @@ index 8efb9ec..96c8f09 100644
      # Global defines
      -DLINUX=1
      -DLINUX
-@@ -99,14 +96,6 @@ if(${UFO_MARCH} STREQUAL "slm")
+@@ -91,14 +88,6 @@ if(${UFO_MARCH} STREQUAL "slm")
      )
  endif()
  
