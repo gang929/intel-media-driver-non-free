@@ -5,8 +5,7 @@ Comment:
  move those kernels to non-free as they come without source, i.e. we cannot
  rebuild them with intel-gen4asm (or similar). But otherwise the package can be
  autobuilt.
-Files-Excluded: Tools/MediaDriverTools/*
-                cmrtlib/*
+Files-Excluded: Tools/MediaDriverTools/UMDPerfProfiler/*
 
 Files: *
 Copyright: 2012-2013, Christian Rau
