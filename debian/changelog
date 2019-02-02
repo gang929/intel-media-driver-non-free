@@ -1,3 +1,16 @@
+intel-media-driver-non-free (18.4.0+ds1-1) unstable; urgency=medium
+
+  * New upstream release.
+  * debian/copyright: Refine Files-Excluded.
+  * debian/rules: Explicitly specify desired build flags wrt kernels.
+  * debian/patches: Refresh patches.
+  * debian/: Bump debhelper compat to 12
+  * debian/control:
+    - Bump Standards-Version.
+    - Mention Whiskey Lake.
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Sat, 02 Feb 2019 19:43:01 +0100
+
 intel-media-driver-non-free (18.3.0+ds1-2) unstable; urgency=medium
 
   * debian/: Fix build on i386. (Closes: #915572)
