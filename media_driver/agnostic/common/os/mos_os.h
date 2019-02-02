@@ -71,7 +71,8 @@
     ((GpuContext) == MOS_GPU_CONTEXT_RENDER2)       || \
     ((GpuContext) == MOS_GPU_CONTEXT_RENDER3)       || \
     ((GpuContext) == MOS_GPU_CONTEXT_RENDER4)       || \
-    ((GpuContext) == MOS_GPU_CONTEXT_COMPUTE)          \
+    ((GpuContext) == MOS_GPU_CONTEXT_COMPUTE)       || \
+    ((GpuContext) == MOS_GPU_CONTEXT_CM_COMPUTE)        \
 )
 
 #if MOS_MEDIASOLO_SUPPORTED
@@ -336,9 +337,12 @@ struct _MOS_GPUCTX_CREATOPTIONS
         uint32_t SSEUValue;
     };
 
-    _MOS_GPUCTX_CREATOPTIONS() : 
-        CmdBufferNumScale(MOS_GPU_CONTEXT_CREATE_DEFAULT),
-        SSEUValue(0) {}
+    bool  runAloneMode;
+
+    _MOS_GPUCTX_CREATOPTIONS()
+            : CmdBufferNumScale(MOS_GPU_CONTEXT_CREATE_DEFAULT),
+              SSEUValue(0),
+              runAloneMode(false) {}
 
     virtual ~_MOS_GPUCTX_CREATOPTIONS(){}
 };
@@ -422,6 +426,7 @@ typedef struct _MOS_INTERFACE
     int32_t                         bUsesGfxAddress;
     int32_t                         bMapOnCreate;                           // For limited GPU VA resource can not be mapped during creation
     int32_t                         bInlineCodecStatusUpdate;               // check whether use inline codec status update or seperate BB
+    int32_t                         bAllowExtraPatchToSameLoc;              // patch another resource to same location in cmdbuffer
 
     // Component info
     MOS_COMPONENT                   Component;
@@ -454,7 +459,8 @@ typedef struct _MOS_INTERFACE
 #if MOS_MEDIASOLO_SUPPORTED
     // MediaSolo related
     int32_t                         bSoloInUse;                                   //!< Flag to indicate if MediaSolo is enabled
-    void                            *pvSoloContext;                                //!< pointer to MediaSolo context
+    static void                    *pvSoloContext;                                //!< pointer to MediaSolo context
+    static uint32_t                 soloRefCnt;
     uint32_t                        dwEnableMediaSoloFrameNum;                    //!< The frame number at which MediaSolo will be enabled, 0 is not valid.
 #endif // MOS_MEDIASOLO_SUPPORTED
 
@@ -1177,5 +1183,10 @@ MOS_STATUS Mos_CheckVirtualEngineSupported(
     bool           isDecode,
     bool           veDefaultEnable);
 
+struct ContextRequirement
+{
+    bool IsEnc = false;
+    bool IsPak = false;
+};
 
 #endif  // __MOS_OS_H__

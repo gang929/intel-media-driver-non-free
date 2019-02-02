@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017, Intel Corporation
+* Copyright (c) 2017-2018, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -72,6 +72,7 @@ MOS_STATUS CodechalEncodeHevcBase::Initialize(CodechalSetting * settings)
     m_cscDsState->EnableCopy();
     m_cscDsState->EnableColor();
 #endif
+    m_mfeEnabled = settings->isMfeEnabled;
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(CodechalEncoderState::Initialize(settings));
 
@@ -419,12 +420,12 @@ MOS_STATUS CodechalEncodeHevcBase::AllocateResources()
     CODECHAL_ENCODE_CHK_STATUS_RETURN(CodechalEncoderState::AllocateResources());
 
     // Allocate Ref Lists
-    CodecHalAllocateDataList(
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(CodecHalAllocateDataList(
         m_refList,
-        CODECHAL_NUM_UNCOMPRESSED_SURFACE_HEVC);
+        CODECHAL_NUM_UNCOMPRESSED_SURFACE_HEVC));
 
     // Create the sync objects which will be used by each reference frame
-    for (auto i = 0; i < CODECHAL_GET_ARRAY_LENGTH(m_refSync); i++)
+    for (uint32_t i = 0; i < CODECHAL_GET_ARRAY_LENGTH(m_refSync); i++)
     {
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnCreateSyncResource(m_osInterface, &m_refSync[i].resSyncObject));
         m_refSync[i].bInUsed = false;
@@ -772,7 +773,7 @@ void CodechalEncodeHevcBase::FreeResources()
     // Release Ref Lists
     CodecHalFreeDataList(m_refList, CODECHAL_NUM_UNCOMPRESSED_SURFACE_HEVC);
 
-    for (auto i = 0; i < CODECHAL_GET_ARRAY_LENGTH(m_refSync); i++)
+    for (uint32_t i = 0; i < CODECHAL_GET_ARRAY_LENGTH(m_refSync); i++)
     {
         m_osInterface->pfnDestroySyncResource(m_osInterface, &m_refSync[i].resSyncObject);
     }
@@ -890,8 +891,6 @@ MOS_STATUS CodechalEncodeHevcBase::SetSequenceStructs()
     // Calculate 4x, 16x, 32x dimensions as applicable
     CODECHAL_ENCODE_CHK_STATUS_RETURN(CalcScaledDimensions());
 
-    MotionEstimationDisableCheck();
-
     // It is assumed to be frame-mode always
     m_frameFieldHeight = m_frameHeight;
     m_frameFieldHeightInMb = m_picHeightInMb;
@@ -963,6 +962,12 @@ MOS_STATUS CodechalEncodeHevcBase::SetPictureStructs()
             uint32_t numRef = (ll == 0) ? slcParams->num_ref_idx_l0_active_minus1 :
                 slcParams->num_ref_idx_l1_active_minus1;
 
+            if (numRef > CODEC_MAX_NUM_REF_FRAME_HEVC)
+            {
+                CODECHAL_ENCODE_ASSERTMESSAGE("Invalid number of ref frames for l0 %d or l1 %d", slcParams->num_ref_idx_l0_active_minus1, slcParams->num_ref_idx_l1_active_minus1);
+                eStatus = MOS_STATUS_INVALID_PARAMETER;
+                return eStatus;
+            }
             for (uint32_t i = 0; i <= numRef; i++)
             {
                 CODEC_PICTURE refPic = slcParams->RefPicList[ll][i];
@@ -1182,9 +1187,42 @@ MOS_STATUS CodechalEncodeHevcBase::SetPictureStructs()
     m_b16XMeEnabled = m_16xMeSupported && m_pictureCodingType != I_TYPE;
     m_b32XMeEnabled = m_32xMeSupported && m_pictureCodingType != I_TYPE;
 
-    // the following computation is directly copied from the BRC prototype
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(CalcLCUMaxCodingSize());
+
+    // Screen content flag will come in with PPS on Linux/Android, but in SPS on other platforms,
+    // we will use screen content flag in PPS for kernel programming, and update
+    // the PPS screen content flag based on the SPS screen content flag if enabled.
+    m_hevcPicParams->bScreenContent |= m_hevcSeqParams->bScreenContent;
+
+    return eStatus;
+}
+
+MOS_STATUS CodechalEncodeHevcBase::CalcLCUMaxCodingSize()
+{
+    CODECHAL_ENCODE_FUNCTION_ENTER;
+
     uint16_t log2_max_coding_block_size = m_hevcSeqParams->log2_max_coding_block_size_minus3 + 3;
-    uint16_t rawCTUBits = (1 << (2 * log2_max_coding_block_size + 3)) + (1 << (2 * log2_max_coding_block_size + 2));
+    uint32_t rawCTUBits = (1 << (2 * log2_max_coding_block_size));
+
+    switch (m_hevcSeqParams->chroma_format_idc)
+    {
+        // 420
+    case 1:
+        rawCTUBits = rawCTUBits * 3 / 2;
+        break;
+        // 422
+    case 2:
+        rawCTUBits = rawCTUBits * 2;
+        break;
+        // 444
+    case 3:
+        rawCTUBits = rawCTUBits * 3;
+        break;
+    default:
+        break;
+    };
+
+    rawCTUBits = rawCTUBits * (m_hevcSeqParams->bit_depth_luma_minus8 + 8);
     rawCTUBits = (5 * rawCTUBits / 3);
 
     if (m_hevcPicParams->LcuMaxBitsizeAllowed == 0 || m_hevcPicParams->LcuMaxBitsizeAllowed > rawCTUBits)
@@ -1192,12 +1230,7 @@ MOS_STATUS CodechalEncodeHevcBase::SetPictureStructs()
         m_hevcPicParams->LcuMaxBitsizeAllowed = rawCTUBits;
     }
 
-    // Screen content flag will come in with PPS on Android, but in SPS on Android,
-    // we will use screen content flag in PPS for kernel programming, and update
-    // the PPS screen content flag based on the SPS screen content flag if enabled.
-    m_hevcPicParams->bScreenContent |= m_hevcSeqParams->bScreenContent;
-
-    return eStatus;
+    return MOS_STATUS_SUCCESS;
 }
 
 MOS_STATUS CodechalEncodeHevcBase::SetSliceStructs()
@@ -1704,6 +1737,7 @@ void CodechalEncodeHevcBase::CalcTransformSkipParameters(
         return;
     }
 
+    params.Transformskip_enabled = true;
     int sliceQP = CalSliceQp();
 
     int qpIdx = 0;
@@ -2173,7 +2207,7 @@ MOS_STATUS CodechalEncodeHevcBase::InitializePicture(const EncoderParams& params
 
 void CodechalEncodeHevcBase::SetHcpPipeModeSelectParams(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS& pipeModeSelectParams)
 {
-    MOS_ZeroMemory(&pipeModeSelectParams, sizeof(pipeModeSelectParams));
+    pipeModeSelectParams = {};
     pipeModeSelectParams.Mode = m_mode;
     pipeModeSelectParams.bStreamOutEnabled = m_vdencEnabled;
     pipeModeSelectParams.bVdencEnabled = m_vdencEnabled;
@@ -2212,8 +2246,7 @@ void CodechalEncodeHevcBase::SetHcpSrcSurfaceParams(MHW_VDBOX_SURFACE_PARAMS& sr
     srcSurfaceParams.ucBitDepthChromaMinus8 = m_hevcSeqParams->bit_depth_chroma_minus8;
     srcSurfaceParams.bDisplayFormatSwizzle  = m_hevcPicParams->bDisplayFormatSwizzle;
     srcSurfaceParams.ChromaType = m_outputChromaFormat;
-    srcSurfaceParams.bSrc8Pak10Mode         = (!m_hevcSeqParams->SourceBitDepth) &&
-                                      (m_hevcSeqParams->bit_depth_luma_minus8 == 2);
+    srcSurfaceParams.bSrc8Pak10Mode         = false; //No usage for 8->10 bit encode
     srcSurfaceParams.dwActualHeight = ((m_hevcSeqParams->wFrameHeightInMinCbMinus1 + 1) << (m_hevcSeqParams->log2_min_coding_block_size_minus3 + 3));
 }
 
@@ -2237,7 +2270,7 @@ void CodechalEncodeHevcBase::SetHcpPipeBufAddrParams(MHW_VDBOX_PIPE_BUF_ADDR_PAR
 {
     CODECHAL_ENCODE_FUNCTION_ENTER;
 
-    MOS_ZeroMemory(&pipeBufAddrParams, sizeof(pipeBufAddrParams));
+    pipeBufAddrParams = {};
     pipeBufAddrParams.Mode = m_mode;
     pipeBufAddrParams.psPreDeblockSurface = &m_reconSurface;
     pipeBufAddrParams.psPostDeblockSurface = &m_reconSurface;
@@ -2316,7 +2349,7 @@ void CodechalEncodeHevcBase::SetHcpPicStateParams(MHW_VDBOX_HEVC_PIC_STATE& picS
 {
     CODECHAL_ENCODE_FUNCTION_ENTER;
 
-    MOS_ZeroMemory(&picStateParams, sizeof(picStateParams));
+    picStateParams = {};
     picStateParams.pHevcEncSeqParams     = m_hevcSeqParams;
     picStateParams.pHevcEncPicParams     = m_hevcPicParams;
     picStateParams.bSAOEnable            = m_hevcSeqParams->SAO_enabled_flag ? (m_hevcSliceParams->slice_sao_luma_flag || m_hevcSliceParams->slice_sao_chroma_flag) : 0;
@@ -2325,12 +2358,41 @@ void CodechalEncodeHevcBase::SetHcpPicStateParams(MHW_VDBOX_HEVC_PIC_STATE& picS
     picStateParams.bHevcRdoqEnabled      = m_hevcRdoqEnabled;
     picStateParams.bRDOQIntraTUDisable   = m_hevcRdoqEnabled && (1 != m_hevcSeqParams->TargetUsage);
     picStateParams.wRDOQIntraTUThreshold = (uint16_t)m_rdoqIntraTuThreshold;
+    picStateParams.bTransformSkipEnable  = m_hevcPicParams->transform_skip_enabled_flag;
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     if (m_rdoqIntraTuOverride)
     {
-        picStateParams.bRDOQIntraTUDisable      = m_rdoqIntraTuDisableOverride;
-        picStateParams.wRDOQIntraTUThreshold    = m_rdoqIntraTuThresholdOverride;
+        int32_t RDOQIntraTUThreshold = 0;
+
+        if (m_rdoqIntraTuThresholdOverride >= 100)
+        {
+            RDOQIntraTUThreshold = 65535;
+        }
+        else if (m_rdoqIntraTuThresholdOverride > 0)
+        {
+            uint32_t frameWidth = (m_hevcSeqParams->wFrameWidthInMinCbMinus1 + 1) << (m_hevcSeqParams->log2_min_coding_block_size_minus3 + 3);
+            uint32_t frameHeight = (m_hevcSeqParams->wFrameHeightInMinCbMinus1 + 1) << (m_hevcSeqParams->log2_min_coding_block_size_minus3 + 3);
+            int32_t frameSize = frameWidth * frameHeight;
+            RDOQIntraTUThreshold = (((frameSize * m_rdoqIntraTuThreshold) / 100) >> 8);
+
+            uint16_t numPipe = m_numVdbox;
+            if ((m_hevcPicParams->num_tile_columns_minus1 + 1) > m_numVdbox)
+            {
+                numPipe = 1;
+            }
+            if ((m_hevcPicParams->tiles_enabled_flag) && (numPipe > 1))
+            {
+                RDOQIntraTUThreshold /= numPipe;
+            }
+            if (RDOQIntraTUThreshold > 65535)
+            {
+                RDOQIntraTUThreshold = 65535;
+            }
+        }
+
+        picStateParams.bRDOQIntraTUDisable = m_rdoqIntraTuDisableOverride;
+        picStateParams.wRDOQIntraTUThreshold = (uint16_t)RDOQIntraTUThreshold;
     }
 #endif
 
@@ -2395,7 +2457,7 @@ void CodechalEncodeHevcBase::SetHcpSliceStateCommonParams(MHW_VDBOX_HEVC_SLICE_S
 {
     CODECHAL_ENCODE_FUNCTION_ENTER;
 
-    MOS_ZeroMemory(&sliceStateParams, sizeof(sliceStateParams));
+    sliceStateParams = {};
     sliceStateParams.presDataBuffer = &m_resMbCodeSurface;
     sliceStateParams.pHevcPicIdx           = &(m_picIdx[0]);
     sliceStateParams.pEncodeHevcSeqParams  = m_hevcSeqParams;
@@ -2430,6 +2492,10 @@ void CodechalEncodeHevcBase::SetHcpSliceStateParams(
     sliceStateParams.bInsertBeforeSliceHeaders = (currSlcIdx == 0);
     sliceStateParams.bSaoLumaFlag              = (m_hevcSeqParams->SAO_enabled_flag) ? m_hevcSliceParams[currSlcIdx].slice_sao_luma_flag : 0;
     sliceStateParams.bSaoChromaFlag            = (m_hevcSeqParams->SAO_enabled_flag) ? m_hevcSliceParams[currSlcIdx].slice_sao_chroma_flag : 0;
+    sliceStateParams.DeblockingFilterDisable   = m_hevcSliceParams[currSlcIdx].slice_deblocking_filter_disable_flag;
+    sliceStateParams.TcOffsetDiv2              = m_hevcSliceParams[currSlcIdx].tc_offset_div2;
+    sliceStateParams.BetaOffsetDiv2            = m_hevcSliceParams[currSlcIdx].beta_offset_div2;
+
 
     if (m_useBatchBufferForPakSlices)
     {
@@ -2470,7 +2536,6 @@ MOS_STATUS CodechalEncodeHevcBase::AddHcpRefIdxCmd(
     if (hevcSlcParams->slice_type != CODECHAL_ENCODE_HEVC_I_SLICE)
     {
         MHW_VDBOX_HEVC_REF_IDX_PARAMS refIdxParams;
-        MOS_ZeroMemory(&refIdxParams, sizeof(refIdxParams));
 
         refIdxParams.CurrPic = hevcPicParams->CurrReconstructedPic;
         refIdxParams.isEncode = true;
@@ -2663,7 +2728,6 @@ MOS_STATUS CodechalEncodeHevcBase::CalculatePictureStateCommandSize()
     CODECHAL_ENCODE_FUNCTION_ENTER;
 
     MHW_VDBOX_STATE_CMDSIZE_PARAMS stateCmdSizeParams;
-    MOS_ZeroMemory(&stateCmdSizeParams, sizeof(stateCmdSizeParams));
     CODECHAL_ENCODE_CHK_STATUS_RETURN(
         m_hwInterface->GetHxxStateCommandSize(
             CODECHAL_ENCODE_MODE_HEVC,
@@ -2681,7 +2745,7 @@ MOS_STATUS CodechalEncodeHevcBase::AddHcpPipeBufAddrCmd(
 
     CODECHAL_ENCODE_FUNCTION_ENTER;
 
-    MOS_ZeroMemory(m_pipeBufAddrParams, sizeof(MHW_VDBOX_PIPE_BUF_ADDR_PARAMS));
+    *m_pipeBufAddrParams = {};
     SetHcpPipeBufAddrParams(*m_pipeBufAddrParams);
 #ifdef _MMC_SUPPORTED
     m_mmcState->SetPipeBufAddr(m_pipeBufAddrParams);
@@ -2990,6 +3054,53 @@ MOS_STATUS CodechalEncodeHevcBase::DestroyMEResources(
     }
 
     return eStatus;
+}
+
+void CodechalEncodeHevcBase::MotionEstimationDisableCheck()
+{
+    CODECHAL_ENCODE_FUNCTION_ENTER;
+
+    if (m_downscaledWidth4x < m_minScaledDimension || m_downscaledWidthInMb4x < m_minScaledDimensionInMb ||
+        m_downscaledHeight4x < m_minScaledDimension || m_downscaledHeightInMb4x < m_minScaledDimensionInMb)
+    {
+        if (m_downscaledWidth4x < m_minScaledDimension || m_downscaledWidthInMb4x < m_minScaledDimensionInMb)
+        {
+            m_downscaledWidth4x = m_minScaledDimension;
+            m_downscaledWidthInMb4x = CODECHAL_GET_WIDTH_IN_MACROBLOCKS(m_downscaledWidth4x);
+        }
+        if (m_downscaledHeight4x < m_minScaledDimension || m_downscaledHeightInMb4x < m_minScaledDimensionInMb)
+        {
+            m_downscaledHeight4x = m_minScaledDimension;
+            m_downscaledHeightInMb4x = CODECHAL_GET_HEIGHT_IN_MACROBLOCKS(m_downscaledHeight4x);
+        }
+    }
+
+    if (m_downscaledWidth16x < m_minScaledDimension || m_downscaledWidthInMb16x < m_minScaledDimensionInMb ||
+        m_downscaledHeight16x < m_minScaledDimension || m_downscaledHeightInMb16x < m_minScaledDimensionInMb)
+    {
+        if (m_downscaledWidth16x < m_minScaledDimension || m_downscaledWidthInMb16x < m_minScaledDimensionInMb)
+        {
+            m_downscaledWidth16x = m_minScaledDimension;
+            m_downscaledWidthInMb16x = CODECHAL_GET_WIDTH_IN_MACROBLOCKS(m_downscaledWidth16x);
+        }
+        if (m_downscaledHeight16x < m_minScaledDimension || m_downscaledHeightInMb16x < m_minScaledDimensionInMb)
+        {
+            m_downscaledHeight16x = m_minScaledDimension;
+            m_downscaledHeightInMb16x = CODECHAL_GET_HEIGHT_IN_MACROBLOCKS(m_downscaledHeight16x);
+        }
+    }
+
+    if (m_downscaledWidth32x < m_minScaledDimension || m_downscaledWidthInMb32x < m_minScaledDimensionInMb)
+    {
+        m_downscaledWidth32x = m_minScaledDimension;
+        m_downscaledWidthInMb32x = CODECHAL_GET_WIDTH_IN_MACROBLOCKS(m_downscaledWidth32x);
+    }
+    if (m_downscaledHeight32x < m_minScaledDimension || m_downscaledHeightInMb32x < m_minScaledDimensionInMb)
+    {
+        m_downscaledHeight32x = m_minScaledDimension;
+        m_downscaledHeightInMb32x = CODECHAL_GET_HEIGHT_IN_MACROBLOCKS(m_downscaledHeight32x);
+    }
+
 }
 
 MOS_STATUS CodechalEncodeHevcBase::ExecuteKernelFunctions()

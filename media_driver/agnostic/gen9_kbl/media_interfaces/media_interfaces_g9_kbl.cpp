@@ -25,7 +25,9 @@
 //!
 
 #include "media_interfaces_g9_kbl.h"
+#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 #include "igcodeckrn_g9.h"
+#endif
 
 extern template class MediaInterfacesFactory<MhwInterfaces>;
 extern template class MediaInterfacesFactory<MmdDevice>;
@@ -413,6 +415,23 @@ MOS_STATUS CodechalInterfacesG9Kbl::Initialize(
             if (encoder == nullptr)
             {
                 CODECHAL_PUBLIC_ASSERTMESSAGE("Encode state creation failed!");
+                return MOS_STATUS_INVALID_PARAMETER;
+            }
+            else
+            {
+                m_codechalDevice = encoder;
+            }
+        }
+        else
+#endif
+#ifdef _VP8_ENCODE_SUPPORTED
+        if (info->Mode == CODECHAL_ENCODE_MODE_VP8)
+        {
+            // Setup encode interface functions
+            encoder = MOS_New(Encode::Vp8, hwInterface, debugInterface, info);
+            if (encoder == nullptr)
+            {
+                CODECHAL_PUBLIC_ASSERTMESSAGE("VP8 Encode allocation failed!");
                 return MOS_STATUS_INVALID_PARAMETER;
             }
             else

@@ -52,6 +52,10 @@
 
 #define CODEC_MAX_PIC_WIDTH            1920
 #define CODEC_MAX_PIC_HEIGHT           1920                // Tablet usage in portrait mode, image resolution = 1200x1920, so change MAX_HEIGHT to 1920
+
+#define CODEC_2K_MAX_PIC_WIDTH         2048
+#define CODEC_2K_MAX_PIC_HEIGHT        2048
+
 #define CODEC_4K_MAX_PIC_WIDTH         4096
 #define CODEC_4K_MAX_PIC_HEIGHT        4096
 
@@ -408,6 +412,10 @@ typedef enum _CODEC_SLICE_STRUCTS
 
 #define CodecHalUsesVdencEngine(codecFunction)   \
         (codecFunction == CODECHAL_FUNCTION_ENC_VDENC_PAK)
+
+#define CodecHalUsesPakEngine(codecFunction)   \
+    (codecFunction == CODECHAL_FUNCTION_PAK       ||  \
+     codecFunction == CODECHAL_FUNCTION_ENC_PAK)
 
 #define CodecHalIsRateControlBrc(rateControl, standard) (\
     (rateControl == RATECONTROL_CBR)                || \

@@ -35,6 +35,7 @@
 #include "vphal_render_common.h"
 #include "vphal_render_vebox_iecp.h"
 #include "vphal_render_sfc_base.h"
+#include "vphal_render_vebox_denoise.h"
 
 #define VPHAL_MAX_NUM_FFDI_SURFACES     4                                       //!< 2 for ADI plus additional 2 for parallel execution on HSW+
 #define VPHAL_NUM_FFDN_SURFACES         2                                       //!< Number of FFDN surfaces
@@ -749,6 +750,11 @@ public:
     // Scaling ratio is needed to determine if SFC or VEBOX is used
     float                               fScaleX;                                //!< X Scaling ratio
     float                               fScaleY;                                //!< Y Scaling ratio
+    
+    bool                                bHdr3DLut             = false;          //!< Enable 3DLut to process HDR
+    uint32_t                            uiMaxDisplayLum       = 4000;           //!< Maximum Display Luminance
+    uint32_t                            uiMaxContentLevelLum  = 1000;           //!< Maximum Content Level Luminance
+    VPHAL_HDR_MODE                      hdrMode               = VPHAL_HDR_MODE_NONE;
 
 protected:
     // Vebox State Parameters
@@ -855,6 +861,7 @@ public:
             VPHAL_SURFACE           *FFDISurfaces[VPHAL_MAX_NUM_FFDI_SURFACES];  //!< FFDI output surface structure
         };
     };
+    VPHAL_SURFACE                   VeboxRGBHistogram = {};            //!< VEBOX RGB Histogram surface for Vebox Gen9+
     VPHAL_SURFACE                   VeboxStatisticsSurface;                     //!< Statistics Surface for VEBOX
     RENDERHAL_SURFACE               RenderHalVeboxStatisticsSurface;            //!< Statistics Surface for VEBOX for MHW
 #if VEBOX_AUTO_DENOISE_SUPPORTED
@@ -942,6 +949,12 @@ public:
     uint32_t                         uiCurrentChannel;                           //!< 0=StereoLeft or nonStereo, 1=StereoRight. N/A in nonStereo
 
     MOS_GPU_CONTEXT                  RenderGpuContext;                           //!< Render GPU context
+
+    VPHAL_SURFACE                    Vebox3DLookUpTables = {};
+
+    VphalHVSDenoiser                 *m_hvsDenoiser        = nullptr;            //!< Human Vision System Based Denoiser - Media Kernel to generate DN parameter
+    uint8_t                          *m_hvsKernelBinary    = nullptr;            //!< Human Vision System Based Denoiser - Pointer to HVS kernel Binary
+    uint32_t                         m_hvsKernelBinarySize = 0;                  //!< Human Vision System Based Denoiser - Size of HVS kernel Binary
 
 protected:
     PVPHAL_VEBOX_IECP_RENDERER      m_IECP;                                     //!< pointer to IECP Renderer module, which contains more filters like TCC, STE.
@@ -1293,8 +1306,8 @@ protected:
     //!           [in] Pointers to Vebox Interface
     //! \param    pMhwMiInterface
     //!           [in] Pointers to MI HW Interface
-    //! \param    pInputSurfaceParams
-    //!           [in] Pointers to Vebox Input Interface
+    //! \param    pVeboxSurfaceParams
+    //!           [in] Pointers to Vebox Surface Params Interface
     //! \param    pVeboxDiIecpCmdParams
     //!           [in] Pointers to DI/IECP CMD Params Interface
     //! \param    pCmdBuffer
@@ -1303,11 +1316,11 @@ protected:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     virtual MOS_STATUS VeboxRenderMMCPipeCmd(
-        PMHW_VEBOX_INTERFACE          pVeboxInterface,
-        MhwMiInterface *              pMhwMiInterface,
-        PMHW_VEBOX_SURFACE_PARAMS     pInputSurfaceParams,
-        PMHW_VEBOX_DI_IECP_CMD_PARAMS pVeboxDiIecpCmdParams,
-        PMOS_COMMAND_BUFFER           pCmdBuffer)
+        PMHW_VEBOX_INTERFACE                pVeboxInterface,
+        MhwMiInterface *                    pMhwMiInterface,
+        PMHW_VEBOX_SURFACE_STATE_CMD_PARAMS pVeboxSurfaceParams,
+        PMHW_VEBOX_DI_IECP_CMD_PARAMS       pVeboxDiIecpCmdParams,
+        PMOS_COMMAND_BUFFER                 pCmdBuffer)
     {
         MOS_UNUSED(*pCmdBuffer);
         return MOS_STATUS_SUCCESS;
@@ -1753,6 +1766,16 @@ protected:
     //!
     virtual VphalSfcState* CreateSfcState() = 0;
 
+    //!
+    //! \brief    Vebox Set Human Vision System based Denoise parameter
+    //! \details  Vebox Set Human Vision System based Denoise parameter
+    //! \param    [in] pSrcSurface
+    //!           Pointer to input surface of Vebox
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS VeboxSetHVSDNParams(
+        PVPHAL_SURFACE pSrcSurface);
 };
 
 //!

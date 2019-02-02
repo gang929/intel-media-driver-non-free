@@ -1299,8 +1299,8 @@ MOS_STATUS CodechalDecodeVp9 :: InitPicStateMhwParams()
     CODECHAL_DECODE_FUNCTION_ENTER;
 
     // Reset all pic Mhw Params
-    MOS_ZeroMemory(m_picMhwParams.PipeModeSelectParams, sizeof(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS));
-    MOS_ZeroMemory(m_picMhwParams.PipeBufAddrParams, sizeof(MHW_VDBOX_PIPE_BUF_ADDR_PARAMS));
+    *m_picMhwParams.PipeModeSelectParams = {};
+    *m_picMhwParams.PipeBufAddrParams = {};
     MOS_ZeroMemory(m_picMhwParams.IndObjBaseAddrParams, sizeof(MHW_VDBOX_IND_OBJ_BASE_ADDR_PARAMS));
     MOS_ZeroMemory(m_picMhwParams.Vp9PicState, sizeof(MHW_VDBOX_VP9_PIC_STATE));
     MOS_ZeroMemory(m_picMhwParams.Vp9SegmentState, sizeof(MHW_VDBOX_VP9_SEGMENT_STATE));
@@ -1445,7 +1445,15 @@ MOS_STATUS CodechalDecodeVp9 :: InitPicStateMhwParams()
     {
         if (!m_picMhwParams.PipeBufAddrParams->presReferences[i])
         {
-            m_picMhwParams.PipeBufAddrParams->presReferences[i] = &(m_destSurface.OsResource);
+            if (MEDIA_IS_WA(m_waTable, WaDummyReference) &&
+                !Mos_ResourceIsNull(&m_dummyReference.OsResource))
+            {
+                m_picMhwParams.PipeBufAddrParams->presReferences[i] = &m_dummyReference.OsResource;
+            }
+            else
+            {
+                m_picMhwParams.PipeBufAddrParams->presReferences[i] = &(m_destSurface.OsResource);
+            }
         }
     }
 
@@ -1918,7 +1926,6 @@ MOS_STATUS CodechalDecodeVp9 :: AllocateStandard (
     m_chromaFormatinProfile = settings->chromaFormat;
 
     MHW_VDBOX_STATE_CMDSIZE_PARAMS      stateCmdSizeParams;
-    MOS_ZeroMemory(&stateCmdSizeParams, sizeof(stateCmdSizeParams));
     stateCmdSizeParams.bHucDummyStream = false;
 
     // Picture Level Commands
@@ -1944,8 +1951,6 @@ MOS_STATUS CodechalDecodeVp9 :: AllocateStandard (
     m_picMhwParams.Vp9PicState = MOS_New(MHW_VDBOX_VP9_PIC_STATE);
     m_picMhwParams.Vp9SegmentState = MOS_New(MHW_VDBOX_VP9_SEGMENT_STATE);
 
-    MOS_ZeroMemory(m_picMhwParams.PipeModeSelectParams, sizeof(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS));
-    MOS_ZeroMemory(m_picMhwParams.PipeBufAddrParams, sizeof(MHW_VDBOX_PIPE_BUF_ADDR_PARAMS));
     MOS_ZeroMemory(m_picMhwParams.IndObjBaseAddrParams, sizeof(MHW_VDBOX_IND_OBJ_BASE_ADDR_PARAMS));
     MOS_ZeroMemory(m_picMhwParams.Vp9PicState, sizeof(MHW_VDBOX_VP9_PIC_STATE));
     MOS_ZeroMemory(m_picMhwParams.Vp9SegmentState, sizeof(MHW_VDBOX_VP9_SEGMENT_STATE));
@@ -2455,4 +2460,60 @@ MOS_STATUS CodechalDecodeVp9::ContextBufferInit(
     {
         return MOS_STATUS_SUCCESS;
     }
+}
+
+MOS_STATUS CodechalDecodeVp9::SetCencBatchBuffer(
+    PMOS_COMMAND_BUFFER cmdBuffer)
+{
+    CODECHAL_DECODE_CHK_NULL_RETURN(cmdBuffer);
+
+    MHW_BATCH_BUFFER        batchBuffer;
+    MOS_ZeroMemory(&batchBuffer, sizeof(MHW_BATCH_BUFFER));
+    MOS_RESOURCE *resHeap = nullptr;
+    CODECHAL_DECODE_CHK_NULL_RETURN(resHeap = m_cencBuf->secondLvlBbBlock->GetResource());
+    batchBuffer.OsResource   = *resHeap;
+    batchBuffer.dwOffset     = m_cencBuf->secondLvlBbBlock->GetOffset() + VP9_CENC_PRIMITIVE_CMD_OFFSET_IN_DW * 4;
+    batchBuffer.iSize        = m_cencBuf->secondLvlBbBlock->GetSize() - VP9_CENC_PRIMITIVE_CMD_OFFSET_IN_DW * 4;
+    batchBuffer.bSecondLevel = true;
+#if (_DEBUG || _RELEASE_INTERNAL)
+    batchBuffer.iLastCurrent = batchBuffer.iSize;
+#endif  // (_DEBUG || _RELEASE_INTERNAL)
+
+    CODECHAL_DECODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferStartCmd(
+        cmdBuffer,
+        &batchBuffer));
+
+    CODECHAL_DEBUG_TOOL(
+        CODECHAL_DECODE_CHK_STATUS_RETURN(m_debugInterface->Dump2ndLvlBatch(
+            &batchBuffer,
+            CODECHAL_NUM_MEDIA_STATES,
+            "_2ndLvlBatch_Pic_Cmd"));)
+
+    batchBuffer.dwOffset     = m_cencBuf->secondLvlBbBlock->GetOffset();
+    batchBuffer.iSize        = VP9_CENC_PRIMITIVE_CMD_OFFSET_IN_DW * 4;
+    batchBuffer.bSecondLevel = true;
+#if (_DEBUG || _RELEASE_INTERNAL)
+    batchBuffer.iLastCurrent = batchBuffer.iSize;
+#endif  // (_DEBUG || _RELEASE_INTERNAL)
+
+    CODECHAL_DECODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferStartCmd(
+        cmdBuffer,
+        &batchBuffer));
+
+    CODECHAL_DEBUG_TOOL(
+        CODECHAL_DECODE_CHK_STATUS_RETURN(m_debugInterface->Dump2ndLvlBatch(
+            &batchBuffer,
+            CODECHAL_NUM_MEDIA_STATES,
+            "_2ndLvlBatch_Primitive_Cmd"));)
+
+    // Update GlobalCmdBufId
+    MHW_MI_STORE_DATA_PARAMS miStoreDataParams;
+    MOS_ZeroMemory(&miStoreDataParams, sizeof(miStoreDataParams));
+    miStoreDataParams.pOsResource = m_cencBuf->resTracker;
+    miStoreDataParams.dwValue     = m_cencBuf->trackerId;
+    CODECHAL_DECODE_VERBOSEMESSAGE("dwCmdBufId = %d", miStoreDataParams.dwValue);
+    CODECHAL_DECODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(
+        cmdBuffer,
+        &miStoreDataParams));
+    return MOS_STATUS_SUCCESS;
 }

@@ -31,7 +31,9 @@
 #include "mhw_vdbox_vdenc_g11_X.h"
 #include "mhw_vdbox_g11_X.h"
 #include "mos_util_user_interface.h"
+#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 #include "igcodeckrn_g11.h"
+#endif
 #if USE_CODECHAL_DEBUG_TOOL
 #include "codechal_debug_encode_par_g11.h"
 #include "mhw_vdbox_mfx_hwcmd_g11_X.h"
@@ -674,10 +676,8 @@ CodechalVdencAvcStateG11::CodechalVdencAvcStateG11(
 
     CODECHAL_ENCODE_ASSERT(m_osInterface);
 
-#ifndef _FULL_OPEN_SOURCE
+#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
     m_kernelBase = (uint8_t*)IGCODECKRN_G11;
-#else
-    m_kernelBase = nullptr;
 #endif
     m_cmKernelEnable = true;
     m_mbStatsSupported = true; //Starting from GEN9
@@ -1075,7 +1075,7 @@ MOS_STATUS CodechalVdencAvcStateG11::ExecuteSliceLevel()
             &flushDwParams));
     }
 
-#ifndef _FULL_OPEN_SOURCE
+#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
     // On-demand sync for VDEnc StreamIn surface and CSC surface
     if (m_currPass == 0)
     {
@@ -1290,6 +1290,7 @@ bool CodechalVdencAvcStateG11::CheckSupportedFormat(PMOS_SURFACE surface)
         case Format_UYVY:
         case Format_VYUY:
         case Format_AYUV:
+        case Format_A8R8G8B8:
             break;
         default:
             colorFormatSupported = false;
@@ -1511,7 +1512,6 @@ MOS_STATUS CodechalVdencAvcStateG11::AddVdencWalkerStateCmd(
     auto avcPicParams = m_avcPicParams[avcSlcParams->pic_parameter_set_id];
     auto avcSeqParams = m_avcSeqParams[avcPicParams->seq_parameter_set_id];
 
-    MOS_ZeroMemory(&vdencWalkerStateParams, sizeof(vdencWalkerStateParams));
     vdencWalkerStateParams.Mode = CODECHAL_ENCODE_MODE_AVC;
     vdencWalkerStateParams.pAvcSeqParams = avcSeqParams;
     vdencWalkerStateParams.pAvcSlcParams = m_avcSliceParams;
@@ -1528,7 +1528,6 @@ MOS_STATUS CodechalVdencAvcStateG11::CalculateVdencPictureStateCommandSize()
 
     MHW_VDBOX_STATE_CMDSIZE_PARAMS_G11 stateCmdSizeParams;
     uint32_t vdencPictureStatesSize, vdencPicturePatchListSize;
-    MOS_ZeroMemory(&stateCmdSizeParams, sizeof(stateCmdSizeParams));
     m_hwInterface->GetHxxStateCommandSize(
         CODECHAL_ENCODE_MODE_AVC,
         (uint32_t*)&vdencPictureStatesSize,
@@ -1553,7 +1552,7 @@ MOS_STATUS CodechalVdencAvcStateG11::SendPrologWithFrameTracking(
     PMOS_COMMAND_BUFFER         cmdBuffer,
     bool                        frameTracking)
 {
-    if (MOS_VE_SUPPORTED(m_osInterface))
+    if (MOS_VE_SUPPORTED(m_osInterface) && cmdBuffer->Attributes.pAttriVe)
     {
         PMOS_CMD_BUF_ATTRI_VE attriExt =
                 (PMOS_CMD_BUF_ATTRI_VE)(cmdBuffer->Attributes.pAttriVe);
@@ -1567,7 +1566,6 @@ MOS_STATUS CodechalVdencAvcStateG11::SendPrologWithFrameTracking(
 PMHW_VDBOX_STATE_CMDSIZE_PARAMS CodechalVdencAvcStateG11::CreateMhwVdboxStateCmdsizeParams()
 {
     PMHW_VDBOX_STATE_CMDSIZE_PARAMS cmdSizeParams = MOS_New(MHW_VDBOX_STATE_CMDSIZE_PARAMS_G11);
-    MOS_ZeroMemory(cmdSizeParams, sizeof(MHW_VDBOX_STATE_CMDSIZE_PARAMS_G11));
 
     return cmdSizeParams;
 }
@@ -1575,7 +1573,6 @@ PMHW_VDBOX_STATE_CMDSIZE_PARAMS CodechalVdencAvcStateG11::CreateMhwVdboxStateCmd
 PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS CodechalVdencAvcStateG11::CreateMhwVdboxPipeModeSelectParams()
 {
     PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS pipeModeSelectParams = MOS_New(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS_G11);
-    MOS_ZeroMemory(pipeModeSelectParams, sizeof(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS_G11));
 
     return pipeModeSelectParams;
 }
@@ -1583,8 +1580,7 @@ PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS CodechalVdencAvcStateG11::CreateMhwVdboxPipeM
 PMHW_VDBOX_VDENC_WALKER_STATE_PARAMS CodechalVdencAvcStateG11::CreateMhwVdboxVdencWalkerStateParams()
 {
     PMHW_VDBOX_VDENC_WALKER_STATE_PARAMS vdencWalkerStateParams = MOS_New(MHW_VDBOX_VDENC_WALKER_STATE_PARAMS_G11);
-    MOS_ZeroMemory(vdencWalkerStateParams, sizeof(MHW_VDBOX_VDENC_WALKER_STATE_PARAMS_G11));
-
+ 
     return vdencWalkerStateParams;
 }
 
@@ -1683,7 +1679,7 @@ MOS_STATUS CodechalVdencAvcStateG11::UpdateCmdBufAttribute(
 
     // should not be there. Will remove it in the next change
     CODECHAL_ENCODE_FUNCTION_ENTER;
-    if (MOS_VE_SUPPORTED(m_osInterface))
+    if (MOS_VE_SUPPORTED(m_osInterface) && cmdBuffer->Attributes.pAttriVe)
     {
         PMOS_CMD_BUF_ATTRI_VE attriExt =
             (PMOS_CMD_BUF_ATTRI_VE)(cmdBuffer->Attributes.pAttriVe);

@@ -271,6 +271,12 @@ public:
                   CM_QUEUE_CREATE_OPTION QueueCreateOption
                       = CM_DEFAULT_QUEUE_CREATE_OPTION);
 
+    CM_RT_API int32_t UpdateBuffer(PMOS_RESOURCE mosResource,
+                                           CmBuffer* &surface);
+
+    CM_RT_API int32_t UpdateSurface2D(PMOS_RESOURCE mosResource,
+                                              CmSurface2D* &surface);
+
     void* GetAccelData() { return m_accelData; }
 
     MOS_CONTEXT* GetUMDCtx() { return m_mosContext; }
@@ -299,6 +305,8 @@ public:
     CSync* GetQueueLock();
 
     int32_t GetJITCompileFnt(pJITCompile &jitCompile);
+
+    int32_t GetJITCompileFntV2(pJITCompile_v2 &fJITCompile_v2);
 
     int32_t GetFreeBlockFnt(pFreeBlock &freeBlock);
 
@@ -384,6 +392,12 @@ public:
     int32_t DestroyVmeSurface(SurfaceIndex* &vmeIndex);
 
     CmNotifierGroup* GetNotifiers() {return m_notifierGroup;}
+
+    CM_HAL_CREATE_PARAM &GetCmHalCreateOption() {return m_cmHalCreateOption;}
+
+    inline bool HasGpuCopyKernel() {return m_hasGpuCopyKernel; }
+
+    inline bool HasGpuInitKernel() {return m_hasGpuInitKernel; }
 
 protected:
     int32_t Initialize(MOS_CONTEXT *mosContext);
@@ -488,6 +502,8 @@ protected:
 
     pJITCompile m_fJITCompile;
 
+    pJITCompile_v2 m_fJITCompile_v2;
+
     pFreeBlock m_fFreeBlock;
 
     pJITVersion m_fJITVersion;
@@ -570,6 +586,10 @@ protected:
     uint32_t m_isDriverStoreEnabled;
 
     CmNotifierGroup *m_notifierGroup;
+
+    bool m_hasGpuCopyKernel;
+
+    bool m_hasGpuInitKernel;
 
 private:
     CmDeviceRT(const CmDeviceRT& other);

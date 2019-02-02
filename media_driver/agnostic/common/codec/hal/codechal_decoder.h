@@ -121,6 +121,14 @@ typedef enum _CODECHAL_CS_ENGINE_ID_DEF
     CODECHAL_CLASS_ID_VIDEO_ENGINE = 1,
 } CODECHAL_CS_ENGINE_ID_DEF;
 
+typedef enum _CODECHAL_DUMMY_REFERENCE_STATUS
+{
+    CODECHAL_DUMMY_REFERENCE_INVALID,
+    CODECHAL_DUMMY_REFERENCE_DPB,
+    CODECHAL_DUMMY_REFERENCE_DEST_SURFACE,
+    CODECHAL_DUMMY_REFERENCE_ALLOCATED
+} CODECHAL_DUMMY_REFERENCE_STATUS;
+
 typedef union _CODECHAL_CS_ENGINE_ID
 {
     struct
@@ -371,7 +379,8 @@ public:
         uint32_t size,
         const char* name,
         bool initialize = false,
-        uint8_t value = 0);
+        uint8_t value = 0,
+        bool bPersistent = false);
 
     //!
     //! \brief    Help function to allocate a NV12 TILE_Y surface
@@ -551,7 +560,7 @@ public:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
-    MOS_STATUS SetCencBatchBuffer( PMOS_COMMAND_BUFFER cmdBuffer);
+    virtual MOS_STATUS SetCencBatchBuffer( PMOS_COMMAND_BUFFER cmdBuffer);
 
     //!
     //! \brief  Indicates whether or not the status query reporting is enabled
@@ -641,6 +650,27 @@ public:
     //! \brief Field scaling interface
     FieldScalingInterface       *m_fieldScalingInterface = nullptr;
 #endif
+
+    //!
+    //! \brief  Get dummy reference surface
+    //! \return Pointer of reference surface
+    //!
+    MOS_SURFACE* GetDummyReference() { return &m_dummyReference; }
+
+    //!
+    //! \brief  Get dummy reference status
+    //! \return CODECHAL_DUMMY_REFERENCE_STATUS
+    //!
+    CODECHAL_DUMMY_REFERENCE_STATUS GetDummyReferenceStatus() { return m_dummyReferenceStatus; }
+
+    //!
+    //! \brief  Set dummy reference status
+    //! \return void
+    //!
+    void SetDummyReferenceStatus(CODECHAL_DUMMY_REFERENCE_STATUS status)
+    {
+        m_dummyReferenceStatus = status;
+    }
 
 protected:
 
@@ -879,6 +909,14 @@ private:
     //!
     void DeallocateRefSurfaces();
 
+    //!
+    //! \brief    Set dummy reference
+    //! \details  Set dummy reference for error concealment
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS SetDummyReference();
+
 protected:
     //! \brief Mfx Interface
     MhwVdboxMfxInterface        *m_mfxInterface     = nullptr;
@@ -947,6 +985,9 @@ protected:
 
     //! \brief Flag to indicate if we support eStatus query reporting on current platform
     bool                        m_statusQueryReportingEnabled = false;
+    //! \brief Flag to indicate if UMD Perf Profiler FE BE timing measurement is enabled
+    bool                        m_perfFEBETimingEnabled = false;
+
     //! \brief Stores all the status_query related data
     CodechalDecodeStatusBuffer  m_decodeStatusBuf;
     //! \brief The feedback number reported by app in picparams call
@@ -1022,6 +1063,12 @@ protected:
 
     // CencDecode buffer
     CencDecodeShareBuf          *m_cencBuf    = nullptr;
+
+    //! \brief Dummy reference surface
+    MOS_SURFACE                 m_dummyReference;
+
+    //! \brief Indicate the status of dummy reference
+    CODECHAL_DUMMY_REFERENCE_STATUS m_dummyReferenceStatus = CODECHAL_DUMMY_REFERENCE_INVALID;
 };
 
 #endif  // __CODECHAL_DECODER_H__
