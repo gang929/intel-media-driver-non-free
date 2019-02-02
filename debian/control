@@ -5,7 +5,7 @@ Maintainer: Debian Multimedia Maintainers <debian-multimedia@lists.debian.org>
 Uploaders:
  Sebastian Ramacher <sramacher@debian.org>
 Build-Depends:
- debhelper (>= 11),
+ debhelper-compat (= 12),
  cmake,
  libigdgmm-dev,
  libpciaccess-dev,
