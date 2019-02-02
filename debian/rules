@@ -9,7 +9,8 @@ override_dh_auto_configure:
 	dh_auto_configure -- \
 		-DINSTALL_DRIVER_SYSCONF=OFF \
 		-DENABLE_KERNELS=ON \
-		-DENABLE_NONFREE_KERNELS=ON
+		-DENABLE_NONFREE_KERNELS=ON \
+		-DBUILD_CMRTLIB=OFF
 
 overrid_dh_missing:
 	dh_missing --fail-missing
