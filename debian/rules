@@ -6,7 +6,10 @@ export DEB_BUILD_MAINT_OPTIONS=future=+lfs
 	dh $@ --with libva
 
 override_dh_auto_configure:
-	dh_auto_configure -- -DINSTALL_DRIVER_SYSCONF=OFF
+	dh_auto_configure -- \
+		-DINSTALL_DRIVER_SYSCONF=OFF \
+		-DENABLE_KERNELS=ON \
+		-DENABLE_NONFREE_KERNELS=ON
 
 overrid_dh_missing:
 	dh_missing --fail-missing
