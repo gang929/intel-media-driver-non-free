@@ -1,4 +1,4 @@
 version=4
-opts="uversionmangle=s/.pre/~pre/,dversionmangle=auto,repacksuffix=+ds1" \
+opts="dversionmangle=auto,repacksuffix=+ds1" \
    https://github.com/intel/media-driver/tags \
-   (?:.*?/)intel-media[-_]?(?!600\.0)(\d[\-+\.:\~\da-zA-Z]*)\.tar\.gz
+   (?:.*?/)intel-media[-_]?(?!600\.0)(\d[\-+\.:\~\d]*)\.tar\.gz
