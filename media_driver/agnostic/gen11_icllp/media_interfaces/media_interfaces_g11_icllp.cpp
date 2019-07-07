@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017, Intel Corporation
+* Copyright (c) 2017-2019, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -474,7 +474,13 @@ MOS_STATUS CodechalInterfacesG11Icllp::Initialize(
             return MOS_STATUS_INVALID_PARAMETER;
         }
 
+#if defined(ENABLE_KERNELS)
+
+    #if defined(_FULL_OPEN_SOURCE)
+        if (info->Mode == CODECHAL_ENCODE_MODE_AVC)
+    #else
         if (info->Mode != CODECHAL_ENCODE_MODE_JPEG)
+    #endif
         {
             // Create CSC and Downscaling interface
             if ((encoder->m_cscDsState = MOS_New(Encode::CscDs, encoder)) == nullptr)
@@ -482,6 +488,7 @@ MOS_STATUS CodechalInterfacesG11Icllp::Initialize(
                 return MOS_STATUS_INVALID_PARAMETER;
             }
         }
+#endif
     }
     else
     {
@@ -516,6 +523,7 @@ MOS_STATUS CMHalInterfacesG11Icllp::Initialize(CM_HAL_STATE *pCmState)
     m_cmhalDevice->AddSupportedCisaIDs(&cisaID);
     m_cmhalDevice->SetOverridePowerOptionPerGpuContext(true);
     m_cmhalDevice->SetRequestShutdownSubslicesForVmeUsage(true);
+    m_cmhalDevice->SetDecompressFlag(true);
     return MOS_STATUS_SUCCESS;
 }
 

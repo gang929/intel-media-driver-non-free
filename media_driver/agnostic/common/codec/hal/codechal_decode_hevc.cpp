@@ -115,7 +115,7 @@ MOS_STATUS CodechalDecodeHevc::AllocateResourcesVariableSizes()
     CODECHAL_DECODE_VERBOSEMESSAGE("m_width = %d, Max Width = %d, m_height %d, Max Height = %d",
         m_width, widthMax, m_height, heightMax);
 
-    uint8_t maxBitDepth     = (m_is10BitHevc) ? 10 : 8;
+    uint8_t maxBitDepth     = (m_is12BitHevc) ? 12 :((m_is10BitHevc) ? 10 : 8);
     uint8_t chromaFormatPic = m_hevcPicParams->chroma_format_idc;
     uint8_t chromaFormat    = m_chromaFormatinProfile;
     CODECHAL_DECODE_ASSERT(chromaFormat >= chromaFormatPic);
@@ -387,7 +387,7 @@ MOS_STATUS CodechalDecodeHevc::AllocateResourcesVariableSizes()
         // Metadata Tile Column buffer
         hcpBufSizeParam.dwPicHeight = heightMax;
         CODECHAL_DECODE_CHK_STATUS_RETURN(m_hcpInterface->GetHevcBufferSize(
-            MHW_VDBOX_HCP_INTERNAL_BUFFER_DBLK_TILE_COL,
+            MHW_VDBOX_HCP_INTERNAL_BUFFER_META_TILE_COL,
             &hcpBufSizeParam));
 
         CODECHAL_DECODE_CHK_STATUS_MESSAGE_RETURN(AllocateBuffer(
@@ -573,7 +573,7 @@ CodechalDecodeHevc::~CodechalDecodeHevc ()
 
     CodecHalFreeDataList(m_hevcRefList, CODECHAL_NUM_UNCOMPRESSED_SURFACE_HEVC);
 
-    if (!m_hcpInterface->IsHevcDfRowstoreCacheEnabled())
+    if (!Mos_ResourceIsNull(&m_resMfdDeblockingFilterRowStoreScratchBuffer))
     {
         m_osInterface->pfnFreeResource(
             m_osInterface,
@@ -588,7 +588,7 @@ CodechalDecodeHevc::~CodechalDecodeHevc ()
         m_osInterface,
         &m_resDeblockingFilterColumnRowStoreScratchBuffer);
 
-    if (!m_hcpInterface->IsHevcDatRowstoreCacheEnabled())
+    if (!Mos_ResourceIsNull(&m_resMetadataLineBuffer))
     {
         m_osInterface->pfnFreeResource(
             m_osInterface,
@@ -603,7 +603,7 @@ CodechalDecodeHevc::~CodechalDecodeHevc ()
         m_osInterface,
         &m_resMetadataTileColumnBuffer);
 
-    if (!m_hcpInterface->IsHevcSaoRowstoreCacheEnabled())
+    if (!Mos_ResourceIsNull(&m_resSaoLineBuffer))
     {
         m_osInterface->pfnFreeResource(
             m_osInterface,
@@ -1632,6 +1632,7 @@ MOS_STATUS CodechalDecodeHevc::InitPicLongFormatMhwParams()
     m_picMhwParams.PipeBufAddrParams->presCurMvTempBuffer          = &m_resMvTemporalBuffer[m_hevcMvBufferIndex];
 
     MOS_ZeroMemory(m_presReferences, sizeof(PMOS_RESOURCE) * CODEC_MAX_NUM_REF_FRAME_HEVC);
+    MOS_ZeroMemory(m_dummyReferenceSlot, sizeof(m_dummyReferenceSlot));
 
     if (!m_curPicIntra)
     {
@@ -1752,6 +1753,7 @@ MOS_STATUS CodechalDecodeHevc::InitPicLongFormatMhwParams()
             !Mos_ResourceIsNull(&m_dummyReference.OsResource))
         {
             m_picMhwParams.PipeBufAddrParams->presReferences[i] = &m_dummyReference.OsResource;
+            m_dummyReferenceSlot[i] = true;
         }
     }
 
@@ -2067,6 +2069,7 @@ MOS_STATUS CodechalDecodeHevc::SendSliceLongFormat(
     {
         MHW_VDBOX_HEVC_REF_IDX_PARAMS refIdxParams;
         MOS_ZeroMemory(&refIdxParams, sizeof(MHW_VDBOX_HEVC_REF_IDX_PARAMS));
+        refIdxParams.bDummyReference = true;
         CODECHAL_DECODE_CHK_STATUS_RETURN(m_hcpInterface->AddHcpRefIdxStateCmd(
             cmdBuffer,
             nullptr,
@@ -2528,26 +2531,24 @@ MOS_STATUS CodechalDecodeHevc::CalcDownsamplingParams(
 
     PCODEC_HEVC_PIC_PARAMS hevcPicParams = (PCODEC_HEVC_PIC_PARAMS)picParams;
 
-    *refSurfWidth   = 0;
-    *refSurfHeight  = 0;
-    *format   = Format_NV12;
-    *frameIdx        = hevcPicParams->CurrPic.FrameIdx;
+    *refSurfWidth = 0;
+    *refSurfHeight = 0;
+    *format = Format_NV12;
+    *frameIdx = hevcPicParams->CurrPic.FrameIdx;
 
-    if (m_refSurfaces == nullptr)
+    uint32_t                         widthInPix, heightInPix;
+
+    widthInPix = (1 << (hevcPicParams->log2_min_luma_coding_block_size_minus3 + 3)) * (hevcPicParams->PicWidthInMinCbsY);
+    heightInPix = (1 << (hevcPicParams->log2_min_luma_coding_block_size_minus3 + 3)) * (hevcPicParams->PicHeightInMinCbsY);
+
+    *refSurfWidth = MOS_ALIGN_CEIL(widthInPix, 64);
+    *refSurfHeight = MOS_ALIGN_CEIL(heightInPix, 64);
+
+    if (m_is10BitHevc)
     {
-        uint32_t                         widthInPix, heightInPix;
-
-        widthInPix      = (1 << (hevcPicParams->log2_min_luma_coding_block_size_minus3 + 3)) * (hevcPicParams->PicWidthInMinCbsY);
-        heightInPix     = (1 << (hevcPicParams->log2_min_luma_coding_block_size_minus3 + 3)) * (hevcPicParams->PicHeightInMinCbsY);
-
-        *refSurfWidth  = MOS_ALIGN_CEIL(widthInPix, 64);
-        *refSurfHeight = MOS_ALIGN_CEIL(heightInPix, 64);
-
-        if (m_is10BitHevc)
-        {
-            *format = Format_P010;
-        }
+        *format = Format_P010;
     }
+
 
     return eStatus;
 }
@@ -2575,6 +2576,7 @@ MOS_STATUS CodechalDecodeHevc::AllocateStandard (
     m_width                         = settings->width;
     m_height                        = settings->height;
     m_is10BitHevc                   = (settings->lumaChromaDepth & CODECHAL_LUMA_CHROMA_DEPTH_10_BITS) ? true : false;
+    m_is12BitHevc                   = (settings->lumaChromaDepth & CODECHAL_LUMA_CHROMA_DEPTH_12_BITS) ? true : false;
     m_chromaFormatinProfile         = settings->chromaFormat;
     m_shortFormatInUse              = settings->shortFormatInUse;
 
@@ -2651,11 +2653,11 @@ CodechalDecodeHevc::CodechalDecodeHevc(
                                             m_mfdDeblockingFilterRowStoreScratchBufferPicWidth(0),
                                             m_metadataLineBufferPicWidth(0),
                                             m_saoLineBufferPicWidth(0),
+                                            m_mvBufferProgrammed(false),
                                             m_dmemBufferIdx(0),
                                             m_copyDataBufferSize(0),
                                             m_copyDataBufferInUse(false),
                                             m_mvBufferSize(0),
-                                            m_mvBufferProgrammed(false),
                                             m_enableSf2DmaSubmits(false),
                                             m_widthLastMaxAlloced(0),
                                             m_heightLastMaxAlloced(0),

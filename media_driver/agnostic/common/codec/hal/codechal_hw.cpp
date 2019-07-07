@@ -416,8 +416,8 @@ MOS_STATUS CodechalHwInterface::GetVdencPictureSecondLevelCommandsSize(
     {
         commands += m_hcpInterface->GetHcpVp9PicStateCommandSize();
         commands += m_hcpInterface->GetHcpVp9SegmentStateCommandSize() * 8;
-        commands += 124;
-        commands += 204;
+        commands += 128;
+        commands += 220;
         commands += m_sizeOfCmdBatchBufferEnd;
     }
     else
@@ -512,6 +512,7 @@ MOS_STATUS CodechalHwInterface::AddVdencBrcImgBuffer(
     MOS_LOCK_PARAMS             lockFlags;
 
     uint32_t mfxAvcImgStateSize = m_mfxInterface->GetAvcImgStateSize();
+    uint32_t vdencAvcCostStateSize = m_vdencInterface->GetVdencAvcCostStateSize();
     uint32_t vdencAvcImgStateSize = m_vdencInterface->GetVdencAvcImgStateSize();
 
     MOS_ZeroMemory(&lockFlags, sizeof(MOS_LOCK_PARAMS));
@@ -524,15 +525,21 @@ MOS_STATUS CodechalHwInterface::AddVdencBrcImgBuffer(
 
     MOS_ZeroMemory(&constructedCmdBuf, sizeof(MOS_COMMAND_BUFFER));
     constructedCmdBuf.pCmdBase = (uint32_t *)data;
+    constructedCmdBuf.iRemaining = mfxAvcImgStateSize + vdencAvcCostStateSize + vdencAvcImgStateSize;
+
+    // Set MFX_IMAGE_STATE command
     constructedCmdBuf.pCmdPtr = (uint32_t *)data;
     constructedCmdBuf.iOffset = 0;
-    constructedCmdBuf.iRemaining = mfxAvcImgStateSize + vdencAvcImgStateSize;
-
     MHW_MI_CHK_STATUS(m_mfxInterface->AddMfxAvcImgCmd(&constructedCmdBuf, nullptr, params));
 
-    // Set VDENC_IMAGE_STATE command
+    // Set VDENC_COST_STATE command
     constructedCmdBuf.pCmdPtr = (uint32_t *)(data + mfxAvcImgStateSize);
     constructedCmdBuf.iOffset = mfxAvcImgStateSize;
+    m_vdencInterface->AddVdencAvcCostStateCmd(&constructedCmdBuf, nullptr, params);
+
+    // Set VDENC_IMAGE_STATE command
+    constructedCmdBuf.pCmdPtr = (uint32_t *)(data + mfxAvcImgStateSize + vdencAvcCostStateSize);
+    constructedCmdBuf.iOffset = mfxAvcImgStateSize + vdencAvcCostStateSize;
 
     MHW_MI_CHK_STATUS(m_vdencInterface->AddVdencImgStateCmd(&constructedCmdBuf, nullptr, params));
 

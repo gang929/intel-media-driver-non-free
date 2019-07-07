@@ -77,8 +77,8 @@ MOS_STATUS CodechalDecodeAvc::SendSlice(
         if (!m_mfxInterface->IsAvcISlice(slc->slice_type))
         {
             refIdxParams.CurrPic = avcPicParams->CurrPic;
-            refIdxParams.uiList = 0;
-            refIdxParams.uiNumRefForList = slc->num_ref_idx_l0_active_minus1 + 1;
+            refIdxParams.uiList = LIST_0;
+            refIdxParams.uiNumRefForList[LIST_0] = slc->num_ref_idx_l0_active_minus1 + 1;
 
             CODECHAL_DECODE_CHK_STATUS_MESSAGE_RETURN(MOS_SecureMemcpy(
                 &refIdxParams.RefPicList,
@@ -112,8 +112,8 @@ MOS_STATUS CodechalDecodeAvc::SendSlice(
 
             if (m_mfxInterface->IsAvcBSlice(slc->slice_type))
             {
-                refIdxParams.uiList = 1;
-                refIdxParams.uiNumRefForList = slc->num_ref_idx_l1_active_minus1 + 1;
+                refIdxParams.uiList = LIST_1;
+                refIdxParams.uiNumRefForList[LIST_1] = slc->num_ref_idx_l1_active_minus1 + 1;
                 CODECHAL_DECODE_CHK_STATUS_RETURN(m_mfxInterface->AddMfxAvcRefIdx(cmdBuffer, nullptr, &refIdxParams));
 
                 if (avcPicParams->pic_fields.weighted_bipred_idc == 1)
@@ -136,6 +136,7 @@ MOS_STATUS CodechalDecodeAvc::SendSlice(
         {
             MHW_VDBOX_AVC_REF_IDX_PARAMS refIdxParams;
             MOS_ZeroMemory(&refIdxParams, sizeof(MHW_VDBOX_AVC_REF_IDX_PARAMS));
+            refIdxParams.bDummyReference = true;
             CODECHAL_DECODE_CHK_STATUS_RETURN(m_mfxInterface->AddMfxAvcRefIdx(cmdBuffer, nullptr, &refIdxParams));
         }
 
@@ -954,9 +955,9 @@ MOS_STATUS CodechalDecodeAvc::AllocateResourcesFixedSizes()
     MOS_ZeroMemory(&lockFlagsWriteOnly, sizeof(MOS_LOCK_PARAMS));
     lockFlagsWriteOnly.WriteOnly = 1;
 
-    CodecHalAllocateDataList(
+    CODECHAL_DECODE_CHK_STATUS_RETURN(CodecHalAllocateDataList(
         m_avcRefList,
-        CODEC_AVC_NUM_UNCOMPRESSED_SURFACE);
+        CODEC_AVC_NUM_UNCOMPRESSED_SURFACE));
 
     m_currPic.PicFlags = PICTURE_INVALID;
     m_currPic.FrameIdx = CODEC_AVC_NUM_UNCOMPRESSED_SURFACE;
@@ -1218,7 +1219,10 @@ MOS_STATUS CodechalDecodeAvc::SetFrameStates()
     auto decProcessingParams = (CODECHAL_DECODE_PROCESSING_PARAMS *)m_decodeParams.m_procParams;
     if (decProcessingParams != nullptr)
     {
-        CODECHAL_DECODE_CHK_NULL_RETURN(m_fieldScalingInterface);
+        if (!decProcessingParams->bIsReferenceOnlyPattern)
+        {
+            CODECHAL_DECODE_CHK_NULL_RETURN(m_fieldScalingInterface);
+        }
 
         CODECHAL_DECODE_CHK_STATUS_RETURN(m_sfcState->CheckAndInitialize(
             decProcessingParams,
@@ -1230,7 +1234,8 @@ MOS_STATUS CodechalDecodeAvc::SetFrameStates()
         if (!((!CodecHal_PictureIsFrame(m_avcPicParams->CurrPic) ||
                   m_avcPicParams->seq_fields.mb_adaptive_frame_field_flag) &&
                 m_fieldScalingInterface->IsFieldScalingSupported(decProcessingParams)) &&
-            m_sfcState->m_sfcPipeOut == false)
+            m_sfcState->m_sfcPipeOut == false && 
+            !decProcessingParams->bIsReferenceOnlyPattern)
         {
             eStatus = MOS_STATUS_UNKNOWN;
             CODECHAL_DECODE_ASSERTMESSAGE("Downsampling parameters are NOT supported!");
@@ -1928,11 +1933,9 @@ MOS_STATUS CodechalDecodeAvc::CalcDownsamplingParams(
     *format = Format_NV12;
     *frameIdx = avcPicParams->CurrPic.FrameIdx;
 
-    if (m_refSurfaces == nullptr)
-    {
-        *refSurfWidth = (avcPicParams->pic_width_in_mbs_minus1 + 1) * CODECHAL_MACROBLOCK_WIDTH;
-        *refSurfHeight = (avcPicParams->pic_height_in_mbs_minus1 + 1) * CODECHAL_MACROBLOCK_HEIGHT;
-    }
+    *refSurfWidth = (avcPicParams->pic_width_in_mbs_minus1 + 1) * CODECHAL_MACROBLOCK_WIDTH;
+    *refSurfHeight = (avcPicParams->pic_height_in_mbs_minus1 + 1) * CODECHAL_MACROBLOCK_HEIGHT;
+
 
     return eStatus;
 }

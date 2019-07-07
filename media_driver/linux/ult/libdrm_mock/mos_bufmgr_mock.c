@@ -60,7 +60,6 @@
 #include "libdrm_lists.h"
 #include "mos_bufmgr.h"
 #include "mos_bufmgr_priv.h"
-#include "intel_chipset.h"
 #include "string.h"
 
 #include "i915_drm.h"
@@ -97,6 +96,14 @@
  * @n: the number we're accessing
  */
 #define lower_32_bits(n) ((__u32)(n))
+
+#define PCI_CHIP_I915_G         0x2582
+#define PCI_CHIP_E7221_G        0x258A
+#define PCI_CHIP_I915_GM        0x2592
+
+#define IS_915(devid)        ((devid) == PCI_CHIP_I915_G || \
+                 (devid) == PCI_CHIP_E7221_G || \
+                 (devid) == PCI_CHIP_I915_GM)
 
 struct mos_gem_bo_bucket {
     drmMMListHead head;
@@ -271,6 +278,11 @@ struct mos_bo_gem {
      * Whether this buffer is softpinned at offset specified by the user
      */
     bool is_softpin;
+
+    /*
+    * Whether to remove the dependency of this bo in exebuf.
+    */
+    bool exec_async;
 
     /**
      * Size in bytes of this buffer and its relocation descendents.
@@ -530,6 +542,8 @@ mos_add_validate_buffer2(struct mos_linux_bo *bo, int need_fence)
         flags |= EXEC_OBJECT_SUPPORTS_48B_ADDRESS;
     if (bo_gem->is_softpin)
         flags |= EXEC_OBJECT_PINNED;
+    if (bo_gem->exec_async)
+        flags |= EXEC_OBJECT_ASYNC;
 
     if (bo_gem->validate_index != -1) {
         bufmgr_gem->exec2_objects[bo_gem->validate_index].flags |= flags;
@@ -1368,6 +1382,7 @@ mos_gem_bo_unreference_final(struct mos_linux_bo *bo, time_t time)
     bo_gem->reloc_count = 0;
     bo_gem->used_as_reloc_target = false;
     bo_gem->softpin_target_count = 0;
+    bo_gem->exec_async = false;
 
     MOS_DBG("bo_unreference final: %d (%s)\n",
         bo_gem->gem_handle, bo_gem->name);
@@ -1917,6 +1932,33 @@ mos_gem_bo_unmap_gtt(struct mos_linux_bo *bo)
     return mos_gem_bo_unmap(bo);
 }
 
+int mos_gem_bo_get_fake_offset(struct mos_linux_bo *bo)
+{
+    int ret;
+    struct drm_i915_gem_mmap_gtt mmap_arg;
+    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
+    struct mos_bo_gem *bo_gem = (struct mos_bo_gem *) bo;
+
+    memclear(mmap_arg);
+    mmap_arg.handle = bo_gem->gem_handle;
+
+    ret = drmIoctl(bufmgr_gem->fd,
+            DRM_IOCTL_I915_GEM_MMAP_GTT,
+            &mmap_arg); 
+    
+    if (ret != 0) {
+        ret = -errno;
+        MOS_DBG("%s:%d: Error to get buffer fake offset %d (%s): %s .\n",
+            __FILE__, __LINE__,
+            bo_gem->gem_handle, bo_gem->name,
+            strerror(errno));
+    }
+    else {
+        bo->offset64 = mmap_arg.offset;
+    }
+    return ret;
+}
+
 drm_export int
 mos_gem_bo_subdata(struct mos_linux_bo *bo, unsigned long offset,
              unsigned long size, const void *data)
@@ -2308,6 +2350,13 @@ mos_gem_bo_use_48b_address_range(struct mos_linux_bo *bo, uint32_t enable)
 {
     struct mos_bo_gem *bo_gem = (struct mos_bo_gem *) bo;
     bo_gem->use_48b_address_range = enable;
+}
+
+static void
+mos_gem_bo_set_exec_object_async(struct mos_linux_bo *bo)
+{
+    struct mos_bo_gem *bo_gem = (struct mos_bo_gem *)bo;
+    bo_gem->exec_async = true;
 }
 
 static int
@@ -3488,6 +3537,35 @@ mos_gem_context_create(struct mos_bufmgr *bufmgr)
     return context;
 }
 
+struct mos_linux_context *
+mos_gem_context_create_ext(struct mos_bufmgr *bufmgr, __u32 flags)
+{
+    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
+    struct drm_i915_gem_context_create_ext create;
+    struct mos_linux_context *context = nullptr;
+    int ret;
+
+    context = (struct mos_linux_context *)calloc(1, sizeof(*context));
+    if (!context)
+        return nullptr;
+
+    memclear(create);
+    create.flags = flags;
+    create.extensions = 0;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GEM_CONTEXT_CREATE_EXT, &create);
+    if (ret != 0) {
+        MOS_DBG("DRM_IOCTL_I915_GEM_CONTEXT_CREATE failed: %s\n",
+            strerror(errno));
+        free(context);
+        return nullptr;
+    }
+
+    context->ctx_id = create.ctx_id;
+    context->bufmgr = bufmgr;
+
+    return context;
+}
+
 void
 mos_gem_context_destroy(struct mos_linux_context *ctx)
 {
@@ -3595,6 +3673,32 @@ mos_set_context_param(struct mos_linux_context *ctx,
                DRM_IOCTL_I915_GEM_CONTEXT_SETPARAM,
                &context_param);
 
+    return ret;
+}
+
+int
+mos_gem_bo_48b_address_supported(struct mos_linux_context *ctx)
+{
+    uint64_t gtt_size = 0;
+    uint64_t gtt_size_4g = (uint64_t)1 << 32;
+    struct mos_bufmgr_gem *bufmgr_gem;
+    int ret;
+
+    if (ctx == nullptr)
+        return -EINVAL;
+
+    ret = mos_get_context_param(ctx, sizeof(uint64_t),I915_CONTEXT_PARAM_GTT_SIZE,&gtt_size);
+    if(ret)
+        return -EINVAL;
+
+    if(gtt_size >= gtt_size_4g)
+    {
+        bufmgr_gem = (struct mos_bufmgr_gem *)ctx->bufmgr;
+        if(bufmgr_gem)
+        {
+            bufmgr_gem->bufmgr.bo_use_48b_address_range = mos_gem_bo_use_48b_address_range;
+        }
+    }
     return ret;
 }
 
@@ -3806,6 +3910,11 @@ mos_bufmgr_gem_init(int fd, int batch_size)
     ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
     if (ret == 0 && *gp.value > 0)
         bufmgr_gem->bufmgr.bo_set_softpin_offset = mos_gem_bo_set_softpin_offset;
+
+    gp.param = I915_PARAM_HAS_EXEC_ASYNC;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    if (ret == 0 && *gp.value > 0)
+        bufmgr_gem->bufmgr.set_exec_object_async = mos_gem_bo_set_exec_object_async;
 
     gp.param = I915_PARAM_HAS_ALIASING_PPGTT;
     ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017, Intel Corporation
+* Copyright (c) 2017-2019, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -452,7 +452,7 @@ VAStatus DdiEncodeAvc::ParseMiscParamQuantization(void *data)
         {
             seqParams->Trellis |= trellisEnabledB;
         }
-        else
+        if (!seqParams->Trellis)
         {
             DDI_ASSERTMESSAGE("trellis enabled, but the input parameters is invalided");
         }
@@ -550,7 +550,8 @@ VAStatus DdiEncodeAvc::ParseMiscParamQualityLevel(void *data)
     m_encodeCtx->targetUsage = (uint8_t)vaEncMiscParamQualityLevel->quality_level;
     uint8_t qualityUpperBoundary = TARGETUSAGE_BEST_SPEED;
 #ifdef _FULL_OPEN_SOURCE
-    qualityUpperBoundary = 5;
+    if (!GFX_IS_PRODUCT(m_encodeCtx->pMediaCtx->platform, IGFX_ICELAKE_LP))
+        qualityUpperBoundary = 5;
 #endif
     // check if TU setting is valid, otherwise change to default
     if ((m_encodeCtx->targetUsage > qualityUpperBoundary) || (0 == m_encodeCtx->targetUsage))
@@ -561,14 +562,18 @@ VAStatus DdiEncodeAvc::ParseMiscParamQualityLevel(void *data)
     }
 
 #ifdef _FULL_OPEN_SOURCE
-    if(m_encodeCtx->targetUsage >= 1 && m_encodeCtx->targetUsage <= 2)
+    if (!GFX_IS_PRODUCT(m_encodeCtx->pMediaCtx->platform, IGFX_ICELAKE_LP))
     {
-        m_encodeCtx->targetUsage = 4;
+        if (m_encodeCtx->targetUsage >= 1 && m_encodeCtx->targetUsage <= 2)
+        {
+            m_encodeCtx->targetUsage = 4;
+        }
+        else if (m_encodeCtx->targetUsage >= 3 &&m_encodeCtx->targetUsage <= 5)
+        {
+            m_encodeCtx->targetUsage = 7;
+        }
     }
-    else if(m_encodeCtx->targetUsage >= 3 &&m_encodeCtx->targetUsage <= 5)
-    {
-        m_encodeCtx->targetUsage = 7;
-    }
+
 #endif
 
     return VA_STATUS_SUCCESS;
@@ -2060,4 +2065,16 @@ uint32_t DdiEncodeAvc::getPictureParameterBufferSize()
 uint32_t DdiEncodeAvc::getQMatrixBufferSize()
 {
     return sizeof(VAIQMatrixBufferH264);
+}
+
+void DdiEncodeAvc::ClearPicParams()
+{
+    uint8_t ppsIdx = ((PCODEC_AVC_ENCODE_SLICE_PARAMS)(m_encodeCtx->pSliceParams))->pic_parameter_set_id;
+    PCODEC_AVC_ENCODE_PIC_PARAMS  picParams = (PCODEC_AVC_ENCODE_PIC_PARAMS)m_encodeCtx->pPicParams + ppsIdx;
+
+    if (picParams != nullptr && picParams->pDeltaQp != nullptr)
+    {
+        MOS_FreeMemory(picParams->pDeltaQp);
+        picParams->pDeltaQp = nullptr;
+    }
 }

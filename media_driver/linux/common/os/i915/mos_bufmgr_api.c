@@ -41,9 +41,6 @@
 #include "mos_bufmgr.h"
 #include "mos_bufmgr_priv.h"
 #include "xf86drm.h"
-#ifdef ANDROID
-#include <unistd.h>
-#endif
 
 /** @file mos_bufmgr_api.c
  *
@@ -55,6 +52,13 @@ mos_bo_alloc(struct mos_bufmgr *bufmgr, const char *name,
            unsigned long size, unsigned int alignment)
 {
     return bufmgr->bo_alloc(bufmgr, name, size, alignment);
+}
+
+void
+mos_bo_set_exec_object_async(struct mos_linux_bo *bo)
+{
+    if(bo->bufmgr->set_exec_object_async)
+        bo->bufmgr->set_exec_object_async(bo);
 }
 
 #ifdef ANDROID

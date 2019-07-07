@@ -1,5 +1,5 @@
 ﻿/*
-* Copyright (c) 2017, Intel Corporation
+* Copyright (c) 2017-2019, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -29,14 +29,14 @@
 #include "codechal_encode_csc_ds_g11.h"
 #include "codechal_kernel_header_g11.h"
 #include "codeckrnheader.h"
-#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
+#if defined(ENABLE_KERNELS)
 #include "igcodeckrn_g11.h"
 #endif
 #if USE_CODECHAL_DEBUG_TOOL
 #include "codechal_debug_encode_par_g11.h"
 #endif
 
-const uint8_t CodechalEncodeCscDsG11::GetBTCount()
+uint8_t CodechalEncodeCscDsG11::GetBTCount() const
 {
     return (uint8_t)cscNumSurfaces;
 }
@@ -104,6 +104,12 @@ MOS_STATUS CodechalEncodeCscDsG11::CheckRawColorFormat(MOS_FORMAT format)
     case Format_A8B8G8R8:
         m_colorRawSurface = cscColorABGR;
         m_cscRequireColor = 1;
+        m_cscUsingSfc     = IsSfcEnabled() ? 1 : 0;
+        // Use EU for better performance in big resolution cases or TU1
+        if (m_cscRawSurfWidth * m_cscRawSurfHeight > 1920 * 1088)
+        {
+            m_cscUsingSfc = 0;
+        }
         break;
     case Format_P010:
         m_colorRawSurface = cscColorP010;
@@ -201,6 +207,8 @@ MOS_STATUS CodechalEncodeCscDsG11::SetKernelParamsCsc(KernelParams* params)
             m_curbeParams.downscaleStage = dsStage2x4x;
             m_currRefList->b4xScalingUsed =
             m_currRefList->b2xScalingUsed = true;
+            m_surfaceParamsCsc.bScalingInUses16UnormSurfFmt = false;
+            m_surfaceParamsCsc.bScalingInUses32UnormSurfFmt = false;
         }
         else if (m_2xScalingEnabled)
         {
@@ -208,12 +216,16 @@ MOS_STATUS CodechalEncodeCscDsG11::SetKernelParamsCsc(KernelParams* params)
             m_currRefList->b2xScalingUsed = true;
             output4xDsSurface = nullptr;
             mbStatsSurface = nullptr;
+            m_surfaceParamsCsc.bScalingInUses16UnormSurfFmt = true;
+            m_surfaceParamsCsc.bScalingInUses32UnormSurfFmt = false;
         }
         else if (m_scalingEnabled)
         {
             m_curbeParams.downscaleStage = dsStage4x;
             m_currRefList->b4xScalingUsed = true;
             output2xDsSurface = nullptr;
+            m_surfaceParamsCsc.bScalingInUses16UnormSurfFmt = false;
+            m_surfaceParamsCsc.bScalingInUses32UnormSurfFmt = true;
         }
         else
         {
@@ -222,6 +234,8 @@ MOS_STATUS CodechalEncodeCscDsG11::SetKernelParamsCsc(KernelParams* params)
             output4xDsSurface = nullptr;
             output2xDsSurface = nullptr;
             mbStatsSurface = nullptr;
+            m_surfaceParamsCsc.bScalingInUses16UnormSurfFmt = false;
+            m_surfaceParamsCsc.bScalingInUses32UnormSurfFmt = false;
         }
 
         // history sum to be enabled only for the 4x stage
@@ -250,6 +264,8 @@ MOS_STATUS CodechalEncodeCscDsG11::SetKernelParamsCsc(KernelParams* params)
             inputSurface = m_encoder->m_trackedBuf->Get4xDsSurface(CODEC_CURR_TRACKED_BUFFER);
             output4xDsSurface = m_encoder->m_trackedBuf->Get16xDsSurface(CODEC_CURR_TRACKED_BUFFER);
             output2xDsSurface = nullptr;
+            m_surfaceParamsCsc.bScalingInUses16UnormSurfFmt = false;
+            m_surfaceParamsCsc.bScalingInUses32UnormSurfFmt = true;
         }
         else if (dsStage32x == params->stageDsConversion)
         {
@@ -261,6 +277,8 @@ MOS_STATUS CodechalEncodeCscDsG11::SetKernelParamsCsc(KernelParams* params)
             inputSurface = m_encoder->m_trackedBuf->Get16xDsSurface(CODEC_CURR_TRACKED_BUFFER);
             output4xDsSurface = nullptr;
             output2xDsSurface = m_encoder->m_trackedBuf->Get32xDsSurface(CODEC_CURR_TRACKED_BUFFER);
+            m_surfaceParamsCsc.bScalingInUses16UnormSurfFmt = true;
+            m_surfaceParamsCsc.bScalingInUses32UnormSurfFmt = false;
         }
     }
 
@@ -407,17 +425,32 @@ MOS_STATUS CodechalEncodeCscDsG11::SendSurfaceCsc(PMOS_COMMAND_BUFFER cmdBuffer)
         cscColorP210 == m_colorRawSurface ||
         cscColorNv12Linear == m_colorRawSurface);
     surfaceParams.bMediaBlockRW = true;
-    /*
-    * Unify surface format to avoid mismatches introduced by DS kernel between MMC on and off cases.
-    * bUseCommonKernel        | FormatIsNV12 | MmcdOn | SurfaceFormatToUse
-    *            1            |       1      |  0/1   |        R8
-    *            1            |       0      |  0/1   |        R16
-    *            0            |       1      |  0/1   |        R8
-    *            0            |       0      |   1    |        R8
-    *            0            |       0      |   0    |        R32
-    */
-    surfaceParams.bUse16UnormSurfaceFormat = !(cscColorNv12TileY == m_colorRawSurface ||
-        cscColorNv12Linear == m_colorRawSurface);
+
+    // Configure to R16/32 for input surface
+    if (m_surfaceParamsCsc.bScalingInUses16UnormSurfFmt)
+    {
+        // 32x scaling requires R16_UNROM
+        surfaceParams.bUse16UnormSurfaceFormat = true;
+    }
+    else if (m_surfaceParamsCsc.bScalingInUses32UnormSurfFmt)
+    {
+        surfaceParams.bUse32UnormSurfaceFormat = true;
+    }
+    else
+    {
+        /*
+        * Unify surface format to avoid mismatches introduced by DS kernel between MMC on and off cases.
+        * bUseCommonKernel        | FormatIsNV12 | MmcdOn | SurfaceFormatToUse
+        *            1            |       1      |  0/1   |        R8
+        *            1            |       0      |  0/1   |        R16
+        *            0            |       1      |  0/1   |        R8
+        *            0            |       0      |   1    |        R8
+        *            0            |       0      |   0    |        R32
+        */
+        surfaceParams.bUse16UnormSurfaceFormat = !(cscColorNv12TileY == m_colorRawSurface ||
+                                                   cscColorNv12Linear == m_colorRawSurface);
+    }
+
     surfaceParams.psSurface = m_surfaceParamsCsc.psInputSurface;
     if (cscColorNv12Linear == m_colorRawSurface)
     {
@@ -752,7 +785,7 @@ CodechalEncodeCscDsG11::CodechalEncodeCscDsG11(CodechalEncoderState* encoder)
 {
     m_cscKernelUID = IDR_CODEC_HME_DS_SCOREBOARD_KERNEL;
     m_cscCurbeLength = sizeof(CscKernelCurbeData);
-#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
+#if defined(ENABLE_KERNELS)
     m_kernelBase = (uint8_t*)IGCODECKRN_G11;
 #endif
 }

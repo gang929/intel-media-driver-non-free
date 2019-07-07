@@ -199,6 +199,8 @@ MOS_STATUS HalCm_AllocateTsResource(
         &allocParams,
         &state->renderTimeStampResource.osResource));
 
+    osInterface->pfnSkipResourceSync(&state->renderTimeStampResource.osResource);
+
     // Lock the Resource
     MOS_ZeroMemory(&lockFlags, sizeof(MOS_LOCK_PARAMS));
 
@@ -263,39 +265,8 @@ MOS_STATUS HalCm_AllocateTrackerResource(
     osInterface = state->osInterface;
     renderHal   = state->renderHal;
 
-    // Tracker resource for RENDER engine
-    Mos_ResetResource(&renderHal->trackerResource.osResource);
-
-    MOS_ZeroMemory(&allocParamsLinearBuffer, sizeof(MOS_ALLOC_GFXRES_PARAMS));
-    allocParamsLinearBuffer.Type     = MOS_GFXRES_BUFFER;
-    allocParamsLinearBuffer.TileType = MOS_TILE_LINEAR;
-    allocParamsLinearBuffer.Format   = Format_Buffer;
-    allocParamsLinearBuffer.dwBytes  = MHW_CACHELINE_SIZE;
-    allocParamsLinearBuffer.pBufName = "TrackerResource";
-
-    CM_CHK_HRESULT_GOTOFINISH_MOSERROR(osInterface->pfnAllocateResource(
-        osInterface,
-        &allocParamsLinearBuffer,
-        &renderHal->trackerResource.osResource));
-
-    // Lock the Resource
-    MOS_ZeroMemory(&lockFlags, sizeof(MOS_LOCK_PARAMS));
-
-    lockFlags.ReadOnly = 1;
-    lockFlags.ForceCached = true;
-
-    renderHal->trackerResource.data = (uint32_t*)osInterface->pfnLockResource(
-        osInterface,
-        &renderHal->trackerResource.osResource,
-        &lockFlags);
-
-    CM_CHK_NULL_GOTOFINISH_MOSERROR(renderHal->trackerResource.data);
-
-    *(renderHal->trackerResource.data) = MemoryBlock::m_invalidTrackerId;
-
-    renderHal->trackerResource.currentTrackerId = 1;
-
-    renderHal->trackerResource.locked = true;
+    // Tracker producer for RENDER engine
+    renderHal->trackerProducer.Initialize(osInterface);
 
     // Tracker resource for VeBox engine
     Mos_ResetResource(&renderHal->veBoxTrackerRes.osResource);
@@ -357,7 +328,7 @@ MOS_STATUS HalCm_InitializeDynamicStateHeaps(
     dgsHeap->SetDefaultBehavior(heapParam->behaviorGSH);
     CM_CHK_MOSSTATUS_GOTOFINISH(dgsHeap->SetInitialHeapSize(heapParam->initialSizeGSH));
     CM_CHK_MOSSTATUS_GOTOFINISH(dgsHeap->SetExtendHeapSize(heapParam->extendSizeGSH));
-    CM_CHK_MOSSTATUS_GOTOFINISH(dgsHeap->RegisterTrackerResource(heapParam->trackerResourceGSH));
+    CM_CHK_MOSSTATUS_GOTOFINISH(dgsHeap->RegisterTrackerProducer(heapParam->trackerProducer));
     // lock the heap in the beginning, so cpu doesn't need to wait gpu finishing occupying it to lock it again
     CM_CHK_MOSSTATUS_GOTOFINISH(dgsHeap->LockHeapsOnAllocate());
 
@@ -429,23 +400,6 @@ __inline void HalCm_FreeTrackerResources(
 
     osInterface = state->osInterface;
 
-    if (!Mos_ResourceIsNull(&state->renderHal->trackerResource.osResource))
-    {
-        if(state->renderHal->trackerResource.locked)
-        {
-            hr = (MOS_STATUS)osInterface->pfnUnlockResource(
-                osInterface,
-                &state->renderHal->trackerResource.osResource);
-
-            CM_ASSERT(hr == MOS_STATUS_SUCCESS);
-        }
-
-        osInterface->pfnFreeResourceWithFlag(
-            osInterface,
-            &state->renderHal->trackerResource.osResource,
-            SURFACE_FLAG_ASSUME_NOT_IN_USE);
-    }
-
     if (!Mos_ResourceIsNull(&state->renderHal->veBoxTrackerRes.osResource))
     {
         if (state->renderHal->veBoxTrackerRes.locked)
@@ -492,6 +446,8 @@ MOS_STATUS HalCm_AllocateCSRResource(
         osInterface,
         &allocParams,
         &state->csrResource));
+
+    osInterface->pfnSkipResourceSync(&state->csrResource);
 
 finish:
     return eStatus;
@@ -1589,6 +1545,7 @@ MOS_STATUS HalCm_ParseGroupTask(
     taskParam->surfacePerBT = MOS_MIN(CM_MAX_STATIC_SURFACE_STATES_PER_BT, taskParam->surfacePerBT);
 
     taskParam->queueOption = execGroupParam->queueOption;
+    taskParam->mosVeHintParams = execGroupParam->mosVeHintParams;
 
     return eStatus;
 }
@@ -1777,6 +1734,7 @@ void CmLoadKernel(PCM_HAL_STATE             state,
         kernelAllocation->iKUID       = -1;
         kernelAllocation->iKCID       = -1;
         kernelAllocation->dwSync      = 0;
+        FrameTrackerTokenFlat_Clear(&kernelAllocation->trackerToken);
         kernelAllocation->dwCount     = 0;
         kernelAllocation->dwFlags     = RENDERHAL_KERNEL_ALLOCATION_FREE;
         kernelAllocation->pMhwKernelParam = nullptr;
@@ -2217,6 +2175,7 @@ int32_t HalCm_UnloadKernel(
     kernelAllocation->iKUID    = -1;
     kernelAllocation->iKCID    = -1;
     kernelAllocation->dwSync   = 0;
+    FrameTrackerTokenFlat_Clear(&kernelAllocation->trackerToken);
     kernelAllocation->dwFlags          = RENDERHAL_KERNEL_ALLOCATION_FREE;
     kernelAllocation->dwCount  = 0;
     kernelAllocation->pMhwKernelParam  = nullptr;
@@ -3008,11 +2967,8 @@ int32_t HalCm_DSH_LoadKernelArray(
     int32_t                      blockCount;                              // Number of kernels to load
     MOS_STATUS                   eStatus = MOS_STATUS_SUCCESS;
     int32_t                      hr = CM_FAILURE;
-    uint32_t                     currId, nextId;
 
     renderHal = state->renderHal;
-    nextId = renderHal->pfnGetNextTrackerId(renderHal);
-    currId = renderHal->pfnGetCurrentTrackerId(renderHal);
     state->criticalSectionDSH->Acquire();
     do
     {
@@ -3038,7 +2994,7 @@ int32_t HalCm_DSH_LoadKernelArray(
                     // Kernel needs to be reloaded in current heap
                     if (memoryBlock->pStateHeap != renderHal->pMhwStateHeap->GetISHPointer() || state->forceKernelReload) //pInstructionStateHeaps
                     {
-                        renderHal->pMhwStateHeap->FreeDynamicBlockDyn(MHW_ISH_TYPE, memoryBlock, currId);
+                        renderHal->pMhwStateHeap->FreeDynamicBlockDyn(MHW_ISH_TYPE, memoryBlock);
                         krnAllocation[i]->pMemoryBlock = nullptr;
                     }
                     else
@@ -3148,7 +3104,10 @@ int32_t HalCm_DSH_LoadKernelArray(
                         allocation->iKID = -1;
                         allocation->iKUID = static_cast<int>((kernelArray[i]->kernelId >> 32));
                         allocation->iKCID = -1;
-                        allocation->dwSync = nextId;
+                        FrameTrackerTokenFlat_SetProducer(&allocation->trackerToken, &renderHal->trackerProducer);
+                        FrameTrackerTokenFlat_Merge(&allocation->trackerToken,
+                                                    renderHal->currentTrackerIndex,
+                                                    renderHal->trackerProducer.GetNextTracker(renderHal->currentTrackerIndex));
                         allocation->dwOffset = memoryBlock->dwDataOffset;
                         allocation->iSize = kernelArray[i]->kernelBinarySize + CM_KERNEL_BINARY_PADDING_SIZE;
                         allocation->dwCount = 0;
@@ -3725,7 +3684,6 @@ MOS_STATUS HalCm_SetupBufferSurfaceState(
                 &surfaceEntry));
 
         // Bind the surface State
-        surfaceEntry->pSurface = &surface.OsSurface;
         CM_ASSERT(((int32_t)btIndex) < renderHal->StateHeapSettings.iSurfacesPerBT + surfBTIInfo.normalSurfaceStart);
         CM_CHK_MOSSTATUS_GOTOFINISH(renderHal->pfnBindSurfaceState(
                renderHal,
@@ -3925,6 +3883,8 @@ MOS_STATUS HalCm_Setup3DSurfaceState(
         btIndex = HalCm_GetFreeBindingIndex(state, indexParam, nSurfaceEntries);
         for (i = 0; i < (uint32_t)nSurfaceEntries; i++)
         {
+            *(surfaceEntries[i]->pSurface) = surface.OsSurface;
+
             // Bind the surface State
             CM_CHK_MOSSTATUS_GOTOFINISH(renderHal->pfnBindSurfaceState(
                         renderHal,
@@ -4310,6 +4270,8 @@ MOS_STATUS HalCm_Setup2DSurfaceStateBasic(
                     surfaceParam,
                     CM_ARGUMENT_SURFACE2D));
         }
+        surfaceEntries[i]->pSurface->dwWidth = state->umdSurf2DTable[index].width;
+        surfaceEntries[i]->pSurface->dwHeight = state->umdSurf2DTable[index].height;
     }
 
     // only update the reuse table for non-aliased surface
@@ -4352,6 +4314,7 @@ finish:
     return eStatus;
 }
 
+
 MOS_STATUS HalCm_Setup2DSurfaceState(
     PCM_HAL_STATE              state,
     PCM_HAL_KERNEL_ARG_PARAM   argParam,
@@ -4361,6 +4324,11 @@ MOS_STATUS HalCm_Setup2DSurfaceState(
     uint8_t                    *buffer)
 {
     MOS_STATUS                 eStatus;
+
+    if (state->cmHalInterface->GetDecompressFlag())
+    {
+        HalCm_DecompressSurface(state, argParam, threadIndex);
+    }
 
     //Binding surface based at the unit of dword
     CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_Setup2DSurfaceStateBasic(
@@ -4873,6 +4841,53 @@ finish:
     return eStatus;
 }
 
+static bool
+UpdateMosSurfaceFromAliasState(CM_HAL_STATE *state,
+                               CM_HAL_KERNEL_ARG_PARAM *argParam,
+                               uint32_t surface_index,
+                               MOS_SURFACE *surface)
+{
+    uint32_t surface_state_index = argParam->aliasIndex/state->surfaceArraySize;
+    const CM_HAL_SURFACE2D_SURFACE_STATE_PARAM &surface_state_param
+            = state->umdSurf2DTable[surface_index].surfaceStateParam[
+                surface_state_index];
+    if (surface_state_param.width)
+    {
+        surface->dwWidth = surface_state_param.width;
+    }
+    if (surface_state_param.height)
+    {
+        surface->dwHeight = surface_state_param.height;
+    }
+    if (surface_state_param.depth)
+    {
+        surface->dwDepth = surface_state_param.depth;
+    }
+    if (surface_state_param.pitch)
+    {
+        surface->dwPitch= surface_state_param.pitch;
+    }
+    if (surface_state_param.format)
+    {
+        surface->Format
+                = static_cast<MOS_FORMAT>(surface_state_param.format);
+    }
+    if (surface_state_param.surfaceXOffset)
+    {
+        surface->YPlaneOffset.iXOffset = surface_state_param.surfaceXOffset;
+    }
+    if (surface_state_param.surfaceYOffset)
+    {
+        surface->YPlaneOffset.iYOffset = surface_state_param.surfaceYOffset;
+    }
+    if (surface_state_param.surfaceOffset)
+    {
+        surface->dwOffset = surface_state_param.surfaceOffset;
+    }
+
+    return true;
+}
+
 //*-----------------------------------------------------------------------------
 //| Purpose: Setup VME surface State
 //| Returns: Result of the operation
@@ -4943,7 +4958,7 @@ MOS_STATUS HalCm_SetupSampler8x8SurfaceState(
     renderHal->bEnableP010SinglePass = state->cmHalInterface->IsP010SinglePassSupported();
 
     btIndex = state->bti2DIndexTable[ index ].BTI.sampler8x8SurfIndex;
-    if ( btIndex == ( unsigned char )CM_INVALID_INDEX )
+    if (btIndex == ( unsigned char )CM_INVALID_INDEX || argParam->aliasCreated)
     {
         // Get Details of Sampler8x8 surface and fill the surface
         CM_CHK_MOSSTATUS_GOTOFINISH( HalCm_GetSurfaceAndRegister( state, &surface, argParam->kind, index, 0 ) );
@@ -4957,6 +4972,9 @@ MOS_STATUS HalCm_SetupSampler8x8SurfaceState(
         surfaceParam.Boundary = RENDERHAL_SS_BOUNDARY_ORIGINAL;
         surfaceParam.bVASurface = ( argParam->kind == CM_ARGUMENT_SURFACE_SAMPLER8X8_VA ) ? 1 : 0;
         surfaceParam.AddressControl = argParam->nCustomValue;
+
+        UpdateMosSurfaceFromAliasState(state, argParam, index,
+                                       &surface.OsSurface);
 
         //Set memory object control
         state->cmHalInterface->HwSetSurfaceMemoryObjectControl(memObjCtl, &surfaceParam);
@@ -5114,7 +5132,6 @@ MOS_STATUS HalCm_SetupStateBufferSurfaceState(
         &surfaceEntry ) );
 
     // Bind the surface State
-    surfaceEntry->pSurface = &renderhalSurface.OsSurface;
     CM_ASSERT( ( ( int32_t )btIndex ) < renderHal->StateHeapSettings.iSurfacesPerBT + surfBTIInfo.normalSurfaceStart );
     CM_CHK_MOSSTATUS_GOTOFINISH( renderHal->pfnBindSurfaceState(
         renderHal,
@@ -6880,9 +6897,9 @@ uint32_t HalCm_ThreadsNumberPerGroup_MW(PCM_HAL_WALKER_PARAMS walkerParams)
 
     //do global_outer_looper initialization
     while (((globalOuterX >= globalresX) && (globalInnerStepX < 0)) ||
-        ((globalOuterX + localblockresX) < 0) && (globalInnerStepX > 0) ||
+        (((globalOuterX + localblockresX) < 0) && (globalInnerStepX > 0)) ||
         ((globalOuterY >= globalresY) && (globalInnerStepY < 0)) ||
-        ((globalOuterX + localblockresY) < 0) && (globalInnerStepY > 0))
+        (((globalOuterX + localblockresY) < 0) && (globalInnerStepY > 0)))
     {
         globalOuterX += globalInnerStepX;
         globalOuterY += globalInnerStepY;
@@ -7019,9 +7036,9 @@ uint32_t HalCm_ThreadsNumberPerGroup_MW(PCM_HAL_WALKER_PARAMS walkerParams)
         globalOuterX += globalOuterStepX;
         globalOuterY += globalOuterStepY;
         while (((globalOuterX >= globalresX) && (globalInnerStepX < 0)) ||
-            ((globalOuterX + localblockresX) < 0) && (globalInnerStepX > 0) ||
+            (((globalOuterX + localblockresX) < 0) && (globalInnerStepX > 0)) ||
             ((globalOuterY >= globalresY) && (globalInnerStepY < 0)) ||
-            ((globalOuterX + localblockresY) < 0) && (globalInnerStepY > 0))
+            (((globalOuterX + localblockresY) < 0) && (globalInnerStepY > 0)))
         {
             globalOuterX += globalInnerStepX;
             globalOuterY += globalInnerStepY;
@@ -7230,12 +7247,36 @@ MOS_STATUS HalCm_SetupMediaWalkerParams(
                     break;
 
                 case CM_WALK_WAVEFRONT26:
-                    walkerParams->localLoopExecCount = kernelThreadSpace.threadSpaceWidth + (kernelThreadSpace.threadSpaceHeight - 1) * 2 - 1;
-
+                    walkerParams->globalResolution.x = kernelThreadSpace.threadSpaceWidth;
+                    walkerParams->globalResolution.y = kernelThreadSpace.threadSpaceHeight;
                     walkerParams->localOutLoopStride.x = 1;
                     walkerParams->localOutLoopStride.y = 0;
                     walkerParams->localInnerLoopUnit.x = 0xFFFE;  // -2 in uint32_t:16
                     walkerParams->localInnerLoopUnit.y = 1;
+                    walkerParams->localLoopExecCount = kernelThreadSpace.threadSpaceWidth +
+                                                       (kernelThreadSpace.threadSpaceHeight - 1) * 2 - 1;
+
+                    //localLoopExecCount has limitation, it should be less than 2^12
+                    while (walkerParams->localLoopExecCount >= 0xFFF)
+                    {
+                        //separate to multiple global levels
+                        if (walkerParams->blockResolution.x > (walkerParams->blockResolution.y * 2))
+                        {
+                            walkerParams->blockResolution.x = (walkerParams->blockResolution.x+1) >> 1;
+                            walkerParams->globalLoopExecCount = (walkerParams->globalResolution.x +
+                            walkerParams->blockResolution.x - 1) / walkerParams->blockResolution.x;
+                        }
+                        else
+                        {
+                            walkerParams->blockResolution.y = (walkerParams->blockResolution.y + 1) >> 1;
+                        }
+                        walkerParams->localLoopExecCount = walkerParams->blockResolution.x +
+                                                           (walkerParams->blockResolution.y - 1) * 2 - 1;
+                    }
+                    walkerParams->globalOutlerLoopStride.x = walkerParams->blockResolution.x;
+                    walkerParams->globalOutlerLoopStride.y = 0;
+                    walkerParams->globalInnerLoopUnit.x = 0;
+                    walkerParams->globalInnerLoopUnit.y = walkerParams->blockResolution.y;
                     break;
 
                 case CM_WALK_WAVEFRONT26X:
@@ -7361,7 +7402,7 @@ MOS_STATUS HalCm_SetupMediaWalkerParams(
                 walkerParams->globalInnerLoopUnit.x = 0xFFFC;
                 walkerParams->globalInnerLoopUnit.y = 2;
             }
-            else
+            else if(walkPattern != CM_WALK_WAVEFRONT26)
             {
                 walkerParams->globalResolution.x = walkerParams->blockResolution.x;
                 walkerParams->globalResolution.y = walkerParams->blockResolution.y;
@@ -7954,7 +7995,7 @@ MOS_STATUS HalCm_Allocate(
     heapParams.behaviorGSH        = HeapManager::Behavior::destructiveExtend;
     heapParams.initialSizeGSH     = 0x0080000;
     heapParams.extendSizeGSH      = 0x0080000;
-    heapParams.trackerResourceGSH = state->renderHal->trackerResource.data;
+    heapParams.trackerProducer    = &state->renderHal->trackerProducer;
     CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_InitializeDynamicStateHeaps(state, &heapParams));
 
     CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_AllocateTables(state));
@@ -7994,7 +8035,7 @@ MOS_STATUS HalCm_Allocate(
     //Turn Turbo boost on
     CM_CHK_MOSSTATUS_GOTOFINISH(state->pfnEnableTurboBoost(state));
 
-    state->tsFrequency = HalCm_GetTsFrequency(state->osInterface);
+    state->tsFrequency = Mos_Specific_GetTsFrequency(state->osInterface);
 
     if (state->refactor)
     {
@@ -8169,17 +8210,14 @@ MOS_STATUS HalCm_ExecuteTask(
     CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_ParseTask(state, execParam));
 
     // Reset the SSH configuration according to the property of the task
-    btsizePower2 = (uint32_t)renderHal->StateHeapSettings.iBTAlignment/renderHal->pRenderHalPltInterface->GetBTStateCmdSize();
-    while (btsizePower2 < taskParam->surfacePerBT)
-    {
-        btsizePower2 = btsizePower2 * 2;
-    }
-    taskParam->surfacePerBT = btsizePower2;
     renderHal->pStateHeap->iBindingTableSize = MOS_ALIGN_CEIL(taskParam->surfacePerBT *  // Reconfigure the binding table size
                                                  renderHal->pRenderHalPltInterface->GetBTStateCmdSize(), renderHal->StateHeapSettings.iBTAlignment);
-
+    
+    taskParam->surfacePerBT = renderHal->pStateHeap->iBindingTableSize/renderHal->pRenderHalPltInterface->GetBTStateCmdSize();
+    
     renderHal->StateHeapSettings.iBindingTables = renderHal->StateHeapSettings.iBindingTables *             // Reconfigure the binding table number
                                                          renderHal->StateHeapSettings.iSurfacesPerBT / taskParam->surfacePerBT;
+    
     renderHal->StateHeapSettings.iSurfacesPerBT = taskParam->surfacePerBT;                            // Reconfigure the surface per BT
 
     if (execParam->numKernels > (uint32_t)renderHal->StateHeapSettings.iBindingTables)
@@ -8479,15 +8517,11 @@ MOS_STATUS HalCm_ExecuteGroupTask(
     CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_ParseGroupTask(state, execGroupParam));
 
     // Reset the SSH configuration according to the property of the task
-    btsizePower2 = (uint32_t)renderHal->StateHeapSettings.iBTAlignment/renderHal->pRenderHalPltInterface->GetBTStateCmdSize();
-    while (btsizePower2 < taskParam->surfacePerBT)
-    {
-        btsizePower2 = btsizePower2 * 2;
-    }
-    taskParam->surfacePerBT = btsizePower2;
     renderHal->pStateHeap->iBindingTableSize = MOS_ALIGN_CEIL(taskParam->surfacePerBT *               // Reconfigure the binding table size
                                                          renderHal->pRenderHalPltInterface->GetBTStateCmdSize(),
                                                          renderHal->StateHeapSettings.iBTAlignment);
+
+    taskParam->surfacePerBT = renderHal->pStateHeap->iBindingTableSize / renderHal->pRenderHalPltInterface->GetBTStateCmdSize();
 
     renderHal->StateHeapSettings.iBindingTables           = renderHal->StateHeapSettings.iBindingTables *          // Reconfigure the binding table number
                                                          renderHal->StateHeapSettings.iSurfacesPerBT / taskParam->surfacePerBT;
@@ -9374,7 +9408,7 @@ MOS_STATUS HalCm_FreeSurface2DUP(
 
     if (state->advExecutor)
     {
-        state->advExecutor->Delete2DStateMgr(entry->surfStateMgr);
+        state->advExecutor->Delete2Dor3DStateMgr(entry->surfStateMgr);
     }
 
     osInterface->pfnFreeResourceWithFlag(osInterface, &entry->osResource, SURFACE_FLAG_ASSUME_NOT_IN_USE);
@@ -9513,15 +9547,16 @@ MOS_STATUS HalCm_SetSurfaceMOCS(
         case CM_ARGUMENT_SURFACE_SAMPLER8X8_AVS:
         case CM_ARGUMENT_SURFACE_SAMPLER8X8_VA:
             state->umdSurf2DTable[handle].memObjCtl = mocs;
-            state->advExecutor->Set2DMemoryObjectControl(state->umdSurf2DTable[handle].surfStateMgr, mocs);
+            state->advExecutor->Set2Dor3DMemoryObjectControl(state->umdSurf2DTable[handle].surfStateMgr, mocs);
             break;
         case CM_ARGUMENT_SURFACE2D_UP:
         case CM_ARGUMENT_SURFACE2DUP_SAMPLER:
             state->surf2DUPTable[handle].memObjCtl = mocs;
-            state->advExecutor->Set2DMemoryObjectControl(state->surf2DUPTable[handle].surfStateMgr, mocs);
+            state->advExecutor->Set2Dor3DMemoryObjectControl(state->surf2DUPTable[handle].surfStateMgr, mocs);
             break;
         case CM_ARGUMENT_SURFACE3D:
             state->surf3DTable[handle].memObjCtl = mocs;
+            state->advExecutor->Set2Dor3DMemoryObjectControl(state->surf3DTable[handle].surfStateMgr, mocs);
             break;
         default:
             eStatus = MOS_STATUS_INVALID_PARAMETER;
@@ -9607,6 +9642,11 @@ MOS_STATUS HalCm_AllocateSurface2D(
     if (state->advExecutor)
     {
         entry->surfStateMgr = state->advExecutor->Create2DStateMgr(&entry->osResource);
+        state->advExecutor->Set2Dor3DOrigFormat(entry->surfStateMgr, entry->format);
+        state->advExecutor->Set2Dor3DOrigDimension(entry->surfStateMgr,
+                                                 entry->width,
+                                                 entry->height,
+                                                 0); // no need to change depth in 2D surface
     }
    
     for (int i = 0; i < CM_HAL_GPU_CONTEXT_COUNT; i++)
@@ -9653,8 +9693,13 @@ MOS_STATUS HalCm_UpdateSurface2D(
 
     if (state->advExecutor)
     {
-        state->advExecutor->Delete2DStateMgr(entry->surfStateMgr);
+        state->advExecutor->Delete2Dor3DStateMgr(entry->surfStateMgr);
         entry->surfStateMgr = state->advExecutor->Create2DStateMgr(&entry->osResource);
+        state->advExecutor->Set2Dor3DOrigFormat(entry->surfStateMgr, entry->format);
+        state->advExecutor->Set2Dor3DOrigDimension(entry->surfStateMgr,
+                                                 entry->width,
+                                                 entry->height,
+                                                 0); // no need to change depth in 2D surface
     }
     
     for (int i = 0; i < CM_HAL_GPU_CONTEXT_COUNT; i++)
@@ -9728,7 +9773,7 @@ MOS_STATUS HalCm_FreeSurface2D(
     CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_GetSurface2DEntry(state, handle, &entry));
     if (state->advExecutor)
     {
-        state->advExecutor->Delete2DStateMgr(entry->surfStateMgr);
+        state->advExecutor->Delete2Dor3DStateMgr(entry->surfStateMgr);
     }
     
     if(entry->isAllocatedbyCmrtUmd)
@@ -9811,6 +9856,14 @@ MOS_STATUS HalCm_AllocateSurface3D(CM_HAL_STATE *state, // [in]  Pointer to CM S
     entry->depth = param->depth;
     entry->format = param->format;
 
+    if (state->advExecutor)
+    {
+        entry->surfStateMgr = state->advExecutor->Create3DStateMgr(&entry->osResource);
+        state->advExecutor->Set2Dor3DOrigDimension(entry->surfStateMgr,
+                                                 entry->width,
+                                                 entry->height,
+                                                 entry->depth);
+    }
 finish:
     return eStatus;
 }
@@ -9832,6 +9885,10 @@ MOS_STATUS HalCm_Free3DResource(
 
     // Get the Buffer Entry
     CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_Get3DResourceEntry(state, handle, &entry));
+    if (state->advExecutor)
+    {
+        state->advExecutor->Delete2Dor3DStateMgr(entry->surfStateMgr);
+    }
 
     osInterface->pfnFreeResourceWithFlag(osInterface, &entry->osResource, SURFACE_FLAG_ASSUME_NOT_IN_USE);
 
@@ -10152,29 +10209,6 @@ MOS_STATUS HalCm_InitPerfTagIndexMap(PCM_HAL_STATE cmState)
 
 finish:
     return eStatus;
-}
-
-MOS_STATUS HalCm_InsertToStateBufferList(
-    PCM_HAL_STATE               state,
-    void                        *kernelPtr,
-    uint32_t                    stateBufferIndex,
-    CM_STATE_BUFFER_TYPE        stateBufferType,
-    uint32_t                    stateBufferSize,
-    uint64_t                    stateBufferVaPtr,
-    PRENDERHAL_MEDIA_STATE      mediaStatePtr )
-{
-    MOS_STATUS result = MOS_STATUS_SUCCESS;
-
-    CM_HAL_STATE_BUFFER_ENTRY entry;
-    entry.kernelPtr = kernelPtr;
-    entry.stateBufferIndex = stateBufferIndex;
-    entry.stateBufferType = stateBufferType;
-    entry.stateBufferSize = stateBufferSize;
-    entry.stateBufferVaPtr = stateBufferVaPtr;
-    entry.mediaStatePtr = mediaStatePtr;
-
-    ( *state->state_buffer_list_ptr )[ kernelPtr ] = entry;
-    return result;
 }
 
 MOS_STATUS HalCm_DeleteFromStateBufferList(
@@ -10525,7 +10559,6 @@ MOS_STATUS HalCm_Create(
     state->pfnGetGlobalTime               = HalCm_GetGlobalTime;
     state->pfnConvertToQPCTime            = HalCm_ConvertToQPCTime;
 
-    state->pfnInsertToStateBufferList = HalCm_InsertToStateBufferList;
     state->pfnDeleteFromStateBufferList = HalCm_DeleteFromStateBufferList;
     state->pfnGetMediaStatePtrForKernel = HalCm_GetMediaStatePtrForKernel;
     state->pfnGetStateBufferVAPtrForSurfaceIndex = HalCm_GetStateBufferVAPtrForSurfaceIndex;
@@ -11896,4 +11929,3 @@ bool HalCm_IsValidGpuContext(
         return false;
     }
 }
-

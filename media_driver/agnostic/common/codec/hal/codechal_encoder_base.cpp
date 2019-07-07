@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2018, Intel Corporation
+* Copyright (c) 2017-2019, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -33,6 +33,9 @@ void CodechalEncoderState::PrepareNodes(
     MOS_GPU_NODE& videoGpuNode,
     bool&         setVideoNode)
 {
+    if (MOS_VE_MULTINODESCALING_SUPPORTED(m_osInterface))
+        return;
+
     if (m_vdboxOneDefaultUsed)
     {
         setVideoNode = true;
@@ -69,7 +72,8 @@ MOS_STATUS CodechalEncoderState::CreateGpuContexts()
         bool setVideoNode = false;
 
         // Create Video Context
-        if (MEDIA_IS_SKU(m_skuTable, FtrVcs2))
+        if (MEDIA_IS_SKU(m_skuTable, FtrVcs2) || 
+            (MOS_VE_MULTINODESCALING_SUPPORTED(m_osInterface) && m_numVdbox > 1))   // Eventually move this functionality to Mhw
         {
             setVideoNode = false;
 
@@ -86,7 +90,8 @@ MOS_STATUS CodechalEncoderState::CreateGpuContexts()
         CODECHAL_ENCODE_CHK_STATUS_RETURN(SetGpuCtxCreatOption());
         CODECHAL_ENCODE_CHK_NULL_RETURN(m_gpuCtxCreatOpt);
 
-        MOS_GPU_CONTEXT gpuContext = ((videoGpuNode == MOS_GPU_NODE_VIDEO2) ? MOS_GPU_CONTEXT_VDBOX2_VIDEO3 : MOS_GPU_CONTEXT_VIDEO3);
+        MOS_GPU_CONTEXT gpuContext = (videoGpuNode == MOS_GPU_NODE_VIDEO2) && !MOS_VE_MULTINODESCALING_SUPPORTED(m_osInterface) ? MOS_GPU_CONTEXT_VDBOX2_VIDEO3 : MOS_GPU_CONTEXT_VIDEO3;
+
         eStatus = (MOS_STATUS)m_osInterface->pfnCreateGpuContext(
             m_osInterface,
             gpuContext,
@@ -840,6 +845,8 @@ MOS_STATUS CodechalEncoderState::Initialize(
     m_picHeightInMb   = (uint16_t)CODECHAL_GET_HEIGHT_IN_MACROBLOCKS(m_oriFrameHeight);
     m_frameWidth      = m_picWidthInMb * CODECHAL_MACROBLOCK_WIDTH;
     m_frameHeight     = m_picHeightInMb * CODECHAL_MACROBLOCK_HEIGHT;
+    m_createWidth     = m_frameWidth;
+    m_createHeight    = m_frameHeight;
 
     // HME Scaling WxH
     m_downscaledWidthInMb4x               =
@@ -1204,26 +1211,30 @@ MOS_STATUS CodechalEncoderState::CheckResChangeAndCsc()
     {
         ResizeOnResChange();
     }
-#ifndef _FULL_OPEN_SOURCE
-    // check recon surface's alignment meet HW requirement
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_cscDsState->CheckReconSurfaceAlignment(&m_reconSurface));
 
-    if (!m_cscDsState->IsEnabled() ||
-        CodecHal_PictureIsField(m_currOriginalPic) ||
-        CodecHal_PictureIsInterlacedFrame(m_currOriginalPic))
+    if (m_cscDsState)
     {
-        // CSC disabled for interlaced frame
-        m_cscDsState->ResetCscFlag();
+        // check recon surface's alignment meet HW requirement
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(
+            m_cscDsState->CheckReconSurfaceAlignment(&m_reconSurface));
 
-        // check raw surface's alignment meet HW requirement
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_cscDsState->CheckRawSurfaceAlignment(m_rawSurfaceToEnc));
+        if (!m_cscDsState->IsEnabled() ||
+            CodecHal_PictureIsField(m_currOriginalPic) ||
+            CodecHal_PictureIsInterlacedFrame(m_currOriginalPic))
+        {
+            // CSC disabled for interlaced frame
+            m_cscDsState->ResetCscFlag();
+
+            // check raw surface's alignment meet HW requirement
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_cscDsState->CheckRawSurfaceAlignment(m_rawSurfaceToEnc));
+        }
+        else
+        {
+            // check if we need to do CSC or copy non-aligned surface
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_cscDsState->CheckCondition());
+        }
     }
-    else
-    {
-        // check if we need to do CSC or copy non-aligned surface
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_cscDsState->CheckCondition());
-    }
-#endif
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -2068,14 +2079,14 @@ void CodechalEncoderState::FreeResources()
             }
         }
     }
-#ifndef _FULL_OPEN_SOURCE
+
     // release CSC Downscaling kernel resources
     if (m_cscDsState)
     {
         MOS_Delete(m_cscDsState);
         m_cscDsState = nullptr;
     }
-#endif
+
     if (m_encoderGenState)
     {
         MOS_Delete(m_encoderGenState);
@@ -2504,7 +2515,11 @@ MOS_STATUS CodechalEncoderState::SendGenericKernelCmds(
     stateBaseAddrParams.dwDynamicStateSize = params->pKernelState->m_dshRegion.GetHeapSize();
     stateBaseAddrParams.presInstructionBuffer = ish;
     stateBaseAddrParams.dwInstructionBufferSize = params->pKernelState->m_ishRegion.GetHeapSize();
-    stateBaseAddrParams.mocs4InstructionCache = m_hwInterface->GetCacheabilitySettings()[MOS_CODEC_RESOURCE_USAGE_SURFACE_ELLC_LLC_L3].Value;
+
+    if (m_standard == CODECHAL_HEVC)
+    {
+        stateBaseAddrParams.mocs4InstructionCache = m_hwInterface->GetCacheabilitySettings()[MOS_CODEC_RESOURCE_USAGE_SURFACE_ELLC_LLC_L3].Value;
+    }
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_renderEngineInterface->AddStateBaseAddrCmd(cmdBuffer, &stateBaseAddrParams));
 
@@ -4013,7 +4028,6 @@ MOS_STATUS CodechalEncoderState::UserFeatureKeyReport()
     }
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-#ifndef _FULL_OPEN_SOURCE
     // report encode CSC method
     if (m_cscDsState)
     {
@@ -4038,8 +4052,6 @@ MOS_STATUS CodechalEncoderState::UserFeatureKeyReport()
     userFeatureWriteData.Value.i32Data = m_computeContextEnabled;
     userFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_ENCODE_ENABLE_COMPUTE_CONTEXT_ID;
     MOS_UserFeature_WriteValues_ID(nullptr, &userFeatureWriteData, 1);
-
-#endif
 #endif
 
     return eStatus;
@@ -4268,10 +4280,19 @@ MOS_STATUS CodechalEncoderState::ExecuteEnc(
             }
         }
 
-        // Check if source surface needs to be synchronized and should wait for decode or VPP or any other context
         MOS_SYNC_PARAMS syncParams = g_cInitSyncParams;
-        syncParams.presSyncResource = &m_rawSurface.OsResource;
         syncParams.bReadOnly = true;
+
+        // Synchronize MB QP data surface resource if any.
+        if (encodeParams->bMbQpDataEnabled)
+        {
+            syncParams.presSyncResource = &encodeParams->psMbQpDataSurface->OsResource;
+            syncParams.GpuContext       = m_renderContext;
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnResourceWait(m_osInterface, &syncParams));
+        }
+
+        // Check if source surface needs to be synchronized and should wait for decode or VPP or any other context
+        syncParams.presSyncResource = &m_rawSurface.OsResource;
 
         if (CodecHalUsesRenderEngine(m_codecFunction, m_standard) &&
             m_firstField)
