@@ -7,7 +7,7 @@ Uploaders:
 Build-Depends:
  debhelper-compat (= 12),
  cmake,
- libigdgmm-dev,
+ libigdgmm-dev (>= 19.2.3),
  libpciaccess-dev,
  libva-dev (>= 2.3),
  libx11-dev,
