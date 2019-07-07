@@ -45,6 +45,7 @@ typedef unsigned int MOS_OS_FORMAT;
 
 class GraphicsResource;
 class AuxTableMgr;
+class MosOcaInterface;
 
 ////////////////////////////////////////////////////////////////////
 
@@ -76,7 +77,8 @@ enum DdiSurfaceFormat
     DDI_FORMAT_V8U8         = 60,
     DDI_FORMAT_UYVY         = MAKEFOURCC('U', 'Y', 'V', 'Y'),
     DDI_FORMAT_NV12         = MAKEFOURCC('N', 'V', '1', '2'),
-    DDI_FORMAT_A16B16G16R16 = 36
+    DDI_FORMAT_A16B16G16R16 = 36,
+    DDI_FORMAT_R32G32B32A32F = 115,
 };
 
 #define INDIRECT_HEAP_SIZE_UNITS    (1024)
@@ -174,7 +176,8 @@ typedef enum _MOS_GPU_NODE
     MOS_GPU_NODE_VE      = I915_EXEC_VEBOX,
     MOS_GPU_NODE_VIDEO   = I915_EXEC_BSD,
     MOS_GPU_NODE_VIDEO2  = I915_EXEC_VCS2,
-    MOS_GPU_NODE_MAX     = 6,//GFX_MAX(I915_EXEC_RENDER, I915_EXEC_VEBOX, I915_EXEC_BSD, I915_EXEC_VCS2) + 1
+    MOS_GPU_NODE_BLT     = I915_EXEC_BLT,
+    MOS_GPU_NODE_MAX     = 7,//GFX_MAX(I915_EXEC_RENDER, I915_EXEC_VEBOX, I915_EXEC_BSD, I915_EXEC_VCS2, I915_EXEC_BLT) + 1
 } MOS_GPU_NODE, *PMOS_GPU_NODE;
 
 //!
@@ -191,23 +194,22 @@ static inline MOS_GPU_NODE OSKMGetGpuNode(MOS_GPU_CONTEXT uiGpuContext)
         case MOS_GPU_CONTEXT_COMPUTE: //change this context mapping to Compute Node instead of 3D node after the node name is defined in linux.
             return  MOS_GPU_NODE_3D;
             break;
-
         case MOS_GPU_CONTEXT_VEBOX:
             return  MOS_GPU_NODE_VE;
             break;
-
         case MOS_GPU_CONTEXT_VIDEO:
         case MOS_GPU_CONTEXT_VIDEO2:
         case MOS_GPU_CONTEXT_VIDEO3:
             return MOS_GPU_NODE_VIDEO;
             break;
-
         case MOS_GPU_CONTEXT_VDBOX2_VIDEO:
         case MOS_GPU_CONTEXT_VDBOX2_VIDEO2:
         case MOS_GPU_CONTEXT_VDBOX2_VIDEO3:
             return MOS_GPU_NODE_VIDEO2;
             break;
-
+        case MOS_GPU_CONTEXT_BLT:
+            return MOS_GPU_NODE_BLT;
+            break;  
         default:
             return MOS_GPU_NODE_MAX ;
             break;
@@ -249,7 +251,11 @@ struct _MOS_SPECIFIC_RESOURCE
     GMM_RESOURCE_INFO   *pGmmResInfo;        //!< GMM resource descriptor
     MOS_MMAP_OPERATION  MmapOperation;
     uint8_t             *pSystemShadow;
-    
+    bool                bUsrPtrMode;        //!< indicate source info comes from app.
+    MOS_PLANE_OFFSET    YPlaneOffset;       //!< Y surface plane offset
+    MOS_PLANE_OFFSET    UPlaneOffset;       //!< U surface plane offset
+    MOS_PLANE_OFFSET    VPlaneOffset;       //!< V surface plane offset
+
     //!< to sync render target for multi-threading decoding mode
     struct
     {
@@ -340,6 +346,7 @@ struct MOS_SURFACE
     // Surface compression mode, enable flags
     int32_t                 bIsCompressed;                                       //!< [out] Memory compression flag
     MOS_RESOURCE_MMC_MODE   CompressionMode;                                     //!< [out] Memory compression mode
+    uint32_t                CompressionFormat;                                   //!< [out] Memory compression format
     // deprecated: not to use MmcState
     MOS_MEMCOMP_STATE       MmcState;                                            // Memory compression state
 };
@@ -449,14 +456,12 @@ typedef struct _CMD_BUFFER_BO_POOL
     MOS_LINUX_BO        *pCmd_bo[MAX_CMD_BUF_NUM];
 }CMD_BUFFER_BO_POOL;
 
-#ifndef ANDROID
 struct MOS_CONTEXT_OFFSET
 {
     MOS_LINUX_CONTEXT *intel_context;
     MOS_LINUX_BO      *target_bo;
     uint64_t          offset64;
 };
-#endif
 
 typedef struct _MOS_OS_CONTEXT MOS_CONTEXT, *PMOS_CONTEXT, MOS_OS_CONTEXT, *PMOS_OS_CONTEXT, MOS_DRIVER_CONTEXT,*PMOS_DRIVER_CONTEXT;
 //!
@@ -528,9 +533,7 @@ struct _MOS_OS_CONTEXT
     // GPU Status Buffer
     PMOS_RESOURCE   pGPUStatusBuffer;
 
-#ifndef ANDROID
     std::vector< struct MOS_CONTEXT_OFFSET> contextOffsetList;
-#endif
 
     // Media memory decompression function
     void (* pfnMemoryDecompress)(
@@ -594,6 +597,7 @@ struct _MOS_OS_CONTEXT
     GMM_CLIENT_CONTEXT* (* GetGmmClientContext)(
         PMOS_CONTEXT               pOsContext);
 
+    MosOcaInterface* (*GetOcaInterface)();
 };
 
 //!
@@ -818,6 +822,17 @@ bool Mos_Specific_IsSetMarkerEnabled(
 //!           SetMarker resource address
 //!
 PMOS_RESOURCE Mos_Specific_GetMarkerResource(
+    PMOS_INTERFACE         pOsInterface);
+
+//!
+//! \brief    Get TimeStamp frequency base
+//! \details  Get TimeStamp frequency base from OsInterface
+//! \param    PMOS_INTERFACE pOsInterface
+//!           [in] OS Interface
+//! \return   uint32_t
+//!           time stamp frequency base
+//!
+uint32_t Mos_Specific_GetTsFrequency(
     PMOS_INTERFACE         pOsInterface);
 
 #if (_DEBUG || _RELEASE_INTERNAL)

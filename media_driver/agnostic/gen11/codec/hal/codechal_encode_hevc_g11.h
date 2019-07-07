@@ -358,6 +358,7 @@ public:
         Log2TUMaxDepthIntraTuParam,
         MaxNumIMESearchCenterTuParam,
         Fake32EnableTuParam,
+        Dynamic64Min32,
         TotalTuParams
     };
 
@@ -1194,7 +1195,7 @@ public:
     CODECHAL_ENCODE_BUFFER                m_resHcpScalabilitySyncBuffer;    //!< Hcp sync buffer for scalability
     CODECHAL_ENCODE_BUFFER                m_resTileBasedStatisticsBuffer[CODECHAL_NUM_UNCOMPRESSED_SURFACE_HEVC];
     CODECHAL_ENCODE_BUFFER                m_resHuCPakAggregatedFrameStatsBuffer;
-    CODECHAL_ENCODE_BUFFER                m_resHucTileSizeStreamoutBuffer[CODECHAL_NUM_UNCOMPRESSED_SURFACE_HEVC];
+    CODECHAL_ENCODE_BUFFER                m_tileRecordBuffer[CODECHAL_NUM_UNCOMPRESSED_SURFACE_HEVC];
     HEVC_TILE_STATS_INFO                  m_hevcTileStatsOffset;       //!< Page aligned offsets used to program HCP / VDEnc pipe and HuC PAK Integration kernel input
     HEVC_TILE_STATS_INFO                  m_hevcFrameStatsOffset;      //!< Page aligned offsets used to program HuC PAK Integration kernel output, HuC BRC kernel input
     HEVC_TILE_STATS_INFO                  m_hevcStatsSize;             //!< HEVC Statistics size
@@ -1219,6 +1220,8 @@ public:
     MOS_RESOURCE           m_resPipeStartSemaMem;                                                                                                      //!< HW semaphore for scalability pipe start at the same time
     MOS_RESOURCE           m_resPipeCompleteSemaMem;                                                                                                      //!< HW semaphore for scalability pipe start at the same time
     PCODECHAL_ENCODE_SCALABILITY_STATE  m_scalabilityState = nullptr;                                                                                  //!< Scalability state
+    MOS_RESOURCE           m_resDelayMinus;
+    uint32_t               m_numDelay;
 
     // the following constant integers and tables are from the kernel for score board computation
     static uint32_t const m_ct = 3;
@@ -1786,6 +1789,13 @@ public:
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
     MOS_STATUS LoadPakCommandAndCuRecordFromFile();
+
+    //!
+    //! \brief   Re-calculate buffer size and offets during resolution reset
+    //!
+    //! \return   void
+    //!
+    void ResizeBufferOffset();
 
     //!
     //! \brief    Set HCP_SLICE_STATE parameters that are different at slice level

@@ -156,7 +156,7 @@ MOS_STATUS CodechalDecodeHevcG11::SetGpuCtxCreatOption(
 
             if (((PMOS_GPUCTX_CREATOPTIONS_ENHANCED)m_gpuCtxCreatOpt)->LRCACount == 2)
             {
-                m_videoContext = MOS_GPU_CONTEXT_VDBOX2_VIDEO;
+                m_videoContext = MOS_VE_MULTINODESCALING_SUPPORTED(m_osInterface) ? MOS_GPU_CONTEXT_VIDEO5 : MOS_GPU_CONTEXT_VDBOX2_VIDEO;
 
                 CODECHAL_DECODE_CHK_STATUS_RETURN(m_osInterface->pfnCreateGpuContext(
                     m_osInterface,
@@ -168,12 +168,12 @@ MOS_STATUS CodechalDecodeHevcG11::SetGpuCtxCreatOption(
                 CODECHAL_DECODE_CHK_STATUS_RETURN(m_osInterface->pfnCreateGpuContext(
                     m_osInterface,
                     MOS_GPU_CONTEXT_VIDEO,
-                    MOS_GPU_NODE_VIDEO,
+                    m_videoGpuNode,
                     &createOption));
             }
             else if (((PMOS_GPUCTX_CREATOPTIONS_ENHANCED)m_gpuCtxCreatOpt)->LRCACount == 3)
             {
-                m_videoContext = MOS_GPU_CONTEXT_VDBOX2_VIDEO2;
+                m_videoContext = MOS_VE_MULTINODESCALING_SUPPORTED(m_osInterface) ? MOS_GPU_CONTEXT_VIDEO7 : MOS_GPU_CONTEXT_VDBOX2_VIDEO2;
 
                 CODECHAL_DECODE_CHK_STATUS_RETURN(m_osInterface->pfnCreateGpuContext(
                     m_osInterface,
@@ -185,7 +185,7 @@ MOS_STATUS CodechalDecodeHevcG11::SetGpuCtxCreatOption(
                 CODECHAL_DECODE_CHK_STATUS_RETURN(m_osInterface->pfnCreateGpuContext(
                     m_osInterface,
                     MOS_GPU_CONTEXT_VIDEO,
-                    MOS_GPU_NODE_VIDEO,
+                    m_videoGpuNode,
                     &createOption));
             }
             else
@@ -440,6 +440,8 @@ MOS_STATUS CodechalDecodeHevcG11::SetFrameStates ()
     if (m_shortFormatInUse)
     {
         m_dmemBufferProgrammed = false;
+        m_dmemBufferIdx++;
+        m_dmemBufferIdx %= CODECHAL_HEVC_NUM_DMEM_BUFFERS;
     }
 
 #ifdef _DECODE_PROCESSING_SUPPORTED
@@ -464,6 +466,7 @@ MOS_STATUS CodechalDecodeHevcG11::SetFrameStates ()
         MOS_ZeroMemory(&initParams, sizeof(initParams));
         initParams.u32PicWidthInPixel   = m_width;
         initParams.u32PicHeightInPixel  = m_height;
+        initParams.format = m_decodeParams.m_destSurface->Format;
         initParams.usingSFC             = false;
         initParams.gpuCtxInUse          = GetVideoContext();
 
@@ -1112,6 +1115,7 @@ MOS_STATUS CodechalDecodeHevcG11::SendSliceLongFormat(
     {
         MHW_VDBOX_HEVC_REF_IDX_PARAMS refIdxParams;
         MOS_ZeroMemory(&refIdxParams, sizeof(MHW_VDBOX_HEVC_REF_IDX_PARAMS));
+        refIdxParams.bDummyReference = true;
         CODECHAL_DECODE_CHK_STATUS_RETURN(m_hcpInterface->AddHcpRefIdxStateCmd(
             cmdBuffer,
             nullptr,
@@ -1788,9 +1792,9 @@ CodechalDecodeHevcG11::CodechalDecodeHevcG11(
     PCODECHAL_STANDARD_INFO standardInfo) : CodechalDecodeHevc(hwInterface, debugInterface, standardInfo),
                                             m_hevcExtPicParams(nullptr),
                                             m_hevcExtSliceParams(nullptr),
-                                            m_scalabilityState(nullptr),
+                                            m_frameSizeMaxAlloced(0),
                                             m_sinlgePipeVeState(nullptr),
-                                            m_frameSizeMaxAlloced(0)
+                                            m_scalabilityState(nullptr)
 {
     CODECHAL_DECODE_FUNCTION_ENTER;
 

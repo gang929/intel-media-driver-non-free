@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2018, Intel Corporation
+* Copyright (c) 2017-2019, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -31,7 +31,7 @@
 #include "mhw_vdbox_vdenc_g11_X.h"
 #include "mhw_vdbox_g11_X.h"
 #include "mos_util_user_interface.h"
-#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
+#if defined(ENABLE_KERNELS)
 #include "igcodeckrn_g11.h"
 #endif
 #if USE_CODECHAL_DEBUG_TOOL
@@ -215,7 +215,8 @@ struct CodechalVdencAvcStateG11::BrcUpdateDmem
     int8_t       HME0YOffset_I8;    // default = 24, Frame level Y offset from the co-located (0, 0) location for HME0.
     int8_t       HME1XOffset_I8;    // default = -32, Frame level X offset from the co-located (0, 0) location for HME1.
     int8_t       HME1YOffset_I8;    // default = -24, Frame level Y offset from the co-located (0, 0) location for HME1.
-    uint8_t     RSVD2[28];
+    uint8_t      MOTION_ADAPTIVE_G4;
+    uint8_t     RSVD2[27];
 };
 
 // CURBE for Static Frame Detection kernel
@@ -676,7 +677,7 @@ CodechalVdencAvcStateG11::CodechalVdencAvcStateG11(
 
     CODECHAL_ENCODE_ASSERT(m_osInterface);
 
-#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
+#if defined(ENABLE_KERNELS)
     m_kernelBase = (uint8_t*)IGCODECKRN_G11;
 #endif
     m_cmKernelEnable = true;
@@ -1075,7 +1076,7 @@ MOS_STATUS CodechalVdencAvcStateG11::ExecuteSliceLevel()
             &flushDwParams));
     }
 
-#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
+#if defined(ENABLE_KERNELS)
     // On-demand sync for VDEnc StreamIn surface and CSC surface
     if (m_currPass == 0)
     {
@@ -1291,6 +1292,7 @@ bool CodechalVdencAvcStateG11::CheckSupportedFormat(PMOS_SURFACE surface)
         case Format_VYUY:
         case Format_AYUV:
         case Format_A8R8G8B8:
+        case Format_A8B8G8R8:
             break;
         default:
             colorFormatSupported = false;
@@ -1342,6 +1344,22 @@ MOS_STATUS CodechalVdencAvcStateG11::SetDmemHuCBrcInitReset()
     dmem->INIT_FracQPEnable_U8 = (uint8_t)m_vdencInterface->IsRhoDomainStatsEnabled();
 
     dmem->INIT_SinglePassOnly = m_vdencSinglePassEnable;
+
+    if (m_avcSeqParam->ScenarioInfo == ESCENARIO_GAMESTREAMING)
+    {
+        if (m_avcSeqParam->RateControlMethod == RATECONTROL_VBR)
+        {
+            m_avcSeqParam->MaxBitRate = m_avcSeqParam->TargetBitRate;
+        }
+
+        // Disable delta QP adaption for non-VCM/ICQ/LowDelay until we have better algorithm
+        if ((m_avcSeqParam->RateControlMethod != RATECONTROL_VCM) &&
+            (m_avcSeqParam->RateControlMethod != RATECONTROL_ICQ) &&
+            (m_avcSeqParam->FrameSizeTolerance != EFRAMESIZETOL_EXTREMELY_LOW))
+        {
+            dmem->INIT_DeltaQP_Adaptation_U8 = 0;
+        }
+    }
 
     if (((m_avcSeqParam->TargetUsage & 0x07) == TARGETUSAGE_BEST_SPEED) &&
         (m_avcSeqParam->FrameWidth >= m_singlePassMinFrameWidth) &&
@@ -1411,6 +1429,8 @@ MOS_STATUS CodechalVdencAvcStateG11::SetDmemHuCBrcUpdate()
     }
     dmem->UPD_WidthInMB_U16 = m_picWidthInMb;
     dmem->UPD_HeightInMB_U16 = m_picHeightInMb;
+
+    dmem->MOTION_ADAPTIVE_G4 = (m_avcSeqParam->ScenarioInfo == ESCENARIO_GAMESTREAMING);
 
     CODECHAL_DEBUG_TOOL(
         CODECHAL_ENCODE_CHK_STATUS_RETURN(PopulateBrcUpdateParam(

@@ -130,6 +130,7 @@ typedef enum
     MOS_CP_SUBCOMP_MHW              = 12,            // CP MHW classes
     MOS_CP_SUBCOMP_PROTECTEDSESSION = 13,            // Protected session class
     MOS_CP_SUBCOMP_PROTECTED_RESOURCE_SESSION = 14,  // Protected Resource session class
+    MOS_CP_SUBCOMP_RTE_HAL          = 15,            // CP RTE HAL class
     MOS_CP_SUBCOMP_CAPS             = 16,            // CP CAPS clas
     MOS_CP_SUBCOMP_CPLIB            = 17,            // CP CPLIB interacting
     MOS_CP_SUBCOMP_COUNT                             // Must be last in the list
@@ -173,6 +174,15 @@ typedef enum
     MOS_MMC_SUBCOMP_SELF   = 0,
     MOS_MMC_SUBCOMP_COUNT
 } MOS_MMC_SUBCOMP_ID;
+
+//!
+//! \brief Define BLT Sub-Component IDs
+//!
+typedef enum
+{
+    MOS_BLT_SUBCOMP_SELF   = 0,
+    MOS_BLT_SUBCOMP_COUNT
+} MOS_BLT_SUBCOMP_ID;
 
 //!
 //! \brief MOS debug params structure, includes debug level and asserts enabled.

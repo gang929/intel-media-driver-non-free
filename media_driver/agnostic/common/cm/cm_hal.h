@@ -54,6 +54,8 @@
 #define SURFACE_FLAG_ASSUME_NOT_IN_USE 1
 #define CM_THREADSPACE_MAX_COLOR_COUNT 16
 
+static const uint32_t INVALID_STREAM_INDEX = 0xFFFFFFFF;
+
 //*-----------------------------------------------------------------------------
 //| Macro unsets bitPos bit in value
 //*-----------------------------------------------------------------------------
@@ -370,6 +372,8 @@ struct CM_HAL_QUERY_TASK_PARAM
     CM_HAL_TASK_STATUS status;             // [out] Task Status
     uint64_t taskDurationNs;               // [out] Task Duration
     uint64_t taskDurationTicks;            // [out] Task Duration in Ticks
+    uint64_t taskHWStartTimeStampInTicks;  // [out] Task Start Time Stamp in Ticks
+    uint64_t taskHWEndTimeStampInTicks;    // [out] Task End Time Stamp in Ticks
     LARGE_INTEGER taskGlobalSubmitTimeCpu; // [out] The CM task submission time in CPU
     LARGE_INTEGER taskSubmitTimeGpu;       // [out] The CM task submission time in GPU
     LARGE_INTEGER taskHWStartTimeStamp;    // [out] The task start execution time in GPU
@@ -403,6 +407,7 @@ struct CM_HAL_EXEC_TASK_GROUP_PARAM
     CM_EXECUTION_CONFIG krnExecCfg[CM_MAX_KERNELS_PER_TASK]; // [in] kernel execution config in a task. replace numOfWalkers in CM_TASK_CONFIG.
     void *userDefinedMediaState;     // [in] pointer to a user defined media state heap block
     CM_QUEUE_CREATE_OPTION queueOption;  // [in] multiple contexts queue option
+    PMOS_VIRTUALENGINE_HINT_PARAMS mosVeHintParams; // [in] pointer to virtual engine paramter saved in CmQueueRT
     uint64_t conditionalEndBitmap;       // [in] bit map for conditional end b/w kernels
     CM_HAL_CONDITIONAL_BB_END_INFO conditionalEndInfo[CM_MAX_CONDITIONAL_END_CMDS];
 };
@@ -545,6 +550,7 @@ struct CM_HAL_TASK_PARAM
     unsigned int samplerIndirectOffsetsByKernel[CM_MAX_KERNELS_PER_TASK];
 
     CM_QUEUE_CREATE_OPTION queueOption;         // [in] multiple contexts queue option
+    PMOS_VIRTUALENGINE_HINT_PARAMS mosVeHintParams; // [in] pointer to virtual engine paramter saved in CmQueueRT
 };
 typedef CM_HAL_TASK_PARAM *PCM_HAL_TASK_PARAM;
 
@@ -863,6 +869,7 @@ typedef struct _CM_HAL_SURFACE2D_SURFACE_STATE_PARAM
     uint16_t memoryObjectControl;
     uint32_t surfaceXOffset;
     uint32_t surfaceYOffset;
+    uint32_t surfaceOffset;
 } CM_HAL_SURFACE2D_SURFACE_STATE_PARAM, *PCM_HAL_SURFACE2D_SURFACE_STATE_PARAM;
 
 //------------------------------------------------------------------------------
@@ -872,11 +879,16 @@ typedef struct _CM_HAL_SURFACE2D_LOCK_UNLOCK_PARAM
 {
     uint32_t                    width;                                       // [in]         Surface Width
     uint32_t                    height;                                      // [in]         Surface Height
+    uint32_t                    size;                                        // [in]         Surface total size
     MOS_FORMAT                  format;                                      // [in]         Surface Format
     void                        *data;                                       // [in/out]     Pointer to data
     uint32_t                    pitch;                                       // [out]        Pitch
+    MOS_PLANE_OFFSET            YSurfaceOffset;                              // [out]        Y plane Offset
+    MOS_PLANE_OFFSET            USurfaceOffset;                              // [out]        U plane Offset
+    MOS_PLANE_OFFSET            VSurfaceOffset;                              // [out]        V plane Offset
     uint32_t                    lockFlag;                                    // [out]        lock flag
     uint32_t                    handle;                                      // [in/out]     Handle
+    bool                        useGmmOffset;                                // [in/out]     Only use Gmm offset in Linux
 } CM_HAL_SURFACE2D_LOCK_UNLOCK_PARAM, *PCM_HAL_SURFACE2D_LOCK_UNLOCK_PARAM;
 
 //*-----------------------------------------------------------------------------
@@ -1182,7 +1194,7 @@ typedef struct _CM_HAL_BUFFER_ENTRY
 //------------------------------------------------------------------------------
 //| HAL CM 2D UP Table
 //------------------------------------------------------------------------------
-class CmSurfaceState2DMgr;
+class CmSurfaceState2Dor3DMgr;
 typedef struct _CM_HAL_SURFACE2D_UP_ENTRY
 {
     MOS_RESOURCE                osResource;                                     // [in] Pointer to OS Resource
@@ -1191,7 +1203,7 @@ typedef struct _CM_HAL_SURFACE2D_UP_ENTRY
     MOS_FORMAT                  format;                                         // [in] Format of Surface
     void                        *gmmResourceInfo;                               // [out] GMM resource info
     uint16_t                    memObjCtl;                                      // [in] MOCS value set from CMRT
-    CmSurfaceState2DMgr         *surfStateMgr;
+    CmSurfaceState2Dor3DMgr     *surfStateMgr;
 } CM_HAL_SURFACE2D_UP_ENTRY, *PCM_HAL_SURFACE2D_UP_ENTRY;
 
 typedef struct _CM_HAL_SURFACE_STATE_ENTRY
@@ -1238,7 +1250,7 @@ inline uint32_t getSurfNumFromArgArraySize(uint32_t argArraySize, uint32_t argNu
 //------------------------------------------------------------------------------
 //| HAL CM 2D Table
 //------------------------------------------------------------------------------
-class CmSurfaceState2DMgr;
+class CmSurfaceState2Dor3DMgr;
 typedef struct _CM_HAL_SURFACE2D_ENTRY
 {
     MOS_RESOURCE                osResource;                                    // [in] Pointer to OS Resource
@@ -1255,7 +1267,7 @@ typedef struct _CM_HAL_SURFACE2D_ENTRY
     int32_t                     chromaSiting;
     CM_FRAME_TYPE               frameType;
     uint16_t                    memObjCtl;                                      // [in] MOCS value set from CMRT
-    CmSurfaceState2DMgr         *surfStateMgr;
+    CmSurfaceState2Dor3DMgr     *surfStateMgr;
     bool                        surfStateSet;
 } CM_HAL_SURFACE2D_ENTRY, *PCM_HAL_SURFACE2D_ENTRY;
 
@@ -1270,6 +1282,7 @@ typedef struct _CM_HAL_3DRESOURCE_ENTRY
     uint32_t               depth;                                         // [in] Depth of Surface
     MOS_FORMAT             format;                                        // [in] Format of Surface
     uint16_t               memObjCtl;                                     // [in] MOCS value set from CMRT
+    CmSurfaceState2Dor3DMgr *surfStateMgr;
 } CM_HAL_3DRESOURCE_ENTRY, *PCM_HAL_3DRESOURCE_ENTRY;
 
 //*-----------------------------------------------------------------------------
@@ -1282,11 +1295,12 @@ typedef struct _CM_HAL_TS_RESOURCE
     uint8_t                     *data;                                          // [in] Linear Data
 } CM_HAL_TS_RESOURCE, *PCM_HAL_TS_RESOURCE;
 
+class FrameTrackerProducer;
 struct CM_HAL_HEAP_PARAM
 {
     uint32_t initialSizeGSH;
     uint32_t extendSizeGSH;
-    uint32_t *trackerResourceGSH;
+    FrameTrackerProducer *trackerProducer;
     HeapManager::Behavior behaviorGSH;
 };
 
@@ -1550,7 +1564,7 @@ typedef struct _CM_HAL_STATE
 
     CMRT_UMD::CSync             *criticalSectionDSH;
 
-    uint64_t                    tsFrequency;
+    uint32_t                    tsFrequency;
 
     bool                        forceKernelReload;
 
@@ -1791,16 +1805,6 @@ typedef struct _CM_HAL_STATE
 
     bool (*pfnIsWASLMinL3Cache)(  );
 
-    MOS_STATUS( *pfnInsertToStateBufferList )
-        (
-        PCM_HAL_STATE               state,
-        void                        *kernelPtr,
-        uint32_t                    stateBufferIndex,
-        CM_STATE_BUFFER_TYPE        stateBufferType,
-        uint32_t                    stateBufferSize,
-        uint64_t                    stateBufferVaPtr,
-        PRENDERHAL_MEDIA_STATE      mediaStatePtr );
-
     MOS_STATUS( *pfnDeleteFromStateBufferList )
         (
         PCM_HAL_STATE               state,
@@ -1888,6 +1892,8 @@ typedef struct _CM_HAL_STATE
         (
         PCM_HAL_STATE               state,
         uint64_t                    kernelId);
+
+    uint32_t (*pfnRegisterStream) (PCM_HAL_STATE state);
 } CM_HAL_STATE, *PCM_HAL_STATE;
 
 typedef struct _CM_HAL_MI_REG_OFFSETS
@@ -2263,6 +2269,16 @@ uint64_t HalCm_ConvertTicksToNanoSeconds(
 
 bool HalCm_IsValidGpuContext(
     MOS_GPU_CONTEXT             gpuContext);
+
+MOS_STATUS HalCm_PrepareVEHintParam(
+    PCM_HAL_STATE                  state,
+    bool                           bScalable,
+    PMOS_VIRTUALENGINE_HINT_PARAMS pVeHintParam);
+
+MOS_STATUS HalCm_DecompressSurface(
+    PCM_HAL_STATE              state,
+    PCM_HAL_KERNEL_ARG_PARAM   argParam,
+    uint32_t                   threadIndex);
 
 //*-----------------------------------------------------------------------------
 //| Helper functions for EnqueueWithHints

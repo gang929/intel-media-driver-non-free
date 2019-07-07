@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2016-2018, Intel Corporation
+* Copyright (c) 2016-2019, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -55,9 +55,6 @@
 //!
 //! \brief  Sampler State Indices
 //!
-#define VPHAL_SAMPLER_Y                 1
-#define VPHAL_SAMPLER_U                 2
-#define VPHAL_SAMPLER_V                 3
 #define VPHAL_SAMPLER_8x8_AVS_Y         4
 #define VPHAL_SAMPLER_8x8_AVS_U         8
 #define VPHAL_SAMPLER_8x8_AVS_V         12
@@ -1627,6 +1624,12 @@ bool CompositeState::AddCompLayer(
     bResult            = false;
     pPrevSource        = nullptr;
     bSinglePhaseRotate = false;
+
+    if (pComposite == nullptr || pSource == nullptr)
+    {
+        goto finish;
+    }
+
     scalingMode           = pSource->ScalingMode;
 
     // On Gen9+, Rotation is done in sampler. Multiple phases are not required.
@@ -2636,6 +2639,8 @@ static MOS_STATUS GetBindingIndex(
 
 //!
 //! \brief    Get Sampler Index associated with a surface state for composite
+//! \param    [in] pSurface
+//!           point to input Surface
 //! \param    [in] pEntry
 //!           Pointer to Surface state
 //! \param    [out] pSamplerIndex
@@ -2645,17 +2650,18 @@ static MOS_STATUS GetBindingIndex(
 //! \return   MOS_STATUS
 //!           Return MOS_STATUS_SUCCESS if successful, otherwise MOS_STATUS_UNKNOWN
 //!
-static MOS_STATUS GetSamplerIndex(
+MOS_STATUS CompositeState::GetSamplerIndex(
+    PVPHAL_SURFACE                      pSurface,
     PRENDERHAL_SURFACE_STATE_ENTRY      pEntry,
     int32_t*                            pSamplerIndex,
     PMHW_SAMPLER_TYPE                   pSamplerType)
 {
-    MOS_STATUS  eStatus;
+    MOS_UNUSED(pSurface);
 
-    eStatus = MOS_STATUS_UNKNOWN;
-    if (pSamplerIndex == nullptr || pSamplerType == nullptr)
+    if (pSamplerIndex == nullptr || pSamplerType == nullptr || pEntry == nullptr)
     {
-        goto finish;
+        VPHAL_RENDER_ASSERTMESSAGE(" Null pointer.");
+        return MOS_STATUS_NULL_POINTER;
     }
 
     // AVS
@@ -2695,10 +2701,7 @@ static MOS_STATUS GetSamplerIndex(
         }
     }
 
-    eStatus = MOS_STATUS_SUCCESS;
-
-finish:
-    return eStatus;
+    return MOS_STATUS_SUCCESS;
 }
 
 //!
@@ -3143,6 +3146,16 @@ int32_t CompositeState::SetLayer(
             SurfaceParams.bChromasiting      = true;
             pSource->bChromaSiting           = true;
         }
+        else
+        {
+            SurfaceParams.bChromasiting = false;
+            pSource->bChromaSiting      = false;
+        }
+    }
+    else
+    {
+            SurfaceParams.bChromasiting      = false;
+            pSource->bChromaSiting           = false;
     }
 
     if (pSource->bInterlacedScaling)
@@ -3327,7 +3340,8 @@ int32_t CompositeState::SetLayer(
         }
 
         // Obtain Sampler ID and Type
-        eStatus = GetSamplerIndex(pSurfaceEntries[i],
+        eStatus = GetSamplerIndex(pSource,
+                                  pSurfaceEntries[i],
                                   &iSamplerID,
                                   &SamplerType);
 
@@ -3373,7 +3387,7 @@ int32_t CompositeState::SetLayer(
             pSamplerStateParams->Unorm.AddressV = MHW_GFX3DSTATE_TEXCOORDMODE_CLAMP;
             pSamplerStateParams->Unorm.AddressW = MHW_GFX3DSTATE_TEXCOORDMODE_CLAMP;
 
-            if (iSamplerID == VPHAL_SAMPLER_Y && pSource->bUseSamplerLumakey)
+            if (IsSamplerIDForY(iSamplerID) && pSource->bUseSamplerLumakey)
             {
                 //From Gen10,HW support 1 plane LumaKey process on NV12 format, Gen9 only support 2 plane LumaKey process
                 //if go to 1 plane, MHW_GFX3DSTATE_SURFACEFORMAT_PLANAR_420_8 format will be used, LumaKey value need to be set on Y channel, the corresponding bit range is 15:8
@@ -3395,7 +3409,7 @@ int32_t CompositeState::SetLayer(
                 pSamplerStateParams->Unorm.ChromaKeyIndex   = pRenderHal->pfnAllocateChromaKey(pRenderHal, dwLow, dwHigh);
             }
 
-            if (iSamplerID != VPHAL_SAMPLER_Y && bForceNearestForUV)
+            if ((!IsSamplerIDForY(iSamplerID)) && bForceNearestForUV)
             {
                 pSamplerStateParams->Unorm.SamplerFilterMode = MHW_SAMPLER_FILTER_NEAREST;
             }
@@ -3869,6 +3883,8 @@ int32_t CompositeState::SetLayer(
             goto finish;
     }
 
+    Set3DSamplerStatus(pSource, (uint8_t)iLayer, pStatic);
+
     // Save rendering parameters, increment number of layers
     pRenderingData->pLayers[iLayer] = pSource;
     pRenderingData->iLayers++;
@@ -3877,6 +3893,8 @@ int32_t CompositeState::SetLayer(
     pRenderingData->BbArgs.Rotation[iLayer] = pSource->Rotation;
     pRenderingData->BbArgs.iLayers++;
 
+    VPHAL_RENDER_NORMALMESSAGE("Layer %d, SamplerType:%d, Scaling Model %d,  SamplerIndex %d",
+                               iLayer, SamplerType, pSource->ScalingMode, iSamplerID);
     iResult = 1;
 
 finish:
@@ -4581,8 +4599,6 @@ bool CompositeState::SubmitStates(
         VPHAL_RENDER_ASSERTMESSAGE("Failed to load kernel in GSH.");
         goto finish;
     }
-
-    pRenderHal->iKernelAllocationID = iKrnAllocation;
 
     SubmitStatesFillGenSpecificStaticData(pRenderingData,
                                    pTarget,
@@ -5511,13 +5527,11 @@ bool CompositeState::RenderBufferComputeWalker(
     uint32_t*                           pdwDestXYTopLeft;
     uint32_t*                           pdwDestXYBottomRight;
     RECT                                AlignedRect;
-    bool                                bVerticalPattern;
 
     MOS_UNUSED(pBatchBuffer);
 
     bResult          = false;
     pRenderHal       = m_pRenderHal;
-    bVerticalPattern = false;
     pBbArgs          = &pRenderingData->BbArgs;
     pWalkerStatic    = &pRenderingData->WalkerStatic;
 
@@ -5570,7 +5584,6 @@ bool CompositeState::RenderBufferComputeWalker(
 
     // Get media walker kernel block size
     uiMediaWalkerBlockSize = pRenderHal->pHwSizes->dwSizeMediaWalkerBlock;
-    bVerticalPattern       = MediaWalkerVertical(pRenderingData);
 
     // Calculate aligned output area in order to determine the total # blocks
     // to process in case of non-16x16 aligned target.
@@ -5584,26 +5597,17 @@ bool CompositeState::RenderBufferComputeWalker(
     // Set walker cmd params - Rasterscan
     pWalkerParams->InterfaceDescriptorOffset    = pRenderingData->iMediaID;
 
-    if(bVerticalPattern)
-    {
-        pWalkerParams->GroupStartingX = (AlignedRect.top / uiMediaWalkerBlockSize);
-        pWalkerParams->GroupStartingY = (AlignedRect.left / uiMediaWalkerBlockSize);
-        pWalkerParams->GroupWidth     = pRenderingData->iBlocksY;
-        pWalkerParams->GroupHeight    = pRenderingData->iBlocksX;
-    }
-    else
-    {
-        pWalkerParams->GroupStartingX = (AlignedRect.left / uiMediaWalkerBlockSize);
-        pWalkerParams->GroupStartingY = (AlignedRect.top / uiMediaWalkerBlockSize);
-        pWalkerParams->GroupWidth     = pRenderingData->iBlocksX;
-        pWalkerParams->GroupHeight    = pRenderingData->iBlocksY;
-    }
+    pWalkerParams->GroupStartingX = (AlignedRect.left / uiMediaWalkerBlockSize);
+    pWalkerParams->GroupStartingY = (AlignedRect.top / uiMediaWalkerBlockSize);
+    pWalkerParams->GroupWidth     = pRenderingData->iBlocksX;
+    pWalkerParams->GroupHeight    = pRenderingData->iBlocksY;
 
     pWalkerParams->ThreadWidth  = VPHAL_COMP_COMPUTE_WALKER_THREAD_SPACE_WIDTH;
     pWalkerParams->ThreadHeight = VPHAL_COMP_COMPUTE_WALKER_THREAD_SPACE_HEIGHT;
     pWalkerParams->ThreadDepth  = VPHAL_COMP_COMPUTE_WALKER_THREAD_SPACE_DEPTH;
     pWalkerParams->IndirectDataStartAddress = pRenderingData->iCurbeOffset;
-    pWalkerParams->IndirectDataLength       = MOS_ROUNDUP_SHIFT(pRenderingData->iCurbeLength, MHW_COMPUTE_INDIRECT_SHIFT);
+    // Indirect Data Length is a multiple of 64 bytes (size of L3 cacheline). Bits [5:0] are zero.
+    pWalkerParams->IndirectDataLength       = MOS_ALIGN_CEIL(pRenderingData->iCurbeLength, 1 << MHW_COMPUTE_INDIRECT_SHIFT);
     pWalkerParams->BindingTableID = pRenderingData->iBindingTable;
 
     bResult = true;
@@ -5740,7 +5744,7 @@ MOS_STATUS CompositeState::RenderPhase(
         pSource = *pSourceArray;
 
         // Check Scaling mode for 3D Sampler use case
-        if (m_need3DSampler)
+        if (m_need3DSampler && pSource->ScalingMode == VPHAL_SCALING_AVS)
         {
             pSource->ScalingMode = VPHAL_SCALING_BILINEAR;
         }
@@ -5760,7 +5764,7 @@ MOS_STATUS CompositeState::RenderPhase(
                                                     &pCompParams->Target[0]);
             }
             else if (m_need3DSampler                                       &&
-                     pSource->ScalingMode == VPHAL_SCALING_BILINEAR        &&
+                     pSource->ScalingMode != VPHAL_SCALING_AVS             &&
                      pSource->SurfType == SURF_IN_PRIMARY                  &&
                      (IS_PL2_FORMAT(pSource->Format)                       ||
                      pSource->Format == Format_YUY2))
@@ -5953,6 +5957,10 @@ MOS_STATUS CompositeState::RenderPhase(
             goto finish;
         }
     }
+    else
+    {
+        VPHAL_RENDER_NORMALMESSAGE("Use previous kernel list.");
+    }
 
     RenderingData.bCmFcEnable  = pKernelDllState->bEnableCMFC ? true : false;
 
@@ -6122,7 +6130,10 @@ MOS_STATUS CompositeState::RenderPhase(
         pWalkerParams,
         pComputeWalkerParams,
         &m_StatusTableUpdateParams,
-        kernelCombinedFc));
+        kernelCombinedFc,
+        m_KernelSearch.KernelCount,
+        m_KernelSearch.KernelID,
+        m_bLastPhase));
 
 finish:
     // clean rendering data
@@ -6264,7 +6275,7 @@ bool CompositeState::BuildFilter(
 
         // Y_Uoffset(Height*2 + Height/2) of RENDERHAL_PLANES_YV12 define Bitfield_Range(0, 13) on gen9+.
         // The max value is 16383. So use PL3 kernel to avoid out of range when Y_Uoffset is larger than 16383.
-        // Use PL3 plane to avoid YV12 bleeding issue with DI enabled
+        // Use PL3 plane to avoid YV12 blending issue with DI enabled and U channel shift issue with not 4-aligned height
         if ((pFilter->format   == Format_YV12)           &&
             (pSrc->ScalingMode != VPHAL_SCALING_AVS)     &&
             (pSrc->bIEF        != true)                  &&
@@ -6272,6 +6283,7 @@ bool CompositeState::BuildFilter(
             m_pRenderHal->bEnableYV12SinglePass          &&
             !pSrc->pDeinterlaceParams                    &&
             !pSrc->bInterlacedScaling                    &&
+            MOS_IS_ALIGNED(pSrc->dwHeight, 4)            &&
             ((pSrc->dwHeight * 2 + pSrc->dwHeight / 2) < RENDERHAL_MAX_YV12_PLANE_Y_U_OFFSET_G9))
         {
             pFilter->format = Format_YV12_Planar;
@@ -6335,16 +6347,20 @@ bool CompositeState::BuildFilter(
             pSrc->Format == Format_Y410        ||
             pSrc->Format == Format_Y416)
         {
-            pFilter->bWaEnableDscale = true;
+            pFilter->bEnableDscale = true;
         }
         else
         {
-            pFilter->bWaEnableDscale = MEDIA_IS_WA(m_pWaTable, WaEnableDscale);
+            pFilter->bEnableDscale = false;
         }
 
         if (m_bFtrComputeWalker)
         {
             pFilter->bWaEnableDscale = true;
+        }
+        else
+        {
+            pFilter->bWaEnableDscale = MEDIA_IS_WA(m_pWaTable, WaEnableDscale);
         }
 
         //--------------------------------
@@ -6481,6 +6497,16 @@ bool CompositeState::BuildFilter(
     pFilter->procamp  = DL_PROCAMP_DISABLED;
     pFilter->matrix   = DL_CSC_DISABLED;
     pFilter->bFillOutputAlphaWithConstant = true;
+
+    if(pCompParams->pSource[0] != nullptr &&
+       pCompParams->pSource[0]->Format == Format_R5G6B5 &&
+       pCompParams->Target[0].Format == Format_R5G6B5)
+    {
+        pFilter->bIsDitherNeeded = false;
+    }else
+    {
+        pFilter->bIsDitherNeeded = true;
+    }
 
     if (pFilter->format == Format_A8R8G8B8    ||
         pFilter->format == Format_A8B8G8R8    ||
@@ -6871,6 +6897,13 @@ CompositeState::CompositeState(
     : RenderState(pOsInterface, pRenderHal, pPerfData, peStatus),
     m_iMaxProcampEntries(0),
     m_iProcampVersion(0),
+    m_bNullHwRenderComp(false),
+    m_b8TapAdaptiveEnable(false),
+    m_pKernelDllState(nullptr),
+    m_ThreadCountPrimary(0),
+    m_iBatchBufferCount(0),
+    m_iCallID(0),
+    m_bLastPhase(false),
     m_fSamplerLinearBiasX(0),
     m_fSamplerLinearBiasY(0),
     m_bFtrMediaWalker(false),
@@ -6883,20 +6916,13 @@ CompositeState::CompositeState(
     m_bKernelSupportDualOutput(false),
     m_bKernelSupportHdcDW(false),
     m_bApplyTwoLayersCompOptimize(false),
-    m_bAvsTableCoeffExtraEnabled(false),
-    m_bAvsTableBalancedFilter(false),
-    m_bNullHwRenderComp(false),
-    m_b8TapAdaptiveEnable(false),
-    m_pKernelDllState(nullptr),
-    m_ThreadCountPrimary(0),
-    m_iBatchBufferCount(0),
-    m_iCallID(0),
     m_need3DSampler(false),
     m_bEnableSamplerLumakey(false),
     m_bYV12iAvsScaling(false),
-    m_bLastPhase(false)
+    m_bAvsTableCoeffExtraEnabled(false),
+    m_bAvsTableBalancedFilter(false)
 {
-    MOS_STATUS                  eStatus;
+    MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
     MOS_USER_FEATURE_VALUE_DATA UserFeatureData;
 
     MOS_ZeroMemory(&m_Procamp, sizeof(m_Procamp));
@@ -6916,11 +6942,6 @@ CompositeState::CompositeState(
     MOS_ZeroMemory(&m_mhwSamplerAvsTableParam, sizeof(m_mhwSamplerAvsTableParam));
     MOS_ZeroMemory(&m_BatchBuffer, sizeof(m_BatchBuffer));
     MOS_ZeroMemory(&m_BufferParam, sizeof(m_BufferParam));
-
-    // Reset Intermediate output surface (multiple phase)
-    pOsInterface->pfnResetResourceAllocationIndex(pOsInterface, &m_Intermediate.OsResource);
-    m_Intermediate.dwWidth      = 0;
-    m_Intermediate.dwHeight     = 0;
 
     // Set Max number of procamp entries
     m_iMaxProcampEntries        = VPHAL_MAX_PROCAMP;
@@ -6946,9 +6967,14 @@ CompositeState::CompositeState(
     // Composite Kernel
     m_KernelParams              = g_cInitKernelParamsComposite;
     m_ThreadCountPrimary        = VPHAL_USE_MEDIA_THREADS_MAX;
+    VPHAL_RENDER_CHK_NULL(pRenderHal);
     m_bFtrMediaWalker           = pRenderHal->pfnGetMediaWalkerStatus(pRenderHal) ? true : false;
 
     MOS_ZeroMemory(&m_mhwSamplerAvsTableParam, sizeof(m_mhwSamplerAvsTableParam));
+
+    VPHAL_RENDER_CHK_NULL(pOsInterface);
+    // Reset Intermediate output surface (multiple phase)
+    pOsInterface->pfnResetResourceAllocationIndex(pOsInterface, &m_Intermediate.OsResource);
 
     MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
     MOS_USER_FEATURE_INVALID_KEY_ASSERT(MOS_UserFeature_ReadValue_ID(
@@ -6957,11 +6983,12 @@ CompositeState::CompositeState(
         &UserFeatureData));
     m_bFtrCSCCoeffPatchMode = UserFeatureData.bData ? false : true;
 
-    // Constructor completed, set status to success
-    eStatus = MOS_STATUS_SUCCESS;
-
+finish:
     // copy status to output argument to pass status to caller
-    *peStatus = eStatus;
+    if (peStatus)
+    {
+        *peStatus = eStatus;
+    }
 }
 
 //!
@@ -7065,4 +7092,10 @@ int32_t CompositeState::GetThreadCountForVfeState(
     }
 
     return iThreadCount;
+}
+
+bool CompositeState::IsSamplerIDForY(
+    int32_t                            SamplerID)
+{
+    return (SamplerID == VPHAL_SAMPLER_Y) ? true : false;
 }

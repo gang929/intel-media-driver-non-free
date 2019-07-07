@@ -66,8 +66,8 @@ MOS_STATUS Mhw_AddResourceToCmd_GfxAddress(
     MHW_CHK_STATUS(pOsInterface->pfnRegisterResource(
         pOsInterface,
         pParams->presResource,
-        pParams->bIsWritable,
-        pParams->bIsWritable));
+        pParams->bIsWritable ? true : false,
+        pParams->bIsWritable ? true : false));
 
     dwAlign = ( 1 << pParams->dwLsbNum);
     dwMask  = (-1 << pParams->dwLsbNum);
@@ -180,8 +180,8 @@ MOS_STATUS Mhw_AddResourceToCmd_PatchList(
     MHW_CHK_STATUS(pOsInterface->pfnRegisterResource(
         pOsInterface,
         pParams->presResource,
-        pParams->bIsWritable,
-        pParams->bIsWritable));
+        pParams->bIsWritable ? true : false,
+        pParams->bIsWritable ? true : false));
 
     GpuContext = pOsInterface->pfnGetGpuContext(pOsInterface);
     iAllocationIndex = pOsInterface->pfnGetResourceAllocationIndex(pOsInterface, pParams->presResource);
@@ -374,7 +374,10 @@ MOS_STATUS Mhw_SendGenericPrologCmd (
                 GpuContext == MOS_GPU_CONTEXT_VDBOX2_VIDEO  ||
                 GpuContext == MOS_GPU_CONTEXT_VDBOX2_VIDEO2 ||
                 GpuContext == MOS_GPU_CONTEXT_VDBOX2_VIDEO3 ||
-                GpuContext == MOS_GPU_CONTEXT_VEBOX)
+                GpuContext == MOS_GPU_CONTEXT_VEBOX         ||
+                GpuContext == MOS_GPU_CONTEXT_VIDEO5        ||
+                GpuContext == MOS_GPU_CONTEXT_VIDEO6        ||
+                GpuContext == MOS_GPU_CONTEXT_VIDEO7        )
         {
             MHW_CHK_STATUS(pMiInterface->AddWatchdogTimerStartCmd(pCmdBuffer));
         }

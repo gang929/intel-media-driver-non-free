@@ -44,7 +44,11 @@
 // YUV input ranges
 #define YUV_RANGE_16_235                1
 #define YUV_RANGE_0_255                 2
-#define YUV_RANGE_FROM_DDI              4
+#define YUV_RANGE_FROM_DDI              3
+
+// RGB input ranges
+#define RGB_RANGE_16_235                1
+#define RGB_RANGE_0_255                 0
 
 // Media Features height
 #define VPHAL_RNDR_2K_HEIGHT  1080
@@ -295,6 +299,9 @@ struct VphalSettings
     uint32_t               veboxParallelExecution;                               //!< Control VEBox parallel execution with render engine
 };
 
+#pragma pack(push)
+#pragma pack(1)
+
 //!
 //! Structure VphalFeatureReport
 //! \brief    Vphal Feature Report Structure
@@ -341,6 +348,9 @@ struct VphalFeatureReport
     bool                            VEFeatureInUse;     //!< If any VEBOX feature is in use, excluding pure bypass for SFC
     bool                            DiScdMode;          //!< Scene change detection
 };
+
+#pragma pack(pop)
+
 
 //!
 //! Class VphalState

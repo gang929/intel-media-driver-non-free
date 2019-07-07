@@ -694,6 +694,7 @@ public:
     bool                                bBeCsc;
     bool                                bVeboxBypass;
     bool                                b60fpsDi;
+    bool                                bQueryVariance;
 
     // Surface Information
     int32_t                             iFrame0;
@@ -745,6 +746,9 @@ public:
 
     // Memory compression flag
     bool                                bEnableMMC;                             //!< Enable memory compression flag
+
+    // Temp surface for the field won't be output
+    PVPHAL_SURFACE                      pOutputTempField;
 
     // Scaling ratio from source to render target
     // Scaling ratio is needed to determine if SFC or VEBOX is used
@@ -821,6 +825,29 @@ public:
     //!           pointer to the Report data to copy data to
     //!
     void CopyResourceReporting(VphalFeatureReport *pReporting);
+
+    //!
+    //! \brief    Allocate sfc temp surface for Vebox output
+    //! \details  Allocate sfc temp surface for Vebox output
+    //! \param    VphalRenderer* pRenderer
+    //!           [in,out] VPHAL renderer pointer
+    //! \param    PCVPHAL_RENDER_PARAMS pcRenderParams
+    //!           [in] Const pointer to VPHAL render parameter
+    //! \param    PVPHAL_VEBOX_RENDER_DATA pRenderData
+    //!           [in] pointer to VPHAL VEBOX render parameter
+    //! \param    PVPHAL_SURFACE pInSurface
+    //!           [in] Pointer to input surface
+    //! \param    PVPHAL_SURFACE pOutSurface
+    //!           [in] Pointer to output surface
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    MOS_STATUS AllocateSfcTempSurfaces(
+        VphalRenderer                  *pRenderer,
+        PCVPHAL_RENDER_PARAMS           pcRenderParams,
+        PVPHAL_VEBOX_RENDER_DATA        pRenderData,
+        PVPHAL_SURFACE                  pInSurface,
+        PVPHAL_SURFACE                  pOutSurface);
 
     // External components
     PMHW_VEBOX_INTERFACE            m_pVeboxInterface;                            //!< Pointer to MHW Vebox Structure Interface
@@ -951,6 +978,7 @@ public:
     MOS_GPU_CONTEXT                  RenderGpuContext;                           //!< Render GPU context
 
     VPHAL_SURFACE                    Vebox3DLookUpTables = {};
+    VPHAL_SURFACE                    SfcTempSurface = {};
 
     VphalHVSDenoiser                 *m_hvsDenoiser        = nullptr;            //!< Human Vision System Based Denoiser - Media Kernel to generate DN parameter
     uint8_t                          *m_hvsKernelBinary    = nullptr;            //!< Human Vision System Based Denoiser - Pointer to HVS kernel Binary
@@ -1061,6 +1089,15 @@ public:
     virtual MOS_STATUS VeboxQueryStatLayout(
         VEBOX_STAT_QUERY_TYPE           QueryType,
         uint32_t*                       pQuery) = 0;
+    //!
+    //! \brief    Update RenderGpuContext
+    //! \details  Update RenderGpuContext
+    //! \param    [in] renderGpuContext
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS UpdateRenderGpuContext(
+        MOS_GPU_CONTEXT renderGpuContext);
 
 #if VEBOX_AUTO_DENOISE_SUPPORTED
     //!
@@ -1776,6 +1813,7 @@ protected:
     //!
     virtual MOS_STATUS VeboxSetHVSDNParams(
         PVPHAL_SURFACE pSrcSurface);
+
 };
 
 //!

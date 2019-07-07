@@ -20,8 +20,8 @@
 * OTHER DEALINGS IN THE SOFTWARE.
 */
 //!
-//! \file        mos_utilities_specific.c 
-//! \brief        This module implements the MOS wrapper functions for Linux/Android 
+//! \file        mos_utilities_specific.c
+//! \brief        This module implements the MOS wrapper functions for Linux/Android
 //!
 
 #include "mos_utilities_specific.h"
@@ -48,6 +48,8 @@
 #else
 #include <cutils/properties.h>
 #endif // ANDROID
+
+static const char* szUserFeatureFile = USER_FEATURE_FILE;
 
 #ifdef __cplusplus
 
@@ -673,6 +675,7 @@ static MOS_STATUS _UserFeature_Set(MOS_PUF_KEYLIST *pKeyList, MOS_UF_KEY NewKey)
     int32_t       iPos;
     MOS_UF_VALUE  *pValueArray;
     MOS_UF_KEY    *Key;
+    void          *ulValueBuf;
 
     iPos         = -1;
     pValueArray  = nullptr;
@@ -683,6 +686,12 @@ static MOS_STATUS _UserFeature_Set(MOS_PUF_KEYLIST *pKeyList, MOS_UF_KEY NewKey)
         return MOS_STATUS_UNKNOWN;
     }
 
+    // Prepare the ValueBuff of the NewKey
+    if ((ulValueBuf = MOS_AllocMemory(NewKey.pValueArray[0].ulValueLen)) == nullptr)
+    {
+         return MOS_STATUS_NO_SPACE;
+    }
+
     if ( (iPos = _UserFeature_FindValue(*Key, NewKey.pValueArray[0].pcValueName)) == NOT_FOUND)
     {
         //not found, add a new value to key struct.
@@ -690,6 +699,7 @@ static MOS_STATUS _UserFeature_Set(MOS_PUF_KEYLIST *pKeyList, MOS_UF_KEY NewKey)
         pValueArray = (MOS_UF_VALUE*)MOS_AllocMemory(sizeof(MOS_UF_VALUE)*(Key->ulValueNum+1));
         if (pValueArray == nullptr)
         {
+            MOS_FreeMemory(ulValueBuf);
             return MOS_STATUS_NO_SPACE;
         }
 
@@ -708,14 +718,15 @@ static MOS_STATUS _UserFeature_Set(MOS_PUF_KEYLIST *pKeyList, MOS_UF_KEY NewKey)
             NewKey.pValueArray[0].pcValueName);
         Key->ulValueNum ++;
     }
+    else
+    {
+        //if found, the previous value buffer needs to be freed before reallocating
+        MOS_FreeMemory(Key->pValueArray[iPos].ulValueBuf);
+    }
 
     Key->pValueArray[iPos].ulValueLen  = NewKey.pValueArray[0].ulValueLen;
     Key->pValueArray[iPos].ulValueType = NewKey.pValueArray[0].ulValueType;
-    Key->pValueArray[iPos].ulValueBuf  = MOS_AllocMemory(NewKey.pValueArray[0].ulValueLen);
-    if(Key->pValueArray[iPos].ulValueBuf == nullptr)
-    {
-        return MOS_STATUS_NO_SPACE;
-    }
+    Key->pValueArray[iPos].ulValueBuf  = ulValueBuf;
 
     MOS_ZeroMemory(Key->pValueArray[iPos].ulValueBuf, NewKey.pValueArray[0].ulValueLen);
 
@@ -1024,16 +1035,37 @@ static MOS_STATUS _UserFeature_DumpFile(const char * const szFileName, MOS_PUF_K
             if(_UserFeature_Add(pKeyList, CurKey) != MOS_STATUS_SUCCESS)
             {
                 // if the CurKey didn't be added in pKeyList, free it.
+                for (uint32_t i = 0; i < iCount; i++)
+                {
+                    if (CurValue)
+                    {
+                        MOS_FreeMemory(CurValue[i].ulValueBuf);
+                    }
+                }
                 MOS_FreeMemory(CurKey);
             }
         }
         else
         {
+            for (uint32_t i = 0; i < iCount; i++)
+            {
+                if (CurValue)
+                {
+                    MOS_FreeMemory(CurValue[i].ulValueBuf);
+                }
+            }
             MOS_FreeMemory(CurKey);
         }
     }
     else
     {
+        for (uint32_t i = 0; i < iCount; i++)
+        {
+            if (CurValue)
+            {
+                MOS_FreeMemory(CurValue[i].ulValueBuf);
+            }
+        }
         MOS_FreeMemory(CurKey);
     }
     fclose(File);
@@ -1049,7 +1081,7 @@ static MOS_STATUS _UserFeature_DumpFile(const char * const szFileName, MOS_PUF_K
 |             MOS_STATUS_USER_FEATURE_KEY_WRITE_FAILED  File can't be written.
 | Comments  :
 \---------------------------------------------------------------------------*/
-static MOS_STATUS _UserFeature_DumpDataToFile(char  *szFileName, MOS_PUF_KEYLIST pKeyList)
+static MOS_STATUS _UserFeature_DumpDataToFile(const char *szFileName, MOS_PUF_KEYLIST pKeyList)
 {
     int32_t           iResult;
     PFILE             File;
@@ -1194,14 +1226,14 @@ static MOS_STATUS _UserFeature_SetValue(
     NewKey.pValueArray = &NewValue;
     NewKey.ulValueNum = 1;
 
-    if ( (eStatus = _UserFeature_DumpFile(USER_FEATURE_FILE, &pKeyList)) != MOS_STATUS_SUCCESS )
+    if ( (eStatus = _UserFeature_DumpFile(szUserFeatureFile, &pKeyList)) != MOS_STATUS_SUCCESS )
     {
         return eStatus;
     }
 
     if ( ( eStatus = _UserFeature_Set(&pKeyList, NewKey)) == MOS_STATUS_SUCCESS )
     {
-        eStatus = _UserFeature_DumpDataToFile((char *)USER_FEATURE_FILE, pKeyList);
+        eStatus = _UserFeature_DumpDataToFile(szUserFeatureFile, pKeyList);
     }
 
     _UserFeature_FreeKeyList(pKeyList);
@@ -1256,7 +1288,7 @@ static MOS_STATUS _UserFeature_QueryValue(
     NewKey.pValueArray = &NewValue;
     NewKey.ulValueNum = 1;
 
-    if ( (eStatus = _UserFeature_DumpFile(USER_FEATURE_FILE, &pKeyList)) == MOS_STATUS_SUCCESS)
+    if ( (eStatus = _UserFeature_DumpFile(szUserFeatureFile, &pKeyList)) == MOS_STATUS_SUCCESS)
     {
         if ( (eStatus = _UserFeature_Query(pKeyList, &NewKey)) == MOS_STATUS_SUCCESS )
         {
@@ -1295,7 +1327,7 @@ static MOS_STATUS _UserFeature_GetKeyIdbyName(const char  *pcKeyName, void **pUF
     pKeyList   = nullptr;
     iResult    = -1;
 
-    if ( (eStatus = _UserFeature_DumpFile(USER_FEATURE_FILE, &pKeyList)) !=
+    if ( (eStatus = _UserFeature_DumpFile(szUserFeatureFile, &pKeyList)) !=
         MOS_STATUS_SUCCESS )
     {
         return eStatus;
@@ -1347,7 +1379,7 @@ static MOS_STATUS _UserFeature_GetKeyNamebyId(void  *UFKey, char  *pcKeyName)
         eStatus = MOS_STATUS_SUCCESS;
         break;
     default:
-        if ( (eStatus = _UserFeature_DumpFile(USER_FEATURE_FILE, &pKeyList)) !=
+        if ( (eStatus = _UserFeature_DumpFile(szUserFeatureFile, &pKeyList)) !=
             MOS_STATUS_SUCCESS )
         {
             return eStatus;
@@ -2153,6 +2185,29 @@ MOS_STATUS MOS_OS_Utilities_Init()
 
     // lock mutex to avoid multi init in multi-threading env
     MOS_LockMutex(&gMosUtilMutex);
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+    // Get use user feature file from env, instead of default.
+    FILE* fp = nullptr;
+    static char* tmpFile = getenv("GFX_FEATURE_FILE");
+
+    if (tmpFile != nullptr)
+    {
+      if ((fp = fopen(tmpFile, "r")) != nullptr)
+      {
+        szUserFeatureFile = tmpFile;
+        fclose(fp);
+        MOS_OS_NORMALMESSAGE("using %s for USER_FEATURE_FILE", szUserFeatureFile);
+      }
+      else
+      {
+        MOS_OS_ASSERTMESSAGE("Can't open %s for USER_FEATURE_FILE!!!", tmpFile);
+        eStatus =  MOS_STATUS_FILE_NOT_FOUND;
+        goto finish;
+      }
+    }
+#endif
+
     if (uiMOSUtilInitCount == 0)
     {
         pUFKeyOps = (PUFKEYOPS)MOS_AllocAndZeroMemory(sizeof(UFKEYOPS));
@@ -2341,7 +2396,7 @@ MOS_STATUS MOS_UserFeatureNotifyChangeKeyValue(
     int32_t        semid;
     struct sembuf  operation[1] ;
 
-    key = ftok(USER_FEATURE_FILE,1);
+    key = ftok(szUserFeatureFile,1);
     semid = semget(key,1,0);
     //change semaphore
     operation[0].sem_op  = 1;
@@ -2369,7 +2424,7 @@ HANDLE MOS_CreateEventEx(
     semid = 0;
 
     //Generate a unique key, U can also supply a value instead
-    key = ftok(USER_FEATURE_FILE, 1);
+    key = ftok(szUserFeatureFile, 1);
     semid = semget(key,  1, 0666 | IPC_CREAT );
     semctl_arg.val = 0; //Setting semval to 0
     semctl(semid, 0, SETVAL, semctl_arg);
@@ -2626,7 +2681,7 @@ MOS_STATUS MOS_WaitThread(
     if (hThread == 0)
     {
         MOS_OS_ASSERTMESSAGE("MOS wait thread failed, invalid thread handle.");
-        eStatus = MOS_STATUS_INVALID_PARAMETER; 
+        eStatus = MOS_STATUS_INVALID_PARAMETER;
     }
     else if (0 != pthread_join(hThread, nullptr))
     {

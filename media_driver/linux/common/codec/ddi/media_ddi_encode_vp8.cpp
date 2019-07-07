@@ -490,11 +490,11 @@ VAStatus DdiEncodeVp8::ParsePicParams(DDI_MEDIA_CONTEXT *mediaCtx, void *ptr)
 
     DDI_CODEC_RENDER_TARGET_TABLE *rtTbl = &(m_encodeCtx->RTtbl);
 
-    SetupCodecPicture(mediaCtx, rtTbl, &vp8PicParams->CurrReconstructedPic, picParams->reconstructed_frame, false);
-
     rtTbl->pCurrentReconTarget = DdiMedia_GetSurfaceFromVASurfaceID(mediaCtx, picParams->reconstructed_frame);
     DDI_CHK_NULL(rtTbl->pCurrentReconTarget, "nullptr rtTbl->pCurrentReconTarget", VA_STATUS_ERROR_INVALID_PARAMETER);
+    RegisterRTSurfaces(rtTbl,rtTbl->pCurrentReconTarget);
 
+    SetupCodecPicture(mediaCtx, rtTbl, &vp8PicParams->CurrReconstructedPic, picParams->reconstructed_frame, false);
     // curr orig pic
     vp8PicParams->CurrOriginalPic.FrameIdx = GetRenderTargetID(rtTbl, rtTbl->pCurrentReconTarget);
     vp8PicParams->CurrOriginalPic.PicFlags = vp8PicParams->CurrReconstructedPic.PicFlags;
@@ -604,7 +604,7 @@ VAStatus DdiEncodeVp8::EncodeInCodecHal(uint32_t numSlices)
 
     if (VA_RC_CQP == m_encodeCtx->uiRCMethod)
     {
-        seqParams->RateControlMethod          = 0;
+        seqParams->RateControlMethod          = RATECONTROL_CQP;
         seqParams->TargetBitRate[0]           = 0;
         seqParams->MaxBitRate                 = 0;
         seqParams->MinBitRate                 = 0;
@@ -613,13 +613,22 @@ VAStatus DdiEncodeVp8::EncodeInCodecHal(uint32_t numSlices)
     }
     else if (VA_RC_CBR == m_encodeCtx->uiRCMethod)
     {
-        seqParams->RateControlMethod = 1;
+        seqParams->RateControlMethod = RATECONTROL_CBR;
         seqParams->MaxBitRate        = seqParams->TargetBitRate[0];
         seqParams->MinBitRate        = seqParams->TargetBitRate[0];
     }
     else if (VA_RC_VBR == m_encodeCtx->uiRCMethod)
     {
-        seqParams->RateControlMethod = 2;
+        seqParams->RateControlMethod = RATECONTROL_VBR;
+    }
+    if((m_encodeCtx->uiTargetBitRate != seqParams->TargetBitRate[0]) || (m_encodeCtx->uiMaxBitRate != seqParams-> MaxBitRate))
+    {
+        if(m_encodeCtx->uiTargetBitRate )
+        {
+            seqParams->ResetBRC = 0x1;
+        }
+        m_encodeCtx->uiTargetBitRate = seqParams->TargetBitRate[0];
+        m_encodeCtx->uiMaxBitRate = seqParams->MaxBitRate;
     }
 
     encodeParams.pSeqParams   = m_encodeCtx->pSeqParams;

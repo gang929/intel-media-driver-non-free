@@ -453,6 +453,17 @@ enum MEMORY_OBJECT_CONTROL
     MEMORY_OBJECT_CONTROL_CNL_NO_CACHE,
     MEMORY_OBJECT_CONTROL_CNL_COUNT,
 
+    // Unified memory object control type for SKL+
+    MEMORY_OBJECT_CONTROL_DEFAULT = 0x0,
+    MEMORY_OBJECT_CONTROL_NO_L3,
+    MEMORY_OBJECT_CONTROL_NO_LLC_ELLC,
+    MEMORY_OBJECT_CONTROL_NO_LLC,
+    MEMORY_OBJECT_CONTROL_NO_ELLC,
+    MEMORY_OBJECT_CONTROL_NO_LLC_L3,
+    MEMORY_OBJECT_CONTROL_NO_ELLC_L3,
+    MEMORY_OBJECT_CONTROL_NO_CACHE,
+    MEMORY_OBJECT_CONTROL_L1_ENABLED,
+
     MEMORY_OBJECT_CONTROL_UNKNOWN = 0xff
 };
 
@@ -560,8 +571,7 @@ enum CM_QUEUE_TYPE
 {
     CM_QUEUE_TYPE_NONE = 0,
     CM_QUEUE_TYPE_RENDER = 1,
-    CM_QUEUE_TYPE_COMPUTE = 2,
-    CM_QUEUE_TYPE_VEBOX = 3
+    CM_QUEUE_TYPE_COMPUTE = 2
 };
 
 enum CM_QUEUE_SSEU_USAGE_HINT_TYPE
@@ -1205,16 +1215,18 @@ typedef struct _CM_SURFACE2D_STATE_PARAM
     UINT reserved[4]; // for future usage
 } CM_SURFACE2D_STATE_PARAM;
 
-struct CM_QUEUE_CREATE_OPTION
+struct _CM_QUEUE_CREATE_OPTION
 {
-    CM_QUEUE_TYPE QueueType : 3;
-    bool RunAloneMode       : 1;
-    unsigned int IsMultipleContextCase  : 3;
-    bool UserGPUContext     : 1;
-    unsigned int GPUContext : 8; // user provided GPU CONTEXT in enum MOS_GPU_CONTEXT, this will override CM_QUEUE_TYPE if set
-    CM_QUEUE_SSEU_USAGE_HINT_TYPE SseuUsageHint : 3;
-    unsigned int Reserved2  : 13;
+    CM_QUEUE_TYPE                 QueueType               : 3;
+    bool                          RAMode                  : 1;
+    unsigned int                  Reserved0               : 3;
+    bool                          UserGPUContext          : 1; // Is the user-provided GPU Context already created externally
+    unsigned int                  GPUContext              : 8; // user-provided GPU Context ordinal
+    CM_QUEUE_SSEU_USAGE_HINT_TYPE SseuUsageHint           : 3;
+    unsigned int                  Reserved1               : 1;
+    unsigned int                  Reserved2               : 12;
 };
+#define CM_QUEUE_CREATE_OPTION _CM_QUEUE_CREATE_OPTION
 
 typedef enum _CM_CONDITIONAL_END_OPERATOR_CODE {
     MAD_GREATER_THAN_IDD = 0,
@@ -1231,11 +1243,6 @@ struct CM_CONDITIONAL_END_PARAM {
     bool  opMask;
     bool  opLevel;
 };
-
-//**********************************************************************
-// Constants
-//**********************************************************************
-const CM_QUEUE_CREATE_OPTION CM_DEFAULT_QUEUE_CREATE_OPTION = { CM_QUEUE_TYPE_RENDER, false, 0, false, 0, CM_QUEUE_SSEU_USAGE_HINT_DEFAULT, 0 };
 
 //**********************************************************************
 // Classes forward declarations
@@ -1263,6 +1270,11 @@ class SamplerIndex;
 // Extended definitions if any
 //**********************************************************************
 #include "cm_rt_extension.h"
+
+//**********************************************************************
+// Constants
+//**********************************************************************
+const CM_QUEUE_CREATE_OPTION CM_DEFAULT_QUEUE_CREATE_OPTION = { CM_QUEUE_TYPE_RENDER, false, 0, false, 0, CM_QUEUE_SSEU_USAGE_HINT_DEFAULT, 0, 0 };
 
 //**********************************************************************
 // Classes
@@ -1302,7 +1314,6 @@ public:
     CM_RT_API virtual INT DeAssociateThreadSpace(CmThreadSpace* & pTS) = 0;
     CM_RT_API virtual INT DeAssociateThreadGroupSpace(CmThreadGroupSpace* & pTGS) = 0;
     CM_RT_API virtual INT QuerySpillSize(unsigned int &spillSize) = 0;
-    CM_RT_API virtual INT GetIndexForCurbeData( UINT curbe_data_size, SurfaceIndex *pSurface ) = 0;
 protected:
    ~CmKernel(){};
 };
@@ -1489,5 +1500,6 @@ EXTERN_C CM_RT_API const char* GetCmErrorString(int errCode);
 #include "cm_rt_g8.h"
 #include "cm_rt_g9.h"
 #include "cm_rt_g10.h"
+#include "cm_rt_g11.h"
 
 #endif //__CM_RT_H__

@@ -28,12 +28,9 @@
 
 struct CM_CREATEQUEUE_PARAM
 {
-    unsigned int cmQueueType;   // [in]
-    bool cmRunAloneMode;        // [in]
-    unsigned int cmGPUContext;  // [in]
-    unsigned int cmSSEUUsageHint; // [in]
-    void *cmQueueHandle;        // [out]
-    int32_t returnValue;        // [out]
+    CM_QUEUE_CREATE_OPTION createOption; // [in/out]
+    void *cmQueueHandle;                 // [out]
+    int32_t returnValue;                 // [out]
 };
 
 struct CM_ENQUEUE_PARAM
@@ -115,26 +112,6 @@ struct CM_ENQUEUE_VEBOX_PARAM
     int32_t returnValue;  // [out] return value
 };
 
-int32_t CmQueue_RT::Create(CmDevice_RT *device, CmQueue_RT *&queue)
-{
-    int32_t result = CM_SUCCESS;
-    queue = new(std::nothrow) CmQueue_RT(device, CM_DEFAULT_QUEUE_CREATE_OPTION);
-    if (queue)
-    {
-        result = queue->Initialize();
-        if (result != CM_SUCCESS)
-        {
-            CmQueue_RT::Destroy(queue);
-        }
-    }
-    else
-    {
-        CmAssert(0);
-        result = CM_OUT_OF_HOST_MEMORY;
-    }
-    return result;
-}
-
 int32_t CmQueue_RT::Create(CmDevice_RT *device, CmQueue_RT *&queue, CM_QUEUE_CREATE_OPTION queueCreateOption)
 {
     int32_t result = CM_SUCCESS;
@@ -178,10 +155,7 @@ int32_t CmQueue_RT::Initialize()
     CHK_FAILURE_RETURN(hr);
     CHK_FAILURE_RETURN(inParam.returnValue);
     m_cmQueueHandle = inParam.cmQueueHandle;
-    m_queueOption.QueueType = (CM_QUEUE_TYPE)inParam.cmQueueType;
-    m_queueOption.RunAloneMode = inParam.cmRunAloneMode;
-    m_queueOption.GPUContext = inParam.cmGPUContext;
-    m_queueOption.SseuUsageHint = (CM_QUEUE_SSEU_USAGE_HINT_TYPE)inParam.cmSSEUUsageHint;
+    m_queueOption   = inParam.createOption;
     return CM_SUCCESS;
 }
 
@@ -189,10 +163,7 @@ int32_t CmQueue_RT::Initialize(CM_QUEUE_CREATE_OPTION queueCreateOption)
 {
     CM_CREATEQUEUE_PARAM inParam;
     CmSafeMemSet(&inParam, 0, sizeof(inParam));
-    inParam.cmQueueType = queueCreateOption.QueueType;
-    inParam.cmRunAloneMode = queueCreateOption.RunAloneMode;
-    inParam.cmGPUContext = queueCreateOption.GPUContext;
-    inParam.cmSSEUUsageHint = queueCreateOption.SseuUsageHint;
+    inParam.createOption = queueCreateOption;
 
     int32_t hr = m_cmDev->OSALExtensionExecute(CM_FN_CMDEVICE_CREATEQUEUEEX,
                                                 &inParam, sizeof(inParam));
