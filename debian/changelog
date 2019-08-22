@@ -1,3 +1,10 @@
+intel-media-driver-non-free (19.2.1+ds1-2) unstable; urgency=medium
+
+  * debian/rules: Run tests only on Intel CPUs.
+  * debian/patches: Remove an obsolete compile flag. (Closes: #935000)
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Thu, 22 Aug 2019 18:40:41 +0200
+
 intel-media-driver-non-free (19.2.1+ds1-1) unstable; urgency=medium
 
   * New upstream release.
