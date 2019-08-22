@@ -9,10 +9,10 @@ Subject: Integrate unit tests in cmake's test framework
  3 files changed, 5 insertions(+), 15 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 9bc8ce3..82dab3c 100755
+index c028295..f51c068 100755
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -68,6 +68,7 @@ if (BUILD_KERNELS)
+@@ -78,6 +78,7 @@ if (BUILD_KERNELS)
      add_subdirectory(Tools/MediaDriverTools)
  endif()
  
