@@ -1,3 +1,2 @@
 0001-Integrate-unit-tests-in-cmake-s-test-framework.patch
 0002-Remove-settings-based-on-ARCH.patch
-0003-Update-media_compile_flags_linux.cmake.patch
