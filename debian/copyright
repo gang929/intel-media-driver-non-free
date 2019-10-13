@@ -10,7 +10,7 @@ Files-Excluded: Tools/MediaDriverTools/UMDPerfProfiler/*
 Files: *
 Copyright: 2012-2013, Christian Rau
            2007-2008, Dave Airlie
-           2007-2018, Intel Corporation
+           2007-2019, Intel Corporation
            2007-2008, Jakob Bornecrantz
            2014, NVIDIA Corporation
            2007-2008, Red Hat Inc
