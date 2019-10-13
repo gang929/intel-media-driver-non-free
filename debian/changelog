@@ -1,3 +1,14 @@
+intel-media-driver-non-free (19.3.0+ds1-1) unstable; urgency=medium
+
+  * New upstream release.
+  * debian/control: Bump Standards-Version
+  * debian/patches: Refresh patches
+  * debian/copyright:
+    - Bump copyright years
+    - Remove Christoph Rau
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Sun, 13 Oct 2019 14:31:59 +0200
+
 intel-media-driver-non-free (19.2.1+ds1-2) unstable; urgency=medium
 
   * debian/rules: Run tests only on Intel CPUs.
