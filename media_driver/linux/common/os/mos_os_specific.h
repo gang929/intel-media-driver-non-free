@@ -44,8 +44,10 @@
 typedef unsigned int MOS_OS_FORMAT;
 
 class GraphicsResource;
+class GraphicsResourceNext;
 class AuxTableMgr;
 class MosOcaInterface;
+class GraphicsResourceNext;
 
 ////////////////////////////////////////////////////////////////////
 
@@ -251,7 +253,7 @@ struct _MOS_SPECIFIC_RESOURCE
     GMM_RESOURCE_INFO   *pGmmResInfo;        //!< GMM resource descriptor
     MOS_MMAP_OPERATION  MmapOperation;
     uint8_t             *pSystemShadow;
-    bool                bUsrPtrMode;        //!< indicate source info comes from app.
+    bool                b16UsrPtrMode;      //!< indicate source info comes from app.
     MOS_PLANE_OFFSET    YPlaneOffset;       //!< Y surface plane offset
     MOS_PLANE_OFFSET    UPlaneOffset;       //!< U surface plane offset
     MOS_PLANE_OFFSET    VPlaneOffset;       //!< V surface plane offset
@@ -281,6 +283,7 @@ struct _MOS_SPECIFIC_RESOURCE
     uint64_t                user_provided_va;
     // for MODS Wrapper
     GraphicsResource*       pGfxResource;
+    GraphicsResourceNext*   pGfxResourceNext;
     bool                    bConvertedFromDDIResource;
 
 };
@@ -463,6 +466,22 @@ struct MOS_CONTEXT_OFFSET
     uint64_t          offset64;
 };
 
+// APO related
+#define FUTURE_PLATFORM_MOS_APO   1234
+void SetupApoMosSwitch(PLATFORM *platform);
+
+enum OS_SPECIFIC_RESOURCE_TYPE
+{
+    OS_SPECIFIC_RESOURCE_INVALID = 0,
+    OS_SPECIFIC_RESOURCE_SURFACE = 1,
+    OS_SPECIFIC_RESOURCE_BUFFER = 2,
+    OS_SPECIFIC_RESOURCE_MAX
+};
+
+class OsContextNext;
+typedef OsContextNext    OsDeviceContext;
+typedef OsDeviceContext *MOS_DEVICE_HANDLE;
+
 typedef struct _MOS_OS_CONTEXT MOS_CONTEXT, *PMOS_CONTEXT, MOS_OS_CONTEXT, *PMOS_OS_CONTEXT, MOS_DRIVER_CONTEXT,*PMOS_DRIVER_CONTEXT;
 //!
 //! \brief Structure to OS context
@@ -491,6 +510,7 @@ struct _MOS_OS_CONTEXT
     // Controlled OS resources (for analysis)
     MOS_BUFMGR       *bufmgr;
     MOS_LINUX_CONTEXT   *intel_context;
+    int32_t             submit_fence;
     uint32_t            uEnablePerfTag;           //!< 0: Do not pass PerfTag to KMD, perf data collection disabled;
                                                   //!< 1: Pass PerfTag to MVP driver, perf data collection enabled;
                                                   //!< 2: Pass PerfTag to DAPC driver, perf data collection enabled;
@@ -514,6 +534,7 @@ struct _MOS_OS_CONTEXT
     // For modulized GPU context
     void*               m_gpuContextMgr;
     void*               m_cmdBufMgr;
+    MOS_DEVICE_HANDLE   m_osDeviceContext = nullptr;
 
     //For 2VD box
     int32_t             bKMDHasVCS2;

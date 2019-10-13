@@ -1441,7 +1441,7 @@ MOS_STATUS CodecHalDecodeScalability_InitScalableParams(
     }
 
     // Decide scalable mode or single pipe mode
-    if (pScalabilityState->ucScalablePipeNum > 1)
+    if (pScalabilityState->ucScalablePipeNum > 1 && pOsInterface->frameSplit)
     {
         pScalabilityState->bScalableDecodeMode = true;
     }
@@ -1945,13 +1945,6 @@ MOS_STATUS CodecHalDecodeScalability_InitializeState (
         __MEDIA_USER_FEATURE_VALUE_SCALABILITY_OVERRIDE_SPLIT_WIDTH_IN_MINCB,
         &UserFeatureData);
     pScalabilityState->dbgOvrdWidthInMinCb = UserFeatureData.u32Data;
-
-    MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_HCP_DECODE_BE_SEMA_RESET_DELAY_ID,
-        &UserFeatureData);
-    pScalabilityState->numDelay = UserFeatureData.u32Data;
 #endif
 
     // enable FE separate submission by default in multi-pipe mode
@@ -2069,5 +2062,29 @@ bool CodecHalDecodeScalabilityIsToSubmitCmdBuffer(
     {
         return (CodecHalDecodeScalabilityIsFinalBEPhase(pScalabilityState) ||
             (pScalabilityState->HcpDecPhase == CODECHAL_HCP_DECODE_PHASE_FE && pScalabilityState->bFESeparateSubmission));
+    }
+}
+
+void CodecHalDecodeScalability_DecPhaseToSubmissionType(
+    PCODECHAL_DECODE_SCALABILITY_STATE pScalabilityState,
+    PMOS_COMMAND_BUFFER pCmdBuffer)
+{
+    switch (pScalabilityState->HcpDecPhase)
+    {
+        case CodechalDecode::CodechalHcpDecodePhaseLegacyS2L:
+            //Note: no break here, S2L and FE commands put in one secondary command buffer.
+        case CODECHAL_HCP_DECODE_PHASE_FE:
+            pCmdBuffer->iSubmissionType = SUBMISSION_TYPE_MULTI_PIPE_ALONE;
+            break;
+        case CODECHAL_HCP_DECODE_PHASE_BE0:
+            pCmdBuffer->iSubmissionType = SUBMISSION_TYPE_MULTI_PIPE_MASTER;
+            break;
+        case CODECHAL_HCP_DECODE_PHASE_BE1:
+            pCmdBuffer->iSubmissionType = SUBMISSION_TYPE_MULTI_PIPE_SLAVE | SUBMISSION_TYPE_MULTI_PIPE_FLAGS_LAST_PIPE;
+            break;
+        case CODECHAL_HCP_DECODE_PHASE_RESERVED:
+        default:
+            pCmdBuffer->iSubmissionType = SUBMISSION_TYPE_MULTI_PIPE_ALONE;
+            break;
     }
 }

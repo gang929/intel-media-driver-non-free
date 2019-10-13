@@ -33,7 +33,7 @@
 #include "codechal_decoder.h"
 #include "mos_os_virtualengine_scalability.h"
 
-#define CODEC_VTILE_MAX_NUM  4
+#define CODEC_VTILE_MAX_NUM  8
 
 // first tile column width
 
@@ -861,5 +861,18 @@ MOS_STATUS CodechalDecodeScalability_ConstructParmsForGpuCtxCreation(
 MOS_STATUS CodechalDecodeScalability_ChkGpuCtxReCreation(
     PCODECHAL_DECODE_SCALABILITY_STATE         pScalabilityState,
     PMOS_GPUCTX_CREATOPTIONS_ENHANCED          CurgpuCtxCreatOpts);
+
+//!
+//! \brief    Convert Decode Phase to Batch Buffer Submission Type
+//! \param    [in]  scalabilityState
+//!                Scalability decode state
+//! \param    [in] pCmdBuffer
+//!                Pointer to command buffer
+//! \return   void
+//!           void
+//!
+void CodecHalDecodeScalability_DecPhaseToSubmissionType(
+    PCODECHAL_DECODE_SCALABILITY_STATE pScalabilityState,
+    PMOS_COMMAND_BUFFER pCmdBuffer);
 
 #endif //__CODECHAL_DECODER_SCALABILITY_H__
