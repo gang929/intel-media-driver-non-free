@@ -662,6 +662,7 @@ public:
                                             }
                                             pDNUVParams          = nullptr;
                                             iCurbeLength         = 0;
+                                            iCurbeOffset         = 0;
                                             iInlineLength        = 0;
                                             // Debug parameters
                                             pKernelName          = nullptr;
@@ -756,6 +757,7 @@ public:
     Kdll_CacheEntry                     KernelEntry[VPHAL_NUM_KERNEL_VEBOX];
     PVPHAL_DNUV_PARAMS                  pDNUVParams;
     int32_t                             iCurbeLength;
+    int32_t                             iCurbeOffset;
     int32_t                             iInlineLength;
 
     // Debug parameters

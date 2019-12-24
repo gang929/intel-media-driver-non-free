@@ -1386,8 +1386,6 @@ MOS_STATUS CodechalVdencHevcStateG11::SetPictureStructs()
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(CodechalVdencHevcState::SetPictureStructs());
 
-    m_virtualEngineBbIndex = m_currOriginalPic.FrameIdx;
-
     if ((uint8_t)HCP_CHROMA_FORMAT_YUV422 == m_chromaFormat &&
         (uint8_t)HCP_CHROMA_FORMAT_YUV422 == m_outputChromaFormat)
     {
@@ -3479,10 +3477,12 @@ MOS_STATUS CodechalVdencHevcStateG11::SetConstDataHuCBrcUpdate()
     if (m_hevcVisualQualityImprovement)
     {
         MOS_SecureMemcpy(hucConstData->SADQPLambdaI, sizeof(m_sadQpLambdaI), m_sadQpLambdaI_VQI, sizeof(m_sadQpLambdaI));
+        MOS_SecureMemcpy(hucConstData->PenaltyForIntraNonDC32x32PredMode, sizeof(m_penaltyForIntraNonDC32x32PredMode), m_penaltyForIntraNonDC32x32PredMode_VQI, sizeof(m_penaltyForIntraNonDC32x32PredMode_VQI));
     }
     else
     {
         MOS_SecureMemcpy(hucConstData->SADQPLambdaI, sizeof(m_sadQpLambdaI), m_sadQpLambdaI, sizeof(m_sadQpLambdaI));
+        MOS_SecureMemcpy(hucConstData->PenaltyForIntraNonDC32x32PredMode, sizeof(m_penaltyForIntraNonDC32x32PredMode), m_penaltyForIntraNonDC32x32PredMode, sizeof(m_penaltyForIntraNonDC32x32PredMode));
     }
 
     MOS_SecureMemcpy(hucConstData->SADQPLambdaP, sizeof(m_sadQpLambdaP), m_sadQpLambdaP, sizeof(m_sadQpLambdaP));
@@ -4607,6 +4607,7 @@ MOS_STATUS CodechalVdencHevcStateG11::Initialize(CodechalSetting * settings)
     // as a result, increase the height by 1 for allocation purposes
     m_numLcu = MOS_ROUNDUP_DIVIDE(m_frameWidth, MAX_LCU_SIZE) * (MOS_ROUNDUP_DIVIDE(m_frameHeight, MAX_LCU_SIZE) + 1);
     m_mbCodeSize = MOS_ALIGN_CEIL(2 * sizeof(uint32_t) * (m_numLcu * 5 + m_numLcu * 64 * 8), CODECHAL_PAGE_SIZE);
+    m_mbCodeSize += m_mvOffset;
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(GetSystemPipeNumberCommon());
 
@@ -5272,7 +5273,8 @@ MOS_STATUS CodechalVdencHevcStateG11::VerifyCommandBufferSize()
     PMOS_COMMAND_BUFFER pCmdBuffer;
     if (m_osInterface->phasedSubmission)
     {
-        pCmdBuffer = &m_realCmdBuffer;
+        m_osInterface->pfnVerifyCommandBufferSize(m_osInterface, requestedSize, 0);
+        return eStatus;
     }
     else
     {
@@ -5346,25 +5348,31 @@ MOS_STATUS CodechalVdencHevcStateG11::GetCommandBuffer(PMOS_COMMAND_BUFFER cmdBu
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnGetCommandBuffer(m_osInterface, &m_realCmdBuffer, 0));
 
+    int currentPipe = GetCurrentPipe();
+    if (currentPipe < 0 || currentPipe >= m_numPipe)
+    {
+        eStatus = MOS_STATUS_INVALID_PARAMETER;
+        return eStatus;
+    }
+    int currentPass = GetCurrentPass();
+    if (currentPass < 0 || currentPass >= CODECHAL_HEVC_MAX_NUM_BRC_PASSES)
+    {
+        eStatus = MOS_STATUS_INVALID_PARAMETER;
+        return eStatus;
+    }
+
     if (m_osInterface->phasedSubmission)
     {
-        *cmdBuffer = m_realCmdBuffer;
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnGetCommandBuffer(m_osInterface, cmdBuffer, currentPipe + 1));
+
+        CodecHalEncodeScalability_EncodePhaseToSubmissionType(IsFirstPipe(), cmdBuffer);
+        if (IsLastPipe())
+        {
+            cmdBuffer->iSubmissionType |= SUBMISSION_TYPE_MULTI_PIPE_FLAGS_LAST_PIPE;
+        }
     }
     else
     {
-        int currentPipe = GetCurrentPipe();
-        if (currentPipe < 0 || currentPipe >= m_numPipe)
-        {
-            eStatus = MOS_STATUS_INVALID_PARAMETER;
-            return eStatus;
-        }
-        int currentPass = GetCurrentPass();
-        if (currentPass < 0 || currentPass >= CODECHAL_HEVC_MAX_NUM_BRC_PASSES)
-        {
-            eStatus = MOS_STATUS_INVALID_PARAMETER;
-            return eStatus;
-        }
-
         *cmdBuffer = m_singleTaskPhaseSupported ? m_veBatchBuffer[m_virtualEngineBbIndex][currentPipe][0] : m_veBatchBuffer[m_virtualEngineBbIndex][currentPipe][currentPass];
     }
 
@@ -5393,25 +5401,26 @@ MOS_STATUS CodechalVdencHevcStateG11::ReturnCommandBuffer(PMOS_COMMAND_BUFFER cm
     }
 
     // virtual engine
+    int currentPipe = GetCurrentPipe();
+    if (currentPipe < 0 || currentPipe >= m_numPipe)
+    {
+        eStatus = MOS_STATUS_INVALID_PARAMETER;
+        return eStatus;
+    }
+    int currentPass = GetCurrentPass();
+    if (currentPass < 0 || currentPass >= CODECHAL_HEVC_MAX_NUM_BRC_PASSES)
+    {
+        eStatus = MOS_STATUS_INVALID_PARAMETER;
+        return eStatus;
+    }
+
     if (m_osInterface->phasedSubmission)
     {
-        m_realCmdBuffer = *cmdBuffer;
+        m_osInterface->pfnReturnCommandBuffer(m_osInterface, cmdBuffer, currentPipe + 1);
         m_osInterface->pfnReturnCommandBuffer(m_osInterface, &m_realCmdBuffer, 0);
     }
     else
     {
-        int currentPipe = GetCurrentPipe();
-        if (currentPipe < 0 || currentPipe >= m_numPipe)
-        {
-            eStatus = MOS_STATUS_INVALID_PARAMETER;
-            return eStatus;
-        }
-        int currentPass = GetCurrentPass();
-        if (currentPass < 0 || currentPass >= CODECHAL_HEVC_MAX_NUM_BRC_PASSES)
-        {
-            eStatus = MOS_STATUS_INVALID_PARAMETER;
-            return eStatus;
-        }
         uint8_t passIndex = m_singleTaskPhaseSupported ? 0 : currentPass;
         m_veBatchBuffer[m_virtualEngineBbIndex][currentPipe][passIndex] = *cmdBuffer;
         m_osInterface->pfnReturnCommandBuffer(m_osInterface, &m_realCmdBuffer, 0);
@@ -5441,32 +5450,32 @@ MOS_STATUS CodechalVdencHevcStateG11::SubmitCommandBuffer(
         return eStatus;
     }
 
+    bool cmdBufferReadyForSubmit = IsLastPipe();
+
+    // In STF, Hold the command buffer submission till last pass
+    if (m_singleTaskPhaseSupported)
+    {
+        cmdBufferReadyForSubmit = cmdBufferReadyForSubmit && IsLastPass();
+    }
+
+    if(!cmdBufferReadyForSubmit)
+    {
+        return eStatus;
+    }
+
+    int currentPass = GetCurrentPass();
+    if (currentPass < 0 || currentPass >= CODECHAL_HEVC_MAX_NUM_BRC_PASSES)
+    {
+        eStatus = MOS_STATUS_INVALID_PARAMETER;
+        return eStatus;
+    }
+
     if (m_osInterface->phasedSubmission)
     {
-        CodecHalEncodeScalability_EncodePhaseToSubmissionType(IsFirstPipe(),&m_realCmdBuffer);
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &m_realCmdBuffer, nullRendering));
     }
     else
     {
-        bool cmdBufferReadyForSubmit = IsLastPipe();
-
-        // In STF, Hold the command buffer submission till last pass
-        if (m_singleTaskPhaseSupported)
-        {
-            cmdBufferReadyForSubmit = cmdBufferReadyForSubmit && IsLastPass();
-        }
-
-        if(!cmdBufferReadyForSubmit)
-        {
-            return eStatus;
-        }
-
-        int currentPass = GetCurrentPass();
-        if (currentPass < 0 || currentPass >= CODECHAL_HEVC_MAX_NUM_BRC_PASSES)
-        {
-            eStatus = MOS_STATUS_INVALID_PARAMETER;
-            return eStatus;
-        }
         uint8_t passIndex = m_singleTaskPhaseSupported ? 0 : currentPass;
 
         for (uint32_t i = 0; i < m_numPipe; i++)
@@ -6211,9 +6220,8 @@ MOS_STATUS CodechalVdencHevcStateG11::HuCBrcUpdate()
     CODECHAL_ENCODE_CHK_STATUS_RETURN(SetConstDataHuCBrcUpdate());
 
     // Add Virtual addr
-    MHW_VDBOX_HUC_VIRTUAL_ADDR_PARAMS virtualAddrParams;
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(SetRegionsHuCBrcUpdate(&virtualAddrParams));
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucVirtualAddrStateCmd(&cmdBuffer, &virtualAddrParams));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(SetRegionsHuCBrcUpdate(&m_virtualAddrParams));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucVirtualAddrStateCmd(&cmdBuffer, &m_virtualAddrParams));
 
     // Store HUC_STATUS2 register bit 6 before HUC_Start command
     // BitField: VALID IMEM LOADED - This bit will be cleared by HW at the end of a HUC workload
@@ -6505,29 +6513,6 @@ MOS_STATUS CodechalVdencHevcStateG11::DumpVdencOutputs()
                 CODECHAL_NUM_MEDIA_STATES));
         }
     }
-    return MOS_STATUS_SUCCESS;
-}
-
-MOS_STATUS CodechalVdencHevcStateG11::DumpHucBrcUpdate(bool isInput)
-{
-    CODECHAL_ENCODE_FUNCTION_ENTER;
-    int32_t currentPass = GetCurrentPass();
-
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(CodechalVdencHevcState::DumpHucBrcUpdate(isInput));
-    if (isInput)
-    {
-        // Region 12 - Input SLB Buffer
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-            &m_vdencGroup3BatchBuffer[m_currRecycledBufIdx][currentPass],
-            0,
-            m_hwInterface->m_vdencGroup3BatchBufferSize,
-            12,
-            "_Slb",
-            true,
-            currentPass,
-            hucRegionDumpUpdate));
-    }
-
     return MOS_STATUS_SUCCESS;
 }
 #endif

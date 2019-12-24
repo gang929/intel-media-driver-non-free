@@ -401,13 +401,15 @@ int32_t DdiMedia_MediaFormatToOsFormat(DDI_MEDIA_FORMAT format)
         case Media_Format_X8B8G8R8:
             return VA_FOURCC_XBGR;
         case Media_Format_A8B8G8R8:
-        case Media_Format_R10G10B10A2:
             return VA_FOURCC_ABGR;
+        case Media_Format_R10G10B10A2:
+            return VA_FOURCC_A2B10G10R10;
         case Media_Format_R8G8B8A8:
             return VA_FOURCC_RGBA;
         case Media_Format_A8R8G8B8:
-        case Media_Format_B10G10R10A2:
             return VA_FOURCC_ARGB;
+        case Media_Format_B10G10R10A2:
+            return VA_FOURCC_A2R10G10B10;
         case Media_Format_R5G6B5:
             return VA_FOURCC_R5G6B5;
         case Media_Format_R8G8B8:
@@ -495,6 +497,8 @@ DDI_MEDIA_FORMAT DdiMedia_OsFormatToMediaFormat(int32_t fourcc, int32_t rtformat
     {
         case VA_FOURCC_A2R10G10B10:
             return Media_Format_B10G10R10A2;
+        case VA_FOURCC_A2B10G10R10:
+            return Media_Format_R10G10B10A2;
         case VA_FOURCC_BGRA:
         case VA_FOURCC_ARGB:
 #ifdef VA_RT_FORMAT_RGB32_10BPP
@@ -1015,7 +1019,7 @@ VAStatus DdiMedia_MediaMemoryDecompress(PDDI_MEDIA_CONTEXT mediaCtx, DDI_MEDIA_S
 
     if (((GmmFlags.Gpu.MMC                                                        ||
           GmmFlags.Gpu.CCS)                                                       &&
-          GmmFlags.Gpu.UnifiedAuxSurface)                                         ||
+          GmmFlags.Info.MediaCompressed)                                          ||
           mediaSurface->pGmmResourceInfo->IsMediaMemoryCompressed(0))
     {
 #ifdef _MMC_SUPPORTED
@@ -1441,8 +1445,7 @@ VAStatus DdiMedia__Initialize (
     mediaCtx->pGmmClientContext = mediaCtx->GmmFuncs.pfnCreateClientContext((GMM_CLIENT)GMM_LIBVA_LINUX);
 
     // Create GMM page table manager
-    mediaCtx->m_auxTableMgr = AuxTableMgr::CreateAuxTableMgr(mediaCtx->pDrmBufMgr,
-        &mediaCtx->SkuTable, &mediaCtx->WaTable);
+    mediaCtx->m_auxTableMgr = AuxTableMgr::CreateAuxTableMgr(mediaCtx->pDrmBufMgr, &mediaCtx->SkuTable);
 
     mediaCtx->m_useSwSwizzling = MEDIA_IS_SKU(&mediaCtx->SkuTable, FtrSimulationMode) || MEDIA_IS_SKU(&mediaCtx->SkuTable, FtrUseSwSwizzling);
     mediaCtx->m_tileYFlag      = MEDIA_IS_SKU(&mediaCtx->SkuTable, FtrTileY);
@@ -2302,7 +2305,7 @@ static VAStatus DdiMedia_CreateMfeContextInternal(
     DDI_CHK_NULL(mfe_context, "nullptr mfe_context", VA_STATUS_ERROR_INVALID_PARAMETER);
     *mfe_context        = DDI_MEDIA_INVALID_VACONTEXTID;
 
-    if (!GFX_IS_PRODUCT(mediaDrvCtx->platform, IGFX_SKYLAKE))
+    if (!mediaDrvCtx->m_caps->IsMfeSupportedOnPlatform(mediaDrvCtx->platform))
     {
         DDI_VERBOSEMESSAGE("MFE is not supported on the platform!");
         return VA_STATUS_ERROR_UNIMPLEMENTED;
@@ -2431,7 +2434,18 @@ static VAStatus DdiMedia_AddContextInternal(
     encoder->m_mfeEnabled = true;
     // Assign one unique id to this sub context/stream
     encoder->m_mfeEncodeParams.streamId = encodeMfeContext->currentStreamId;
-    encoder->m_mfeEncodeSharedState     = encodeMfeContext->mfeEncodeSharedState;
+
+    MOS_STATUS eStatus = encoder->SetMfeSharedState(encodeMfeContext->mfeEncodeSharedState);
+    if (eStatus != MOS_STATUS_SUCCESS)
+    {
+        DDI_ASSERTMESSAGE(
+            "Failed to set MFE Shared State for encoder #%d",
+            encodeMfeContext->currentStreamId);
+
+        encoder->m_mfeEnabled = false;
+
+        return VA_STATUS_ERROR_OPERATION_FAILED;
+    }
 
     encodeMfeContext->currentStreamId++;
     DdiMediaUtil_UnLockMutex(&encodeMfeContext->encodeMfeMutex);
@@ -3414,10 +3428,12 @@ static VAStatus DdiMedia_SyncSurface (
         DdiMediaUtil_LockGuard guard(&mediaCtx->SurfaceMutex);
 
         Codechal *codecHal = decCtx->pCodecHal;
-        DDI_CHK_NULL(codecHal, "nullptr decCtx->pCodecHal", VA_STATUS_ERROR_INVALID_CONTEXT);
+        //return success just avoid vaDestroyContext is ahead of vaSyncSurface
+        DDI_CHK_NULL(codecHal, "nullptr decCtx->pCodecHal", VA_STATUS_SUCCESS);
 
+        //return success just avoid vaDestroyContext is ahead of vaSyncSurface
         CodechalDecode *decoder = dynamic_cast<CodechalDecode *>(codecHal);
-        DDI_CHK_NULL(decoder, "nullptr codecHal->pDecoder", VA_STATUS_ERROR_INVALID_CONTEXT);
+        DDI_CHK_NULL(decoder, "nullptr codecHal->pDecoder", VA_STATUS_SUCCESS);
 
         if (decoder->IsStatusQueryReportingEnabled())
         {
@@ -3886,7 +3902,6 @@ VAStatus DdiMedia_CreateImage(
         case VA_FOURCC_YV12:
         case VA_FOURCC_I420:
         case VA_FOURCC_IYUV:
-        case VA_FOURCC_UYVY:
         case VA_FOURCC_A2R10G10B10:
         case VA_FOURCC_A2B10G10R10:
             gmmParams.BaseHeight        = height;
@@ -3907,6 +3922,9 @@ VAStatus DdiMedia_CreateImage(
         case VA_FOURCC_422V:
         case VA_FOURCC_IMC3:
         case VA_FOURCC_Y800:
+        case VA_FOURCC_VYUY:
+        case VA_FOURCC_YVYU:
+        case VA_FOURCC_UYVY:
             gmmParams.BaseHeight = MOS_ALIGN_CEIL(height, 32);
             break;
         default:
@@ -4162,13 +4180,6 @@ VAStatus DdiMedia_DeriveImage (
     switch( mediaSurface->format )
     {
     case Media_Format_YV12:
-        vaimg->format.bits_per_pixel    = 12;
-        vaimg->data_size                = mediaSurface->iPitch * mediaSurface->iHeight * 3 / 2;
-        vaimg->num_planes               = 3;
-        vaimg->pitches[0]               = mediaSurface->iPitch;
-        vaimg->pitches[1]               =
-        vaimg->pitches[2]               = mediaSurface->iPitch / 2;
-        break;
     case Media_Format_I420:
         vaimg->format.bits_per_pixel    = 12;
         vaimg->data_size                = mediaSurface->iPitch * mediaSurface->iHeight * 3 / 2;
@@ -4176,6 +4187,9 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->pitches[0]               = mediaSurface->iPitch;
         vaimg->pitches[1]               =
         vaimg->pitches[2]               = mediaSurface->iPitch / 2;
+        vaimg->offsets[0]               = 0;
+        vaimg->offsets[1]               = mediaSurface->iHeight * mediaSurface->iPitch;
+        vaimg->offsets[2]               = mediaSurface->iPitch * mediaSurface->iHeight * 5 / 4;
         break;
     case Media_Format_A8B8G8R8:
     case Media_Format_R8G8B8A8:
@@ -4185,6 +4199,7 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->data_size                = mediaSurface->iPitch * mediaSurface->iHeight;
         vaimg->num_planes               = 1;
         vaimg->pitches[0]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
         break;
     case Media_Format_X8R8G8B8:
     case Media_Format_X8B8G8R8:
@@ -4192,6 +4207,7 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->data_size                = mediaSurface->iPitch * mediaSurface->iHeight;
         vaimg->num_planes               = 1;
         vaimg->pitches[0]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
         break;
     case Media_Format_R10G10B10A2:
     case Media_Format_B10G10R10A2:
@@ -4200,18 +4216,21 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->data_size                = mediaSurface->iPitch * mediaSurface->iHeight;
         vaimg->num_planes               = 1;
         vaimg->pitches[0]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
         break;
     case Media_Format_R5G6B5:
         vaimg->format.bits_per_pixel    = 16;
         vaimg->data_size                = mediaSurface->iPitch * mediaSurface->iHeight;
         vaimg->num_planes               = 1;
         vaimg->pitches[0]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
         break;
     case Media_Format_R8G8B8:
         vaimg->format.bits_per_pixel    = 24;
         vaimg->data_size                = mediaSurface->iPitch * mediaSurface->iHeight;
         vaimg->num_planes               = 1;
         vaimg->pitches[0]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
         break;
     case Media_Format_YUY2:
     case Media_Format_UYVY:
@@ -4219,12 +4238,14 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->data_size                = mediaSurface->iPitch * mediaSurface->iHeight;
         vaimg->num_planes               = 1;
         vaimg->pitches[0]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
         break;
     case Media_Format_400P:
         vaimg->format.bits_per_pixel    = 8;
         vaimg->data_size                = mediaSurface->iPitch * mediaSurface->iHeight;
         vaimg->num_planes               = 1;
         vaimg->pitches[0]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
         break;
     case Media_Format_444P:
     case Media_Format_RGBP:
@@ -4235,6 +4256,9 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->pitches[0]               =
         vaimg->pitches[1]               =
         vaimg->pitches[2]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
+        vaimg->offsets[1]               = mediaSurface->iHeight * mediaSurface->iPitch;
+        vaimg->offsets[2]               = mediaSurface->iHeight * mediaSurface->iPitch * 2;
         break;
     case Media_Format_IMC3:
         vaimg->format.bits_per_pixel    = 12;
@@ -4243,6 +4267,9 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->pitches[0]               =
         vaimg->pitches[1]               =
         vaimg->pitches[2]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
+        vaimg->offsets[1]               = mediaSurface->iHeight * mediaSurface->iPitch;
+        vaimg->offsets[2]               = mediaSurface->iHeight * mediaSurface->iPitch * 3 / 2;
         break;
     case Media_Format_411P:
         vaimg->format.bits_per_pixel    = 12;
@@ -4251,6 +4278,9 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->pitches[0]               =
         vaimg->pitches[1]               =
         vaimg->pitches[2]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
+        vaimg->offsets[1]               = mediaSurface->iHeight * mediaSurface->iPitch;
+        vaimg->offsets[2]               = mediaSurface->iHeight * mediaSurface->iPitch * 2;
         break;
     case Media_Format_422V:
         vaimg->format.bits_per_pixel    = 16;
@@ -4259,6 +4289,9 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->pitches[0]               =
         vaimg->pitches[1]               =
         vaimg->pitches[2]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
+        vaimg->offsets[1]               = mediaSurface->iHeight * mediaSurface->iPitch;
+        vaimg->offsets[2]               = mediaSurface->iHeight * mediaSurface->iPitch * 3 / 2;
         break;
     case Media_Format_422H:
         vaimg->format.bits_per_pixel    = 16;
@@ -4267,6 +4300,9 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->pitches[0]               =
         vaimg->pitches[1]               =
         vaimg->pitches[2]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
+        vaimg->offsets[1]               = mediaSurface->iHeight * mediaSurface->iPitch;
+        vaimg->offsets[2]               = mediaSurface->iHeight * mediaSurface->iPitch * 2;
         break;
     case Media_Format_P010:
     case Media_Format_P016:
@@ -4276,6 +4312,9 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->pitches[0]               = mediaSurface->iPitch;
         vaimg->pitches[1]               =
         vaimg->pitches[2]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
+        vaimg->offsets[1]               = mediaSurface->iHeight * mediaSurface->iPitch;
+        vaimg->offsets[2]               = vaimg->offsets[1] + 2;
         break;
     case Media_Format_Y410:
     case Media_Format_AYUV:
@@ -4284,12 +4323,14 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->data_size                = mediaSurface->iPitch * mediaSurface->iHeight;
         vaimg->num_planes               = 1;
         vaimg->pitches[0]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
         break;
     case Media_Format_Y416:
         vaimg->format.bits_per_pixel    = 64; // packed format [alpha, Y, U, V], 16 bits per channel
         vaimg->data_size                = mediaSurface->iPitch * mediaSurface->iHeight;
         vaimg->num_planes               = 1;
         vaimg->pitches[0]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
         break;
      default:
         vaimg->format.bits_per_pixel    = 12;
@@ -4298,76 +4339,10 @@ VAStatus DdiMedia_DeriveImage (
         vaimg->pitches[0]               = mediaSurface->iPitch;
         vaimg->pitches[1]               =
         vaimg->pitches[2]               = mediaSurface->iPitch;
+        vaimg->offsets[0]               = 0;
+        vaimg->offsets[1]               = mediaSurface->iHeight * mediaSurface->iPitch;
+        vaimg->offsets[2]               = vaimg->offsets[1] + 1;
         break;
-    }
-
-    if (mediaSurface->pSurfDesc != nullptr && mediaSurface->pSurfDesc->uiVaMemType == VA_SURFACE_ATTRIB_MEM_TYPE_USER_PTR)
-    {
-        switch( mediaSurface->format )
-        {
-        case Media_Format_YV12:
-        case Media_Format_I420:
-            vaimg->offsets[1]               = mediaSurface->iPitch * mediaSurface->iHeight * 5 / 4;
-            vaimg->offsets[2]               = mediaSurface->iHeight * mediaSurface->iPitch;
-            break;
-        case Media_Format_444P:
-        case Media_Format_RGBP:
-        case Media_Format_BGRP:
-        case Media_Format_411P:
-        case Media_Format_422H:
-            vaimg->offsets[1]               = mediaSurface->iHeight * mediaSurface->iPitch;
-            vaimg->offsets[2]               = mediaSurface->iHeight * mediaSurface->iPitch * 2;
-            break;
-        case Media_Format_IMC3:
-        case Media_Format_422V:
-            vaimg->offsets[1]               = mediaSurface->iHeight * mediaSurface->iPitch;
-            vaimg->offsets[2]               = mediaSurface->iHeight * mediaSurface->iPitch * 3 / 2;
-            break;
-        case Media_Format_P010:
-            vaimg->offsets[1]               = mediaSurface->iHeight * mediaSurface->iPitch;
-            vaimg->offsets[2]               = vaimg->offsets[1] + 2;
-            break;
-        default:
-            vaimg->offsets[1]               = mediaSurface->iHeight * mediaSurface->iPitch;
-            vaimg->offsets[2]               = vaimg->offsets[1] + 1;
-            break;
-        }
-    }else
-    {
-        DDI_CHK_NULL(mediaSurface->pGmmResourceInfo, "nullptr pGmmResourceInfo", VA_STATUS_ERROR_INVALID_SURFACE);
-        uint32_t UPlaneXOffset = mediaSurface->pGmmResourceInfo->GetPlanarXOffset(GMM_PLANE_U);
-        uint32_t UPlaneYOffset = mediaSurface->pGmmResourceInfo->GetPlanarYOffset(GMM_PLANE_U);
-        uint32_t VPlaneXOffset = mediaSurface->pGmmResourceInfo->GetPlanarXOffset(GMM_PLANE_V);
-        uint32_t VPlaneYOffset = mediaSurface->pGmmResourceInfo->GetPlanarYOffset(GMM_PLANE_V);
-        switch( mediaSurface->format )
-        {
-        case Media_Format_YV12:
-            vaimg->offsets[1]               = VPlaneYOffset * mediaSurface->iPitch;
-            vaimg->offsets[2]               = UPlaneYOffset * mediaSurface->iPitch + UPlaneXOffset;
-            break;
-        case Media_Format_I420:
-            vaimg->offsets[1]               = UPlaneYOffset * mediaSurface->iPitch;
-            vaimg->offsets[2]               = VPlaneYOffset * mediaSurface->iPitch + VPlaneXOffset;
-            break;
-        case Media_Format_444P:
-        case Media_Format_RGBP:
-        case Media_Format_BGRP:
-        case Media_Format_411P:
-        case Media_Format_422H:
-        case Media_Format_IMC3:
-        case Media_Format_422V:
-            vaimg->offsets[1]               = UPlaneYOffset * mediaSurface->iPitch;
-            vaimg->offsets[2]               = VPlaneYOffset * mediaSurface->iPitch;
-            break;
-        case Media_Format_P010:
-            vaimg->offsets[1]               = UPlaneYOffset * mediaSurface->iPitch;
-            vaimg->offsets[2]               = vaimg->offsets[1] + 2;
-            break;
-        default:
-            vaimg->offsets[1]               = UPlaneYOffset * mediaSurface->iPitch;
-            vaimg->offsets[2]               = vaimg->offsets[1] + 1;
-            break;
-        }
     }
 
     mediaCtx->m_caps->PopulateColorMaskInfo(&vaimg->format);
@@ -4576,16 +4551,9 @@ VAStatus DdiMedia_GetImage(
     {
         VAContextID context = VA_INVALID_ID;
 
-        if (mediaCtx->pVpCtxHeap != nullptr && mediaCtx->pVpCtxHeap->pHeapBase != nullptr)
-        {
-            //Get VP Context from heap.
-            context = (VAContextID)(0 + DDI_MEDIA_VACONTEXTID_OFFSET_VP);
-        }else
-        {
-            //Create VP Context.
-            vaStatus = DdiVp_CreateContext(ctx, 0, 0, 0, 0, 0, 0, &context);
-            DDI_CHK_RET(vaStatus, "Create VP Context failed.");
-        }
+        //Create VP Context.
+        vaStatus = DdiVp_CreateContext(ctx, 0, 0, 0, 0, 0, 0, &context);
+        DDI_CHK_RET(vaStatus, "Create VP Context failed.");
 
         //Create target surface for VP pipeline.
         DDI_MEDIA_FORMAT mediaFmt = DdiMedia_OsFormatToMediaFormat(vaimg->format.fourcc, vaimg->format.fourcc);
@@ -4615,7 +4583,8 @@ VAStatus DdiMedia_GetImage(
             DdiMedia_DestroySurfaces(ctx, &target_surface, 1);
             return vaStatus;
         }
-
+        vaStatus = DdiMedia_SyncSurface(ctx, target_surface);
+        vaStatus = DdiVp_DestroyContext(ctx, context);
         output_surface = target_surface;
     }
 
@@ -4811,16 +4780,9 @@ VAStatus DdiMedia_PutImage(
     {
         VAContextID context     = VA_INVALID_ID;
 
-        if (mediaCtx->pVpCtxHeap != nullptr && mediaCtx->pVpCtxHeap->pHeapBase != nullptr)
-        {
-            //Get VP Context from heap.
-            context = (VAContextID)(0 + DDI_MEDIA_VACONTEXTID_OFFSET_VP);
-        }else
-        {
-            //Create VP Context.
-            vaStatus = DdiVp_CreateContext(ctx, 0, 0, 0, 0, 0, 0, &context);
-            DDI_CHK_RET(vaStatus, "Create VP Context failed");
-        }
+        //Create VP Context.
+        vaStatus = DdiVp_CreateContext(ctx, 0, 0, 0, 0, 0, 0, &context);
+        DDI_CHK_RET(vaStatus, "Create VP Context failed");
 
         //Create temp surface for VP pipeline.
         DDI_MEDIA_FORMAT mediaFmt = DdiMedia_OsFormatToMediaFormat(vaimg->format.fourcc, vaimg->format.fourcc);
@@ -4888,6 +4850,8 @@ VAStatus DdiMedia_PutImage(
         }
 
         DdiMedia_DestroySurfaces(ctx, &tempSurface, 1);
+        vaStatus = DdiMedia_SyncSurface(ctx, tempSurface);
+        vaStatus = DdiVp_DestroyContext(ctx, context);
     }
     else
     {

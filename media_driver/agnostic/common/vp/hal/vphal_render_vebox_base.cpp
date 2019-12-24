@@ -3272,6 +3272,12 @@ MOS_STATUS VPHAL_VEBOX_STATE::VeboxRenderMode0(
     // Set up reference surfaces
     pRefSurface = VeboxSetReference(pSrcSurface);
 
+    if (pSrcSurface->bPreAPGWorkloadEnable && pRefSurface != nullptr)
+    {
+        pRefSurface->bPreAPGWorkloadEnable = false;
+        pRenderData->bRefValid = false;
+        MOS_ZeroMemory(m_previousSurface, sizeof(VPHAL_SURFACE));
+    }
     // Set current DN output buffer
     pRenderData->iCurDNOut = pVeboxState->iCurDNIndex;
 
@@ -3518,6 +3524,16 @@ MOS_STATUS VPHAL_VEBOX_STATE::Render(
             // Need not submit Vebox commands, jump out accordingly
             goto dndi_sample_out;
         }
+    }
+
+    if (pcRenderParams->bAPGWorkloadEnable)
+    {
+        pSrcSurface->bPreAPGWorkloadEnable = true;
+        pRenderData->bRefValid = false;
+    }
+    else
+    {
+        pSrcSurface->bPreAPGWorkloadEnable = false;
     }
 
     if (IS_VEBOX_EXECUTION_MODE_0_TO_2(pVeboxState->m_pVeboxExecState))
@@ -4926,6 +4942,7 @@ MOS_STATUS VPHAL_VEBOX_RENDER_DATA::Init()
     }
     pDNUVParams          = nullptr;
     iCurbeLength         = 0;
+    iCurbeOffset         = 0;
     iInlineLength        = 0;
     // Debug parameters
     pKernelName          = nullptr;

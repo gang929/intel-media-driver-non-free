@@ -27,6 +27,9 @@
 #define __HAL_KERNELDLL_H__
 
 #include "mos_defs.h"
+#include "cm_fc_ld.h"
+// Kernel IDs and Kernel Names
+#include "vpkrnheader.h" // IDR_VP_TOTAL_NUM_KERNELS
 
 #if EMUL
 
@@ -234,6 +237,7 @@ typedef enum tagKdll_ParserState
     Parser_DualOutput      ,        // dual output
     Parser_Rotation        ,        // apply post composition rotation
     Parser_DestSurfIndex   ,        // destination surface index
+    Parser_Colorfill       ,        // applying colorfill
     Parser_WriteOutput     ,        // write output
     Parser_End             ,        // end dynamic linking
 
@@ -531,6 +535,7 @@ typedef struct tagKdll_CacheEntry
     int               iFilterSize;       // kernel filter size
     Kdll_FilterEntry *pFilter;           // kernel filter description
     Kdll_CSC_Params  *pCscParams;        // kernel CSC parameters
+    VPHAL_CSPACE      colorfill_cspace;  // intermediate color space for colorfill
 
     // Cache control
     int               iKCID;             // kernel cache id (dynamically linked kernel)
@@ -608,6 +613,9 @@ typedef struct tagKdll_State
 
     Kdll_Procamp            *pProcamp;              // Array of Procamp parameters
     int32_t                 iProcampSize;           // Size of the array of Procamp parameters
+
+    // Colorfill
+    VPHAL_CSPACE            colorfill_cspace;       // Selected colorfill Color Space by Kdll
 
     // Start kernel search
     void                 (* pfnStartKernelSearch)(PKdll_State       pState,
@@ -850,6 +858,18 @@ bool KernelDll_SetupCSC(
 bool KernelDll_IsSameFormatType(MOS_FORMAT   format1, MOS_FORMAT   format2);
 void KernelDll_ReleaseHashEntry(Kdll_KernelHashTable *pHashTable, uint16_t entry);
 void KernelDll_ReleaseCacheEntry(Kdll_KernelCache *pCache, Kdll_CacheEntry  *pEntry);
+
+//---------------------------------------------------------------------------------------
+// KernelDll_SetupFunctionPointers_Ext - Setup Extension Function pointers
+//
+// Parameters:
+//    KdllState  *pState    - [in/out] Kernel Dll state
+//
+// Output: true  - Function pointers are set
+//         false - Failed to setup function pointers (invalid platform)
+//-----------------------------------------------------------------------------------------
+bool KernelDll_SetupFunctionPointers_Ext(
+    Kdll_State  *pState);
 
 #if _DEBUG || EMUL
 

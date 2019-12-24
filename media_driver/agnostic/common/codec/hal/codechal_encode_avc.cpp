@@ -5592,6 +5592,12 @@ MOS_STATUS CodechalEncodeAvcEnc::SetPictureStructs()
     {
         // legacy AVC : 1 original plus extra to handle IPCM MBs
         m_numPasses = (CODECHAL_ENCODE_AVC_CQP_NUM_OF_PASSES - 1);
+
+        if (picParams->bEnableQpAdjustment)
+        {
+            bMbBrcEnabled = true;
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(AllocateResourcesMbBrc());
+        }
     }
 
     //add for multiple Pass Pak
@@ -6518,7 +6524,7 @@ MOS_STATUS CodechalEncodeAvcEnc::DumpEncodeKernelOutput()
     if (bBrcEnabled)
     {
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpBuffer(
-            &BrcBuffers.resBrcImageStatesReadBuffer[m_currRecycledBufIdx],
+            &BrcBuffers.resBrcImageStatesWriteBuffer,
             CodechalDbgAttr::attrOutput,
             "ImgStateWrite",
             BRC_IMG_STATE_SIZE_PER_PASS * m_hwInterface->GetMfxInterface()->GetBrcNumPakPasses(),

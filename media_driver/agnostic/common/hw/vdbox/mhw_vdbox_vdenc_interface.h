@@ -143,6 +143,13 @@ struct MHW_VDBOX_VDENC_CMD2_STATE
     bool                                    bPakOnlyMultipassEnable = false;
     void                                    *pInputParams = nullptr;
     bool                                    bHevcVisualQualityImprovement = false;  //!< VQI enable flag
+    
+    bool                                    bTileReplayEnable = false;
+    bool                                    bCaptureModeEnable = false;
+    uint8_t                                 m_WirelessSessionID = 0;
+    bool                                    bIsLowDelayB = false;
+    int8_t                                  *pRefIdxMapping = nullptr;
+    uint8_t                                 recNotFilteredID = 0;
     virtual ~MHW_VDBOX_VDENC_CMD2_STATE() {}
 };
 using PMHW_VDBOX_VDENC_CMD2_STATE = std::shared_ptr<MHW_VDBOX_VDENC_CMD2_STATE>;
@@ -176,6 +183,7 @@ protected:
 
     bool                        m_rowstoreCachingSupported = 0;
     MHW_VDBOX_ROWSTORE_CACHE    m_vdencRowStoreCache = {};    //!< vdenc row store cache
+    MHW_VDBOX_ROWSTORE_CACHE    m_vdencIpdlRowstoreCache = {}; //!< vdenc IntraPred row store cache
     bool                        m_rhoDomainStatsEnabled = false; //! indicate if rho domain stats is enabled
     bool                        m_perfModeSupported = true; //! indicate perf mode is supported
 

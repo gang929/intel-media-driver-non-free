@@ -79,7 +79,11 @@ const uint32_t MediaLibvaCaps::m_vpSurfaceAttr[m_numVpSurfaceAttr] =
     VA_FOURCC('R', 'G', 'B', 'P'),
     VA_FOURCC('R', 'G', 'B', 'X'),
     VA_FOURCC('P', '0', '1', '0'),
-    VA_FOURCC('R','G','2', '4')
+    VA_FOURCC('R','G','2', '4'),
+    VA_FOURCC_ARGB,
+    VA_FOURCC_ABGR,
+    VA_FOURCC_A2R10G10B10,
+    VA_FOURCC_A2B10G10R10
 };
 
 const uint32_t MediaLibvaCaps::m_jpegSurfaceAttr[m_numJpegSurfaceAttr] =
@@ -3126,6 +3130,11 @@ GMM_RESOURCE_FORMAT MediaLibvaCaps::ConvertFourccToGmmFmt(uint32_t fourcc)
         case VA_FOURCC_A2B10G10R10   : return GMM_FORMAT_B10G10R10A2_UNORM_TYPE;
         default               : return GMM_FORMAT_INVALID;
     }
+}
+
+bool MediaLibvaCaps::IsMfeSupportedOnPlatform(const PLATFORM &platform)
+{
+    return (GFX_IS_PRODUCT(platform, IGFX_SKYLAKE));
 }
 
 VAStatus MediaLibvaCaps::GetMbProcessingRateDec(

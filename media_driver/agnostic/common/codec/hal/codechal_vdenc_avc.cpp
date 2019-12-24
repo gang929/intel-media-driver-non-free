@@ -3098,6 +3098,7 @@ CodechalVdencAvcState::CodechalVdencAvcState(
     }
 
     MOS_ZeroMemory(&m_vdencIntraRowStoreScratchBuffer, sizeof(MOS_RESOURCE));
+    MOS_ZeroMemory(&m_vdencColocatedMVBuffer, sizeof(MOS_RESOURCE));
     MOS_ZeroMemory(&m_pakStatsBuffer, sizeof(MOS_RESOURCE));
     MOS_ZeroMemory(&m_vdencStatsBuffer, sizeof(MOS_RESOURCE));
     MOS_ZeroMemory(&m_vdencTlbMmioBuffer, sizeof(MOS_RESOURCE));
@@ -3108,6 +3109,7 @@ CodechalVdencAvcState::~CodechalVdencAvcState()
     CODECHAL_ENCODE_FUNCTION_ENTER;
 
     m_osInterface->pfnFreeResource(m_osInterface, &m_vdencIntraRowStoreScratchBuffer);
+    m_osInterface->pfnFreeResource(m_osInterface, &m_vdencColocatedMVBuffer);
     m_osInterface->pfnFreeResource(m_osInterface, &m_vdencStatsBuffer);
     m_osInterface->pfnFreeResource(m_osInterface, &m_pakStatsBuffer);
     m_osInterface->pfnFreeResource(m_osInterface, &m_vdencTlbMmioBuffer);
@@ -4693,10 +4695,12 @@ MOS_STATUS CodechalVdencAvcState::HuCBrcInitReset()
 
     if (!m_singleTaskPhaseSupported || m_firstTaskInPhase)
     {
+        MHW_MI_MMIOREGISTERS mmioRegister;
+        bool validMmio = m_mfxInterface->ConvertToMiRegister(m_vdboxIndex, mmioRegister);
         // Send command buffer header at the beginning (OS dependent)
         bool bRequestFrameTracking = m_singleTaskPhaseSupported ? m_firstTaskInPhase : 0;
         CODECHAL_ENCODE_CHK_STATUS_RETURN(SendPrologWithFrameTracking(
-            &cmdBuffer, bRequestFrameTracking));
+            &cmdBuffer, bRequestFrameTracking, validMmio ? &mmioRegister: nullptr));
     }
 
     // load kernel from WOPCM into L2 storage RAM
@@ -4767,6 +4771,7 @@ MOS_STATUS CodechalVdencAvcState::HuCBrcInitReset()
     }
 
     CODECHAL_DEBUG_TOOL(DumpHucBrcInit());
+    m_firstTaskInPhase = false;
 
     return eStatus;
 }
@@ -4787,10 +4792,13 @@ MOS_STATUS CodechalVdencAvcState::HuCBrcUpdate()
 
     if (!m_singleTaskPhaseSupported || (m_firstTaskInPhase && !m_brcInit))
     {
+        MHW_MI_MMIOREGISTERS mmioRegister;
+        bool validMmio = m_mfxInterface->ConvertToMiRegister(m_vdboxIndex, mmioRegister);
+
         // Send command buffer header at the beginning (OS dependent)
         bool bRequestFrameTracking = m_singleTaskPhaseSupported ? m_firstTaskInPhase : 0;
         CODECHAL_ENCODE_CHK_STATUS_RETURN(
-            SendPrologWithFrameTracking(&cmdBuffer, bRequestFrameTracking));
+            SendPrologWithFrameTracking(&cmdBuffer, bRequestFrameTracking, validMmio ? &mmioRegister : nullptr));
     }
 
     if (m_brcInit || m_brcReset)
@@ -5548,10 +5556,13 @@ MOS_STATUS CodechalVdencAvcState::ExecutePictureLevel()
                                                     ? m_sliceShutdownRequestState
                                                     : m_sliceShutdownDefaultState;
 
+        MHW_MI_MMIOREGISTERS mmioRegister;
+        bool validMmio = m_mfxInterface->ConvertToMiRegister(m_vdboxIndex, mmioRegister);
+
         // Send command buffer header at the beginning (OS dependent)
         // frame tracking tag is only added in the last command buffer header
         requestFrameTracking = m_singleTaskPhaseSupported ? m_firstTaskInPhase : m_lastTaskInPhase;
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(SendPrologWithFrameTracking(&cmdBuffer, requestFrameTracking));
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(SendPrologWithFrameTracking(&cmdBuffer, requestFrameTracking, validMmio ? &mmioRegister : nullptr));
 
         m_hwInterface->m_numRequestedEuSlices = CODECHAL_SLICE_SHUTDOWN_DEFAULT;
     }
@@ -5703,6 +5714,15 @@ MOS_STATUS CodechalVdencAvcState::ExecutePictureLevel()
         pipeBufAddrParams.presVdenc4xDsSurface[1]   = pipeBufAddrParams.presVdenc4xDsSurface[0];
     }
 
+    if (m_pictureCodingType == P_TYPE)
+    {
+        pipeBufAddrParams.presVdencColocatedMVWriteBuffer = &m_vdencColocatedMVBuffer;
+    }
+    else if (m_pictureCodingType == B_TYPE)
+    {
+        pipeBufAddrParams.presVdencColocatedMVReadBuffer = &m_vdencColocatedMVBuffer;
+    }
+
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_vdencInterface->AddVdencPipeBufAddrCmd(&cmdBuffer, &pipeBufAddrParams));
 
     MHW_VDBOX_VDENC_CQPT_STATE_PARAMS vdencCQPTStateParams;
@@ -5777,6 +5797,8 @@ MOS_STATUS CodechalVdencAvcState::ExecutePictureLevel()
             secondLevelBatchBufferUsed = &(m_batchBufferForVdencImgStat[0]);
         }
         MOS_Delete(imageStateParams);
+
+        HalOcaInterface::OnSubLevelBBStart(cmdBuffer, *m_osInterface->pOsContext,&secondLevelBatchBufferUsed->OsResource, 0, true, 0);
 
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferStartCmd(&cmdBuffer, secondLevelBatchBufferUsed));
 
@@ -6222,7 +6244,7 @@ MOS_STATUS CodechalVdencAvcState::ExecuteSliceLevel()
         m_newPpsHeader = 0;
         m_newSeqHeader = 0;
     }
-
+  
     CODECHAL_DEBUG_TOOL(
         CODECHAL_ENCODE_CHK_STATUS_RETURN(PopulateSliceStateParam(
             m_adaptiveRoundingInterEnable,
@@ -6566,6 +6588,21 @@ MOS_STATUS CodechalVdencAvcState::AllocateResources()
     if (eStatus != MOS_STATUS_SUCCESS)
     {
         CODECHAL_ENCODE_ASSERTMESSAGE("Failed to allocate VDENC Intra Row Store Scratch Buffer.");
+        return eStatus;
+    }
+
+    //VDEnc colocated MV buffer
+    m_vdencColocatedMVBufferSize = (m_picWidthInMb * m_picHeightInMb) * (CODECHAL_CACHELINE_SIZE / 2);
+    allocParamsForBufferLinear.dwBytes  = MOS_ALIGN_CEIL(m_vdencColocatedMVBufferSize, CODECHAL_CACHELINE_SIZE);
+    allocParamsForBufferLinear.pBufName = "VDENC Colocated MV buffer";
+
+    eStatus = (MOS_STATUS)m_osInterface->pfnAllocateResource(
+        m_osInterface,
+        &allocParamsForBufferLinear,
+        &m_vdencColocatedMVBuffer);
+    if (eStatus != MOS_STATUS_SUCCESS)
+    {
+        CODECHAL_ENCODE_ASSERTMESSAGE("Failed to allocate VDENC Colocated MV buffer.");
         return eStatus;
     }
 
@@ -8127,4 +8164,5 @@ MOS_STATUS CodechalVdencAvcState::DumpSeqParFile()
 
     return MOS_STATUS_SUCCESS;
 }
+
 #endif

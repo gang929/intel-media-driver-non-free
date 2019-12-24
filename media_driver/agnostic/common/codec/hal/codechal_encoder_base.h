@@ -135,6 +135,7 @@
 #define CODECHAL_ENCODE_MAX_NUM_MAD_BUFFERS             CODEC_MAX_NUM_REF_FIELD
 #define CODECHAL_ENCODE_SLICESIZE_BUF_SIZE              (4960 * sizeof(uint16_t))
 #define CODECHAL_VDENC_BRC_NUM_OF_PASSES                2
+#define CODECHAL_VDENC_BRC_NUM_OF_PASSES_FOR_TILE_REPLAY 22
 #define CODECHAL_DP_MAX_NUM_BRC_PASSES                  4
 #define CODECHAL_VDENC_NUMIMEPREDICTORS                 0x8
 #define CODECHAL_CMDINITIALIZER_MAX_CMD_SIZE            CODECHAL_CACHELINE_SIZE * 4
@@ -363,19 +364,22 @@ struct MfeParams
 //!
 struct MfeSharedState
 {
-    CodechalHwInterface             *pHwInterface;
+    CodechalHwInterface             *pHwInterface = nullptr;
     PMOS_INTERFACE                  pOsInterface;
-    PMHW_KERNEL_STATE               pMfeMbEncKernelState;     //!< Set in the first stream, Used by the rest streams
-    uint32_t                        dwPicWidthInMB;           //!< Keep the maximum width
-    uint32_t                        dwPicHeightInMB;          //!< Keep the maximum height
-    uint16_t                        sliceHeight;              //!< Keep the maximum slice height
+    PMHW_KERNEL_STATE               pMfeMbEncKernelState;            //!< Set in the first stream, Used by the rest streams
+    uint32_t                        dwPicWidthInMB;                  //!< Keep the maximum width
+    uint32_t                        dwPicHeightInMB;                 //!< Keep the maximum height
+    uint16_t                        sliceHeight;                     //!< Keep the maximum slice height
+    uint32_t                        maxTheadWidth = 0;               //!< Keep the maximum width of the threadspace
+    uint32_t                        maxTheadHeight = 0;              //!< Keep the maximum Height of the threadspace
+    uint32_t                        *maxThreadWidthFrames = nullptr; //!< Keep the thread space width for all frames
 
-    CmDevice                                *pCmDev;          //!< Set in the first stream, Used by the rest streams
-    CmTask                                  *pCmTask;
-    CmQueue                                 *pCmQueue;
-    CodechalEncodeMdfKernelResource         *resMbencKernel;
-    SurfaceIndex                            *vmeSurface;
-    SurfaceIndex                            *commonSurface;
+    CmDevice                                *pCmDev = nullptr;       //!< Set in the first stream, Used by the rest streams
+    CmTask                                  *pCmTask = nullptr;
+    CmQueue                                 *pCmQueue = nullptr;
+    CodechalEncodeMdfKernelResource         *resMbencKernel = nullptr;
+    SurfaceIndex                            *vmeSurface = nullptr;
+    SurfaceIndex                            *commonSurface = nullptr;
     std::vector<CodechalEncoderState*>      encoders;
 };
 
@@ -1392,8 +1396,6 @@ public:
     uint32_t                        m_frameFieldHeight = 0;       //!< Frame height in luma samples
     uint32_t                        m_oriFrameHeight = 0;         //!< Original frame height
     uint32_t                        m_oriFrameWidth = 0;          //!< Original frame width
-    uint32_t                        m_prevFrameWidth = 0;         //!< Previous frame width
-    uint32_t                        m_prevFrameHeight = 0;        //!< Previous frame height
     uint32_t                        m_createWidth = 0;            //!< Max Frame Width for resolution reset
     uint32_t                        m_createHeight = 0;           //!< Max Frame Height for resolution reset
     uint16_t                        m_picWidthInMb = 0;           //!< Picture Width in MB width count
@@ -1612,7 +1614,8 @@ public:
 
     // HME VDEnc
     GenericBindingTable             m_vdencMeKernelBindingTable = {};   //!< Vdenc ME kernel binding table
-    MHW_KERNEL_STATE                m_vdencMeKernelState;               //!< Vdenc ME kernel state
+    MHW_KERNEL_STATE                m_vdencMeKernelState;               //!< Vdenc ME kernel state for Low Delay B
+    MHW_KERNEL_STATE                m_vdencMeKernelStateRAB = {};       //!< Vdenc ME kernel state for Random Access B
 
     GenericBindingTable             m_vdencStreaminKernelBindingTable = {};  //!< Vdenc stream in kernel binding table
     MHW_KERNEL_STATE                m_vdencStreaminKernelState;         //!< Vdenc stream in kernel state for Low Delay B
@@ -2231,6 +2234,18 @@ public:
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
     virtual MOS_STATUS DestroyMDFResources();
+
+    //!
+    //! \brief    Function to set MFE Shared State
+    //!
+    //! \details  Pointer on passed object will be saved in the local field,
+    //!           content of source object might be changed later
+    //!           (for example, CmDevice might be set or chagned)
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS SetMfeSharedState(MfeSharedState *pMfeSharedState);
 
     //!
     //! \brief  Function to add MDF kernel
