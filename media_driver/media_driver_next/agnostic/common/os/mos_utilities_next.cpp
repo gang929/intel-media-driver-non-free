@@ -25,7 +25,8 @@
 //! \details  Common OS service across different platform
 //!
 
-#include "mos_utilities_next.h"
+#include "mos_utilities.h"
+#include "mos_util_debug_next.h"
 #include "mos_utilities_specific_next.h"
 #include "mos_util_user_interface_next.h"
 #include <sstream>
@@ -39,9 +40,6 @@
 #include <time.h>     //for simulate random memory allcation failure
 #endif
 
-#ifdef _MOS_UTILITY_EXT
-#include "mos_utilities_ext_next.h"
-#endif
 
 //int32_t MosMemAllocCounter;      //!< Counter to check memory leaks
 //int32_t MosMemAllocFakeCounter;
@@ -52,17 +50,17 @@ uint8_t MosUtilities::m_mosUltFlag = 0;
 int32_t MosUtilities::m_mosSimulateRandomAllocMemoryFailFreq = 0;
 
 
-MOS_FUNC_EXPORT void MosUtilities::MOS_SetUltFlag(uint8_t ultFlag)
+MOS_FUNC_EXPORT void MosUtilities::MosSetUltFlag(uint8_t ultFlag)
 {
     MosUtilities::m_mosUltFlag = ultFlag;
 }
 
-MOS_FUNC_EXPORT int32_t MosUtilities::MOS_GetMemNinjaCounter()
+MOS_FUNC_EXPORT int32_t MosUtilities::MosGetMemNinjaCounter()
 {
     return m_mosMemAllocCounterNoUserFeature;
 }
 
-MOS_FUNC_EXPORT int32_t MosUtilities::MOS_GetMemNinjaCounterGfx()
+MOS_FUNC_EXPORT int32_t MosUtilities::MosGetMemNinjaCounterGfx()
 {
     return m_mosMemAllocCounterNoUserFeatureGfx;
 }
@@ -166,6 +164,15 @@ MOS_USER_FEATURE_VALUE MosUtilities::m_mosUserFeatureDescFields[__MOS_USER_FEATU
         MOS_USER_FEATURE_VALUE_TYPE_UINT32,
         "0",
         "Performance Profiler Timer Register"),
+        MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_ENABLE_MULTI_PROCESS,
+        "Perf Profiler Multi Process Support",
+        __MEDIA_USER_FEATURE_SUBKEY_PERFORMANCE,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "General",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_UINT32,
+        "0",
+        "Performance Profiler Multi Process Support"),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_REGISTER_1,
         "Perf Profiler Register 1",
         __MEDIA_USER_FEATURE_SUBKEY_PERFORMANCE,
@@ -274,6 +281,15 @@ MOS_USER_FEATURE_VALUE MosUtilities::m_mosUserFeatureDescFields[__MOS_USER_FEATU
         MOS_USER_FEATURE_VALUE_TYPE_INT32,
         "1",
         "Enables/Disables MFE MBEnc Mode. This feature is only enabled for AVC encode."),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_MFE_FIRST_BUFFER_SUBMIT_ID,
+        "MFE First Buffer Submit",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Encode",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Used to indicate MFE work on UMD level"),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_RC_PANIC_ENABLE_ID,
         "RC Panic Mode",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -1611,6 +1627,15 @@ MOS_USER_FEATURE_VALUE MosUtilities::m_mosUserFeatureDescFields[__MOS_USER_FEATU
         "Path where command info will be dumped, for example: ./"),
 #endif // MOS_COMMAND_RESINFO_DUMP_SUPPORTED
 #if (_DEBUG || _RELEASE_INTERNAL)
+    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_MHW_BASE_VDENC_INTERFACE_ID,
+        "Use Mhw Base Vdenc Interface",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "MOS",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Mhw Base Vdenc Interface Active Flag"),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_MEDIA_PREEMPTION_ENABLE_ID,
         "Media Preemption Enable",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -1647,6 +1672,15 @@ MOS_USER_FEATURE_VALUE MosUtilities::m_mosUserFeatureDescFields[__MOS_USER_FEATU
         MOS_USER_FEATURE_VALUE_TYPE_INT32,
         "5",
         "Override MOCS index value in MDF"),
+    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_MDF_FORCE_RAMODE,
+        "MDF Force RAMode",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Media",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Force GPU context be created in RAMode"),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_GROUP_ID_ID,
         "Group ID",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -2559,6 +2593,33 @@ MOS_USER_FEATURE_VALUE MosUtilities::m_mosUserFeatureDescFields[__MOS_USER_FEATU
         MOS_USER_FEATURE_VALUE_TYPE_STRING,
         "",
         "MDF dump path specified by user"),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_MDF_FORCE_EXECUTION_PATH_ID,
+        __MEDIA_USER_FEATURE_VALUE_MDF_FORCE_EXECUTION_PATH,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        "MDF",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_UINT32,
+        "0",
+        "MDF execution path specified by user"),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_MDF_MAX_THREAD_NUM_ID,
+        __MEDIA_USER_FEATURE_VALUE_MDF_MAX_THREAD_NUM,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        "MDF",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_UINT32,
+        "0",
+        "MDF maximun thread number specified by user"),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_MDF_FORCE_COHERENT_STATELESSBTI_ID,
+        __MEDIA_USER_FEATURE_VALUE_MDF_FORCE_COHERENT_STATELESSBTI,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        "MDF",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_UINT32,
+        "0",
+        "MDF coherent stateless BTI specified by user"),
     MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_MDF_EMU_MODE_ENABLE_ID,
         __MEDIA_USER_FEATURE_VALUE_MDF_EMU_MODE_ENABLE,
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -2885,6 +2946,42 @@ MOS_USER_FEATURE_VALUE MosUtilities::m_mosUserFeatureDescFields[__MOS_USER_FEATU
         MOS_USER_FEATURE_VALUE_TYPE_BOOL,
         "0",
         "VP use memory compression"),
+    MOS_DECLARE_UF_KEY(__VPHAL_PRIMARY_SURFACE_COMPRESS_MODE_ID,
+        "VP Primary Surface Compress Mode",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "VP",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_BOOL,
+        "0",
+        "VP primary surface compress mode"),
+    MOS_DECLARE_UF_KEY(__VPHAL_PRIMARY_SURFACE_COMPRESSIBLE_ID,
+        "VP Primary Surface Compressible",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "VP",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_BOOL,
+        "0",
+        "VP primary surface compressible"),
+    MOS_DECLARE_UF_KEY(__VPHAL_RT_COMPRESS_MODE_ID,
+        "VP RT Compress Mode",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "VP",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_BOOL,
+        "0",
+        "VP render target compress mode"),
+    MOS_DECLARE_UF_KEY(__VPHAL_RT_COMPRESSIBLE_ID,
+        "VP RT Compressible",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "VP",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_BOOL,
+        "0",
+        "VP render target compressible"),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_ENABLE_RENDER_ENGINE_MMC_ID,
         "Enable Media RenderEngine MMC",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -3153,6 +3250,15 @@ MOS_USER_FEATURE_VALUE MosUtilities::m_mosUserFeatureDescFields[__MOS_USER_FEATU
         MOS_USER_FEATURE_VALUE_TYPE_BOOL,
         "0",
         "TRUE for Enabling Decode Virtual Engine context based scheduling. (Default false: disabled"),
+    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_ENABLE_LINUX_FRAME_SPLIT_ID,
+        "Enable Linux Frame Split",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Codec",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_BOOL,
+        "0",
+        "TRUE for Enabling Frame Split. (Default false: disabled"),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_ENABLE_ENCODE_VIRTUAL_ENGINE_ID,
         "Enable Encode VE",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -3288,15 +3394,15 @@ MOS_USER_FEATURE_VALUE MosUtilities::m_mosUserFeatureDescFields[__MOS_USER_FEATU
         MOS_USER_FEATURE_VALUE_TYPE_INT32,
         "0",
         "Eanble Apogeios path. 1: enable, 0: disable."),
-    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_EXTERNAL_COPY_SYNC_ID,
-       "External Copy Sync",
-       __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
-       __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
-       "Encode",
-       MOS_USER_FEATURE_TYPE_USER,
-       MOS_USER_FEATURE_VALUE_TYPE_UINT32,
-       "0",
-       "Enable GPU polling based sync for external raw surface copy."),
+    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_VPP_APOGEIOS_ENABLE_ID,
+        "VP Apogeios Enabled",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "VP",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Eanble Apogeios path in VP PipeLine. 1: enabled, 0: disabled."),
     MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_ENABLE_UMD_OCA_ID,
        __MEDIA_USER_FEATURE_VALUE_ENABLE_UMD_OCA,
        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -3304,8 +3410,62 @@ MOS_USER_FEATURE_VALUE MosUtilities::m_mosUserFeatureDescFields[__MOS_USER_FEATU
        "MOS",
        MOS_USER_FEATURE_TYPE_USER,
        MOS_USER_FEATURE_VALUE_TYPE_UINT32,
-       "0",
+       "1",
        "Enable UMD_OCA in media driver. This key is not valid on Linux."),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_COUNT_FOR_OCA_BUFFER_LEAKED_ID,
+        __MEDIA_USER_FEATURE_VALUE_COUNT_FOR_OCA_BUFFER_LEAKED,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Report",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Reports out the count for OCA buffer leaked. This key is not valid on Linux."),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_COUNT_FOR_OCA_1ST_LEVEL_BB_END_MISSED_ID,
+        __MEDIA_USER_FEATURE_VALUE_COUNT_FOR_OCA_1ST_LEVEL_BB_END_MISSED,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Report",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Reports out the count for OCA buffer which missed to call On1stLevelBBEnd. This key is not valid on Linux."),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_COUNT_FOR_ADDITIONAL_OCA_BUFFER_ALLOCATED_ID,
+        __MEDIA_USER_FEATURE_VALUE_COUNT_FOR_ADDITIONAL_OCA_BUFFER_ALLOCATED,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Report",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Reports out the count for additional OCA buffer allocated. This key is not valid on Linux."),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_OCA_STATUS_ID,
+        __MEDIA_USER_FEATURE_VALUE_OCA_STATUS,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Report",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Reports out the first OCA error. This key is not valid on Linux."),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_OCA_ERROR_HINT_ID,
+        __MEDIA_USER_FEATURE_VALUE_OCA_ERROR_HINT,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Report",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Reports out the line number of first OCA error. This key is not valid on Linux."),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_IS_INDIRECT_STATE_HEAP_INVALID_ID,
+        __MEDIA_USER_FEATURE_VALUE_IS_INDIRECT_STATE_HEAP_INVALID,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Report",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Reports out whether indirect state heap invalid. This key is not valid on Linux."),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_ENABLE_SW_BACK_ANNOTATION_ID,
        "Encode Enable SW Back Annotation",
        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -3313,7 +3473,7 @@ MOS_USER_FEATURE_VALUE MosUtilities::m_mosUserFeatureDescFields[__MOS_USER_FEATU
        "Encode",
        MOS_USER_FEATURE_TYPE_USER,
        MOS_USER_FEATURE_VALUE_TYPE_INT32,
-       "0",
+        "1",
        "Encode Enable SW Back Annotation."),
 #if (_DEBUG || _RELEASE_INTERNAL)
     MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_MODE_ID,
@@ -3324,7 +3484,7 @@ MOS_USER_FEATURE_VALUE MosUtilities::m_mosUserFeatureDescFields[__MOS_USER_FEATU
         MOS_USER_FEATURE_TYPE_USER,
         MOS_USER_FEATURE_VALUE_TYPE_UINT32,
         "0",
-        "MOS memory alloc fail simulate mode， 0-Disable, 1-Random, 3-Traverse."),
+        "MOS memory alloc fail simulate mode， 0-Disable, 1-Random, 2-Traverse."),
     MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_FREQ_ID,
         __MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_FREQ,
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -3344,6 +3504,42 @@ MOS_USER_FEATURE_VALUE MosUtilities::m_mosUserFeatureDescFields[__MOS_USER_FEATU
         "0",
         "MOS memory alloc fail simulate counter."),
 #endif //(_DEBUG || _RELEASE_INTERNAL)
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_PERF_UTILITY_TOOL_ENABLE_ID,
+       __MEDIA_USER_FEATURE_VALUE_PERF_UTILITY_TOOL_ENABLE,
+       __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+       __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+       "MOS",
+       MOS_USER_FEATURE_TYPE_USER,
+       MOS_USER_FEATURE_VALUE_TYPE_UINT32,
+       "0",
+       "Enable Perf Utility Tool. "),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_PERF_OUTPUT_DIRECTORY_ID,
+        __MEDIA_USER_FEATURE_VALUE_PERF_OUTPUT_DIRECTORY,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        "MOS",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_STRING,
+        "",
+        " Perf Utility Tool Customize Output Directory. "),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_APO_MOS_PATH_ENABLE_ID,
+        "ApoMosEnable",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "MOS",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_UINT32,
+        "0",
+        "Eanble mos Apogeios path. 1: enable, 0: disable."),
+    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_APOGEIOS_HEVCD_ENABLE_ID,
+        "ApogeiosHevcdEnable",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Codec",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Eanble Apogeios hevc decode path. 1: enable, 0: disable."),
 };
 
 #define MOS_NUM_USER_FEATURE_VALUES     (sizeof(m_mosUserFeatureDescFields) / sizeof(m_mosUserFeatureDescFields[0]))
@@ -3366,7 +3562,7 @@ uint32_t MosUtilities::m_mosAllocMemoryFailSimulateAllocCounter = 0;
     (m_mosAllocMemoryFailSimulateMode == MEMORY_ALLOC_FAIL_SIMULATE_MODE_RANDOM || \
      m_mosAllocMemoryFailSimulateMode == MEMORY_ALLOC_FAIL_SIMULATE_MODE_TRAVERSE)
 
-void MosUtilities::MOS_InitAllocMemoryFailSimulateFlag()
+void MosUtilities::MosInitAllocMemoryFailSimulateFlag()
 {
     MOS_USER_FEATURE       UserFeature;
     MOS_USER_FEATURE_VALUE UserFeatureValue;
@@ -3379,14 +3575,14 @@ void MosUtilities::MOS_InitAllocMemoryFailSimulateFlag()
     m_mosAllocMemoryFailSimulateAllocCounter = 0;
 
     // Read Config : memory allocation failure simulate mode
-    MOS_ZeroMemory(&UserFeatureValue, sizeof(UserFeatureValue));
+    MosZeroMemory(&UserFeatureValue, sizeof(UserFeatureValue));
     UserFeatureValue.u32Data = 0;  // Init as default value
     UserFeature.Type        = MOS_USER_FEATURE_TYPE_USER;
     UserFeature.pPath       = __MEDIA_USER_FEATURE_SUBKEY_INTERNAL;
     UserFeature.pValues     = &UserFeatureValue;
     UserFeature.uiNumValues = 1;
 
-    MOS_UserFeature_ReadValue(
+    MosUserFeatureReadValue(
         nullptr,
         &UserFeature,
         __MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_MODE,
@@ -3406,14 +3602,14 @@ void MosUtilities::MOS_InitAllocMemoryFailSimulateFlag()
     }
 
     // Read Config : memory allocation failure simulate frequence
-    MOS_ZeroMemory(&UserFeatureValue, sizeof(UserFeatureValue));
+    MosZeroMemory(&UserFeatureValue, sizeof(UserFeatureValue));
     UserFeatureValue.u32Data = 0;  // Init as default value
     UserFeature.Type         = MOS_USER_FEATURE_TYPE_USER;
     UserFeature.pPath        = __MEDIA_USER_FEATURE_SUBKEY_INTERNAL;
     UserFeature.pValues      = &UserFeatureValue;
     UserFeature.uiNumValues  = 1;
 
-    MOS_UserFeature_ReadValue(
+    MosUserFeatureReadValue(
         nullptr,
         &UserFeature,
         __MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_FREQ,
@@ -3437,14 +3633,14 @@ void MosUtilities::MOS_InitAllocMemoryFailSimulateFlag()
     }
 
     // Read Config : memory allocation failure simulate counter
-    MOS_ZeroMemory(&UserFeatureValue, sizeof(UserFeatureValue));
+    MosZeroMemory(&UserFeatureValue, sizeof(UserFeatureValue));
     UserFeatureValue.u32Data = 0;  // Init as default value
     UserFeature.Type         = MOS_USER_FEATURE_TYPE_USER;
     UserFeature.pPath        = __MEDIA_USER_FEATURE_SUBKEY_INTERNAL;
     UserFeature.pValues      = &UserFeatureValue;
     UserFeature.uiNumValues  = 1;
 
-    MOS_UserFeature_ReadValue(
+    MosUserFeatureReadValue(
         nullptr,
         &UserFeature,
         __MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_HINT,
@@ -3462,7 +3658,7 @@ void MosUtilities::MOS_InitAllocMemoryFailSimulateFlag()
     }
 }
 
-bool MosUtilities::MOS_SimulateAllocMemoryFail(
+bool MosUtilities::MosSimulateAllocMemoryFail(
     size_t      size,
     size_t      alignment,
     const char  *functionName,
@@ -3479,9 +3675,9 @@ bool MosUtilities::MOS_SimulateAllocMemoryFail(
     if (m_mosAllocMemoryFailSimulateMode == MEMORY_ALLOC_FAIL_SIMULATE_MODE_RANDOM)
     {
         int32_t Rn = rand();
+        m_mosAllocMemoryFailSimulateAllocCounter++;
         if (Rn % m_mosAllocMemoryFailSimulateFreq == 1)
         {
-            m_mosAllocMemoryFailSimulateAllocCounter++;
             bSimulateAllocFail = true;
             MOS_DEBUGMESSAGE(MOS_MESSAGE_LVL_CRITICAL, MOS_COMPONENT_OS, MOS_SUBCOMP_SELF, \
                 "Simulated Allocate Memory Fail (Rn=%d, SimulateAllocCounter=%d) for: functionName: %s, filename: %s, line: %d, size: %d, alignment: %d \n", \
@@ -3509,6 +3705,7 @@ bool MosUtilities::MOS_SimulateAllocMemoryFail(
     else
     {
         MOS_OS_NORMALMESSAGE("Invalid MosAllocMemoryFailSimulateMode: %d \n ", m_mosAllocMemoryFailSimulateMode);
+        bSimulateAllocFail = false;
     }
 
     return bSimulateAllocFail;
@@ -3522,11 +3719,11 @@ MOS_STATUS MosUtilities::MOS_utilities_init()
 
     MOS_OS_FUNCTION_ENTER;
 
-    eStatus = MosUtilities::MOS_OS_Utilities_Init();
+    eStatus = MOS_OS_Utilities_Init();
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     //Initialize MOS simulate random alloc memorflag
-    MOS_InitAllocMemoryFailSimulateFlag();
+    MosInitAllocMemoryFailSimulateFlag();
 #endif
 
     return eStatus;
@@ -3547,13 +3744,13 @@ MOS_STATUS MosUtilities::MOS_utilities_close()
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     //Reset Simulate Alloc Memory Fail flags
-    MOS_InitAllocMemoryFailSimulateFlag();
+    MosInitAllocMemoryFailSimulateFlag();
 #endif
 
     return eStatus;
 }
 
-void MosUtilities::MOS_Free_UserFeatureValueString(PMOS_USER_FEATURE_VALUE_STRING pUserString)
+void MosUtilities::MosFreeUserFeatureValueString(PMOS_USER_FEATURE_VALUE_STRING pUserString)
 {
     if (pUserString != nullptr)
     {
@@ -3581,7 +3778,7 @@ void  *MosUtilities::MOS_AlignedAllocMemory(
     void  *ptr;
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-    if (MOS_SimulateAllocMemoryFail(size, alignment, functionName, filename, line))
+    if (MosSimulateAllocMemoryFail(size, alignment, functionName, filename, line))
     {
         return nullptr;
     }
@@ -3593,7 +3790,7 @@ void  *MosUtilities::MOS_AlignedAllocMemory(
 
     if(ptr != nullptr)
     {
-        MOS_AtomicIncrement(&MosMemAllocCounter);
+        MosAtomicIncrement(&MosMemAllocCounter);
         MOS_MEMNINJA_ALLOC_MESSAGE(ptr, size, functionName, filename, line);
     }
 
@@ -3607,14 +3804,14 @@ void MosUtilities::MOS_AlignedFreeMemoryUtils(
     const char  *filename,
     int32_t     line)
 #else
-void MosUtilities::MOS_AlignedFreeMemory(void  *ptr)
+void MosUtilities::MOS_AlignedFreeMemory(void *ptr)
 #endif // MOS_MESSAGES_ENABLED
 {
     MOS_OS_ASSERT(ptr != nullptr);
 
     if(ptr != nullptr)
     {
-        MOS_AtomicDecrement(&MosMemAllocCounter);
+        MosAtomicDecrement(&MosMemAllocCounter);
         MOS_MEMNINJA_FREE_MESSAGE(ptr, functionName, filename, line);
 
         _aligned_free(ptr);
@@ -3622,19 +3819,19 @@ void MosUtilities::MOS_AlignedFreeMemory(void  *ptr)
 }
 
 #if MOS_MESSAGES_ENABLED
-void  *MosUtilities::MOS_AllocMemoryUtils(
+void *MosUtilities::MOS_AllocMemoryUtils(
     size_t      size,
     const char  *functionName,
     const char  *filename,
     int32_t     line)
 #else
-void  *MosUtilities::MOS_AllocMemory(size_t size)
+void *MosUtilities::MOS_AllocMemory(size_t size)
 #endif // MOS_MESSAGES_ENABLED
 {
     void  *ptr;
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-    if (MOS_SimulateAllocMemoryFail(size, NO_ALLOC_ALIGNMENT, functionName, filename, line))
+    if (MosSimulateAllocMemoryFail(size, NO_ALLOC_ALIGNMENT, functionName, filename, line))
     {
         return nullptr;
     }
@@ -3646,7 +3843,7 @@ void  *MosUtilities::MOS_AllocMemory(size_t size)
 
     if(ptr != nullptr)
     {
-        MOS_AtomicIncrement(&MosMemAllocCounter);
+        MosAtomicIncrement(&MosMemAllocCounter);
         MOS_MEMNINJA_ALLOC_MESSAGE(ptr, size, functionName, filename, line);
     }
 
@@ -3654,19 +3851,19 @@ void  *MosUtilities::MOS_AllocMemory(size_t size)
 }
 
 #if MOS_MESSAGES_ENABLED
-void  *MosUtilities::MOS_AllocAndZeroMemoryUtils(
+void *MosUtilities::MOS_AllocAndZeroMemoryUtils(
     size_t      size,
     const char  *functionName,
     const char  *filename,
     int32_t     line)
 #else
-void  *MosUtilities::MOS_AllocAndZeroMemory(size_t size)
+void *MosUtilities::MOS_AllocAndZeroMemory(size_t size)
 #endif // MOS_MESSAGES_ENABLED
 {
     void  *ptr;
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-    if (MOS_SimulateAllocMemoryFail(size, NO_ALLOC_ALIGNMENT, functionName, filename, line))
+    if (MosSimulateAllocMemoryFail(size, NO_ALLOC_ALIGNMENT, functionName, filename, line))
     {
         return nullptr;
     }
@@ -3678,9 +3875,9 @@ void  *MosUtilities::MOS_AllocAndZeroMemory(size_t size)
 
     if(ptr != nullptr)
     {
-        MOS_ZeroMemory(ptr, size);
+        MosZeroMemory(ptr, size);
 
-        MOS_AtomicIncrement(&MosMemAllocCounter);
+        MosAtomicIncrement(&MosMemAllocCounter);
         MOS_MEMNINJA_ALLOC_MESSAGE(ptr, size, functionName, filename, line);
     }
 
@@ -3704,7 +3901,7 @@ void *MosUtilities::MOS_ReallocMemory(
     void *newPtr = nullptr;
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-    if (MOS_SimulateAllocMemoryFail(newSize, NO_ALLOC_ALIGNMENT, functionName, filename, line))
+    if (MosSimulateAllocMemoryFail(newSize, NO_ALLOC_ALIGNMENT, functionName, filename, line))
     {
         return nullptr;
     }
@@ -3719,13 +3916,13 @@ void *MosUtilities::MOS_ReallocMemory(
     {
         if (oldPtr != nullptr)
         {
-            MOS_AtomicDecrement(&MosMemAllocCounter);
+            MosAtomicDecrement(&MosMemAllocCounter);
             MOS_MEMNINJA_FREE_MESSAGE(oldPtr, functionName, filename, line);
         }
 
         if (newPtr != nullptr)
         {
-            MOS_AtomicIncrement(&MosMemAllocCounter);
+            MosAtomicIncrement(&MosMemAllocCounter);
             MOS_MEMNINJA_ALLOC_MESSAGE(newPtr, newSize, functionName, filename, line);
         }
     }
@@ -3754,14 +3951,14 @@ void MosUtilities::MOS_FreeMemory(void  *ptr)
 {
     if(ptr != nullptr)
     {
-        MOS_AtomicDecrement(&MosMemAllocCounter);
+        MosAtomicDecrement(&MosMemAllocCounter);
         MOS_MEMNINJA_FREE_MESSAGE(ptr, functionName, filename, line);
 
         free(ptr);
     }
 }
 
-void MosUtilities::MOS_ZeroMemory(void  *pDestination, size_t stLength)
+void MosUtilities::MosZeroMemory(void  *pDestination, size_t stLength)
 {
     MOS_OS_ASSERT(pDestination != nullptr);
 
@@ -3771,7 +3968,7 @@ void MosUtilities::MOS_ZeroMemory(void  *pDestination, size_t stLength)
     }
 }
 
-void MosUtilities::MOS_FillMemory(void  *pDestination, size_t stLength, uint8_t bFill)
+void MosUtilities::MosFillMemory(void  *pDestination, size_t stLength, uint8_t bFill)
 {
     MOS_OS_ASSERT(pDestination != nullptr);
 
@@ -3781,7 +3978,7 @@ void MosUtilities::MOS_FillMemory(void  *pDestination, size_t stLength, uint8_t 
     }
 }
 
-MOS_STATUS  MosUtilities::MOS_ReadFileToPtr(
+MOS_STATUS  MosUtilities::MosReadFileToPtr(
     const char      *pFilename,
     uint32_t        *lpNumberOfBytesRead,
     void            **ppReadBuffer)
@@ -3795,7 +3992,7 @@ MOS_STATUS  MosUtilities::MOS_ReadFileToPtr(
     *ppReadBuffer = nullptr;
     *lpNumberOfBytesRead = 0;
 
-    eStatus = MOS_CreateFile(&hFile, (char *)pFilename, O_RDONLY);
+    eStatus = MosCreateFile(&hFile, (char *)pFilename, O_RDONLY);
 
     if (eStatus != MOS_STATUS_SUCCESS)
     {
@@ -3803,12 +4000,12 @@ MOS_STATUS  MosUtilities::MOS_ReadFileToPtr(
         return eStatus;
     }
 
-    eStatus = MOS_GetFileSize(hFile, &fileSize, nullptr);
+    eStatus = MosGetFileSize(hFile, &fileSize, nullptr);
 
     if (eStatus != MOS_STATUS_SUCCESS)
     {
         MOS_OS_ASSERTMESSAGE("Failed to get size of file '%s'.", pFilename);
-        MOS_CloseHandle(hFile);
+        MosCloseHandle(hFile);
         return eStatus;
     }
 
@@ -3816,26 +4013,26 @@ MOS_STATUS  MosUtilities::MOS_ReadFileToPtr(
     if (lpBuffer == nullptr)
     {
         MOS_OS_ASSERTMESSAGE("Failed to allocate memory.");
-        MOS_CloseHandle(hFile);
+        MosCloseHandle(hFile);
         return MOS_STATUS_NO_SPACE;
     }
 
-    if((eStatus = MOS_ReadFile(hFile, lpBuffer, fileSize, &bytesRead, nullptr)) != MOS_STATUS_SUCCESS)
+    if((eStatus = MosReadFile(hFile, lpBuffer, fileSize, &bytesRead, nullptr)) != MOS_STATUS_SUCCESS)
     {
         MOS_OS_ASSERTMESSAGE("Failed to read from file '%s'.", pFilename);
-        MOS_CloseHandle(hFile);
+        MosCloseHandle(hFile);
         MOS_FreeMemory(lpBuffer);
         lpBuffer = nullptr;
         return eStatus;
     }
 
-    MOS_CloseHandle(hFile);
+    MosCloseHandle(hFile);
     *lpNumberOfBytesRead = bytesRead;
     *ppReadBuffer = lpBuffer;
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_WriteFileFromPtr(
+MOS_STATUS MosUtilities::MosWriteFileFromPtr(
     const char      *pFilename,
     void            *lpBuffer,
     uint32_t        writeSize)
@@ -3856,7 +4053,7 @@ MOS_STATUS MosUtilities::MOS_WriteFileFromPtr(
 
     bytesWritten    = 0;
 
-    eStatus = MOS_CreateFile(&hFile, (char *)pFilename, O_WRONLY|O_CREAT);
+    eStatus = MosCreateFile(&hFile, (char *)pFilename, O_WRONLY|O_CREAT);
 
     if (eStatus != MOS_STATUS_SUCCESS)
     {
@@ -3864,20 +4061,20 @@ MOS_STATUS MosUtilities::MOS_WriteFileFromPtr(
         goto finish;
     }
 
-    if((eStatus = MOS_WriteFile(hFile, lpBuffer, writeSize, &bytesWritten, nullptr)) != MOS_STATUS_SUCCESS)
+    if((eStatus = MosWriteFile(hFile, lpBuffer, writeSize, &bytesWritten, nullptr)) != MOS_STATUS_SUCCESS)
     {
         MOS_OS_ASSERTMESSAGE("Failed to write to file '%s'.", pFilename);
-        MOS_CloseHandle(hFile);
+        MosCloseHandle(hFile);
         goto finish;
     }
 
-    MOS_CloseHandle(hFile);
+    MosCloseHandle(hFile);
 
 finish:
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_AppendFileFromPtr(
+MOS_STATUS MosUtilities::MosAppendFileFromPtr(
     const char      *pFilename,
     void            *pData,
     uint32_t        dwSize)
@@ -3892,30 +4089,30 @@ MOS_STATUS MosUtilities::MOS_AppendFileFromPtr(
     //------------------------------
     dwWritten   = 0;
 
-    eStatus = MOS_CreateFile(&hFile, (char *)pFilename, O_WRONLY | O_CREAT | O_APPEND);
+    eStatus = MosCreateFile(&hFile, (char *)pFilename, O_WRONLY | O_CREAT | O_APPEND);
     if (eStatus != MOS_STATUS_SUCCESS)
     {
         MOS_OS_ASSERTMESSAGE("Failed to open file '%s'.", pFilename);
         return eStatus;
     }
 
-    eStatus = MOS_SetFilePointer(hFile, 0, nullptr, SEEK_END);
+    eStatus = MosSetFilePointer(hFile, 0, nullptr, SEEK_END);
     if (eStatus != MOS_STATUS_SUCCESS)
     {
         MOS_OS_ASSERTMESSAGE("Failed to set file pointer'%s'.", pFilename);
-        MOS_CloseHandle(hFile);
+        MosCloseHandle(hFile);
         return eStatus;
     }
 
     // Write the file
-    if((eStatus = MOS_WriteFile(hFile, pData, dwSize, &dwWritten, nullptr)) != MOS_STATUS_SUCCESS)
+    if((eStatus = MosWriteFile(hFile, pData, dwSize, &dwWritten, nullptr)) != MOS_STATUS_SUCCESS)
     {
         MOS_OS_ASSERTMESSAGE("Failed to write to file '%s'.", pFilename);
-        MOS_CloseHandle(hFile);
+        MosCloseHandle(hFile);
         return eStatus;
     }
 
-    MOS_CloseHandle(hFile);
+    MosCloseHandle(hFile);
     return eStatus;
 }
 
@@ -3931,15 +4128,15 @@ MOS_FUNC_EXPORT MOS_STATUS MOS_EXPORT_DECL MosUtilities::DumpUserFeatureKeyDefin
 {
     MOS_STATUS                            eStatus = MOS_STATUS_SUCCESS;
     // Init MOS User Feature Key from mos desc table
-    MOS_OS_CHK_STATUS( MOS_DeclareUserFeatureKeysForAllDescFields() );
-    MOS_OS_CHK_STATUS( MOS_GenerateUserFeatureKeyXML() );
+    MOS_OS_CHK_STATUS( MosDeclareUserFeatureKeysForAllDescFields() );
+    MOS_OS_CHK_STATUS( MosGenerateUserFeatureKeyXML() );
 finish:
     return    eStatus;
 }
 
 #endif
 
-MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureKeyToXML(MOS_USER_FEATURE_VALUE_MAP *keyValueMap, PMOS_USER_FEATURE_VALUE pUserFeature)
+MOS_STATUS MosUtilities::MosWriteOneUserFeatureKeyToXML(MOS_USER_FEATURE_VALUE_MAP *keyValueMap, PMOS_USER_FEATURE_VALUE pUserFeature)
 {
 
     char                            sOutBuf[MOS_USER_CONTROL_MAX_DATA_SIZE];
@@ -3954,7 +4151,7 @@ MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureKeyToXML(MOS_USER_FEATURE_VALUE_
     switch (pUserFeature->Type)
     {
     case MOS_USER_FEATURE_TYPE_USER:
-        MOS_SecureStringPrint(
+        MosSecureStringPrint(
             KeyPath,
             sizeof(KeyPath),
             sizeof(KeyPath),
@@ -3962,7 +4159,7 @@ MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureKeyToXML(MOS_USER_FEATURE_VALUE_
             pUserFeature->pcPath);
         break;
     case MOS_USER_FEATURE_TYPE_SYSTEM:
-        MOS_SecureStringPrint(
+        MosSecureStringPrint(
             KeyPath,
             sizeof(KeyPath),
             sizeof(KeyPath),
@@ -3970,7 +4167,7 @@ MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureKeyToXML(MOS_USER_FEATURE_VALUE_
             pUserFeature->pcPath);
         break;
     default:
-        MOS_SecureStringPrint(
+        MosSecureStringPrint(
             KeyPath,
             sizeof(KeyPath),
             sizeof(KeyPath),
@@ -3981,7 +4178,7 @@ MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureKeyToXML(MOS_USER_FEATURE_VALUE_
     switch (pUserFeature->ValueType)
     {
     case MOS_USER_FEATURE_VALUE_TYPE_BOOL:
-        MOS_SecureStringPrint(
+        MosSecureStringPrint(
             ValueType,
             sizeof(ValueType),
             sizeof(ValueType),
@@ -3990,7 +4187,7 @@ MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureKeyToXML(MOS_USER_FEATURE_VALUE_
     case MOS_USER_FEATURE_VALUE_TYPE_FLOAT:
     case MOS_USER_FEATURE_VALUE_TYPE_UINT32:
     case MOS_USER_FEATURE_VALUE_TYPE_INT32:
-        MOS_SecureStringPrint(
+        MosSecureStringPrint(
             ValueType,
             sizeof(ValueType),
             sizeof(ValueType),
@@ -3998,7 +4195,7 @@ MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureKeyToXML(MOS_USER_FEATURE_VALUE_
         break;
     case MOS_USER_FEATURE_VALUE_TYPE_UINT64:
     case MOS_USER_FEATURE_VALUE_TYPE_INT64:
-        MOS_SecureStringPrint(
+        MosSecureStringPrint(
             ValueType,
             sizeof(ValueType),
             sizeof(ValueType),
@@ -4006,14 +4203,14 @@ MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureKeyToXML(MOS_USER_FEATURE_VALUE_
         break;
     case MOS_USER_FEATURE_VALUE_TYPE_MULTI_STRING:
     case MOS_USER_FEATURE_VALUE_TYPE_STRING:
-        MOS_SecureStringPrint(
+        MosSecureStringPrint(
             ValueType,
             sizeof(ValueType),
             sizeof(ValueType),
             "string");
         break;
     default:
-        MOS_SecureStringPrint(
+        MosSecureStringPrint(
             ValueType,
             sizeof(ValueType),
             sizeof(ValueType),
@@ -4025,7 +4222,7 @@ MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureKeyToXML(MOS_USER_FEATURE_VALUE_
         sOutBuf,
         0,
         sizeof(sOutBuf));
-    MOS_SecureStringPrint(
+    MosSecureStringPrint(
         sOutBuf,
         sizeof(sOutBuf),
         sizeof(sOutBuf),
@@ -4035,14 +4232,14 @@ MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureKeyToXML(MOS_USER_FEATURE_VALUE_
         KeyPath,
         pUserFeature->DefaultValue,
         pUserFeature->pcDescription);
-    MOS_AppendFileFromPtr(
+    MosAppendFileFromPtr(
         m_xmlFilePath,
         sOutBuf,
         (uint32_t)strlen(sOutBuf));
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureGroupToXML(MOS_USER_FEATURE_VALUE   UserFeatureFilter)
+MOS_STATUS MosUtilities::MosWriteOneUserFeatureGroupToXML(MOS_USER_FEATURE_VALUE   UserFeatureFilter)
 {
     char                                sOutBuf[MAX_USER_FEATURE_FIELD_LENGTH];
     MOS_STATUS                          eStatus = MOS_STATUS_SUCCESS;
@@ -4052,24 +4249,24 @@ MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureGroupToXML(MOS_USER_FEATURE_VALU
         sOutBuf,
         0,
         sizeof(sOutBuf));
-    MOS_SecureStringPrint(
+    MosSecureStringPrint(
         sOutBuf,
         sizeof(sOutBuf),
         sizeof(sOutBuf),
         "  <Group name=\"%s\">\n",
         UserFeatureFilter.pcGroup);
-    eStatus = MOS_AppendFileFromPtr(
+    eStatus = MosAppendFileFromPtr(
         m_xmlFilePath,
         sOutBuf,
         (uint32_t)strlen(sOutBuf));
 
     // Group User Feature Keys
-    eStatus = MOS_GetItemFromMOSUserFeatureDescField(
+    eStatus = MosGetItemFromMOSUserFeatureDescField(
         m_mosUserFeatureDescFields,
         __MOS_USER_FEATURE_KEY_MAX_ID,
         __MOS_USER_FEATURE_KEY_MAX_ID,
         m_userFeatureKeysMap,
-        & MosUtilities::MOS_WriteOneUserFeatureKeyToXML,
+        &MosWriteOneUserFeatureKeyToXML,
         &UserFeatureFilter);
 
     // Group Header End
@@ -4077,20 +4274,20 @@ MOS_STATUS MosUtilities::MOS_WriteOneUserFeatureGroupToXML(MOS_USER_FEATURE_VALU
         sOutBuf,
         0,
         sizeof(sOutBuf));
-    MOS_SecureStringPrint(
+    MosSecureStringPrint(
         sOutBuf,
         sizeof(sOutBuf),
         sizeof(sOutBuf),
         "  </Group>\n",
         UserFeatureFilter.pcGroup);
-    eStatus = MOS_AppendFileFromPtr(
+    eStatus = MosAppendFileFromPtr(
         m_xmlFilePath,
         sOutBuf,
         (uint32_t)strlen(sOutBuf));
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_GenerateUserFeatureKeyXML()
+MOS_STATUS MosUtilities::MosGenerateUserFeatureKeyXML()
 {
     char                                sOutBuf[MAX_USER_FEATURE_FIELD_LENGTH];
     uint32_t                            uiIndex=0;
@@ -4101,8 +4298,8 @@ MOS_STATUS MosUtilities::MOS_GenerateUserFeatureKeyXML()
     uint32_t                            FilterGroupsCount = sizeof(FilterGroups) / sizeof(FilterGroups[0]);
     MOS_STATUS                          eStatus = MOS_STATUS_SUCCESS;
     // Check if XML dump is enabled by User Feature Key
-    MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
-    eStatus = MOS_UserFeature_ReadValue_ID(
+    MosZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
+    eStatus = MosUserFeatureReadValueID(
                     nullptr,
                     __MOS_USER_FEATURE_KEY_XML_AUTOGEN_ID,
                     &UserFeatureData);
@@ -4111,20 +4308,20 @@ MOS_STATUS MosUtilities::MOS_GenerateUserFeatureKeyXML()
         eStatus = MOS_STATUS_INVALID_PARAMETER;
         return eStatus;
     }
-    MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
+    MosZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
     UserFeatureData.StringData.pStringData = m_xmlFilePath;
-    eStatus = MOS_UserFeature_ReadValue_ID(
+    eStatus = MosUserFeatureReadValueID(
                     nullptr,
                     __MOS_USER_FEATURE_KEY_XML_FILEPATH_ID,
                     &UserFeatureData);
     // User Feature Key Header Start
     memset(sOutBuf, 0, sizeof(sOutBuf));
-    MOS_SecureStringPrint(
+    MosSecureStringPrint(
         sOutBuf,
         sizeof(sOutBuf),
         sizeof(sOutBuf),
         "<UserFeatureKeys>\n");
-    eStatus = MOS_WriteFileFromPtr(
+    eStatus = MosWriteFileFromPtr(
         UserFeatureData.StringData.pStringData,
         sOutBuf,
         (uint32_t)strlen(sOutBuf));
@@ -4132,24 +4329,24 @@ MOS_STATUS MosUtilities::MOS_GenerateUserFeatureKeyXML()
     for (uiIndex = 0; uiIndex < FilterGroupsCount; uiIndex++)
     {
         UserFeatureFilter.pcGroup = FilterGroups[uiIndex];
-        eStatus = MOS_WriteOneUserFeatureGroupToXML(UserFeatureFilter);
+        eStatus = MosWriteOneUserFeatureGroupToXML(UserFeatureFilter);
     }
 
     // User Feature Key Header End
     memset(sOutBuf, 0, sizeof(sOutBuf));
-    MOS_SecureStringPrint(
+    MosSecureStringPrint(
         sOutBuf,
         sizeof(sOutBuf),
         sizeof(sOutBuf),
         "</UserFeatureKeys>\n");
-    eStatus = MOS_AppendFileFromPtr(
+    eStatus = MosAppendFileFromPtr(
         UserFeatureData.StringData.pStringData,
         sOutBuf,
         (uint32_t)strlen(sOutBuf));
     return    eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_SetMultiStringValue(
+MOS_STATUS MosUtilities::MosUserFeatureSetMultiStringValue(
     PMOS_USER_FEATURE_VALUE_DATA     pFeatureData,
     uint32_t                         dwSize)
 {
@@ -4218,7 +4415,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_SetMultiStringValue(
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS MosUtilities::MOS_CopyUserFeatureValueData(
+MOS_STATUS MosUtilities::MosCopyUserFeatureValueData(
     PMOS_USER_FEATURE_VALUE_DATA pSrcData,
     PMOS_USER_FEATURE_VALUE_DATA pDstData,
     MOS_USER_FEATURE_VALUE_TYPE ValueType)
@@ -4264,7 +4461,7 @@ MOS_STATUS MosUtilities::MOS_CopyUserFeatureValueData(
                 MOS_OS_ASSERTMESSAGE("Failed to allocate memory.");
                 return MOS_STATUS_NULL_POINTER;
             }
-            eStatus = MOS_SecureMemcpy(
+            eStatus = MosSecureMemcpy(
                 pDstData->StringData.pStringData,
                 pDstData->StringData.uSize,
                 pSrcData->StringData.pStringData,
@@ -4277,31 +4474,30 @@ MOS_STATUS MosUtilities::MOS_CopyUserFeatureValueData(
     case MOS_USER_FEATURE_VALUE_TYPE_MULTI_STRING:
         if ((pSrcData->MultiStringData.pMultStringData != nullptr) && (strlen(pSrcData->MultiStringData.pMultStringData) != 0))
         {
-        pDstData->MultiStringData.uCount = pSrcData->MultiStringData.uCount;
-        pDstData->MultiStringData.uMaxSize = pSrcData->MultiStringData.uMaxSize;
-        pDstData->MultiStringData.uSize = pSrcData->MultiStringData.uSize;
+            pDstData->MultiStringData.uCount = pSrcData->MultiStringData.uCount;
+            pDstData->MultiStringData.uMaxSize = pSrcData->MultiStringData.uMaxSize;
+            pDstData->MultiStringData.uSize = pSrcData->MultiStringData.uSize;
             if (pDstData->MultiStringData.pMultStringData != nullptr)
             {
-            eStatus = MOS_SecureMemcpy(
-                pDstData->MultiStringData.pMultStringData,
-                pDstData->MultiStringData.uSize,
-                pSrcData->MultiStringData.pMultStringData,
-                pSrcData->MultiStringData.uSize);
+                eStatus = MosSecureMemcpy(
+                    pDstData->MultiStringData.pMultStringData,
+                    pDstData->MultiStringData.uSize,
+                    pSrcData->MultiStringData.pMultStringData,
+                    pSrcData->MultiStringData.uSize);
 
-        for (ui = 0; ui < pSrcData->MultiStringData.uCount; ui++)
-        {
-            pSrcString = &pSrcData->MultiStringData.pStrings[ui];
-            pDstString = &pDstData->MultiStringData.pStrings[ui];
+                for (ui = 0; ui < pSrcData->MultiStringData.uCount; ui++)
+                {
+                    pSrcString = &pSrcData->MultiStringData.pStrings[ui];
+                    pDstString = &pDstData->MultiStringData.pStrings[ui];
 
                     MOS_OS_CHK_NULL(pSrcString);
                     MOS_OS_CHK_NULL(pDstString);
-                pDstString->uMaxSize = pSrcString->uMaxSize;
-                pDstString->uSize = pSrcString->uSize;
-
+                    pDstString->uMaxSize = pSrcString->uMaxSize;
+                    pDstString->uSize = pSrcString->uSize;
                     if (pDstString->pStringData != nullptr)
-                {
-                        eStatus = MOS_SecureMemcpy(
-                    pDstString->pStringData,
+                    {
+                        eStatus = MosSecureMemcpy(
+                            pDstString->pStringData,
                             pDstString->uSize+1,
                             pSrcString->pStringData,
                             pSrcString->uSize+1);
@@ -4317,7 +4513,7 @@ finish:
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_AssignUserFeatureValueData(
+MOS_STATUS MosUtilities::MosAssignUserFeatureValueData(
     PMOS_USER_FEATURE_VALUE_DATA    pDstData,
     const char                      *pData,
     MOS_USER_FEATURE_VALUE_TYPE     ValueType
@@ -4367,7 +4563,7 @@ MOS_STATUS MosUtilities::MOS_AssignUserFeatureValueData(
                 MOS_OS_ASSERTMESSAGE("Failed to allocate memory.");
                 return MOS_STATUS_NULL_POINTER;
             }
-            eStatus = MOS_SecureStrcpy(
+            eStatus = MosSecureStrcpy(
                 pDstData->StringData.pStringData,
                 pDstData->StringData.uSize + 1,
                 (char *)pData);
@@ -4390,14 +4586,17 @@ MOS_STATUS MosUtilities::MOS_AssignUserFeatureValueData(
             if (pDstData->MultiStringData.pMultStringData == nullptr)
             {
                 MOS_OS_ASSERTMESSAGE("Failed to allocate memory.");
+                pDstData->MultiStringData.pMultStringData = nullptr;
+                pDstData->MultiStringData.uSize = 0;
+                pDstData->MultiStringData.uCount = 0;
                 return MOS_STATUS_NULL_POINTER;
             }
-            eStatus = MOS_SecureMemcpy(
+            eStatus = MosSecureMemcpy(
                 pDstData->MultiStringData.pMultStringData,
                 strlen(pData),
                 (char *)pData,
                 strlen(pData));
-            if ((eStatus = MOS_UserFeature_SetMultiStringValue(
+            if ((eStatus = MosUserFeatureSetMultiStringValue(
                 pDstData,
                 dwUFSize)) != MOS_STATUS_SUCCESS)
             {
@@ -4412,7 +4611,7 @@ MOS_STATUS MosUtilities::MOS_AssignUserFeatureValueData(
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_DeclareUserFeatureKey(MOS_USER_FEATURE_VALUE_MAP *keyValueMap, PMOS_USER_FEATURE_VALUE pUserFeatureKey)
+MOS_STATUS MosUtilities::MosDeclareUserFeatureKey(MOS_USER_FEATURE_VALUE_MAP *keyValueMap, PMOS_USER_FEATURE_VALUE pUserFeatureKey)
 {
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
     //------------------------------
@@ -4425,7 +4624,7 @@ MOS_STATUS MosUtilities::MOS_DeclareUserFeatureKey(MOS_USER_FEATURE_VALUE_MAP *k
     }
     else
     {
-        eStatus = MOS_AssignUserFeatureValueData(
+        eStatus = MosAssignUserFeatureValueData(
             &pUserFeatureKey->Value,
             pUserFeatureKey->DefaultValue,
             pUserFeatureKey->ValueType);
@@ -4443,7 +4642,7 @@ MOS_STATUS MosUtilities::MOS_DeclareUserFeatureKey(MOS_USER_FEATURE_VALUE_MAP *k
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_DestroyUserFeatureData(PMOS_USER_FEATURE_VALUE_DATA pData,MOS_USER_FEATURE_VALUE_TYPE ValueType)
+MOS_STATUS MosUtilities::MosDestroyUserFeatureData(PMOS_USER_FEATURE_VALUE_DATA pData,MOS_USER_FEATURE_VALUE_TYPE ValueType)
 {
     uint32_t                    ui;
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
@@ -4457,12 +4656,12 @@ MOS_STATUS MosUtilities::MOS_DestroyUserFeatureData(PMOS_USER_FEATURE_VALUE_DATA
     switch (ValueType)
     {
     case MOS_USER_FEATURE_VALUE_TYPE_STRING:
-        MOS_Free_UserFeatureValueString(&pData->StringData);
+        MosFreeUserFeatureValueString(&pData->StringData);
         break;
     case MOS_USER_FEATURE_VALUE_TYPE_MULTI_STRING:
         for (ui = 0; ui < pData->MultiStringData.uCount; ui++)
         {
-            MOS_Free_UserFeatureValueString(&pData->MultiStringData.pStrings[ui]);
+            MosFreeUserFeatureValueString(&pData->MultiStringData.pStrings[ui]);
         }
         MOS_SafeFreeMemory(pData->MultiStringData.pStrings);
         pData->MultiStringData.pStrings = nullptr;
@@ -4477,7 +4676,7 @@ MOS_STATUS MosUtilities::MOS_DestroyUserFeatureData(PMOS_USER_FEATURE_VALUE_DATA
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_DestroyUserFeatureKey(MOS_USER_FEATURE_VALUE_MAP *keyValueMap, PMOS_USER_FEATURE_VALUE pUserFeatureKey)
+MOS_STATUS MosUtilities::MosDestroyUserFeatureKey(MOS_USER_FEATURE_VALUE_MAP *keyValueMap, PMOS_USER_FEATURE_VALUE pUserFeatureKey)
 {
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
 
@@ -4493,14 +4692,14 @@ MOS_STATUS MosUtilities::MOS_DestroyUserFeatureKey(MOS_USER_FEATURE_VALUE_MAP *k
         keyValueMap[pUserFeatureKey->ValueID].pUserFeatureValue = nullptr; // keep legacy path temporally for compatibility
     }
 
-    eStatus = MOS_DestroyUserFeatureData(
+    eStatus = MosDestroyUserFeatureData(
         &pUserFeatureKey->Value,
         pUserFeatureKey->ValueType);
 
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_isCorrectDefaultValueType(
+MOS_STATUS MosUtilities::MosIsCorrectDefaultValueType(
     const char                  *pData,
     MOS_USER_FEATURE_VALUE_TYPE ValueType)
 {
@@ -4553,7 +4752,7 @@ MOS_STATUS MosUtilities::MOS_isCorrectDefaultValueType(
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_isCorrectUserFeatureDescField(PMOS_USER_FEATURE_VALUE pUserFeatureKey, uint32_t maxKeyID)
+MOS_STATUS MosUtilities::MosIsCorrectUserFeatureDescField(PMOS_USER_FEATURE_VALUE pUserFeatureKey, uint32_t maxKeyID)
 {
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
     //------------------------------
@@ -4591,13 +4790,13 @@ MOS_STATUS MosUtilities::MOS_isCorrectUserFeatureDescField(PMOS_USER_FEATURE_VAL
         eStatus = MOS_STATUS_INVALID_PARAMETER;
         return eStatus;
     }
-     eStatus = MOS_isCorrectDefaultValueType(
+     eStatus = MosIsCorrectDefaultValueType(
          pUserFeatureKey->DefaultValue,
          pUserFeatureKey->ValueType);
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_GetItemFromMOSUserFeatureDescField(
+MOS_STATUS MosUtilities::MosGetItemFromMOSUserFeatureDescField(
     MOS_USER_FEATURE_VALUE      *descTable,
     uint32_t                    numOfItems,
     uint32_t                    maxId,
@@ -4615,7 +4814,7 @@ MOS_STATUS MosUtilities::MOS_GetItemFromMOSUserFeatureDescField(
 
     for (uiIndex = __MOS_USER_FEATURE_KEY_INVALID_ID; uiIndex < numOfItems; uiIndex++)
     {
-        if (MOS_isCorrectUserFeatureDescField(&descTable[uiIndex], maxId) != MOS_STATUS_SUCCESS)
+        if (MosIsCorrectUserFeatureDescField(&descTable[uiIndex], maxId) != MOS_STATUS_SUCCESS)
         {
             continue;
         }
@@ -4654,7 +4853,7 @@ MOS_STATUS MosUtilities::MOS_GetItemFromMOSUserFeatureDescField(
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_DeclareUserFeatureKeysFromDescFields(
+MOS_STATUS MosUtilities::MosDeclareUserFeatureKeysFromDescFields(
     MOS_USER_FEATURE_VALUE     *descTable,
     uint32_t                   numOfItems,
     uint32_t                   maxId,
@@ -4663,12 +4862,12 @@ MOS_STATUS MosUtilities::MOS_DeclareUserFeatureKeysFromDescFields(
     MOS_USER_FEATURE_VALUE      UserFeatureKeyFilter = __NULL_USER_FEATURE_VALUE__;
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
 
-    eStatus = MOS_GetItemFromMOSUserFeatureDescField(
+    eStatus = MosGetItemFromMOSUserFeatureDescField(
         descTable,
         numOfItems,
         maxId,
         keyValueMap,
-        &MOS_DeclareUserFeatureKey,
+        &MosDeclareUserFeatureKey,
         &UserFeatureKeyFilter);
     return eStatus;
 }
@@ -4681,9 +4880,9 @@ MOS_STATUS MosUtilities::MOS_DeclareUserFeatureKeysFromDescFields(
 //!           Returns one of the MOS_STATUS error codes if failed,
 //!           else MOS_STATUS_SUCCESS
 //!
-MOS_STATUS MosUtilities::MOS_DeclareUserFeatureKeysForAllDescFields()
+MOS_STATUS MosUtilities::MosDeclareUserFeatureKeysForAllDescFields()
 {
-    MOS_OS_CHK_STATUS_RETURN(MOS_DeclareUserFeatureKeysFromDescFields(
+    MOS_OS_CHK_STATUS_RETURN(MosDeclareUserFeatureKeysFromDescFields(
         m_mosUserFeatureDescFields,
         __MOS_USER_FEATURE_KEY_MAX_ID,
         __MOS_USER_FEATURE_KEY_MAX_ID,
@@ -4691,7 +4890,7 @@ MOS_STATUS MosUtilities::MOS_DeclareUserFeatureKeysForAllDescFields()
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS MosUtilities::MOS_DestroyUserFeatureKeysFromDescFields(
+MOS_STATUS MosUtilities::MosDestroyUserFeatureKeysFromDescFields(
     MOS_USER_FEATURE_VALUE     *descTable,
     uint32_t                   numOfItems,
     uint32_t                   maxId,
@@ -4700,22 +4899,22 @@ MOS_STATUS MosUtilities::MOS_DestroyUserFeatureKeysFromDescFields(
     MOS_USER_FEATURE_VALUE      UserFeatureKeyFilter = __NULL_USER_FEATURE_VALUE__;
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
 
-    eStatus = MOS_GetItemFromMOSUserFeatureDescField(
+    eStatus = MosGetItemFromMOSUserFeatureDescField(
         descTable,
         numOfItems,
         maxId,
         keyValueMap,
-        &MOS_DestroyUserFeatureKey,
+        &MosDestroyUserFeatureKey,
         &UserFeatureKeyFilter);
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_DestroyUserFeatureKeysForAllDescFields()
+MOS_STATUS MosUtilities::MosDestroyUserFeatureKeysForAllDescFields()
 {
     MOS_USER_FEATURE_VALUE      UserFeatureKeyFilter = __NULL_USER_FEATURE_VALUE__;
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
 
-    MOS_OS_CHK_STATUS_RETURN(MOS_DestroyUserFeatureKeysFromDescFields(
+    MOS_OS_CHK_STATUS_RETURN(MosDestroyUserFeatureKeysFromDescFields(
         m_mosUserFeatureDescFields,
         __MOS_USER_FEATURE_KEY_MAX_ID,
         __MOS_USER_FEATURE_KEY_MAX_ID,
@@ -4724,7 +4923,7 @@ MOS_STATUS MosUtilities::MOS_DestroyUserFeatureKeysForAllDescFields()
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueInit(
+MOS_STATUS MosUtilities::MosUserFeatureReadValueInit(
     PMOS_USER_FEATURE_INTERFACE   pOsUserFeatureInterface,
     uint32_t                      uiNumValues,
     MOS_USER_FEATURE_VALUE_DATA   Value,
@@ -4754,7 +4953,7 @@ finish:
     return eStatus;
 }
 
-void MosUtilities::MOS_UserFeature_Callback(
+void MosUtilities::MosUserFeatureCallback(
         PTP_CALLBACK_INSTANCE Instance,
         void                  *pvParameter,
         PTP_WAIT              Wait,
@@ -4771,7 +4970,7 @@ void MosUtilities::MOS_UserFeature_Callback(
     pNotifyData->bTriggered = true;
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_Open(
+MOS_STATUS MosUtilities::MosUserFeatureOpen(
     MOS_USER_FEATURE_TYPE KeyType,
     const char            *pSubKey,
     uint32_t              dwAccess,
@@ -4797,7 +4996,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_Open(
         return MOS_STATUS_UNKNOWN;
     }
 
-    if((eStatus = MOS_UserFeatureOpenKey(
+    if((eStatus = MosUserFeatureOpenKey(
                              RootKey,
                              pSubKey,
                              0,
@@ -4810,7 +5009,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_Open(
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueBinary(
+MOS_STATUS MosUtilities::MosUserFeatureReadValueBinary(
     void                       *UFKey,
     PMOS_USER_FEATURE_VALUE    pFeatureValue)
 {
@@ -4837,7 +5036,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueBinary(
         return MOS_STATUS_UNKNOWN;
     }
 
-    eStatus = MOS_UserFeatureGetValue(
+    eStatus = MosUserFeatureGetValue(
                   UFKey,
                   nullptr,
                   pFeatureValue->pValueName,
@@ -4865,7 +5064,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueBinary(
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueString(
+MOS_STATUS MosUtilities::MosUserFeatureReadValueString(
     void                       *UFKey,
     PMOS_USER_FEATURE_VALUE    pFeatureValue)
 {
@@ -4880,7 +5079,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueString(
     MOS_OS_ASSERT(pFeatureValue->ValueType == MOS_USER_FEATURE_VALUE_TYPE_STRING);
     //--------------------------------------------------
 
-    MOS_ZeroMemory(pcTmpStr, MOS_USER_CONTROL_MAX_DATA_SIZE);
+    MosZeroMemory(pcTmpStr, MOS_USER_CONTROL_MAX_DATA_SIZE);
     dwUFSize = pFeatureValue->Value.StringData.uMaxSize;
     if (dwUFSize == 0)
     {
@@ -4888,7 +5087,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueString(
         return MOS_STATUS_UNKNOWN;
     }
 
-    eStatus = MOS_UserFeatureGetValue(
+    eStatus = MosUserFeatureGetValue(
                   UFKey,
                   nullptr,
                   pFeatureValue->pValueName,
@@ -4914,13 +5113,13 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueString(
     {
         pFeatureValue->Value.StringData.pStringData = (char *)MOS_AllocAndZeroMemory(strlen(pcTmpStr) + 1);
 
-        MOS_SecureMemcpy(pFeatureValue->Value.StringData.pStringData, strlen(pcTmpStr), pcTmpStr, strlen(pcTmpStr));
+        MosSecureMemcpy(pFeatureValue->Value.StringData.pStringData, strlen(pcTmpStr), pcTmpStr, strlen(pcTmpStr));
         pFeatureValue->Value.StringData.uSize = dwUFSize;
     }
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueMultiString(
+MOS_STATUS MosUtilities::MosUserFeatureReadValueMultiString(
     void                       *UFKey,
     PMOS_USER_FEATURE_VALUE    pFeatureValue)
 {
@@ -4938,7 +5137,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueMultiString(
         MOS_OS_ASSERTMESSAGE("pFeatureValue->MultiStringData.pStrings is NULL.");
         return MOS_STATUS_NULL_POINTER;
     }
-    MOS_ZeroMemory(pcTmpStr, MOS_USER_CONTROL_MAX_DATA_SIZE);
+    MosZeroMemory(pcTmpStr, MOS_USER_CONTROL_MAX_DATA_SIZE);
     dwUFSize = pFeatureValue->Value.MultiStringData.uMaxSize;
     if (dwUFSize == 0)
     {
@@ -4946,7 +5145,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueMultiString(
         return MOS_STATUS_UNKNOWN;
     }
 
-    eStatus = MOS_UserFeatureGetValue(
+    eStatus = MosUserFeatureGetValue(
                   UFKey,
                   nullptr,
                   pFeatureValue->pValueName,
@@ -4979,13 +5178,13 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueMultiString(
             MOS_OS_ASSERTMESSAGE("Failed to allocate memory.");
             return MOS_STATUS_NULL_POINTER;
         }
-        MOS_SecureMemcpy(
+        MosSecureMemcpy(
             pFeatureValue->Value.MultiStringData.pMultStringData,
             strlen(pcTmpStr),
             pcTmpStr,
             strlen(pcTmpStr));
 
-    if((eStatus = MOS_UserFeature_SetMultiStringValue(
+    if((eStatus = MosUserFeatureSetMultiStringValue(
             &pFeatureValue->Value,
         dwUFSize)) != MOS_STATUS_SUCCESS)
     {
@@ -4997,7 +5196,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValueMultiString(
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_ReadValuePrimitive(
+MOS_STATUS MosUtilities::MosUserFeatureReadValuePrimitive(
     void                       *UFKey,
     PMOS_USER_FEATURE_VALUE    pFeatureValue)
 {
@@ -5034,7 +5233,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValuePrimitive(
         return MOS_STATUS_UNKNOWN;
     }
 
-    eStatus = MOS_UserFeatureGetValue(
+    eStatus = MosUserFeatureGetValue(
                   UFKey,
                   nullptr,
                   pFeatureValue->pValueName,
@@ -5053,7 +5252,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValuePrimitive(
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_WriteValueString(
+MOS_STATUS MosUtilities::MosUserFeatureWriteValueString(
     void                            *UFKey,
     PMOS_USER_FEATURE_VALUE         pFeatureValue,
     PMOS_USER_FEATURE_VALUE_DATA    pDataValue)
@@ -5066,7 +5265,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValueString(
     MOS_OS_ASSERT(pFeatureValue->ValueType == MOS_USER_FEATURE_VALUE_TYPE_STRING);
     MOS_OS_ASSERT(pDataValue);
 
-    if((eStatus = MOS_UserFeatureSetValueEx(
+    if((eStatus = MosUserFeatureSetValueEx(
                       UFKey,
                       pFeatureValue->pValueName,
                       0,
@@ -5080,7 +5279,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValueString(
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_WriteValueMultiString(
+MOS_STATUS MosUtilities::MosUserFeatureWriteValueMultiString(
     void                            *UFKey,
     PMOS_USER_FEATURE_VALUE         pFeatureValue,
     PMOS_USER_FEATURE_VALUE_DATA    pDataValue)
@@ -5125,7 +5324,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValueMultiString(
     for (ui = 0; ui < pDataValue->MultiStringData.uCount; ui++)
     {
         pStringData = &pDataValue->MultiStringData.pStrings[ui];
-        eStatus = MOS_SecureMemcpy(pCurData, dwAvailableSize, pStringData->pStringData, pStringData->uSize);
+        eStatus = MosSecureMemcpy(pCurData, dwAvailableSize, pStringData->pStringData, pStringData->uSize);
         if(eStatus != MOS_STATUS_SUCCESS)
         {
             MOS_OS_ASSERTMESSAGE("Failed to copy memory.");
@@ -5137,7 +5336,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValueMultiString(
         dwAvailableSize -= pStringData->uSize + 1;
     }
     // Write the user feature MULTI_SZ entry
-    if((eStatus = MOS_UserFeatureSetValueEx(
+    if((eStatus = MosUserFeatureSetValueEx(
                        UFKey,
                        pFeatureValue->pValueName,
                        0,
@@ -5153,7 +5352,7 @@ finish:
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_WriteValueBinary(
+MOS_STATUS MosUtilities::MosUserFeatureWriteValueBinary(
     void                            *UFKey,
     PMOS_USER_FEATURE_VALUE         pFeatureValue,
     PMOS_USER_FEATURE_VALUE_DATA    pDataValue)
@@ -5166,7 +5365,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValueBinary(
     MOS_OS_ASSERT(pFeatureValue->ValueType == MOS_USER_FEATURE_VALUE_TYPE_BINARY);
     MOS_OS_ASSERT(pDataValue);
 
-    if((eStatus = MOS_UserFeatureSetValueEx(
+    if((eStatus = MosUserFeatureSetValueEx(
                        UFKey,
                        pFeatureValue->pValueName,
                        0,
@@ -5180,7 +5379,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValueBinary(
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_WriteValuePrimitive(
+MOS_STATUS MosUtilities::MosUserFeatureWriteValuePrimitive(
     void                            *UFKey,
     PMOS_USER_FEATURE_VALUE         pFeatureValue,
     PMOS_USER_FEATURE_VALUE_DATA    pDataValue)
@@ -5219,7 +5418,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValuePrimitive(
         return MOS_STATUS_UNKNOWN;
     }
 
-    if((eStatus = MOS_UserFeatureSetValueEx(
+    if((eStatus = MosUserFeatureSetValueEx(
                         UFKey,
                         pFeatureValue->pValueName,
                         0,
@@ -5233,8 +5432,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValuePrimitive(
     return eStatus;
 }
 
-#ifdef  __MOS_USER_FEATURE_WA_
-MOS_STATUS MosUtilities::MOS_UserFeature_ReadValue (
+MOS_STATUS MosUtilities::MosUserFeatureReadValue (
     PMOS_USER_FEATURE_INTERFACE     pOsUserFeatureInterface,
     PMOS_USER_FEATURE               pUserFeature,
     const char                      *pValueName,
@@ -5261,7 +5459,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValue (
     //--------------------------------------------------
 
     //--------------------------------------------------
-    MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
+    MosZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
 
     for (ui = (__MOS_USER_FEATURE_KEY_INVALID_ID+1); ui < __MOS_USER_FEATURE_KEY_MAX_ID; ui++)
     {
@@ -5291,7 +5489,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValue (
     // pStringData pre-allocation
     UserFeatureData.StringData.pStringData = pUserFeature->pValues->StringData.pStringData;
 
-    eStatus = MOS_UserFeature_ReadValue_ID(
+    eStatus = MosUserFeatureReadValueID(
         nullptr,
         ValueID,
         &UserFeatureData);
@@ -5334,9 +5532,8 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValue (
     //--------------------------------------------------
     return eStatus;
 }
-#endif
 
-MOS_STATUS MosUtilities::MOS_UserFeature_ReadValue_FromMap_ID(
+MOS_STATUS MosUtilities::MosUserFeatureReadValueFromMapID(
     MOS_USER_FEATURE_VALUE_MAP      *keyValueMap,
     PMOS_USER_FEATURE_INTERFACE     pOsUserFeatureInterface,
     uint32_t                        ValueID,
@@ -5374,7 +5571,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValue_FromMap_ID(
     // Open the user feature
     // Assigned the pUserFeature to UFKey for future reading
     UFKey = pUserFeature;
-    if((eStatus = MOS_UserFeature_Open(
+    if((eStatus = MosUserFeatureOpen(
                        pUserFeature->Type,
                        pUserFeature->pcPath,
                        KEY_READ,
@@ -5386,7 +5583,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValue_FromMap_ID(
     }
 
     // Initialize Read Value
-    if((eStatus = MOS_UserFeature_ReadValueInit(
+    if((eStatus = MosUserFeatureReadValueInit(
                         pOsUserFeatureInterface,
                         pUserFeature->uiNumOfValues,
                         pUserFeature->Value,
@@ -5411,16 +5608,16 @@ MOS_STATUS MosUtilities::MOS_UserFeature_ReadValue_FromMap_ID(
     switch(pUserFeature->ValueType)
     {
        case MOS_USER_FEATURE_VALUE_TYPE_BINARY:
-           eStatus = MOS_UserFeature_ReadValueBinary(UFKey, pUserFeature);
+           eStatus = MosUserFeatureReadValueBinary(UFKey, pUserFeature);
            break;
        case MOS_USER_FEATURE_VALUE_TYPE_STRING:
-           eStatus = MOS_UserFeature_ReadValueString(UFKey, pUserFeature);
+           eStatus = MosUserFeatureReadValueString(UFKey, pUserFeature);
            break;
        case MOS_USER_FEATURE_VALUE_TYPE_MULTI_STRING:
-           eStatus = MOS_UserFeature_ReadValueMultiString(UFKey, pUserFeature);
+           eStatus = MosUserFeatureReadValueMultiString(UFKey, pUserFeature);
            break;
        default:
-           eStatus = MOS_UserFeature_ReadValuePrimitive(UFKey, pUserFeature);
+           eStatus = MosUserFeatureReadValuePrimitive(UFKey, pUserFeature);
            break;
     }
 
@@ -5436,32 +5633,28 @@ finish:
     {
         // Use the User Feature Value or default value in corresponding user feature key Desc Fields
         // when User Feature Key read successfully or no input custom default value
-        MOS_CopyUserFeatureValueData(
+        MosCopyUserFeatureValueData(
             &pUserFeature->Value,
             pValueData,
             pUserFeature->ValueType);
     }
-    MOS_UserFeatureCloseKey(UFKey);      // Closes the key if not nullptr
+    MosUserFeatureCloseKey(UFKey);      // Closes the key if not nullptr
     return eStatus;
 }
 
-#ifdef  __MOS_USER_FEATURE_WA_
-MOS_STATUS MosUtilities::MOS_UserFeature_ReadValue_ID(
-#else
-MOS_STATUS MosUtilities::MOS_UserFeature_ReadValue(
-#endif
+MOS_STATUS MosUtilities::MosUserFeatureReadValueID(
     PMOS_USER_FEATURE_INTERFACE     pOsUserFeatureInterface,
     uint32_t                        ValueID,
     PMOS_USER_FEATURE_VALUE_DATA    pValueData)
 {
-    return MOS_UserFeature_ReadValue_FromMap_ID(
+    return MosUserFeatureReadValueFromMapID(
         m_userFeatureKeysMap,
         pOsUserFeatureInterface,
         ValueID,
         pValueData);
 }
 
-const char* MosUtilities::MOS_UserFeature_LookupValueName(uint32_t ValueID)
+const char* MosUtilities::MosUserFeatureLookupValueName(uint32_t ValueID)
 {
     MOS_OS_ASSERT(ValueID != __MOS_USER_FEATURE_KEY_INVALID_ID);
 
@@ -5481,7 +5674,7 @@ const char* MosUtilities::MOS_UserFeature_LookupValueName(uint32_t ValueID)
 #endif
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_WriteValues_Tbl_ID(
+MOS_STATUS MosUtilities::MosUserFeatureWriteValuesTblID(
     MOS_USER_FEATURE_VALUE_MAP              *keyValueMap,
     PMOS_USER_FEATURE_INTERFACE             pOsUserFeatureInterface,
     PMOS_USER_FEATURE_VALUE_WRITE_DATA      pWriteValues,
@@ -5502,9 +5695,9 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValues_Tbl_ID(
     MOS_OS_ASSERT(pWriteValues);
     //--------------------------------------------------
 
-    MOS_ZeroMemory(WritePathWithPID, MAX_PATH);
+    MosZeroMemory(WritePathWithPID, MAX_PATH);
 
-    pid = MOS_GetPid();
+    pid = MosGetPid();
 
     for (ui = 0; ui < uiNumOfValues; ui++)
     {
@@ -5530,14 +5723,14 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValues_Tbl_ID(
         sprintf_s(WritePathWithPID, MAX_PATH, "%s\\%d", pUserFeature->pcWritePath, pid);
 
         //try to open Write path with pid first
-        if ((eStatus = MOS_UserFeature_Open(
+        if ((eStatus = MosUserFeatureOpen(
                  pUserFeature->Type,
                  WritePathWithPID,
                  KEY_WRITE,
                  &UFKey)) != MOS_STATUS_SUCCESS)
         {
             MOS_OS_NORMALMESSAGE("Failed to open user feature for concurrency.");
-            if ((eStatus = MOS_UserFeature_Open(
+            if ((eStatus = MosUserFeatureOpen(
                      pUserFeature->Type,
                      pUserFeature->pcWritePath,
                      KEY_WRITE,
@@ -5555,7 +5748,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValues_Tbl_ID(
         switch(pUserFeature->ValueType)
         {
         case MOS_USER_FEATURE_VALUE_TYPE_BINARY:
-            if ((eStatus = MOS_UserFeature_WriteValueBinary(UFKey, pUserFeature, &(pWriteValues[ui].Value))) != MOS_STATUS_SUCCESS)
+            if ((eStatus = MosUserFeatureWriteValueBinary(UFKey, pUserFeature, &(pWriteValues[ui].Value))) != MOS_STATUS_SUCCESS)
             {
                 MOS_OS_ASSERTMESSAGE("Failed to write binary value to user feature.");
                 eStatus = MOS_STATUS_USER_FEATURE_KEY_WRITE_FAILED;
@@ -5563,7 +5756,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValues_Tbl_ID(
             }
             break;
         case MOS_USER_FEATURE_VALUE_TYPE_STRING:
-            if ((eStatus = MOS_UserFeature_WriteValueString(UFKey, pUserFeature, &(pWriteValues[ui].Value))) != MOS_STATUS_SUCCESS)
+            if ((eStatus = MosUserFeatureWriteValueString(UFKey, pUserFeature, &(pWriteValues[ui].Value))) != MOS_STATUS_SUCCESS)
             {
                 MOS_OS_ASSERTMESSAGE("Failed to write string value to user feature.");
                 eStatus = MOS_STATUS_USER_FEATURE_KEY_WRITE_FAILED;
@@ -5571,7 +5764,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValues_Tbl_ID(
             }
             break;
         case MOS_USER_FEATURE_VALUE_TYPE_MULTI_STRING:
-            if ((eStatus = MOS_UserFeature_WriteValueMultiString(UFKey, pUserFeature, &(pWriteValues[ui].Value))) != MOS_STATUS_SUCCESS)
+            if ((eStatus = MosUserFeatureWriteValueMultiString(UFKey, pUserFeature, &(pWriteValues[ui].Value))) != MOS_STATUS_SUCCESS)
             {
                 MOS_OS_ASSERTMESSAGE("Failed to write multi string value to user feature.");
                 eStatus = MOS_STATUS_USER_FEATURE_KEY_WRITE_FAILED;
@@ -5579,42 +5772,37 @@ MOS_STATUS MosUtilities::MOS_UserFeature_WriteValues_Tbl_ID(
             }
             break;
         default:
-            if ((eStatus = MOS_UserFeature_WriteValuePrimitive(UFKey, pUserFeature, &(pWriteValues[ui].Value))) != MOS_STATUS_SUCCESS)
+            if ((eStatus = MosUserFeatureWriteValuePrimitive(UFKey, pUserFeature, &(pWriteValues[ui].Value))) != MOS_STATUS_SUCCESS)
             {
                 MOS_OS_ASSERTMESSAGE("Failed to write primitive data value to user feature.");
                 eStatus = MOS_STATUS_USER_FEATURE_KEY_WRITE_FAILED;
                 goto finish;
             }
         }
-        MOS_UserFeatureCloseKey(UFKey);      // Closes the key if not nullptr
+        MosUserFeatureCloseKey(UFKey);      // Closes the key if not nullptr
     }
 
 finish:
     if (eStatus != MOS_STATUS_SUCCESS)
     {
-        MOS_UserFeatureCloseKey(UFKey);      // Closes the key if not nullptr
+        MosUserFeatureCloseKey(UFKey);      // Closes the key if not nullptr
     }
     return eStatus;
 }
 
-
-#ifdef  __MOS_USER_FEATURE_WA_
-MOS_STATUS MosUtilities::MOS_UserFeature_WriteValues_ID(
-#else
-MOS_STATUS MosUtilities::MOS_UserFeature_WriteValues(
-#endif
+MOS_STATUS MosUtilities::MosUserFeatureWriteValuesID(
     PMOS_USER_FEATURE_INTERFACE             pOsUserFeatureInterface,
     PMOS_USER_FEATURE_VALUE_WRITE_DATA      pWriteValues,
     uint32_t                                uiNumOfValues)
 {
-    return MOS_UserFeature_WriteValues_Tbl_ID(
+    return MosUserFeatureWriteValuesTblID(
         m_userFeatureKeysMap,
         pOsUserFeatureInterface,
         pWriteValues,
         uiNumOfValues);
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_EnableNotification(
+MOS_STATUS MosUtilities::MosUserFeatureEnableNotification(
     PMOS_USER_FEATURE_INTERFACE            pOsUserFeatureInterface,
     PMOS_USER_FEATURE_NOTIFY_DATA          pNotification)
 {
@@ -5647,7 +5835,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_EnableNotification(
     // Open User Feature for Reading
     if (pNotifyCommon->UFKey == 0)
     {
-        if((eStatus = MOS_UserFeature_Open(
+        if((eStatus = MosUserFeatureOpen(
                           pNotification->Type,
                           pNotification->pPath,
                           KEY_READ,
@@ -5661,7 +5849,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_EnableNotification(
     // Create Event for notification
     if (pNotifyCommon->hEvent == nullptr)
     {
-        pNotifyCommon->hEvent = MOS_CreateEventEx(
+        pNotifyCommon->hEvent = MosCreateEventEx(
                                     nullptr,
                                     nullptr,
                                     0);
@@ -5675,7 +5863,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_EnableNotification(
     // Unregister wait event if already registered
     if (pNotifyCommon->hWaitEvent)
     {
-        if ((bResult = MOS_UnregisterWaitEx(pNotifyCommon->hWaitEvent)) == false)
+        if ((bResult = MosUnregisterWaitEx(pNotifyCommon->hWaitEvent)) == false)
         {
             MOS_OS_ASSERTMESSAGE("Unable to unregiser wait event.");
             return MOS_STATUS_EVENT_WAIT_UNREGISTER_FAILED;
@@ -5684,7 +5872,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_EnableNotification(
     }
 
     // Register a Callback
-    if((eStatus = MOS_UserFeatureNotifyChangeKeyValue(
+    if((eStatus = MosUserFeatureNotifyChangeKeyValue(
                       pNotifyCommon->UFKey,
                       false,
                       pNotifyCommon->hEvent,
@@ -5695,10 +5883,10 @@ MOS_STATUS MosUtilities::MOS_UserFeature_EnableNotification(
     }
 
     // Create a wait object
-    if ((bResult = MOS_UserFeatureWaitForSingleObject(
+    if ((bResult = MosUserFeatureWaitForSingleObject(
                                               &pNotifyCommon->hWaitEvent,
                                               pNotifyCommon->hEvent,
-                                              (void *)MOS_UserFeature_Callback,
+                                              (void *)MosUserFeatureCallback,
                                               pNotification)) == false)
     {
         MOS_OS_ASSERTMESSAGE("Failed to create a wait object.");
@@ -5708,7 +5896,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_EnableNotification(
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS MosUtilities::MOS_UserFeature_DisableNotification(
+MOS_STATUS MosUtilities::MosUserFeatureDisableNotification(
     PMOS_USER_FEATURE_INTERFACE            pOsUserFeatureInterface,
     PMOS_USER_FEATURE_NOTIFY_DATA          pNotification)
 {
@@ -5728,7 +5916,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_DisableNotification(
 
         if (pNotifyDataCommon->hWaitEvent)
         {
-            if ((bResult = MOS_UnregisterWaitEx(pNotifyDataCommon->hWaitEvent)) == false)
+            if ((bResult = MosUnregisterWaitEx(pNotifyDataCommon->hWaitEvent)) == false)
             {
                 MOS_OS_ASSERTMESSAGE("Unable to unregiser wait event.");
                     return MOS_STATUS_EVENT_WAIT_UNREGISTER_FAILED;
@@ -5736,7 +5924,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_DisableNotification(
         }
         if (pNotifyDataCommon->UFKey)
         {
-            if ((eStatus = MOS_UserFeatureCloseKey(pNotifyDataCommon->UFKey)) != MOS_STATUS_SUCCESS)
+            if ((eStatus = MosUserFeatureCloseKey(pNotifyDataCommon->UFKey)) != MOS_STATUS_SUCCESS)
             {
                 MOS_OS_ASSERTMESSAGE("User feature key close failed.");
                 return eStatus;
@@ -5744,7 +5932,7 @@ MOS_STATUS MosUtilities::MOS_UserFeature_DisableNotification(
         }
         if (pNotifyDataCommon->hEvent)
         {
-            MOS_CloseHandle(pNotifyDataCommon->hEvent);
+            MosCloseHandle(pNotifyDataCommon->hEvent);
         }
 
         // Free Notify Data Memory
@@ -5754,12 +5942,12 @@ MOS_STATUS MosUtilities::MOS_UserFeature_DisableNotification(
     return MOS_STATUS_SUCCESS;
 }
 
-float MosUtilities::MOS_Sinc(float x)
+float MosUtilities::MosSinc(float x)
 {
     return (MOS_ABS(x) < 1e-9f) ? 1.0F : (float)(sin(x) / x);
 }
 
-float MosUtilities::MOS_Lanczos(float x, uint32_t dwNumEntries, float fLanczosT)
+float MosUtilities::MosLanczos(float x, uint32_t dwNumEntries, float fLanczosT)
 {
     uint32_t dwNumHalfEntries;
 
@@ -5776,10 +5964,10 @@ float MosUtilities::MOS_Lanczos(float x, uint32_t dwNumEntries, float fLanczosT)
 
     x *= MOS_PI;
 
-    return MOS_Sinc(x) * MOS_Sinc(x / fLanczosT);
+    return MosSinc(x) * MosSinc(x / fLanczosT);
 }
 
-float MosUtilities::MOS_Lanczos_g(float x, uint32_t dwNumEntries, float fLanczosT)
+float MosUtilities::MosLanczosG(float x, uint32_t dwNumEntries, float fLanczosT)
 {
     uint32_t dwNumHalfEntries;
 
@@ -5796,10 +5984,10 @@ float MosUtilities::MOS_Lanczos_g(float x, uint32_t dwNumEntries, float fLanczos
 
     x *= MOS_PI;
 
-    return MOS_Sinc(x) * MOS_Sinc(x / fLanczosT);
+    return MosSinc(x) * MosSinc(x / fLanczosT);
 }
 
-uint32_t MosUtilities::MOS_GCD(uint32_t a, uint32_t b)
+uint32_t MosUtilities::MosGCD(uint32_t a, uint32_t b)
 {
     if (b == 0)
     {
@@ -5807,11 +5995,17 @@ uint32_t MosUtilities::MOS_GCD(uint32_t a, uint32_t b)
     }
     else
     {
-        return MOS_GCD(b, a % b);
+        return MosGCD(b, a % b);
     }
 }
 
-__inline int32_t MosUtilities::__Mos_SwizzleOffset(
+#ifdef _MOS_UTILITY_EXT
+#include "mos_utilities_ext_next.h"
+#else
+#define Mos_SwizzleOffset MosUtilities::MosSwizzleOffset
+#endif
+
+__inline int32_t MosUtilities::MosSwizzleOffset(
     int32_t         OffsetX,
     int32_t         OffsetY,
     int32_t         Pitch,
@@ -5903,7 +6097,7 @@ __inline int32_t MosUtilities::__Mos_SwizzleOffset(
     return(SwizzledOffset);
 }
 
-void MosUtilities::Mos_SwizzleData(
+void MosUtilities::MosSwizzleData(
     uint8_t         *pSrc,
     uint8_t         *pDst,
     MOS_TILE_TYPE   SrcTiling,

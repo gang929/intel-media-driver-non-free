@@ -215,6 +215,22 @@ const uint16_t CodechalVdencHevcState::m_rdQpLambdaP[] = {
     0x0108, 0x014D, 0x01A3, 0x0210, 0x029A, 0x0347, 0x0421, 0x0533, 0x068D, 0x0841, 0x0A66, 0x0D1A, 0x1082, 0x14CD, 0x1A35, 0x2105,
     0x299A, 0x346A, 0x4209, 0x5333
 };
+
+// Originial CodechalVdencHevcState::m_penaltyForIntraNonDC32x32PredMode table
+const uint8_t CodechalVdencHevcState::m_penaltyForIntraNonDC32x32PredMode[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00
+};
+
+// New table for visual quality improvement
+const uint8_t CodechalVdencHevcState::m_penaltyForIntraNonDC32x32PredMode_VQI[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x0C, 0x12, 0x19, 0x1f, 0x25, 0x2C, 0x32, 0x38,
+    0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F,
+    0x3F, 0x3F, 0x3F, 0x3F
+};
 //! \endcond
 
 uint32_t CodechalVdencHevcState::GetMaxAllowedSlices(uint8_t levelIdc)
@@ -1146,9 +1162,8 @@ MOS_STATUS CodechalVdencHevcState::HuCBrcUpdate()
     CODECHAL_ENCODE_CHK_STATUS_RETURN(SetConstDataHuCBrcUpdate());
 
     // Add Virtual addr
-    MHW_VDBOX_HUC_VIRTUAL_ADDR_PARAMS virtualAddrParams;
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(SetRegionsHuCBrcUpdate(&virtualAddrParams));
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucVirtualAddrStateCmd(&cmdBuffer, &virtualAddrParams));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(SetRegionsHuCBrcUpdate(&m_virtualAddrParams));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucVirtualAddrStateCmd(&cmdBuffer, &m_virtualAddrParams));
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(HuCBrcDummyStreamObject(&cmdBuffer));
 
@@ -2532,6 +2547,8 @@ MOS_STATUS CodechalVdencHevcState::SetPictureStructs()
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(CodechalEncodeHevcBase::SetPictureStructs());
 
+    m_virtualEngineBbIndex = m_currOriginalPic.FrameIdx;
+
     //Enable only for TU1
     if (m_hevcSeqParams->TargetUsage != 1)
     {
@@ -2594,6 +2611,8 @@ MOS_STATUS CodechalVdencHevcState::SetPictureStructs()
             m_numPasses += 1;
         }
     }
+
+    CODECHAL_ENCODE_VERBOSEMESSAGE("m_numPasses = %d",m_numPasses);
 
     m_vdencHucUsed = m_hevcVdencAcqpEnabled || m_vdencBrcEnabled;
 
@@ -3020,7 +3039,7 @@ MOS_STATUS CodechalVdencHevcState::AllocateBrcResources()
         allocParamsForBufferLinear.dwBytes = MOS_ALIGN_CEIL(m_vdencBrcUpdateDmemBufferSize, CODECHAL_CACHELINE_SIZE);
         allocParamsForBufferLinear.pBufName = "VDENC BrcUpdate DmemBuffer";
 
-        for (auto i = 0; i < CODECHAL_VDENC_BRC_NUM_OF_PASSES; i++)
+        for (auto i = 0; i < CODECHAL_VDENC_BRC_NUM_OF_PASSES_FOR_TILE_REPLAY; i++)
         {
             CODECHAL_ENCODE_CHK_STATUS_MESSAGE_RETURN(m_osInterface->pfnAllocateResource(
                 m_osInterface,
@@ -3191,8 +3210,12 @@ MOS_STATUS CodechalVdencHevcState::FreeBrcResources()
 
         for (auto i = 0; i < CODECHAL_VDENC_BRC_NUM_OF_PASSES; i++)
         {
-            m_osInterface->pfnFreeResource(m_osInterface, &m_vdencBrcUpdateDmemBuffer[k][i]);
             m_osInterface->pfnFreeResource(m_osInterface, &m_vdencReadBatchBuffer[k][i]);
+        }
+
+        for (auto i = 0; i < CODECHAL_VDENC_BRC_NUM_OF_PASSES_FOR_TILE_REPLAY; i++)
+        {
+            m_osInterface->pfnFreeResource(m_osInterface, &m_vdencBrcUpdateDmemBuffer[k][i]);
         }
 
         m_osInterface->pfnFreeResource(m_osInterface, &m_vdencBrcInitDmemBuffer[k]);
@@ -3437,30 +3460,41 @@ MOS_STATUS CodechalVdencHevcState::DumpHucBrcUpdate(bool isInput)
             hucRegionDumpUpdate));
 
         // Region 1 - VDENC Statistics Buffer dump
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-            (MOS_RESOURCE*)m_allocator->GetResource(m_standard, vdencStats),
-            0,
-            m_vdencBrcStatsBufferSize,
-            1,
-            "_VdencStats",
-            true,
-            currentPass,
-            hucRegionDumpUpdate));
+        auto vdencStatusBuffer = m_virtualAddrParams.regionParams[1].presRegion;
+        auto vdencStatusOffset = m_virtualAddrParams.regionParams[1].dwOffset;
+        if (vdencStatusBuffer)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
+                vdencStatusBuffer,
+                vdencStatusOffset,
+                m_vdencBrcStatsBufferSize,
+                1,
+                "_VdencStats",
+                true,
+                currentPass,
+                hucRegionDumpUpdate));
+        }
 
         // Region 2 - PAK Statistics Buffer dump
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-            &m_resFrameStatStreamOutBuffer,
-            0,
-            m_vdencBrcPakStatsBufferSize,
-            2,
-            "_PakStats",
-            true,
-            currentPass,
-            hucRegionDumpUpdate));
+        auto frameStatStreamOutBuffer = m_virtualAddrParams.regionParams[2].presRegion;
+        auto frameStatStreamOutOffset = m_virtualAddrParams.regionParams[2].dwOffset;
+        if (frameStatStreamOutBuffer)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
+                frameStatStreamOutBuffer,
+                frameStatStreamOutOffset,
+                m_vdencBrcPakStatsBufferSize,
+                2,
+                "_PakStats",
+                true,
+                currentPass,
+                hucRegionDumpUpdate));
+        }
 
         // Region 3 - Input SLB Buffer
+        auto vdencReadBatchBuffer = m_virtualAddrParams.regionParams[3].presRegion;
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-            &m_vdencReadBatchBuffer[m_currRecycledBufIdx][currentPass],
+            vdencReadBatchBuffer,
             0,
             m_hwInterface->m_vdencReadBatchBufferSize,
             3,
@@ -3470,8 +3504,9 @@ MOS_STATUS CodechalVdencHevcState::DumpHucBrcUpdate(bool isInput)
             hucRegionDumpUpdate));
 
         // Region 4 - Constant Data Buffer dump
+        auto vdencBrcConstDataBuffer = m_virtualAddrParams.regionParams[4].presRegion;
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-            &m_vdencBrcConstDataBuffer[m_currRecycledBufIdx],
+            vdencBrcConstDataBuffer,
             0,
             m_vdencBrcConstDataBufferSize,
             4,
@@ -3481,79 +3516,121 @@ MOS_STATUS CodechalVdencHevcState::DumpHucBrcUpdate(bool isInput)
             hucRegionDumpUpdate));
 
         // Region 7 - Slice Stat Streamout (Input)
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-            &m_resLcuBaseAddressBuffer,
-            0,
-            CODECHAL_HEVC_MAX_NUM_SLICES_LVL_6 * CODECHAL_CACHELINE_SIZE,
-            7,
-            "_SliceStat",
-            true,
-            currentPass,
-            hucRegionDumpUpdate));
+        auto lucBasedAddressBuffer = m_virtualAddrParams.regionParams[7].presRegion;
+        auto lucBasedAddressOffset = m_virtualAddrParams.regionParams[7].dwOffset;
+        if (lucBasedAddressBuffer)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
+                lucBasedAddressBuffer,
+                lucBasedAddressOffset,
+                CODECHAL_HEVC_MAX_NUM_SLICES_LVL_6 * CODECHAL_CACHELINE_SIZE,
+                7,
+                "_SliceStat",
+                true,
+                currentPass,
+                hucRegionDumpUpdate));
+        }
 
         // Region 8 - PAK MMIO Buffer dump
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-            (MOS_RESOURCE*)m_allocator->GetResource(m_standard, pakInfo),
-            0,
-            sizeof(CodechalVdencHevcPakInfo),
-            8,
-            "_PakMmio",
-            true,
-            currentPass,
-            hucRegionDumpUpdate));
+        auto pakInfoBufffer = m_virtualAddrParams.regionParams[8].presRegion;  
+        if (pakInfoBufffer)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
+                pakInfoBufffer,
+                0,
+                sizeof(CodechalVdencHevcPakInfo),
+                8,
+                "_PakMmio",
+                true,
+                currentPass,
+                hucRegionDumpUpdate));
+        }
 
         // Region 9 - Streamin Buffer for ROI (Input)
         auto streamInBufferSize = (MOS_ALIGN_CEIL(m_frameWidth, 64) / 32) * (MOS_ALIGN_CEIL(m_frameHeight, 64) / 32) * CODECHAL_CACHELINE_SIZE;
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-            &m_resVdencStreamInBuffer[m_currRecycledBufIdx],
-            0,
-            streamInBufferSize,
-            9,
-            "_RoiStreamin",
-            true,
-            currentPass,
-            hucRegionDumpUpdate));
+        auto stramInBuffer = m_virtualAddrParams.regionParams[9].presRegion;
+        if (stramInBuffer)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
+                stramInBuffer,
+                0,
+                streamInBufferSize,
+                9,
+                "_RoiStreamin",
+                true,
+                currentPass,
+                hucRegionDumpUpdate));
+        }
+
         // Region 10 - Delta QP for ROI Buffer
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-            &m_vdencDeltaQpBuffer[m_currRecycledBufIdx],
-            0,
-            m_deltaQpRoiBufferSize,
-            10,
-            "_DeltaQp",
-            true,
-            currentPass,
-            hucRegionDumpUpdate));
+        auto vdencDeltaQpBuffer = m_virtualAddrParams.regionParams[10].presRegion;
+        if (vdencDeltaQpBuffer)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
+                vdencDeltaQpBuffer,
+                0,
+                m_deltaQpRoiBufferSize,
+                10,
+                "_DeltaQp",
+                true,
+                currentPass,
+                hucRegionDumpUpdate));
+        }
+
+        // Region 12 - Input SLB Buffer
+        auto slbBuffer = m_virtualAddrParams.regionParams[12].presRegion;
+        if (slbBuffer)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
+                slbBuffer,
+                0,
+                m_hwInterface->m_vdencGroup3BatchBufferSize,
+                12,
+                "_Slb",
+                true,
+                currentPass,
+                hucRegionDumpUpdate));
+        }
     }
     else
     {
         // Region 5 - Output SLB Buffer
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-            &m_vdenc2ndLevelBatchBuffer[m_currRecycledBufIdx].OsResource,
-            0,
-            m_hwInterface->m_vdenc2ndLevelBatchBufferSize,
-            5,
-            "_Slb",
-            false,
-            currentPass,
-            hucRegionDumpUpdate));
+        auto vdenc2ndLevelBatchBuffer = m_virtualAddrParams.regionParams[5].presRegion;
+        if (vdenc2ndLevelBatchBuffer)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
+                vdenc2ndLevelBatchBuffer,
+                0,
+                m_hwInterface->m_vdenc2ndLevelBatchBufferSize,
+                5,
+                "_Slb",
+                false,
+                currentPass,
+                hucRegionDumpUpdate));
+        }
 
         // Region 11 - Output ROI Streamin Buffer
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-            &m_vdencOutputROIStreaminBuffer,
-            0,
-            m_roiStreamInBufferSize,
-            11,
-            "_RoiStreamin",
-            false,
-            currentPass,
-            hucRegionDumpUpdate));
+        auto vdencOutputROIStreaminBuffer = m_virtualAddrParams.regionParams[11].presRegion;
+        if (vdencOutputROIStreaminBuffer)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
+                vdencOutputROIStreaminBuffer,
+                0,
+                m_roiStreamInBufferSize,
+                11,
+                "_RoiStreamin",
+                false,
+                currentPass,
+                hucRegionDumpUpdate));
+        }
     }
 
     // Region 0 - History Buffer dump (Input/Output)
+    auto vdencBrcHistoryBuffer = m_virtualAddrParams.regionParams[0].presRegion;
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-        &m_vdencBrcHistoryBuffer,
+        vdencBrcHistoryBuffer,
         0,
-        CODECHAL_VDENC_HEVC_BRC_HISTORY_BUF_SIZE,
+        m_brcHistoryBufSize,
         0,
         "_History",
         isInput,
@@ -3572,15 +3649,19 @@ MOS_STATUS CodechalVdencHevcState::DumpHucBrcUpdate(bool isInput)
         hucRegionDumpUpdate));
 
     // Region 15 - Debug Output
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-        &m_vdencBrcDbgBuffer,
-        0,
-        0x1000,//
-        15,
-        "_Debug",
-        isInput,
-        currentPass,
-        hucRegionDumpUpdate));
+    auto debugBuffer = m_virtualAddrParams.regionParams[15].presRegion;
+    if (debugBuffer)
+    {
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
+            debugBuffer,
+            0,
+            0x1000,
+            15,
+            "_Debug",
+            isInput,
+            currentPass,
+            hucRegionDumpUpdate));
+    }
     return MOS_STATUS_SUCCESS;
 }
 
@@ -3620,8 +3701,17 @@ MOS_STATUS CodechalVdencHevcState::DumpVdencOutputs()
         m_resVdencPakObjCmdStreamOutBuffer,
         CodechalDbgAttr::attrVdencOutput,
         "_MbCode",
-        m_mbCodeSize,
+        m_mvOffset,
         0,
+        CODECHAL_NUM_MEDIA_STATES));
+
+    // Dump CU Record Cmd Buffer
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpBuffer(
+        m_resVdencPakObjCmdStreamOutBuffer,
+        CodechalDbgAttr::attrVdencOutput,
+        "_CURecord",
+        m_mbCodeSize - m_mvOffset,
+        m_mvOffset,
         CODECHAL_NUM_MEDIA_STATES));
 
     // Slice Size Conformance

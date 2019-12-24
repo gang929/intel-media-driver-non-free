@@ -121,7 +121,9 @@ CmQueueRT::CmQueueRT(CmDeviceRT *device,
     m_osSyncEvent(nullptr),
     m_trackerIndex(0),
     m_fastTrackerIndex(0),
-    m_streamIndex(0)
+    m_streamIndex(0),
+    m_gpuContextHandle(MOS_GPU_CONTEXT_INVALID_HANDLE),
+    m_syncBufferHandle(INVALID_SYNC_BUFFER_HANDLE)
 {
     MOS_ZeroMemory(&m_mosVeHintParams, sizeof(m_mosVeHintParams));
 }
@@ -163,6 +165,9 @@ CmQueueRT::~CmQueueRT()
 
     m_copyKernelParamArray.Delete();
 
+    CM_HAL_STATE *hal_state = static_cast<CM_CONTEXT_DATA*>(m_device->GetAccelData())->cmHalState;
+    ReleaseSyncBuffer(hal_state);
+    return;
 }
 
 //*-----------------------------------------------------------------------------
@@ -436,9 +441,14 @@ CM_RT_API int32_t CmQueueRT::Enqueue(
         cmHalState->advExecutor->SwitchToFastPath(kernelArray) &&
         cmHalState->cmHalInterface->IsFastPathByDefault())
     {
-        uint32_t old_stream_idx = cmHalState->osInterface->streamIndex;
-        cmHalState->osInterface->streamIndex = m_streamIndex;
-        result = cmHalState->advExecutor->SubmitTask(this, kernelArray, event, threadSpace, (MOS_GPU_CONTEXT)m_queueOption.GPUContext);
+        auto gpu_context_name
+                = static_cast<MOS_GPU_CONTEXT>(m_queueOption.GPUContext);
+        uint32_t old_stream_idx = cmHalState->pfnSetGpuContext(cmHalState,
+                                                               gpu_context_name,
+                                                               m_streamIndex,
+                                                               m_gpuContextHandle);
+        result = cmHalState->advExecutor->SubmitTask(this, kernelArray, event,
+                                                     threadSpace, gpu_context_name);
         cmHalState->osInterface->streamIndex = old_stream_idx;
         return result;
     }
@@ -617,7 +627,7 @@ int32_t CmQueueRT::Enqueue_RT(CmKernelRT* kernelArray[],
                         PCM_TASK_CONFIG  taskConfig,
                         const CM_EXECUTION_CONFIG* krnExecCfg)
 {
-    CM_ASSERTMESSAGE("================ in origin path, gpgpu walker===================");
+    CM_NORMALMESSAGE("================ in origin path, gpgpu walker===================");
     if(kernelArray == nullptr)
     {
         CM_ASSERTMESSAGE("Error: Kernel array is NULL.");
@@ -838,15 +848,24 @@ CM_RT_API int32_t CmQueueRT::EnqueueWithGroup( CmTask* task, CmEvent* & event, c
         cmHalState->advExecutor->SwitchToFastPath(task) &&
         cmHalState->cmHalInterface->IsFastPathByDefault())
     {
-        uint32_t old_stream_idx = cmHalState->osInterface->streamIndex;
-        cmHalState->osInterface->streamIndex = m_streamIndex;
+        auto gpu_context_name
+                = static_cast<MOS_GPU_CONTEXT>(m_queueOption.GPUContext);
+        uint32_t old_stream_idx = cmHalState->pfnSetGpuContext(cmHalState,
+                                                               gpu_context_name,
+                                                               m_streamIndex,
+                                                               m_gpuContextHandle);
         if (cmHalState->cmHalInterface->CheckMediaModeAvailability())
         {
-            result = cmHalState->advExecutor->SubmitGpgpuTask(this, task, event, threadGroupSpace, (MOS_GPU_CONTEXT)m_queueOption.GPUContext);
+            result = cmHalState->advExecutor->SubmitGpgpuTask(this, task, event,
+                                                              threadGroupSpace,
+                                                              gpu_context_name);
         }
         else
         {
-            result = cmHalState->advExecutor->SubmitComputeTask(this, task, event, threadGroupSpace, (MOS_GPU_CONTEXT)m_queueOption.GPUContext);
+            SelectSyncBuffer(cmHalState);
+            result = cmHalState->advExecutor->SubmitComputeTask(this, task, event,
+                                                                threadGroupSpace,
+                                                                gpu_context_name);
         }
         cmHalState->osInterface->streamIndex = old_stream_idx;
         return result;
@@ -2888,8 +2907,9 @@ int32_t CmQueueRT::FlushVeboxTask(CmTaskInternal* task)
     uint8_t *surfaceData         = nullptr;
     CmBuffer_RT * temp          = nullptr;
 
-    CmSafeMemSet( &param, 0, sizeof( CM_HAL_EXEC_VEBOX_TASK_PARAM ) );
+    uint32_t original_stream_index = 0;
 
+    CmSafeMemSet( &param, 0, sizeof( CM_HAL_EXEC_VEBOX_TASK_PARAM ) );
     //Set VEBOX state data pointer and size
     //Set VEBOX surface data pointer and size
     CM_VEBOX_STATE cmVeboxState;
@@ -2914,8 +2934,9 @@ int32_t CmQueueRT::FlushVeboxTask(CmTaskInternal* task)
     param.taskIdOut = -1;
 
     cmData = (PCM_CONTEXT_DATA)m_device->GetAccelData();
-
-    cmData->cmHalState->osInterface->pfnSetGpuContext(cmData->cmHalState->osInterface, (MOS_GPU_CONTEXT)m_queueOption.GPUContext);
+    original_stream_index = cmData->cmHalState->osInterface->streamIndex;
+    cmData->cmHalState->pfnSetGpuContext(cmData->cmHalState, MOS_GPU_CONTEXT_VEBOX,
+                                         original_stream_index, m_gpuContextHandle);
     RegisterSyncEvent();
 
     CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR( cmData->cmHalState->pfnExecuteVeboxTask( cmData->cmHalState, &param ) );
@@ -2957,11 +2978,11 @@ int32_t CmQueueRT::FlushEnqueueWithHintsTask( CmTaskInternal* task )
     CmEventRT                    *event        = nullptr;
     PCM_HAL_KERNEL_PARAM         tempData      = nullptr;
 
-    CmSafeMemSet( &param, 0, sizeof( CM_HAL_EXEC_HINTS_TASK_PARAM ) );
+    uint32_t original_stream_index = 0;
 
+    CmSafeMemSet( &param, 0, sizeof( CM_HAL_EXEC_HINTS_TASK_PARAM ) );
     task->GetKernelCount ( count );
     param.numKernels = count;
-
     param.kernels = MOS_NewArray(PCM_HAL_KERNEL_PARAM, count);
     param.kernelSizes = MOS_NewArray(uint32_t, count);
     param.kernelCurbeOffset = MOS_NewArray(uint32_t, count);
@@ -3001,7 +3022,10 @@ int32_t CmQueueRT::FlushEnqueueWithHintsTask( CmTaskInternal* task )
 
     CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmData->cmHalState->pfnSetPowerOption(cmData->cmHalState, task->GetPowerOption()));
 
-    cmData->cmHalState->osInterface->pfnSetGpuContext(cmData->cmHalState->osInterface, (MOS_GPU_CONTEXT)m_queueOption.GPUContext);
+    original_stream_index = cmData->cmHalState->osInterface->streamIndex;
+    cmData->cmHalState->pfnSetGpuContext(
+        cmData->cmHalState, static_cast<MOS_GPU_CONTEXT>(m_queueOption.GPUContext),
+        original_stream_index, m_gpuContextHandle);
     RegisterSyncEvent();
 
     CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(cmData->cmHalState->pfnExecuteHintsTask(cmData->cmHalState, &param));
@@ -3670,31 +3694,33 @@ CM_RT_API int32_t CmQueueRT::EnqueueFast(CmTask *task,
     }
     else
     {
+        auto gpu_context_name
+                = static_cast<MOS_GPU_CONTEXT>(m_queueOption.GPUContext);
+        // Selects the correct GPU context.
+        uint32_t old_stream_idx = state->pfnSetGpuContext(state, gpu_context_name,
+                                                          m_streamIndex,
+                                                          m_gpuContextHandle);
         const CmThreadSpaceRT *threadSpaceRTConst
                 = static_cast<const CmThreadSpaceRT*>(threadSpace);
-        uint32_t old_stream_idx = state->osInterface->streamIndex;
-        state->osInterface->streamIndex = m_streamIndex;
         if (state->cmHalInterface->CheckMediaModeAvailability() == false)
         {
             if (threadSpaceRTConst != nullptr)
             {
                 result = state->advExecutor->SubmitComputeTask(
-                    this, task, event,
-                    threadSpaceRTConst->GetThreadGroupSpace(),
-                    (MOS_GPU_CONTEXT)m_queueOption.GPUContext);
+                    this, task, event, threadSpaceRTConst->GetThreadGroupSpace(),
+                    gpu_context_name);
             }
             else
             {
-                result = state->advExecutor->SubmitComputeTask(
-                    this, task, event, nullptr,
-                    (MOS_GPU_CONTEXT)m_queueOption.GPUContext);
+                result = state->advExecutor->SubmitComputeTask(this, task, event,
+                                                               nullptr,
+                                                               gpu_context_name);
             }
         }
         else
         {
-            result = state->advExecutor->SubmitTask(
-                this, task, event, threadSpace,
-                (MOS_GPU_CONTEXT)m_queueOption.GPUContext);
+            result = state->advExecutor->SubmitTask(this, task, event, threadSpace,
+                                                    gpu_context_name);
         }
         state->osInterface->streamIndex = old_stream_idx;
     }
@@ -3736,19 +3762,22 @@ CmQueueRT::EnqueueWithGroupFast(CmTask *task,
         return EnqueueWithGroup(task, event, threadGroupSpace);
     }
 
-    uint32_t old_stream_idx = state->osInterface->streamIndex;
-    state->osInterface->streamIndex = m_streamIndex;
+    auto gpu_context_name = static_cast<MOS_GPU_CONTEXT>(m_queueOption.GPUContext);
+    // Selects the correct GPU context.
+    uint32_t old_stream_idx = state->pfnSetGpuContext(state, gpu_context_name,
+                                                      m_streamIndex,
+                                                      m_gpuContextHandle);
     if (state->cmHalInterface->CheckMediaModeAvailability())
     {
-        result = state->advExecutor->SubmitGpgpuTask(
-            this, task, event, threadGroupSpace,
-            (MOS_GPU_CONTEXT)m_queueOption.GPUContext);
+        result = state->advExecutor->SubmitGpgpuTask(this, task, event,
+                                                     threadGroupSpace,
+                                                     gpu_context_name);
     }
     else
     {
-        result = state->advExecutor->SubmitComputeTask(
-            this, task, event, threadGroupSpace,
-            (MOS_GPU_CONTEXT)m_queueOption.GPUContext);
+        result = state->advExecutor->SubmitComputeTask(this, task, event,
+                                                       threadGroupSpace,
+                                                       gpu_context_name);
     }
     state->osInterface->streamIndex = old_stream_idx;
     return result;
@@ -3786,19 +3815,26 @@ MOS_STATUS CmQueueRT::CreateGpuContext(CM_HAL_STATE *halState,
                                        MOS_GPUCTX_CREATOPTIONS *createOptions)
 {
     uint32_t old_stream_idx = 0;
+    MOS_STATUS status = MOS_STATUS_UNKNOWN;
     if (MOS_GPU_CONTEXT_CM_COMPUTE == gpuContextName)
     {
         m_streamIndex = halState->pfnRegisterStream(halState);
         old_stream_idx = halState->osInterface->streamIndex;
         halState->osInterface->streamIndex = m_streamIndex;
+        m_gpuContextHandle = halState->pfnCreateGpuComputeContext(halState,
+                                                                  createOptions);
+        if (MOS_GPU_CONTEXT_INVALID_HANDLE != m_gpuContextHandle)
+        {
+            status = MOS_STATUS_SUCCESS;
+            CreateSyncBuffer(halState);
+        }
     }
     else
     {  // As there is only one render context, the original stream index will be used.
         old_stream_idx = m_streamIndex = halState->osInterface->streamIndex;
+        status = halState->pfnCreateGPUContext(halState, gpuContextName, gpuNode,
+                                               createOptions);
     }
-    MOS_STATUS status = halState->pfnCreateGPUContext(halState,
-                                                      gpuContextName, gpuNode,
-                                                      createOptions);
     halState->osInterface->streamIndex = old_stream_idx;
     return status;
 }
@@ -3807,17 +3843,16 @@ MOS_STATUS CmQueueRT::ExecuteGroupTask(CM_HAL_STATE *halState,
                                        CM_HAL_EXEC_TASK_GROUP_PARAM *taskParam,
                                        MOS_GPU_CONTEXT gpuContextName)
 {
-    uint32_t old_stream_idx = halState->osInterface->streamIndex;
-    halState->osInterface->streamIndex = m_streamIndex;
-    MOS_STATUS result
-            = halState->osInterface->pfnSetGpuContext(halState->osInterface,
-                                                      gpuContextName);
-    if (MOS_STATUS_SUCCESS != result)
+    uint32_t old_stream_idx = halState->pfnSetGpuContext(halState, gpuContextName,
+                                                         m_streamIndex,
+                                                         m_gpuContextHandle);
+    if (INVALID_STREAM_INDEX == old_stream_idx)
     {
-        return result;
+        return MOS_STATUS_UNKNOWN;
     }
     RegisterSyncEvent();
-    result = halState->pfnExecuteGroupTask(halState, taskParam);
+    CM_CHK_MOSSTATUS_RETURN(SelectSyncBuffer(halState));
+    MOS_STATUS result = halState->pfnExecuteGroupTask(halState, taskParam);
     halState->osInterface->streamIndex = old_stream_idx;
     return result;
 }
@@ -3826,17 +3861,15 @@ MOS_STATUS CmQueueRT::ExecuteGeneralTask(CM_HAL_STATE *halState,
                                          CM_HAL_EXEC_TASK_PARAM *taskParam,
                                          MOS_GPU_CONTEXT gpuContextName)
 {
-    uint32_t old_stream_idx = halState->osInterface->streamIndex;
-    halState->osInterface->streamIndex = m_streamIndex;
-    MOS_STATUS result
-            = halState->osInterface->pfnSetGpuContext(halState->osInterface,
-                                                      gpuContextName);
-    if (MOS_STATUS_SUCCESS != result)
+    uint32_t old_stream_idx = halState->pfnSetGpuContext(halState, gpuContextName,
+                                                         m_streamIndex,
+                                                         m_gpuContextHandle);
+    if (INVALID_STREAM_INDEX == old_stream_idx)
     {
-        return result;
+        return MOS_STATUS_UNKNOWN;
     }
     RegisterSyncEvent();
-    result = halState->pfnExecuteTask(halState, taskParam);
+    MOS_STATUS result = halState->pfnExecuteTask(halState, taskParam);
     halState->osInterface->streamIndex = old_stream_idx;
     return result;
 }

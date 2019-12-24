@@ -202,6 +202,10 @@ static inline MOS_GPU_NODE OSKMGetGpuNode(MOS_GPU_CONTEXT uiGpuContext)
         case MOS_GPU_CONTEXT_VIDEO:
         case MOS_GPU_CONTEXT_VIDEO2:
         case MOS_GPU_CONTEXT_VIDEO3:
+        case MOS_GPU_CONTEXT_VIDEO4:
+        case MOS_GPU_CONTEXT_VIDEO5:
+        case MOS_GPU_CONTEXT_VIDEO6:
+        case MOS_GPU_CONTEXT_VIDEO7:
             return MOS_GPU_NODE_VIDEO;
             break;
         case MOS_GPU_CONTEXT_VDBOX2_VIDEO:
@@ -356,6 +360,20 @@ struct MOS_SURFACE
 typedef MOS_SURFACE *PMOS_SURFACE;
 
 //!
+//! \brief Structure to MOS_BUFFER
+//!
+struct MOS_BUFFER
+{
+    MOS_RESOURCE    OsResource; //!< Buffer resource
+    uint32_t        size;       //!< Buffer size
+    const char*     name;           //!< Buffer name
+    bool            initOnAllocate; //!< Flag to indicate whether initialize when allocate
+    uint8_t         initValue;      //!< Initialize value when initOnAllocate is set
+    bool            bPersistent;    //!< Persistent flag
+};
+typedef MOS_BUFFER *PMOS_BUFFER;
+
+//!
 //! \brief Structure to patch location list
 //!
 typedef struct _PATCHLOCATIONLIST
@@ -366,6 +384,7 @@ typedef struct _PATCHLOCATIONLIST
     uint32_t                    cpCmdProps;
     int32_t                     uiRelocFlag;
     uint32_t                    uiWriteOperation;
+    MOS_LINUX_BO                *cmdBo;
 } PATCHLOCATIONLIST, *PPATCHLOCATIONLIST;
 
 //#define PATCHLOCATIONLIST_SIZE 25

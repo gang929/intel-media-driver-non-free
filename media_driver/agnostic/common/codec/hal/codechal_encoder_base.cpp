@@ -989,6 +989,18 @@ MOS_STATUS CodechalEncoderState::DestroyMDFResources()
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS CodechalEncoderState::SetMfeSharedState(MfeSharedState *pMfeSharedState)
+{
+    CODECHAL_ENCODE_FUNCTION_ENTER;
+
+    CODECHAL_ENCODE_CHK_NULL_RETURN(pMfeSharedState);
+
+    m_mfeEncodeSharedState = pMfeSharedState;
+
+    return MOS_STATUS_SUCCESS;
+}
+
+
 MOS_STATUS CodechalEncoderState::AddKernelMdf(
     CmDevice *     device,
     CmQueue *      queue,
@@ -3984,7 +3996,7 @@ MOS_STATUS CodechalEncoderState::GetStatusReport(
                             m_statusReportDebugInterface->m_hybridPakP1 = false;
                         }
 
-                        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpYUVSurface(
+                        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_statusReportDebugInterface->DumpYUVSurface(
                             &currRefList.sRefReconBuffer,
                             CodechalDbgAttr::attrReconstructedSurface,
                             "ReconSurf"))
@@ -4181,7 +4193,7 @@ MOS_STATUS CodechalEncoderState::SendPrologWithFrameTracking(
     }
 
 #ifdef _MMC_SUPPORTED
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_mmcState->SendPrologCmd(m_miInterface, cmdBuffer, MOS_RCS_ENGINE_USED(gpuContext)));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_mmcState->SendPrologCmd(m_miInterface, cmdBuffer, gpuContext));
 #endif
 
     MHW_GENERIC_PROLOG_PARAMS genericPrologParams;
@@ -4547,6 +4559,9 @@ CodechalEncoderState::CodechalEncoderState(
 
     m_vdencMeKernelState = MHW_KERNEL_STATE();
     m_vdencStreaminKernelState = MHW_KERNEL_STATE();
+    m_vdencMeKernelStateRAB = MHW_KERNEL_STATE();
+    m_vdencStreaminKernelStateRAB = MHW_KERNEL_STATE();
+
     for (auto i = 0; i < CODEC_NUM_FIELDS_PER_FRAME; i++)
     {
         m_scaling2xKernelStates[i] = MHW_KERNEL_STATE();

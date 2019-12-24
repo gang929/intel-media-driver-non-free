@@ -34,7 +34,9 @@ extern template class MediaInterfacesFactory<MhwInterfaces>;
 extern template class MediaInterfacesFactory<MmdDevice>;
 extern template class MediaInterfacesFactory<MosUtilDevice>;
 extern template class MediaInterfacesFactory<CodechalDevice>;
+
 extern template class MediaInterfacesFactory<CMHalDevice>;
+
 extern template class MediaInterfacesFactory<VphalDevice>;
 extern template class MediaInterfacesFactory<RenderHalDevice>;
 extern template class MediaInterfacesFactory<Nv12ToP010Device>;
@@ -606,6 +608,7 @@ MOS_STATUS CodechalInterfacesG11Icllp::Initialize(
     return MOS_STATUS_SUCCESS;
 }
 
+#if !__BSD__
 static bool icllpRegisteredCMHal =
     MediaInterfacesFactory<CMHalDevice>::
     RegisterHal<CMHalInterfacesG11Icllp>((uint32_t)IGFX_ICELAKE_LP);
@@ -633,6 +636,7 @@ MOS_STATUS CMHalInterfacesG11Icllp::Initialize(CM_HAL_STATE *pCmState)
     m_cmhalDevice->SetDecompressFlag(true);
     return MOS_STATUS_SUCCESS;
 }
+#endif
 
 static bool icllpRegisteredMosUtil =
     MediaInterfacesFactory<MosUtilDevice>::
@@ -701,4 +705,36 @@ MOS_STATUS DecodeHistogramDeviceG11Icllp::Initialize(
 
     return MOS_STATUS_SUCCESS;
 }
+
+static bool ehlRegisteredVphal =
+      MediaInterfacesFactory<VphalDevice>::
+      RegisterHal<VphalInterfacesG11Icllp>((uint32_t)IGFX_ELKHARTLAKE);
+
+static bool ehlRegisteredMhw =
+    MediaInterfacesFactory<MhwInterfaces>::
+    RegisterHal<MhwInterfacesG11Icllp>((uint32_t)IGFX_ELKHARTLAKE);
+
+static bool ehlRegisteredNv12ToP010 =
+    MediaInterfacesFactory<Nv12ToP010Device>::
+    RegisterHal<Nv12ToP010DeviceG11Icllp>((uint32_t)IGFX_ELKHARTLAKE);
+
+static bool ehlhpRegisteredCodecHal =
+    MediaInterfacesFactory<CodechalDevice>::
+    RegisterHal<CodechalInterfacesG11Icllp>((uint32_t)IGFX_ELKHARTLAKE);
+
+static bool ehlRegisteredCMHal =
+    MediaInterfacesFactory<CMHalDevice>::
+    RegisterHal<CMHalInterfacesG11Icllp>((uint32_t)IGFX_ELKHARTLAKE);
+
+static bool ehlRegisteredMosUtil =
+    MediaInterfacesFactory<MosUtilDevice>::
+    RegisterHal<MosUtilDeviceG11Icllp>((uint32_t)IGFX_ELKHARTLAKE);
+
+static bool ehlRegisteredRenderHal =
+    MediaInterfacesFactory<RenderHalDevice>::
+    RegisterHal<RenderHalInterfacesG11Icllp>((uint32_t)IGFX_ELKHARTLAKE);
+
+static bool ehlRegisteredDecodeHistogram =
+    MediaInterfacesFactory<DecodeHistogramDevice>::
+    RegisterHal<DecodeHistogramDeviceG11Icllp>((uint32_t)IGFX_ELKHARTLAKE);
 

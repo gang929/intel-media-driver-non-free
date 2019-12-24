@@ -51,6 +51,11 @@
 #include "mos_os.h"
 
 class GpuContextSpecificNext;
+struct _MOS_VIRTUALENGINE_SET_PARAMS;
+struct _MOS_VIRTUALENGINE_INIT_PARAMS;
+typedef struct _MOS_VIRTUALENGINE_SET_PARAMS  MOS_VIRTUALENGINE_SET_PARAMS, *PMOS_VIRTUALENGINE_SET_PARAMS;
+typedef struct _MOS_VIRTUALENGINE_INIT_PARAMS MOS_VIRTUALENGINE_INIT_PARAMS, *PMOS_VIRTUALENGINE_INIT_PARAMS;
+typedef struct _MOS_CMD_BUF_ATTRI_VE MOS_CMD_BUF_ATTRI_VE, *PMOS_CMD_BUF_ATTRI_VE;
 class MosInterface
 {
 public:
@@ -232,7 +237,7 @@ public:
     //!
     //! \brief    Create Gpu Context
     //! \details  [GPU Context Interface] Create Gpu Context to submit cmdbuffers
-    //! \details  Caller: HAL only
+    //! \details  Caller: HAL (Media Context) only
     //! \details  This func is called when a stream (Hal instance) needs a SW queue to submit cmd buffers programmed with GPU cmds.
     //! \details  This queue contain options to indicate the properties of virtual GPU engine to execute these cmds.
     //! \details  Caller can use Usage & option & GPU_CONTEXT_HANDLE to track and re-use the GPU contexts.
@@ -257,7 +262,7 @@ public:
     //!
     //! \brief    Destroy Gpu Context
     //! \details  [GPU Context Interface] Destroy Gpu Context to submit cmdbuffers
-    //! \details  Caller: HAL only
+    //! \details  Caller: HAL (Media Context) only
     //! \details  This func is called when a stream (Hal instance) never needs this SW queue to submit cmd buffers
     //! \details  This func is called only in the destruction stage of Hal instance. 
     //!           Never should be SetGpuContext called to set destroied Gpu Context.
@@ -277,7 +282,7 @@ public:
     //!
     //! \brief    Set Gpu Context
     //! \details  [GPU Context Interface] Set current Gpu Context to submit cmd buffers for the stream(Hal instance)
-    //! \details  Caller: HAL only
+    //! \details  Caller: HAL (Media Context) only
     //! \details  This func is called when a stream (Hal instance) needs an existing GPU context to submit cmd buffers.
     //! \details  Current GPU context is the major state of Os Stream State.
     //! \details  Before getting a cmd buffer to program GPU cmds, a valid GPU context must be setted into the stream.
@@ -573,6 +578,41 @@ public:
     static MOS_STATUS SetupIndirectState(
         MOS_STREAM_HANDLE streamState,
         uint32_t size);
+
+    //!
+    //! \brief    Setup VE Attribute Buffer
+    //! \details  [Cmd Buffer Interface] Setup VE Attribute Buffer into cmd buffer.
+    //! \details  Caller: MHW only
+    //! \details  This interface is called to setup into cmd buffer.
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [out] cmdBuffer
+    //!           Cmd buffer to setup VE attribute.
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS SetupAttributeVeBuffer(
+        MOS_STREAM_HANDLE     streamState,
+        COMMAND_BUFFER_HANDLE cmdBuffer);
+        
+    //!
+    //! \brief    Get VE Attribute Buffer
+    //! \details  [Cmd Buffer Interface] Get VE Attribute Buffer from cmd buffer.
+    //! \details  Caller: HAL only
+    //! \details  This interface is called to get VE attribute buffer from cmd buffer if it contains one.
+    //!           If there is no VE attribute buffer returned, it means the cmd buffer has no such buffer
+    //!           in current MOS module. It is not error state if it is nullptr.
+    //!
+    //! \param    [out] cmdBuffer
+    //!           Cmd buffer to setup VE attribute.
+    //!
+    //! \return   MOS_CMD_BUF_ATTRI_VE*
+    //!           Return pointer of VE attribute buffer, nullptr if current cmdBuffer didn't contain attribute.
+    //!
+    static MOS_CMD_BUF_ATTRI_VE *GetAttributeVeBuffer(
+        COMMAND_BUFFER_HANDLE cmdBuffer);
         
     //!
     //! \brief    Get Cache Policy Memory Object
@@ -591,7 +631,25 @@ public:
     static MEMORY_OBJECT_CONTROL_STATE GetCachePolicyMemoryObject(
         MOS_STREAM_HANDLE streamState,
         MOS_HW_RESOURCE_DEF mosUsage);
-    
+
+    //!
+    //! \brief    Get Cache Policy L1 Config
+    //! \details  [Resource Interface] Get L1 Cache Config in GMM corresponding to the resource usage
+    //!           Caller: HAL & MHW
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [in] mosUsage
+    //!           Resource usage as index to the memory object table
+    //!           If prociding unknown usage, default state will be returned
+    //!
+    //! \return   uint8_t
+    //!           The L1_Cache_Config got from MOS interface
+    //! 
+    static uint8_t GetCachePolicyL1Config(
+        MOS_STREAM_HANDLE streamState,
+        MOS_HW_RESOURCE_DEF mosUsage);
+
     //!
     //! \brief    Convert Resource From Ddi
     //! \details  [Resource Interface] Convert Resource structure From OS/API specific to MOS reource.
@@ -790,9 +848,7 @@ public:
     static MOS_STATUS RegisterResource(
         MOS_STREAM_HANDLE streamState,
         MOS_RESOURCE_HANDLE resource,
-        bool write,
-        uint32_t streamIndex = 0,
-        uint32_t gpuContextOrdinal = 0);
+        bool write);
         
     //!
     //! \brief    Get Resource Gfx Address
@@ -854,6 +910,33 @@ public:
     //!
     static MOS_STATUS SkipResourceSync(
         MOS_RESOURCE_HANDLE resource);
+
+    //!
+    //! \brief    Sync on resource
+    //! \details  [Resource Interface] Explicit sync on resource
+    //! \details  Caller: HAL only
+    //! \details  Resource is shared by different cmd buffers on different GPU contexts.
+    //!           Adding sync object into requestor GPU context queue to resolve the hazard if necessary.
+    //!           This func is called by hal to declare the resource to consider the sync explicitly.
+    //!           It is a strong sync request for the resource.
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [in] resource
+    //!           MOS Resource handle for the resource contain hazard of sync
+    //! \param    [in] writeOperation
+    //!           Indicate the current programming is to write resource or not
+    //! \param    [in] requsetorGpuContext
+    //!           GpuContext which programming the resource. Recommand not setting it and use current GPU context.
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS SyncOnResource(
+        MOS_STREAM_HANDLE streamState,
+        MOS_RESOURCE_HANDLE resource,
+        bool writeOperation,
+        GPU_CONTEXT_HANDLE requsetorGpuContext = MOS_GPU_CONTEXT_INVALID_HANDLE);
         
     //!
     //! \brief    Resource Sync
@@ -864,7 +947,7 @@ public:
     //!           If there is a hazard, one cmd buffer in requestor GPU context queue will wait for the other cmd buffer in busy GPU context.
     //!           
     //! \param    [in] resource
-    //!           MOS Resource handle for the resource contain hazard of sync
+    //!           OS specific resource handle for the resource contain hazard of sync
     //! \param    [in] deviceContext
     //!           Handle of Os Device Context
     //! \param    [in] index
@@ -882,7 +965,7 @@ public:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     static MOS_STATUS ResourceSync(    
-        MOS_RESOURCE_HANDLE    resource,
+        OsSpecificRes          resource,
         MOS_DEVICE_HANDLE      deviceContext,
         uint32_t               index,
         SYNC_HAZARD            hazardType,
@@ -899,7 +982,7 @@ public:
     //!           If there is a hazard, CPU side will wait for the cmd buffer in busy GPU context.
     //!           
     //! \param    [in] resource
-    //!           MOS Resource handle for the resource contain hazard of sync
+    //!           OS specific resource handle for the resource contain hazard of sync
     //! \param    [in] deviceContext
     //!           Handle of Os Device Context
     //! \param    [in] index
@@ -909,18 +992,36 @@ public:
     //! \param    [in] busyCtx
     //!           GPU Context handle of the queue being waiting for.
     //! \param    [in] doNotWait
-    //!           Indicate this is blocking call or not.
+    //!           Indicate this is blocking call or not. When set to true, possibly return MOS_STATUS_STILL_DRAWING
     //!
     //! \return   MOS_STATUS
-    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!           Return MOS_STATUS_SUCCESS if successful, MOS_STATUS_STILL_DRAWING if doNotWait
+    //!           is set to true and resoure is still being used in HW, otherwise failed
     //!        
     static MOS_STATUS LockSync(    
-        MOS_RESOURCE_HANDLE     resource,
+        OsSpecificRes           resource,
         MOS_DEVICE_HANDLE       deviceContext,
         uint32_t                index,
         SYNC_HAZARD             hazardType,
         GPU_CONTEXT_HANDLE      busyCtx,
         bool                    doNotWait);
+
+    //!
+    //! \brief    Wait For cmd Completion
+    //! \details  [GPU Context Interface] Waiting for the completion of cmd in provided GPU context
+    //! \details  Caller: HAL only
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [in] gpuCtx
+    //!           GpuContext handle of the gpu context to wait cmd completion
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS WaitForCmdCompletion(
+        MOS_STREAM_HANDLE streamState,
+        GPU_CONTEXT_HANDLE gpuCtx);
     
     //!
     //! \brief    Trim Residency
@@ -1122,7 +1223,224 @@ public:
     //!
     static MosOcaInterface *GetOcaInterface(MOS_STREAM_HANDLE streamState);
 
+    //!
+    //! \brief    Maps the specified executable module into the address space of
+    //!           the calling process.
+    //! \param    PMOS_INTERFACE pOsInterface
+    //!           [in] A handle to OS interface.  This can be nullptr which allows a caller to
+    //!           always get library from specified library path (function will never check
+    //!           driver store) which is useful if there's a constant static path of a library
+    //! \param    const PCCHAR lpLibFileName
+    //!           [in] String containing resource name to load.  Absolute path is given here
+    //!           if pOsInterface is nullptr, else only lib path is given, and driver will check store for path
+    //! \param    PHMODULE phModule
+    //!           [out] Handle to library given back to the caller
+    //! \return   MOS_STATUS
+    //!           Returns one of the MOS_STATUS error codes if failed,
+    //!           else MOS_STATUS_SUCCESS
+    //!
+    static MOS_STATUS MosLoadLibrary(
+        MOS_STREAM_HANDLE           streamState,
+        PCCHAR                      pFileName,
+        PHMODULE                    phModule);
+
+    //!
+    //! \brief    Free the loaded dynamic-link library
+    //! \details  Free the loaded dynamic-link library
+    //! \param    [in] hLibModule
+    //!           A handle to the loaded DLL module
+    //! \return   int32_t
+    //!           true if success else false
+    //!
+    static MOS_STATUS MosFreeLibrary(HMODULE hLibModule);
+
+    //! \brief    Get Virtual Engine State
+    //! \details  [Virtual Engine Interface] Get Virtual Engine State from streamState
+    //! \details  Caller: Hal (Scalability) only
+    //! \details  This func is called when a stream (Hal instance) need to get a VE state
+    //! \details  corresponding to current GPU context.
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //!
+    //! \return   MOS_VE_HANDLE
+    //!           Handle of MOS virtual engine state, Invalid handle if get failed 
+    //!
+    static MOS_VE_HANDLE GetVirtualEngineState(
+        MOS_STREAM_HANDLE  streamState);
+
+    //!
+    //! \brief    Set Virtual Engine State
+    //! \details  [Virtual Engine Interface] Set Virtual Engine State of provided streamState
+    //! \details  Caller: Hal (Scalability) only
+    //! \details  This func is called when a stream (Hal instance) need to set an existing VE state
+    //! \details  into provided stream.
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [in] veState
+    //!           Handle of Virtual Engine State to set
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS SetVirtualEngineState(
+        MOS_STREAM_HANDLE streamState,
+        MOS_VE_HANDLE veState);
+
+    //!
+    //! \brief    Create Virtual Engine State
+    //! \details  [Virtual Engine Interface] Create Virtual Engine State of provided streamState
+    //! \details  Caller: Hal (Scalability) only
+    //! \details  This func is called when a stream (Hal instance) need to create a VE state
+    //! \details  into provided stream.
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [in] veInitParms
+    //!           Pointer of parameters to init ve staet
+    //! \param    [out] veState
+    //!           Reference of the handle of Virtual Engine State to created
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS CreateVirtualEngineState(
+        MOS_STREAM_HANDLE streamState,
+        PMOS_VIRTUALENGINE_INIT_PARAMS veInitParms,
+        MOS_VE_HANDLE    &veState);
+
+    //!
+    //! \brief    Destroy Virtual Engine State
+    //! \details  [Virtual Engine Interface] Destroy Virtual Engine State of provided streamState
+    //! \details  Caller: Hal (Scalability) only
+    //! \details  This func is called when a stream (Hal instance) need to destroy a VE state
+    //! \details  into provided stream.
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [out] veState
+    //!           Reference of the handle of Virtual Engine State to created
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS DestroyVirtualEngineState(
+        MOS_STREAM_HANDLE streamState);
+
+    //!
+    //! \brief    Set hint parameters
+    //!
+    //! \details  [Virtual Engine Interface] Set hint parameters into Virtual Engine State in provided stream
+    //! \details  Caller: Hal (Scalability) only
+    //! \details  Set hint parameters for virtual engine state
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [in] veParams
+    //!           pointer to VE parameter data structure to set
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    static MOS_STATUS SetVeHintParams(
+        MOS_STREAM_HANDLE streamState,
+        PMOS_VIRTUALENGINE_SET_PARAMS veParams);
+
+    //!
+    //! \brief    Get hint parameters
+    //!
+    //! \details  [Virtual Engine Interface] Get hint parameters from Virtual Engine State in provided stream
+    //! \details  Caller: Hal (Scalability) only
+    //! \details  Get hint parameters from virtual engine state
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [in] scalableMode
+    //!           flag to indicate if scalability mode
+    //! \param    [out] hintParams
+    //!           pointer to VE hint parameter address
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    static MOS_STATUS GetVeHintParams(
+        MOS_STREAM_HANDLE streamState,
+        bool scalableMode,
+        PMOS_VIRTUALENGINE_HINT_PARAMS *hintParams);
+
+    //!
+    //! \brief    Set Virtual Engine Submission Type
+    //!
+    //! \details  [Virtual Engine Interface] Set submission type for the provided cmd buffer
+    //! \details  Caller: Hal (Scalability) only
+    //! \details  Set submission type as per cmd buffer hint parameter. Must be set before submission.
+    //!           Submission type is to set cmd buffer (primary or secondary) property to indicate 
+    //!           which pipe it belongs. See MOS_SUBMISSION_TYPE.
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [out] cmdBuf
+    //!           Handle of cmd buffer to set submission type
+    //! \param    [in] type
+    //!           Submission type to set
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    static MOS_STATUS SetVeSubmissionType(
+        MOS_STREAM_HANDLE     streamState,
+        COMMAND_BUFFER_HANDLE cmdBuf,
+        MOS_SUBMISSION_TYPE   type);
+
+#if _DEBUG || _RELEASE_INTERNAL
+    //!
+    //! \brief    Get engine count
+    //!
+    //! \details  [Virtual Engine Interface] Get engine count from Virtual Engine State in provided stream
+    //! \details  Caller: Hal (Scalability) only
+    //! \details  Get engine count from virtual engine state
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \return   uint8_t
+    //!           Engine count
+    //!
+    static uint8_t GetVeEngineCount(
+        MOS_STREAM_HANDLE streamState);
+
+    //!
+    //! \brief    Get Engine Logic Id
+    //! \details  [Virtual Engine Interface] Get engine Logic Id from Virtual Engine State in provided stream
+    //! \details  Caller: Hal (Scalability) only
+    //! \details  Get engine Logic Id from virtual engine state
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [in] instanceIdx
+    //!           Engine instance index
+    //! \return   uint8_t
+    //!
+    static uint8_t GetEngineLogicId(
+        MOS_STREAM_HANDLE streamState,
+        uint32_t instanceIdx);
+
+#endif // _DEBUG || _RELEASE_INTERNAL
+
 private:
+
+    //!
+    //! \brief    Compose Cmd buffer header
+    //! \details  Compose Cmd buffer header if it contains header
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [out] cmdBuffer
+    //!           Cmd buffer to compose header.
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS ComposeCommandBufferHeader(
+        MOS_STREAM_HANDLE streamState,
+        COMMAND_BUFFER_HANDLE cmdBuffer);
 
     //!
     //! \brief   Get GpuContext

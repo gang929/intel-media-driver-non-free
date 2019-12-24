@@ -49,7 +49,7 @@ public:
     //! \brief  Initialzie the OS ContextNext Object
     //! \return MOS_STATUS_SUCCESS on success case, MOS error status on fail cases
     //!
-    virtual MOS_STATUS Init(MOS_CONTEXT* osDriverContextNext) = 0;
+    virtual MOS_STATUS Init(DDI_DEVICE_CONTEXT osDriverContextNext) = 0;
 
 private:
     //!
@@ -213,5 +213,8 @@ protected:
 
     //! \brief   Flag to indicate if HAS is enabled
     bool                            m_simIsActive = false;
+
+    //! \brief   Flag to indicate if implicit Tile is needed
+    bool                            m_implicitTileNeeded = false;
 };
 #endif // #ifndef __MOS_CONTEXTNext_NEXT_H__

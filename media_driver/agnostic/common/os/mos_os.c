@@ -473,13 +473,7 @@ MOS_STATUS Mos_DumpCommandBuffer(
     if (pOsInterface->bDumpCommandBufferToFile)
     {
         // Set the file name.
-        eStatus = MOS_LogFileNamePrefix(sFileName);
-        if (eStatus != MOS_STATUS_SUCCESS)
-        {
-            MOS_OS_NORMALMESSAGE("Failed to create log file prefix. Status = %d", eStatus);
-            goto finish;
-        }
-
+        memcpy(sFileName, pOsInterface->sDirName, MOS_MAX_HLT_FILENAME_LEN);
         nSizeFileNamePrefix = strnlen(sFileName, sizeof(sFileName));
         MOS_SecureStringPrint(
             sFileName + nSizeFileNamePrefix,
@@ -583,13 +577,14 @@ MOS_STATUS Mos_DumpCommandBufferInit(
     if (pOsInterface->bDumpCommandBufferToFile)
     {
         // Create output directory.
-        eStatus = MOS_LogFileNamePrefix(sFileName);
+        eStatus = MOS_LogFileNamePrefix(pOsInterface->sDirName);
         if (eStatus != MOS_STATUS_SUCCESS)
         {
             MOS_OS_NORMALMESSAGE("Failed to create log file prefix. Status = %d", eStatus);
             goto finish;
         }
 
+        memcpy(sFileName, pOsInterface->sDirName, MOS_MAX_HLT_FILENAME_LEN);
         nSizeFileNamePrefix = strnlen(sFileName, sizeof(sFileName));
         MOS_SecureStringPrint(
             sFileName + nSizeFileNamePrefix,
@@ -804,14 +799,21 @@ MOS_STATUS Mos_InitInterface(
         pOsInterface->osStreamState->osCpInterface            = pOsInterface->osCpInterface;
         pOsInterface->osStreamState->osDeviceContext          = (OsDeviceContext *)pOsInterface->pOsContext->m_osDeviceContext;
         pOsInterface->osStreamState->simIsActive              = pOsInterface->bSimIsActive;
-        pOsInterface->osStreamState->virtualEngineInterface   = pOsInterface->pVEInterf;
+        pOsInterface->osStreamState->virtualEngineInterface   = nullptr; // Will be updated by HAL on demand
 #if MOS_COMMAND_BUFFER_DUMP_SUPPORTED
         pOsInterface->osStreamState->dumpCommandBuffer        = pOsInterface->bDumpCommandBuffer;
         pOsInterface->osStreamState->dumpCommandBufferAsMessages = pOsInterface->bDumpCommandBufferAsMessages;
         pOsInterface->osStreamState->dumpCommandBufferToFile  = pOsInterface->bDumpCommandBufferToFile;
 #endif  // MOS_COMMAND_BUFFER_DUMP_SUPPORTED
 
-        pOsInterface->osStreamState->osInterfaceLegacy = pOsInterface;
+#if _DEBUG || _RELEASE_INTERNAL
+        pOsInterface->osStreamState->enableDbgOvrdInVirtualEngine = pOsInterface->bEnableDbgOvrdInVE;
+        pOsInterface->osStreamState->eForceVdbox = pOsInterface->eForceVdbox;
+        pOsInterface->osStreamState->eForceVebox = pOsInterface->eForceVebox;
+#endif  // _DEBUG || _RELEASE_INTERNAL
+
+        pOsInterface->osStreamState->ctxBasedScheduling       = pOsInterface->ctxBasedScheduling;
+        pOsInterface->osStreamState->perStreamParameters      = pOsInterface->pOsContext;
     }
 
     return eStatus;
@@ -1077,6 +1079,12 @@ MOS_STATUS Mos_CheckVirtualEngineSupported(
         osInterface->multiNodeScaling = osInterface->ctxBasedScheduling && MEDIA_IS_SKU(skuTable, FtrVcs2) ? true : false;
     }
 
+    if (g_apoMosEnabled)
+    {
+        // Update ctx based scheduling flag also in APO MOS stream state
+        MOS_OS_CHK_NULL_RETURN(osInterface->osStreamState);
+        osInterface->osStreamState->ctxBasedScheduling = osInterface->ctxBasedScheduling;
+    }
     MOS_OS_VERBOSEMESSAGE("Virtual Engine Context based SCheduling enabled:%d.\n", osInterface->ctxBasedScheduling);
     MOS_OS_VERBOSEMESSAGE("Virtual Engine Multi-node Scaling enabled:%d.\n", osInterface->multiNodeScaling);
 

@@ -97,6 +97,7 @@ GMM_RESOURCE_FORMAT GraphicsResourceSpecificNext::ConvertMosFmtToGmmFmt(MOS_FORM
         case Format_BGRP        : return GMM_FORMAT_BGRP_TYPE;
         case Format_R8U         : return GMM_FORMAT_R8_UINT_TYPE;
         case Format_R16U        : return GMM_FORMAT_R16_UINT_TYPE;
+        case Format_R16F        : return GMM_FORMAT_R16_FLOAT_TYPE;
         case Format_P010        : return GMM_FORMAT_P010_TYPE;
         case Format_P016        : return GMM_FORMAT_P016_TYPE;
         case Format_Y216        : return GMM_FORMAT_Y216_TYPE;
@@ -142,7 +143,7 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
     GMM_RESOURCE_TYPE  resourceType    = RESOURCE_2D;
 
     GMM_RESCREATE_PARAMS    gmmParams;
-    MOS_ZeroMemory(&gmmParams, sizeof(gmmParams));
+    MosUtilities::MosZeroMemory(&gmmParams, sizeof(gmmParams));
 
     switch (params.m_type)
     {
@@ -184,9 +185,9 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
     switch (tileformat)
     {
         case MOS_TILE_Y:
-            gmmParams.Flags.Gpu.MMC       = params.m_isCompressed;
+            gmmParams.Flags.Gpu.MMC       = params.m_isCompressible;
             tileFormatLinux               = I915_TILING_Y;
-            if (params.m_isCompressed && pOsContextSpecific->GetAuxTableMgr())
+            if (params.m_isCompressible && pOsContextSpecific->GetAuxTableMgr())
             {
                 gmmParams.Flags.Info.MediaCompressed = 1;
                 gmmParams.Flags.Gpu.CCS = 1;
@@ -271,7 +272,7 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
     MOS_LINUX_BO* boPtr      = nullptr;
 
     char bufName[m_maxBufNameLength];
-    MOS_SecureStrcpy(bufName, m_maxBufNameLength, params.m_name.c_str());
+    MosUtilities::MosSecureStrcpy(bufName, m_maxBufNameLength, params.m_name.c_str());
 
     if (nullptr != params.m_pSystemMemory)
     {
@@ -432,9 +433,12 @@ void* GraphicsResourceSpecificNext::Lock(OsContextNext* osContextPtr, LockParams
     {
         // Do decompression for a compressed surface before lock
         const auto pGmmResInfo = m_gmmResInfo;
-         MOS_OS_ASSERT(pGmmResInfo);
+        MOS_OS_ASSERT(pGmmResInfo);
+        GMM_RESOURCE_FLAG GmmFlags = pGmmResInfo->GetResFlags();
+
         if (!params.m_noDecompress &&
-             pGmmResInfo->IsMediaMemoryCompressed(0))
+            (((GmmFlags.Gpu.MMC || GmmFlags.Gpu.CCS) && GmmFlags.Info.MediaCompressed) ||
+             pGmmResInfo->IsMediaMemoryCompressed(0)))
         {
             if ((pOsContextSpecific->m_mediaMemDecompState == nullptr) ||
                 (pOsContextSpecific->m_memoryDecompress    == nullptr))
@@ -473,7 +477,7 @@ void* GraphicsResourceSpecificNext::Lock(OsContextNext* osContextPtr, LockParams
                             uint64_t surfSize = m_gmmResInfo->GetSizeMainSurface();
                             MOS_OS_CHECK_CONDITION((m_tileType != MOS_TILE_Y), "Unsupported tile type", nullptr);
                             MOS_OS_CHECK_CONDITION((boPtr->size <= 0 || m_pitch <= 0), "Invalid BO size or pitch", nullptr);
-                            Mos_SwizzleData((uint8_t*)boPtr->virt, m_systemShadow,
+                            MosUtilities::MosSwizzleData((uint8_t*)boPtr->virt, m_systemShadow,
                                             MOS_TILE_Y, MOS_TILE_LINEAR,
                                             (int32_t)(surfSize / m_pitch), m_pitch, flags);
                         }
@@ -540,7 +544,7 @@ MOS_STATUS GraphicsResourceSpecificNext::Unlock(OsContextNext* osContextPtr)
                {
                    int32_t flags = pOsContextSpecific->GetTileYFlag() ? 0 : 1;
                    uint64_t surfSize = m_gmmResInfo->GetSizeMainSurface();
-                   Mos_SwizzleData(m_systemShadow, (uint8_t*)boPtr->virt,
+                   MosUtilities::MosSwizzleData(m_systemShadow, (uint8_t*)boPtr->virt,
                                    MOS_TILE_LINEAR, MOS_TILE_Y,
                                    (int32_t)(surfSize / m_pitch), m_pitch, flags);
                    MOS_FreeMemory(m_systemShadow);

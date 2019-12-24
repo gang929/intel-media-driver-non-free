@@ -1980,7 +1980,11 @@ MOS_STATUS CodechalEncHevcStateG11::GetStatusReport(
         m_osInterface,
         &currRefList.resBitstreamBuffer,
         &lockFlags);
-    CODECHAL_ENCODE_CHK_NULL_RETURN(bitstream);
+    if (bitstream == nullptr)
+    {
+        MOS_SafeFreeMemory(tempBsBuffer);
+        CODECHAL_ENCODE_CHK_NULL_RETURN(nullptr);
+    }
 
     for(uint32_t i = 0; i < encodeStatusReport->NumberTilesInFrame; i++)
     {
@@ -5057,8 +5061,16 @@ MOS_STATUS CodechalEncHevcStateG11::GetCustomDispatchPattern(
 
     if (concurGroupNum > 1)
     {
-        maxThreadWidth = threadSpaceWidth;
-        maxThreadHeight = threadSpaceWidth + (threadSpaceWidth + threadSpaceHeight + concurGroupNum - 2) / concurGroupNum;
+        if (m_degree45Needed)
+        {
+            maxThreadWidth  = threadSpaceWidth;
+            maxThreadHeight = threadSpaceWidth + (threadSpaceWidth + threadSpaceHeight + concurGroupNum - 2) / concurGroupNum;
+        }
+        else //for tu4 we ensure threadspace width and height is even or a multiple of 4
+        {
+            maxThreadWidth  = (threadSpaceWidth + 1) & 0xfffe; //ensuring width is even
+            maxThreadHeight = ((threadSpaceWidth + 1) >> 1) + (threadSpaceWidth + 2 * (((threadSpaceHeight + 3) & 0xfffc) - 1) + (2 * concurGroupNum - 1)) / (2 * concurGroupNum);
+        }
         maxThreadHeight *= threadScaleV;
         maxThreadHeight += 1;
     }
@@ -5103,7 +5115,15 @@ MOS_STATUS CodechalEncHevcStateG11::GenerateLcuLevelData(MOS_SURFACE &lcuLevelIn
     for (uint32_t i = 0; i < frameWidthInLcu; i++)
     {
         lcuInfo[i] = (PLCU_LEVEL_DATA)MOS_AllocMemory(sizeof(LCU_LEVEL_DATA) * frameHeightInLcu);
-        CODECHAL_ENCODE_CHK_NULL_RETURN(lcuInfo[i]);
+        if (lcuInfo[i] == nullptr)
+        {
+            for (uint32_t j = 0; j < i; j++)
+            {
+                MOS_FreeMemory(lcuInfo[j]);
+            }
+            MOS_FreeMemory(lcuInfo);
+            CODECHAL_ENCODE_CHK_NULL_RETURN(nullptr);
+        }
         MOS_ZeroMemory(lcuInfo[i], (sizeof(LCU_LEVEL_DATA) * frameHeightInLcu));
     }
 
@@ -5125,10 +5145,19 @@ MOS_STATUS CodechalEncHevcStateG11::GenerateLcuLevelData(MOS_SURFACE &lcuLevelIn
                 {
                     bool lastSliceInTile = false, sliceInTile = false;
 
-                    CODECHAL_ENCODE_CHK_STATUS_RETURN(IsSliceInTile(slcCount,
+                    eStatus = (MOS_STATUS) IsSliceInTile(slcCount,
                         &currentTile,
                         &sliceInTile,
-                        &lastSliceInTile));
+                        &lastSliceInTile);
+                    if (eStatus != MOS_STATUS_SUCCESS)
+                    {
+                        for (uint32_t i = 0; i < frameWidthInLcu; i++)
+                        {
+                            MOS_FreeMemory(lcuInfo[i]);
+                        }
+                        MOS_FreeMemory(lcuInfo);
+                        CODECHAL_ENCODE_CHK_STATUS_RETURN(eStatus);
+                    }
 
                     if (!sliceInTile)
                     {
@@ -5205,7 +5234,15 @@ MOS_STATUS CodechalEncHevcStateG11::GenerateLcuLevelData(MOS_SURFACE &lcuLevelIn
             m_osInterface,
             &lcuLevelInputDataSurfaceParam.OsResource,
             &lockFlags);
-        CODECHAL_ENCODE_CHK_NULL_RETURN(lcuLevelData);
+        if (lcuLevelData == nullptr)
+        {
+            for (uint32_t i = 0; i < frameWidthInLcu; i++)
+            {
+                MOS_FreeMemory(lcuInfo[i]);
+            }
+            MOS_FreeMemory(lcuInfo);
+            CODECHAL_ENCODE_CHK_NULL_RETURN(nullptr);
+        }
 
         uint8_t* dataRowStart = (uint8_t*)lcuLevelData;
 
@@ -7278,14 +7315,15 @@ void CodechalEncHevcStateG11::ResizeBufferOffset()
 {
     CODECHAL_ENCODE_FUNCTION_ENTER;
 
-    m_widthAlignedMaxLcu = MOS_ALIGN_CEIL(m_frameWidth, MAX_LCU_SIZE);
-    m_heightAlignedMaxLcu = MOS_ALIGN_CEIL(m_frameHeight, MAX_LCU_SIZE);
+    //Re-calculate aligned frame width/height + aligned Max LCU width/height when resolution reset occurs
+    uint32_t frameWidth    = m_picWidthInMb * CODECHAL_MACROBLOCK_WIDTH;
+    uint32_t frameHeight   = m_picHeightInMb * CODECHAL_MACROBLOCK_HEIGHT;
 
-    m_widthAlignedLcu32 = MOS_ALIGN_CEIL(m_frameWidth, 32);
-    m_heightAlignedLcu32 = MOS_ALIGN_CEIL(m_frameHeight, 32);
+    uint32_t widthAlignedMaxLcu  = MOS_ALIGN_CEIL(frameWidth, MAX_LCU_SIZE);
+    uint32_t heightAlignedMaxLcu = MOS_ALIGN_CEIL(frameHeight, MAX_LCU_SIZE);
 
     uint32_t size = 0;
-    const uint32_t numLcu64 = m_widthAlignedMaxLcu * m_heightAlignedMaxLcu / 64 / 64;
+    const uint32_t numLcu64 = widthAlignedMaxLcu * heightAlignedMaxLcu / 64 / 64;
     MBENC_COMBINED_BUFFER2 fixedBuf;
 
     //Re-Calculate m_encBCombinedBuffer2 Size and Offsets
