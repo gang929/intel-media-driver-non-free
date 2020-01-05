@@ -6,6 +6,7 @@ Uploaders:
  Sebastian Ramacher <sramacher@debian.org>
 Build-Depends:
  debhelper-compat (= 12),
+ dh-sequence-libva,
  cmake,
  libigdgmm-dev (>= 19.2.3),
  libpciaccess-dev,
