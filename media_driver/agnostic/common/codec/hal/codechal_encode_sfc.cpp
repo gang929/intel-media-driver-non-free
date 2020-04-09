@@ -641,6 +641,8 @@ MOS_STATUS CodecHalEncodeSfc::SetVeboxSurfaceStateParams(
     params->SurfInput.dwHeight               = m_inputSurface->dwHeight;
     params->SurfInput.dwPitch                = m_inputSurface->dwPitch;
     params->SurfInput.TileType               = m_inputSurface->TileType;
+    params->SurfInput.TileModeGMM            = m_inputSurface->TileModeGMM;
+    params->SurfInput.bGMMTileEnabled        = m_inputSurface->bGMMTileEnabled;
     params->SurfInput.dwYoffset              = m_inputSurface->YPlaneOffset.iYOffset;
     params->SurfInput.pOsResource            = &m_inputSurface->OsResource;
     params->SurfInput.rcMaxSrc.left          = m_inputSurfaceRegion.X;
@@ -895,6 +897,8 @@ MOS_STATUS CodecHalEncodeSfc::SetSfcStateParams(
     outSurfaceParams->dwHeight             = m_sfcOutputSurface->dwHeight;
     outSurfaceParams->dwPitch              = m_sfcOutputSurface->dwPitch;
     outSurfaceParams->TileType             = m_sfcOutputSurface->TileType;
+    outSurfaceParams->TileModeGMM          = m_sfcOutputSurface->TileModeGMM;
+    outSurfaceParams->bGMMTileEnabled      = m_sfcOutputSurface->bGMMTileEnabled;
     outSurfaceParams->ChromaSiting         = m_chromaSiting;
     outSurfaceParams->dwUYoffset           = m_sfcOutputSurface->UPlaneOffset.iYOffset;
 
@@ -981,7 +985,9 @@ MOS_STATUS CodecHalEncodeSfc::SetSfcAvsStateParams(
                                 m_scaleX,
                                 m_scaleY,
                                 m_chromaSiting,
-                                true));
+                                true,
+                                0,
+                                0));
     return eStatus;
 }
 
@@ -1026,7 +1032,7 @@ MOS_STATUS CodecHalEncodeSfc::Initialize(
     MOS_GPUCTX_CREATOPTIONS createOption;
     //
     // VeboxgpuContext could be created from both VP and Codec.
-    // If there is no such as a GPU context it will create a new one and set the GPU component ID. 
+    // If there is no such as a GPU context it will create a new one and set the GPU component ID.
     // If there has been a valid GPU context it won’t create another one anymore and the component ID won’t be updated either.
     // Therefore if a codec veboxgpu context creation happens earlier than a vp veboxgpu context creation and set its component ID to MOS_GPU_COMPONENT_ENCODE,
     // VPBLT callstack would index a GpuAppTaskEvent of MOS_GPU_COMPONENT_ENCODE.
@@ -1151,6 +1157,8 @@ MOS_STATUS CodecHalEncodeSfc::RenderStart(
     MhwVeboxInterface                   *veboxInterface;
     PMHW_SFC_INTERFACE                  sfcInterface;
     MhwMiInterface                      *miInterface;
+    PMOS_CONTEXT                        pOsContext = nullptr;
+    MHW_MI_MMIOREGISTERS                *mmioVeboxRegisters = nullptr;
     MOS_COMMAND_BUFFER                  cmdBuffer;
     bool                                requestFrameTracking;
     MOS_STATUS                          eStatus = MOS_STATUS_SUCCESS;
@@ -1159,10 +1167,12 @@ MOS_STATUS CodecHalEncodeSfc::RenderStart(
 
     CODECHAL_ENCODE_CHK_NULL_RETURN(m_hwInterface);
     CODECHAL_ENCODE_CHK_NULL_RETURN(m_osInterface);
+    CODECHAL_ENCODE_CHK_NULL_RETURN(pOsContext = m_osInterface->pOsContext);
     CODECHAL_ENCODE_CHK_NULL_RETURN(encoder);
     CODECHAL_ENCODE_CHK_NULL_RETURN(sfcInterface = m_hwInterface->GetSfcInterface());
     CODECHAL_ENCODE_CHK_NULL_RETURN(veboxInterface = m_hwInterface->GetVeboxInterface());
     CODECHAL_ENCODE_CHK_NULL_RETURN(miInterface = m_hwInterface->GetMiInterface());
+    CODECHAL_ENCODE_CHK_NULL_RETURN(mmioVeboxRegisters = miInterface->GetMmioRegisters());
 
     // Switch GPU context to VEBOX
     m_osInterface->pfnSetGpuContext(m_osInterface, MOS_GPU_CONTEXT_VEBOX);
@@ -1180,7 +1190,7 @@ MOS_STATUS CodecHalEncodeSfc::RenderStart(
     // If m_pollingSyncEnabled is set, insert HW semaphore to wait for external
     // raw surface processing to complete, before start CSC. Once the marker in
     // raw surface is overwritten by external operation, HW semaphore will be
-    // signalled and CSC will start. This is to reduce SW latency between 
+    // signalled and CSC will start. This is to reduce SW latency between
     // external raw surface processing and CSC, in usages like remote gaming.
     if (encoder->m_pollingSyncEnabled)
     {
@@ -1225,6 +1235,8 @@ MOS_STATUS CodecHalEncodeSfc::RenderStart(
     CODECHAL_ENCODE_CHK_STATUS_RETURN(veboxInterface->AddVeboxSurfaces( &cmdBuffer, &veboxSurfaceStateCmdParams));
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(AddSfcCommands(sfcInterface, &cmdBuffer));
+
+    HalOcaInterface::OnDispatch(cmdBuffer, *pOsContext, *miInterface, *mmioVeboxRegisters);
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(veboxInterface->AddVeboxDiIecp(&cmdBuffer, &veboxDiIecpCmdParams));
 

@@ -50,6 +50,9 @@
 #define CODEC_WP_OUTPUT_L0_START        0
 #define CODEC_WP_OUTPUT_L1_START        6
 
+#define CODEC_720P_MAX_PIC_WIDTH       1280
+#define CODEC_720P_MAX_PIC_HEIGHT      1280
+
 #define CODEC_MAX_PIC_WIDTH            1920
 #define CODEC_MAX_PIC_HEIGHT           1920                // Tablet usage in portrait mode, image resolution = 1200x1920, so change MAX_HEIGHT to 1920
 
@@ -63,6 +66,7 @@
 #define CODEC_8K_MAX_PIC_HEIGHT   8192
 
 #define CODEC_16K_MAX_PIC_WIDTH        16384
+#define CODEC_12K_MAX_PIC_HEIGHT       12288
 #define CODEC_16K_MAX_PIC_HEIGHT       16384
 
 #define CODECHAL_MAD_BUFFER_SIZE                4 // buffer size is 4 bytes

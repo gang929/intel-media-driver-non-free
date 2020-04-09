@@ -448,8 +448,7 @@ MOS_STATUS OsContextSpecific::Init(PMOS_CONTEXT pOsDriverContext)
         }
 
         m_use64BitRelocs = true;
-        m_useSwSwizzling = MEDIA_IS_SKU(&m_skuTable, FtrSimulationMode)
-                        || MEDIA_IS_SKU(&m_skuTable, FtrUseSwSwizzling);
+        m_useSwSwizzling = pOsDriverContext->bSimIsActive || MEDIA_IS_SKU(&m_skuTable, FtrUseSwSwizzling);
         m_tileYFlag      = MEDIA_IS_SKU(&m_skuTable, FtrTileY);
     
         if (!Mos_Solo_IsEnabled() && MEDIA_IS_SKU(&m_skuTable,FtrContextBasedScheduling))
@@ -516,7 +515,9 @@ MOS_STATUS OsContextSpecific::Init(PMOS_CONTEXT pOsDriverContext)
     
         // For Media Memory compression
         m_mediaMemDecompState       = pOsDriverContext->ppMediaMemDecompState;
-        m_memoryDecompress       = pOsDriverContext->pfnMemoryDecompress;
+        m_memoryDecompress          = pOsDriverContext->pfnMemoryDecompress;
+        m_mediaMemCopy              = pOsDriverContext->pfnMediaMemoryCopy;
+        m_mediaMemCopy2D            = pOsDriverContext->pfnMediaMemoryCopy2D;
         m_mosContext                = pOsDriverContext;
     
         m_noParsingAssistanceInKmd  = true;

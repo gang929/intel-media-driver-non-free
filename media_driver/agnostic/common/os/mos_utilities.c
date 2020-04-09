@@ -28,7 +28,7 @@
 #include "mos_utilities.h"
 #include "mos_utilities_specific.h"
 #ifdef __cplusplus
-#include "mos_util_user_interface.h"
+#include "media_user_settings_mgr.h"
 #include <sstream>
 #endif
 #include <fcntl.h>     //open
@@ -70,7 +70,7 @@ PerfUtility::PerfUtility()
 
 PerfUtility::~PerfUtility()
 {
-    for (const auto data : records)
+    for (const auto &data : records)
     {
         if (data.second)
         {
@@ -220,16 +220,27 @@ extern "C" {
 
     MOS_FUNC_EXPORT void MOS_SetUltFlag(uint8_t ultFlag)
     {
+        MosUtilities::MosSetUltFlag(ultFlag);
+
         MosUltFlag = ultFlag;
     }
 
     MOS_FUNC_EXPORT int32_t MOS_GetMemNinjaCounter()
     {
+        if (g_apoMosEnabled)
+        {
+            return MosUtilities::MosGetMemNinjaCounter();
+        }
         return MosMemAllocCounterNoUserFeature;
     }
 
     MOS_FUNC_EXPORT int32_t MOS_GetMemNinjaCounterGfx()
     {
+        if (g_apoMosEnabled)
+        {
+            return MosUtilities::MosGetMemNinjaCounterGfx();
+        }
+
         return MosMemAllocCounterNoUserFeatureGfx;
     }
 
@@ -308,7 +319,7 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_TYPE_USER,
         MOS_USER_FEATURE_VALUE_TYPE_BOOL,
         "0",
-        "Perf Profiler FE&BE Timing Measurement Flag"),
+        "Perf Profiler FE and BE Timing Measurement Flag"),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_OUTPUT_FILE,
         "Perf Profiler Output File Name",
         __MEDIA_USER_FEATURE_SUBKEY_PERFORMANCE,
@@ -804,6 +815,15 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_VALUE_TYPE_INT32,
         "1",
         "Enables/Disables TLB Allocation WA for AVC VDEnc."),
+    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_VDENC_PERMB_STREAMOUT_ENABLE_ID,
+        "AVC VDEnc PerMB StreamOut Enable",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Encode",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Enables/Disables PerMB StreamOut for AVC VDEnc."),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_MMIO_MFX_LRA_0_OVERRIDE_ID,
         "MFX_LRA_0 Override",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -2030,6 +2050,15 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_VALUE_TYPE_INT32,
         "0",
         "Reports out raw surface format."),
+    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_ENCODE_CQM_QP_THRESHOLD_ID,
+        "CQM QP Threshold",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Encode",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_UINT32,
+        "40",
+        "QP threshuld for CQM enable/disable hint. Used by lookahead analysis kernel in LPLA."),
     MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_ISA_ASM_DEBUG_ENABLE_ID,
         __MEDIA_USER_FEATURE_VALUE_ISA_ASM_DEBUG_ENABLE,
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -2102,15 +2131,6 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_VALUE_TYPE_INT32,
         "0",
         "If enabled, disable rowstore cache for VDEnc."),
-    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_CODEC_SIM_ENABLE_ID,
-        "Codec Simulation Enable",
-        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
-        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
-        "Codec",
-        MOS_USER_FEATURE_TYPE_USER,
-        MOS_USER_FEATURE_VALUE_TYPE_INT32,
-        "0",
-        "If enabled, specify this is in pre-si simulation/emulation mode."),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_BREAK_IN_CODECHAL_CREATE_ID,
         "Break In CodecHal_Create",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -2255,6 +2275,24 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_VALUE_TYPE_INT32,
         "3",   // Default is 3 which is huc copy kernel
         "Id of demo huc kernel to load"),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_SIM_ENABLE_ID,
+        "Simulation Enable",
+        __MEDIA_USER_FEATURE_SUBKEY_PERMANENT,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Codec",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "If enabled, specify this is in pre-si simulation/emulation mode."),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_IS_CODEC_ROW_STORE_CACHE_ENABLED_ID,
+        "Codec Row Store Cache Enabled",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Report",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Reports out whether codec row store cache is enabled or not."),
 #endif // (_DEBUG || _RELEASE_INTERNAL
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_STATUS_REPORTING_ENABLE_ID,
         "Status Reporting",
@@ -3079,6 +3117,24 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_VALUE_TYPE_UINT32,
         "0",
         "For debugging purpose. 0 is to use default setting, 1 means FP32 mode, 2 means Hybrid mode, 3 means FP16 mode"),
+    MOS_DECLARE_UF_KEY(__VPHAL_ENABLE_SUPER_RESOLUTION_EDSR_ID,
+        "Enable VP Super Resolution EDSR",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "VP",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_BOOL,
+        "0",
+        "For debugging purpose. true for enabling VPP super resolution EDSR scaling"),
+    MOS_DECLARE_UF_KEY(__VPHAL_SUPER_RESOLUTION_EDSR_MODE_ID,
+        "Super Resolution EDSR Mode",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "VP",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_UINT32,
+        "0",
+        "For debugging purpose. 0 is to use default setting, 1 means 20 channels, 2 means 24 channels, 3 means 25 channels"),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_SUPER_RESOLUTION_ENABLE_ID,
         "SuperResolutionEnable",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -3169,6 +3225,15 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_VALUE_TYPE_BOOL,
         "0",
         "Enable media render engine memory compression in media workload"),
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_DISABLE_MMC_ID,
+        "Disable MMC",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Media",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_BOOL,
+        "0",
+        "Disable MMC for all components"),
     MOS_DECLARE_UF_KEY_DBGONLY(__VPHAL_VEBOX_DISABLE_TEMPORAL_DENOISE_FILTER_ID,
         "Disable Temporal Denoise Filter",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -3310,7 +3375,7 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_TYPE_USER,
         MOS_USER_FEATURE_VALUE_TYPE_UINT32,
         "0",
-        "Hcp Decode mode switch single pipe <-> 2 pipe"),
+        "Hcp Decode mode switch single pipe - 2 pipe"),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_HCP_DECODE_MODE_SWITCH_THRESHOLD2_ID,
         "HCP Decode Mode Switch TH2",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -3319,7 +3384,7 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_TYPE_USER,
         MOS_USER_FEATURE_VALUE_TYPE_UINT32,
         "0",
-        "Hcp Decode mode switch single pipe <-> 2/3 pipe"),
+        "Hcp Decode mode switch single pipe - 2/3 pipe"),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_ENABLE_VE_DEBUG_OVERRIDE,
         "Enable VE Debug Override",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -3535,7 +3600,7 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_TYPE_USER,
         MOS_USER_FEATURE_VALUE_TYPE_BOOL,
         "0",
-        "HEVC Vme encode force scalability for low (< 4K) resolution. (Default 0"),
+        "HEVC Vme encode force scalability for low (below 4K) resolution. (Default 0"),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_HEVC_VDENC_SEMA_RESET_DELAY_ID,
         "HEVC VDEnc Semaphore Reset Delay",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -3653,7 +3718,25 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_VALUE_TYPE_INT32,
         "1",
         "Encode Enable SW Back Annotation."),
+    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_ENABLE_CC_STITCHING_ID,
+        "Encode Enable CC Stitching",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Encode",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Encode Enable CC Stitching."),
 #if (_DEBUG || _RELEASE_INTERNAL)
+    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_ENABLE_SW_STITCHING_ID,
+        "Encode Enable SW Stitching",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Encode",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Encode Enable SW Stitching."),
     MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_MODE_ID,
         __MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_MODE,
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
@@ -3718,9 +3801,18 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_VALUE_TYPE_INT32,
         "0",
         "Eanble Apogeios hevc decode path. 1: enable, 0: disable."),
+    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_RESOURCE_ADDR_DUMP_ENABLE_ID,
+        "Resource Addr Dump Enable",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "MOS",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Eanble Apogeios Resource virtual address dump."),
 };
 
-#define MOS_NUM_USER_FEATURE_VALUES     (sizeof(MOSUserFeatureDescFields) / sizeof(MOSUserFeatureDescFields[0]))
+PMOS_USER_FEATURE_VALUE const MosUtilities::m_mosUserFeatureDescFields = MOSUserFeatureDescFields;
 
 #if (_DEBUG || _RELEASE_INTERNAL)
 uint32_t MosAllocMemoryFailSimulateMode;
@@ -3747,8 +3839,7 @@ uint32_t MosAllocMemoryFailSimulateAllocCounter;
 //!
 void MOS_InitAllocMemoryFailSimulateFlag()
 {
-    MOS_USER_FEATURE       UserFeature;
-    MOS_USER_FEATURE_VALUE UserFeatureValue;
+    MOS_USER_FEATURE_VALUE_DATA userFeatureValueData;
     MOS_STATUS             eStatus = MOS_STATUS_SUCCESS;
 
     //default off for simulate random fail
@@ -3758,50 +3849,36 @@ void MOS_InitAllocMemoryFailSimulateFlag()
     MosAllocMemoryFailSimulateAllocCounter = 0;
 
     // Read Config : memory allocation failure simulate mode
-    MOS_ZeroMemory(&UserFeatureValue, sizeof(UserFeatureValue));
-    UserFeatureValue.u32Data = 0;  // Init as default value
-    UserFeature.Type        = MOS_USER_FEATURE_TYPE_USER;
-    UserFeature.pPath       = __MEDIA_USER_FEATURE_SUBKEY_INTERNAL;
-    UserFeature.pValues     = &UserFeatureValue;
-    UserFeature.uiNumValues = 1;
-
-    MOS_UserFeature_ReadValue(
+    MOS_ZeroMemory(&userFeatureValueData, sizeof(userFeatureValueData));
+    MOS_UserFeature_ReadValue_ID(
         nullptr,
-        &UserFeature,
-        __MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_MODE,
-        MOS_USER_FEATURE_VALUE_TYPE_UINT32);
+        __MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_MODE_ID,
+        &userFeatureValueData);
 
-    if ((UserFeature.pValues[0].u32Data == MEMORY_ALLOC_FAIL_SIMULATE_MODE_DEFAULT) ||
-        (UserFeature.pValues[0].u32Data == MEMORY_ALLOC_FAIL_SIMULATE_MODE_RANDOM) ||
-        (UserFeature.pValues[0].u32Data == MEMORY_ALLOC_FAIL_SIMULATE_MODE_TRAVERSE))
+    if ((userFeatureValueData.u32Data == MEMORY_ALLOC_FAIL_SIMULATE_MODE_DEFAULT) ||
+        (userFeatureValueData.u32Data == MEMORY_ALLOC_FAIL_SIMULATE_MODE_RANDOM) ||
+        (userFeatureValueData.u32Data == MEMORY_ALLOC_FAIL_SIMULATE_MODE_TRAVERSE))
     {
-        MosAllocMemoryFailSimulateMode = UserFeature.pValues[0].u32Data;
+        MosAllocMemoryFailSimulateMode = userFeatureValueData.u32Data;
         MOS_OS_NORMALMESSAGE("Init MosSimulateAllocMemoryFailSimulateMode as %d \n ", MosAllocMemoryFailSimulateMode);
     }
     else
     {
         MosAllocMemoryFailSimulateMode = MEMORY_ALLOC_FAIL_SIMULATE_MODE_DEFAULT;
-        MOS_OS_NORMALMESSAGE("Invalid Alloc Memory Fail Simulate Mode from config: %d \n ", UserFeature.pValues[0].u32Data);
+        MOS_OS_NORMALMESSAGE("Invalid Alloc Memory Fail Simulate Mode from config: %d \n ", userFeatureValueData.u32Data);
     }
 
     // Read Config : memory allocation failure simulate frequence
-    MOS_ZeroMemory(&UserFeatureValue, sizeof(UserFeatureValue));
-    UserFeatureValue.u32Data = 0;  // Init as default value
-    UserFeature.Type         = MOS_USER_FEATURE_TYPE_USER;
-    UserFeature.pPath        = __MEDIA_USER_FEATURE_SUBKEY_INTERNAL;
-    UserFeature.pValues      = &UserFeatureValue;
-    UserFeature.uiNumValues  = 1;
-
-    MOS_UserFeature_ReadValue(
+    MOS_ZeroMemory(&userFeatureValueData, sizeof(userFeatureValueData));
+    MOS_UserFeature_ReadValue_ID(
         nullptr,
-        &UserFeature,
-        __MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_FREQ,
-        MOS_USER_FEATURE_VALUE_TYPE_UINT32);
+        __MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_FREQ_ID,
+        &userFeatureValueData);
 
-    if ((UserFeature.pValues[0].u32Data >= MIN_MEMORY_ALLOC_FAIL_FREQ) &&
-        (UserFeature.pValues[0].u32Data <= MAX_MEMORY_ALLOC_FAIL_FREQ))
+    if ((userFeatureValueData.u32Data >= MIN_MEMORY_ALLOC_FAIL_FREQ) &&
+        (userFeatureValueData.u32Data <= MAX_MEMORY_ALLOC_FAIL_FREQ))
     {
-        MosAllocMemoryFailSimulateFreq = UserFeature.pValues[0].u32Data;
+        MosAllocMemoryFailSimulateFreq = userFeatureValueData.u32Data;
         MOS_OS_NORMALMESSAGE("Init MosSimulateRandomAllocMemoryFailFreq as %d \n ", MosAllocMemoryFailSimulateFreq);
 
         if (MosAllocMemoryFailSimulateMode == MEMORY_ALLOC_FAIL_SIMULATE_MODE_RANDOM)
@@ -3812,32 +3889,25 @@ void MOS_InitAllocMemoryFailSimulateFlag()
     else
     {
         MosAllocMemoryFailSimulateFreq = 0;
-        MOS_OS_NORMALMESSAGE("Invalid Alloc Memory Fail Simulate Freq from config: %d \n ", UserFeature.pValues[0].u32Data);
+        MOS_OS_NORMALMESSAGE("Invalid Alloc Memory Fail Simulate Freq from config: %d \n ", userFeatureValueData.u32Data);
     }
 
     // Read Config : memory allocation failure simulate counter
-    MOS_ZeroMemory(&UserFeatureValue, sizeof(UserFeatureValue));
-    UserFeatureValue.u32Data = 0;  // Init as default value
-    UserFeature.Type         = MOS_USER_FEATURE_TYPE_USER;
-    UserFeature.pPath        = __MEDIA_USER_FEATURE_SUBKEY_INTERNAL;
-    UserFeature.pValues      = &UserFeatureValue;
-    UserFeature.uiNumValues  = 1;
-
-    MOS_UserFeature_ReadValue(
+    MOS_ZeroMemory(&userFeatureValueData, sizeof(userFeatureValueData));
+    MOS_UserFeature_ReadValue_ID(
         nullptr,
-        &UserFeature,
-        __MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_HINT,
-        MOS_USER_FEATURE_VALUE_TYPE_UINT32);
+        __MEDIA_USER_FEATURE_VALUE_ALLOC_MEMORY_FAIL_SIMULATE_HINT_ID,
+        &userFeatureValueData);
 
-    if (UserFeature.pValues[0].u32Data <= MosAllocMemoryFailSimulateFreq)
+    if (userFeatureValueData.u32Data <= MosAllocMemoryFailSimulateFreq)
     {
-        MosAllocMemoryFailSimulateHint = UserFeature.pValues[0].u32Data;
+        MosAllocMemoryFailSimulateHint = userFeatureValueData.u32Data;
         MOS_OS_NORMALMESSAGE("Init MosAllocMemoryFailSimulateHint as %d \n ", MosAllocMemoryFailSimulateHint);
     }
     else
     {
         MosAllocMemoryFailSimulateHint = MosAllocMemoryFailSimulateFreq;
-        MOS_OS_NORMALMESSAGE("Set MosAllocMemoryFailSimulateHint as %d since INVALID CONFIG %d \n ", MosAllocMemoryFailSimulateHint, UserFeature.pValues[0].u32Data);
+        MOS_OS_NORMALMESSAGE("Set MosAllocMemoryFailSimulateHint as %d since INVALID CONFIG %d \n ", MosAllocMemoryFailSimulateHint, userFeatureValueData.u32Data);
     }
 }
 
@@ -3899,21 +3969,35 @@ bool MOS_SimulateAllocMemoryFail(
 //!
 //! \brief    Init Function for MOS utilities
 //! \details  Initial MOS utilities related structures, and only execute once for multiple entries
+//! \param    [in] userFeatureKeyPathInfo
+//!           user feature key path info
 //! \return   MOS_STATUS
 //!           Returns one of the MOS_STATUS error codes if failed,
 //!           else MOS_STATUS_SUCCESS
 //!
-MOS_STATUS MOS_utilities_init()
+MOS_STATUS MOS_utilities_init(PMOS_USER_FEATURE_KEY_PATH_INFO userFeatureKeyPathInfo)
 {
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
 
     MOS_OS_FUNCTION_ENTER;
+    if (g_apoMosEnabled)
+        return MosUtilities::MosUtilitiesInit(userFeatureKeyPathInfo);
 
-    eStatus = MOS_OS_Utilities_Init();
+    eStatus = MOS_OS_Utilities_Init(userFeatureKeyPathInfo);
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     //Initialize MOS simulate alloc memory fail flag
     MOS_InitAllocMemoryFailSimulateFlag();
+
+    MOS_USER_FEATURE_VALUE_DATA userFeatureValueData;
+
+    MOS_ZeroMemory(&userFeatureValueData, sizeof(userFeatureValueData));
+    MOS_UserFeature_ReadValue_ID(
+        nullptr,
+        __MEDIA_USER_FEATURE_VALUE_RESOURCE_ADDR_DUMP_ENABLE_ID,
+        &userFeatureValueData);
+    MosUtilities::m_enableAddressDump = userFeatureValueData.i32Data ? true : false;
+
 #endif
 
     return eStatus;
@@ -3932,7 +4016,10 @@ MOS_STATUS MOS_utilities_close()
 
     MOS_OS_FUNCTION_ENTER;
 
-    MosUtilUserInterfaceClose();
+    if (g_apoMosEnabled)
+        return MosUtilities::MosUtilitiesClose();
+
+    MediaUserSettingsMgr::MediaUserSettingClose();
 
     // MOS_OS_Utilitlies_Close must be called right before end of function
     // Because Memninja will calc mem leak here.
@@ -3996,6 +4083,14 @@ void  *MOS_AlignedAllocMemory(
 {
     void  *ptr;
 
+    if (g_apoMosEnabled)
+    {
+#if MOS_MESSAGES_ENABLED
+        return MosUtilities::MosAlignedAllocMemoryUtils(size, alignment, functionName, filename, line);
+#else
+        return MosUtilities::MosAlignedAllocMemory(size, alignment);
+#endif
+    }
 #if (_DEBUG || _RELEASE_INTERNAL)
     if (MOS_SimulateAllocMemoryFail(size, alignment, functionName, filename, line))
     {
@@ -4038,6 +4133,15 @@ void MOS_AlignedFreeMemory(void  *ptr)
 {
     MOS_OS_ASSERT(ptr != nullptr);
 
+    if (g_apoMosEnabled)
+    {
+#if MOS_MESSAGES_ENABLED
+        return MosUtilities::MosAlignedFreeMemoryUtils(ptr, functionName, filename, line);
+#else
+        return MosUtilities::MosAlignedFreeMemory(ptr);
+#endif
+    }
+
     if(ptr != nullptr)
     {
         MOS_AtomicDecrement(&MosMemAllocCounter);
@@ -4068,6 +4172,15 @@ void  *MOS_AllocMemory(size_t size)
 #endif // MOS_MESSAGES_ENABLED
 {
     void  *ptr;
+
+    if (g_apoMosEnabled)
+    {
+#if MOS_MESSAGES_ENABLED
+        return MosUtilities::MosAllocMemoryUtils(size, functionName, filename, line);
+#else
+        return MosUtilities::MosAllocMemory(size);
+#endif
+    }
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     if (MOS_SimulateAllocMemoryFail(size, NO_ALLOC_ALIGNMENT, functionName, filename, line))
@@ -4111,6 +4224,15 @@ void  *MOS_AllocAndZeroMemory(size_t size)
 #endif // MOS_MESSAGES_ENABLED
 {
     void  *ptr;
+
+    if (g_apoMosEnabled)
+    {
+#if MOS_MESSAGES_ENABLED
+        return MosUtilities::MosAllocAndZeroMemoryUtils(size, functionName, filename, line);
+#else
+        return MosUtilities::MosAllocAndZeroMemory(size);
+#endif
+    }
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     if (MOS_SimulateAllocMemoryFail(size, NO_ALLOC_ALIGNMENT, functionName, filename, line))
@@ -4162,6 +4284,15 @@ void *MOS_ReallocMemory(
     void *oldPtr = nullptr;
     void *newPtr = nullptr;
 
+    if (g_apoMosEnabled)
+    {
+#if MOS_MESSAGES_ENABLED
+        return MosUtilities::MosReallocMemoryUtils(ptr, newSize, functionName, filename, line);
+#else
+        return MosUtilities::MosReallocMemory(ptr, newSize);
+#endif
+    }
+
 #if (_DEBUG || _RELEASE_INTERNAL)
     if (MOS_SimulateAllocMemoryFail(newSize, NO_ALLOC_ALIGNMENT, functionName, filename, line))
     {
@@ -4211,6 +4342,14 @@ void MOS_FreeMemoryUtils(
 void MOS_FreeMemory(void  *ptr)
 #endif // MOS_MESSAGES_ENABLED
 {
+    if (g_apoMosEnabled)
+    {
+#if MOS_MESSAGES_ENABLED
+        return MosUtilities::MosFreeMemoryUtils(ptr, functionName, filename, line);
+#else
+        return MosUtilities::MosFreeMemory(ptr);
+#endif
+    }
     if(ptr != nullptr)
     {
         MOS_AtomicDecrement(&MosMemAllocCounter);
@@ -4465,9 +4604,10 @@ MOS_STATUS MOS_AppendFileFromPtr(
 MOS_FUNC_EXPORT MOS_STATUS MOS_EXPORT_DECL DumpUserFeatureKeyDefinitionsMedia()
 {
     MOS_STATUS                            eStatus = MOS_STATUS_SUCCESS;
+
     // Init MOS User Feature Key from mos desc table
-    MOS_OS_CHK_STATUS( MOS_DeclareUserFeatureKeysForAllDescFields() );
-    MOS_OS_CHK_STATUS( MOS_GenerateUserFeatureKeyXML() );
+    MOS_OS_CHK_STATUS(MOS_DeclareUserFeatureKeysForAllDescFields());
+    MOS_OS_CHK_STATUS(MOS_GenerateUserFeatureKeyXML());
 finish:
     return    eStatus;
 }
@@ -4658,10 +4798,16 @@ MOS_STATUS MOS_GenerateUserFeatureKeyXML()
     uint32_t                            uiIndex=0;
     MOS_USER_FEATURE_VALUE              UserFeatureFilter = __NULL_USER_FEATURE_VALUE__;
     MOS_USER_FEATURE_VALUE_DATA         UserFeatureData;
-    const char * const                  FilterGroups[] = { "Codec", "Decode", "Encode", "CP",
-                                                           "General", "MOS", "Report", "VP"};
+    const char * const                  FilterGroups[] = { "Codec", "Decode", "Encode", "CP", "General", "MOS",
+                                                           "Report", "VP", "Media", "Secure HEVC Encode", "MDF"};
     uint32_t                            FilterGroupsCount = sizeof(FilterGroups) / sizeof(FilterGroups[0]);
     MOS_STATUS                          eStatus = MOS_STATUS_SUCCESS;
+
+    if (g_apoMosEnabled)
+    {
+        return MosUtilities::MosGenerateUserFeatureKeyXML();
+    }
+
     // Check if XML dump is enabled by User Feature Key
     MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
     eStatus =MOS_UserFeature_ReadValue_ID(
@@ -4824,6 +4970,8 @@ MOS_STATUS MOS_CopyUserFeatureValueData(
     MOS_OS_ASSERT(pDstData);
     MOS_OS_ASSERT(ValueType != MOS_USER_FEATURE_VALUE_TYPE_INVALID);
     //------------------------------
+    if (g_apoMosEnabled)
+        return MosUtilities::MosCopyUserFeatureValueData(pSrcData, pDstData, ValueType);
 
     switch(ValueType)
     {
@@ -4868,31 +5016,31 @@ MOS_STATUS MOS_CopyUserFeatureValueData(
     case MOS_USER_FEATURE_VALUE_TYPE_MULTI_STRING:
         if ((pSrcData->MultiStringData.pMultStringData != nullptr) && (strlen(pSrcData->MultiStringData.pMultStringData) != 0))
         {
-        pDstData->MultiStringData.uCount = pSrcData->MultiStringData.uCount;
-        pDstData->MultiStringData.uMaxSize = pSrcData->MultiStringData.uMaxSize;
-        pDstData->MultiStringData.uSize = pSrcData->MultiStringData.uSize;
+            pDstData->MultiStringData.uCount = pSrcData->MultiStringData.uCount;
+            pDstData->MultiStringData.uMaxSize = pSrcData->MultiStringData.uMaxSize;
+            pDstData->MultiStringData.uSize = pSrcData->MultiStringData.uSize;
             if (pDstData->MultiStringData.pMultStringData != nullptr)
             {
-            eStatus = MOS_SecureMemcpy(
-                pDstData->MultiStringData.pMultStringData,
-                pDstData->MultiStringData.uSize,
-                pSrcData->MultiStringData.pMultStringData,
-                pSrcData->MultiStringData.uSize);
+                eStatus = MOS_SecureMemcpy(
+                    pDstData->MultiStringData.pMultStringData,
+                    pDstData->MultiStringData.uSize,
+                    pSrcData->MultiStringData.pMultStringData,
+                    pSrcData->MultiStringData.uSize);
 
-        for (ui = 0; ui < pSrcData->MultiStringData.uCount; ui++)
-        {
-            pSrcString = &pSrcData->MultiStringData.pStrings[ui];
-            pDstString = &pDstData->MultiStringData.pStrings[ui];
+                for (ui = 0; ui < pSrcData->MultiStringData.uCount; ui++)
+                {
+                    pSrcString = &pSrcData->MultiStringData.pStrings[ui];
+                    pDstString = &pDstData->MultiStringData.pStrings[ui];
 
                     MOS_OS_CHK_NULL(pSrcString);
                     MOS_OS_CHK_NULL(pDstString);
-                pDstString->uMaxSize = pSrcString->uMaxSize;
-                pDstString->uSize = pSrcString->uSize;
+                    pDstString->uMaxSize = pSrcString->uMaxSize;
+                    pDstString->uSize = pSrcString->uSize;
 
                     if (pDstString->pStringData != nullptr)
-                {
+                    {
                         eStatus = MOS_SecureMemcpy(
-                    pDstString->pStringData,
+                            pDstString->pStringData,
                             pDstString->uSize+1,
                             pSrcString->pStringData,
                             pSrcString->uSize+1);
@@ -5089,17 +5237,11 @@ MOS_STATUS MOS_DeclareUserFeatureKey(MOS_USER_FEATURE_VALUE_MAP *keyValueMap, PM
     MOS_OS_ASSERT(pUserFeatureKey);
     //------------------------------
 
-    if (pUserFeatureKey->pfnSetDefaultValueData!=NULL)
-    {
-        eStatus = pUserFeatureKey->pfnSetDefaultValueData(&pUserFeatureKey->Value);
-    }
-    else
-    {
-        eStatus = MOS_AssignUserFeatureValueData(
-            &pUserFeatureKey->Value,
-            pUserFeatureKey->DefaultValue,
-            pUserFeatureKey->ValueType);
-    }
+    eStatus = MOS_AssignUserFeatureValueData(
+        &pUserFeatureKey->Value,
+        pUserFeatureKey->DefaultValue,
+        pUserFeatureKey->ValueType);
+
     if (eStatus == MOS_STATUS_SUCCESS)
     {
         if (keyValueMap)
@@ -5414,6 +5556,9 @@ MOS_STATUS MOS_DeclareUserFeatureKeysFromDescFields(
     MOS_USER_FEATURE_VALUE      UserFeatureKeyFilter = __NULL_USER_FEATURE_VALUE__;
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
 
+    if (g_apoMosEnabled)
+        return MosUtilities::MosDeclareUserFeatureKeysFromDescFields(descTable, numOfItems, maxId);
+
     eStatus = MOS_GetItemFromMOSUserFeatureDescField(
         descTable,
         numOfItems,
@@ -5466,6 +5611,9 @@ MOS_STATUS MOS_DestroyUserFeatureKeysFromDescFields(
 {
     MOS_USER_FEATURE_VALUE      UserFeatureKeyFilter = __NULL_USER_FEATURE_VALUE__;
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
+
+    if (g_apoMosEnabled)
+        return MosUtilities::MosDestroyUserFeatureKeysFromDescFields(descTable, numOfItems, maxId);
 
     eStatus = MOS_GetItemFromMOSUserFeatureDescField(
         descTable,
@@ -6211,7 +6359,7 @@ static MOS_STATUS MOS_UserFeature_WriteValuePrimitive(
 //!           else MOS_STATUS_SUCCESS
 //!
 #ifdef  __MOS_USER_FEATURE_WA_
-MOS_STATUS MOS_UserFeature_ReadValue (
+MOS_STATUS MOS_UserFeature_ReadValue(
     PMOS_USER_FEATURE_INTERFACE     pOsUserFeatureInterface,
     PMOS_USER_FEATURE               pUserFeature,
     const char                      *pValueName,
@@ -6237,6 +6385,12 @@ MOS_STATUS MOS_UserFeature_ReadValue (
     MOS_OS_ASSERT(ValueType != MOS_USER_FEATURE_VALUE_TYPE_INVALID);
     //--------------------------------------------------
 
+    // If g_apoMosEnabled, please use MOS_UserFeature_ReadValue_ID
+    if (g_apoMosEnabled)
+    {
+        MOS_OS_ASSERTMESSAGE("read value failed because the method is not supported");
+        return MOS_STATUS_UNIMPLEMENTED;
+    }
     //--------------------------------------------------
     MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
 
@@ -6547,6 +6701,12 @@ MOS_STATUS MOS_UserFeature_ReadValue(
     uint32_t                        ValueID,
     PMOS_USER_FEATURE_VALUE_DATA    pValueData)
 {
+    if (g_apoMosEnabled)
+        return MosUtilities::MosUserFeatureReadValueID(
+            pOsUserFeatureInterface,
+            ValueID,
+            pValueData);
+
     return MOS_UserFeature_ReadValue_FromMap_ID(
         gc_UserFeatureKeysMap,
         pOsUserFeatureInterface,
@@ -6563,6 +6723,9 @@ const char* MOS_UserFeature_LookupValueName(
     uint32_t ValueID)
 {
     MOS_OS_ASSERT(ValueID != __MOS_USER_FEATURE_KEY_INVALID_ID);
+
+    if (g_apoMosEnabled)
+        return MosUtilities::MosUserFeatureLookupValueName(ValueID);
 
 #ifdef __cplusplus
     PMOS_USER_FEATURE_VALUE pUserFeature = MosUtilUserInterface::GetValue(ValueID);
@@ -6590,6 +6753,8 @@ const char* MOS_UserFeature_LookupReadPath(
     uint32_t ValueID)
 {
     MOS_OS_ASSERT(ValueID != __MOS_USER_FEATURE_KEY_INVALID_ID);
+    if (g_apoMosEnabled)
+        return MosUtilities::MosUserFeatureLookupReadPath(ValueID);
 
 #ifdef __cplusplus
     PMOS_USER_FEATURE_VALUE pUserFeature = MosUtilUserInterface::GetValue(ValueID);
@@ -6618,6 +6783,9 @@ const char* MOS_UserFeature_LookupWritePath(
     uint32_t ValueID)
 {
     MOS_OS_ASSERT(ValueID != __MOS_USER_FEATURE_KEY_INVALID_ID);
+    if (g_apoMosEnabled)
+        return MosUtilities::MosUserFeatureLookupWritePath(ValueID);
+
 #ifdef __cplusplus
     PMOS_USER_FEATURE_VALUE pUserFeature = MosUtilUserInterface::GetValue(ValueID);
     if (pUserFeature)
@@ -6791,6 +6959,12 @@ MOS_STATUS MOS_UserFeature_WriteValues(
     PMOS_USER_FEATURE_VALUE_WRITE_DATA      pWriteValues,
     uint32_t                                uiNumOfValues)
 {
+    if (g_apoMosEnabled)
+        return MosUtilities::MosUserFeatureWriteValuesID(
+            pOsUserFeatureInterface,
+            pWriteValues,
+            uiNumOfValues);
+
     return MOS_UserFeature_WriteValues_Tbl_ID(
         gc_UserFeatureKeysMap,
         pOsUserFeatureInterface,

@@ -41,6 +41,8 @@ struct CodechalVdencHevcPakInfo
     uint8_t   PAKPassNum;
 };
 
+using pCodechalVdencHevcPakInfo = CodechalVdencHevcPakInfo*;
+
 //!
 //! \struct    CodechalVdencHevcLaStats
 //! \brief     Codechal Vdenc HEVC lookahead info for BRC
@@ -53,8 +55,6 @@ struct CodechalVdencHevcLaStats
     uint32_t  intraCuCount;
     uint32_t  reserved[4];
 };
-
-using pCodechalVdencHevcPakInfo = CodechalVdencHevcPakInfo*;
 
 //!
 //! \struct    DeltaQpForROI
@@ -81,11 +81,13 @@ struct CodechalVdencHevcLaDmem
     uint32_t vbvInitialFullness;  // in the units of frames
     uint32_t mbCount;             // normalized 16x16 block count
     uint32_t statsRecords;        // # of statistic records
+    uint32_t averageFrameSize;    // in the units of bytes
+    uint8_t  RSVD1[4];
     // for Update, valid only when lookAheadFunc = 1
     uint32_t validStatsRecords;   // # of valid stats records
     uint32_t offset;              // offset in unit of entries
-
-    uint8_t RSVD[32];
+    uint8_t  cqmQpThreshold;    // QP threshold for CQM enable/disable. If estimated QP > CQM_QP_threshold, kernel set HUC_HEVC_LA_DATA.enableCQM to 1.
+    uint8_t  RSVD2[23];
 };
 
 using PCodechalVdencHevcLaDmem = CodechalVdencHevcLaDmem *;
@@ -172,6 +174,7 @@ public:
     uint8_t                                 m_maxNumROI = CODECHAL_ENCODE_HEVC_MAX_NUM_ROI;    //!< VDEnc maximum number of ROI supported
     uint8_t                                 m_maxNumNativeROI = ENCODE_VDENC_HEVC_MAX_STREAMINROI_G10;  //!< Number of native ROI supported by VDEnc HW
     uint8_t                                 m_imgStateImePredictors = 8;                       //!< Number of predictors for IME
+    uint32_t                                m_currGopIFramePOC = -1;                           //!< PoC for I frame in current GoP
 
     // BRC
     HevcVdencBrcBuffers                     m_vdencBrcBuffers;                                 //!< VDEnc Brc buffers
@@ -224,6 +227,7 @@ public:
     uint32_t                                m_vdencLaInitDmemBufferSize = 0;                   //!< Offset of Lookahead init DMEM buffer
     uint32_t                                m_vdencLaUpdateDmemBufferSize = 0;                 //!< Offset of Lookahead update DMEM buffer
     uint32_t                                m_numValidLaRecords = 0;                           //!< Number of valid lookahead records
+    uint8_t                                 m_cqmQpThreshold = 40;                             //!< QP threshold for CQM enable/disable. Used by lookahead analysis kernel.
 
 protected:
     //!
@@ -262,6 +266,16 @@ public:
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
     virtual MOS_STATUS SetupROIStreamIn(PMOS_RESOURCE streamIn);
+    //!
+    //! \brief    Setup mb Qp stream-in resource
+    //!
+    //! \param    [in,out] streamIn
+    //!           Pointer to mb Qp stream-in resource
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS SetupMbQpStreamIn(PMOS_RESOURCE streamIn);
 
     //!
     //! \brief    Setup dirty rectangle stream-in resource

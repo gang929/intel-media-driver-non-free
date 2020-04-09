@@ -997,6 +997,8 @@ struct VPHAL_SURFACE
     uint32_t                    dwHeight = 0;                                 //!<  Surface height
     uint32_t                    dwPitch = 0;                                  //!<  Surface pitch
     MOS_TILE_TYPE               TileType = MOS_TILE_X;                        //!<  Tile Type
+    MOS_TILE_MODE_GMM           TileModeGMM = MOS_TILE_LINEAR_GMM;            //!<  Tile Mode from GMM Definition
+    bool                        bGMMTileEnabled = false;                      //!<  GMM Tile Mode Flag
     bool                        bOverlay= false;                              //!<  Overlay Surface
     bool                        bFlipChain = false;                           //!<  FlipChain Surface
     VPHAL_PLANE_OFFSET          YPlaneOffset =  { 0, 0, 0, 0 };               //!<  Y surface plane offset
@@ -1185,7 +1187,8 @@ struct VPHAL_RENDER_PARAMS
     bool                                    bPathKernel;                // HDR path config if use kernel
     bool                                    bAPGWorkloadEnable = false;         //!< Identify Whether APG workload Enabled or not
 
-    bool                                    bDisableVpFor8K = false;
+    bool                                    bDisableVeboxFor8K = false;
+    bool                                    bUseVEHdrSfc       = false;  // use SFC for to perform CSC/Scaling/RGBSwap of HDR streaming; if false, use composite render.
 
     VPHAL_RENDER_PARAMS() :
         uSrcCount(0),
@@ -1208,7 +1211,8 @@ struct VPHAL_RENDER_PARAMS
 #endif
         bCalculatingAlpha(false),
         pExtensionData(nullptr),
-        bPathKernel(false)
+        bPathKernel(false),
+        bUseVEHdrSfc(false)
     {
     }
 

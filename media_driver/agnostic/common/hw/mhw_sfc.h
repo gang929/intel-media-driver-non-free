@@ -282,6 +282,8 @@ typedef struct _MHW_SFC_OUT_SURFACE_PARAMS
     uint32_t                    dwHeight;           //!<  Surface height
     uint32_t                    dwPitch;            //!<  Surface pitch
     MOS_TILE_TYPE               TileType;           //!<  Tile Type
+    MOS_TILE_MODE_GMM           TileModeGMM;        //!<  Tile Type from GMM Definition
+    bool                        bGMMTileEnabled;    //!<  GMM defined tile mode flag
     uint32_t                    dwStreamID;         //!<  Surface StreamID
     uint32_t                    dwSurfaceXOffset;   //!<  Surface X offset
     uint32_t                    dwSurfaceYOffset;   //!<  Surface Y offset
@@ -469,7 +471,9 @@ public:
         float                           fScaleX,
         float                           fScaleY,
         uint32_t                        dwChromaSiting,
-        bool                            bUse8x8Filter);
+        bool                            bUse8x8Filter,
+        float                           fHPStrength,
+        float                           fLanczosT);
 
 protected:
 

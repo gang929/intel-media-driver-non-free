@@ -182,6 +182,24 @@ MOS_STATUS CodechalDecodeAvcG12::SetFrameStates()
     }
 #endif
 
+#ifdef _MMC_SUPPORTED
+    // To WA invalid aux data caused HW issue when MMC on
+    if (m_mmc && m_mmc->IsMmcEnabled() && MEDIA_IS_WA(m_waTable, Wa_1408785368) &&
+        m_decodeParams.m_destSurface && !Mos_ResourceIsNull(&m_decodeParams.m_destSurface->OsResource) &&
+        m_decodeParams.m_destSurface->OsResource.bConvertedFromDDIResource)
+    {
+        if (m_secureDecoder && m_secureDecoder->IsAuxDataInvalid(&m_decodeParams.m_destSurface->OsResource))
+        {
+            CODECHAL_DECODE_CHK_STATUS_RETURN(m_secureDecoder->InitAuxSurface(&m_decodeParams.m_destSurface->OsResource, false));
+        }
+        else
+        {
+            CODECHAL_DECODE_VERBOSEMESSAGE("Clear CCS by VE resolve before frame %d submission", m_frameNum);
+            CODECHAL_DECODE_CHK_STATUS_RETURN(m_osInterface->pfnDecompResource(m_osInterface, &m_decodeParams.m_destSurface->OsResource));
+            CODECHAL_DECODE_CHK_STATUS_RETURN(m_osInterface->pfnSetGpuContext(m_osInterface, m_videoContext));
+        }
+    }
+#endif
 
     CODECHAL_DECODE_CHK_STATUS_RETURN(CodechalDecodeAvc::SetFrameStates());
 
@@ -199,17 +217,6 @@ MOS_STATUS CodechalDecodeAvcG12::SetFrameStates()
         vesetParams.bSameEngineAsLastSubmission = false;
         CODECHAL_DECODE_CHK_STATUS_RETURN(CodecHalDecodeSinglePipeVE_SetHintParams(m_veState, &vesetParams));
     }
-
-#ifdef _MMC_SUPPORTED
-    if (m_mmc && m_mmc->IsMmcEnabled() && MEDIA_IS_WA(m_waTable, WaClearCcsVe) && 
-        !Mos_ResourceIsNull(&m_destSurface.OsResource) && 
-        m_destSurface.OsResource.bConvertedFromDDIResource)
-    {
-        CODECHAL_DECODE_VERBOSEMESSAGE("Clear CCS by VE resolve before frame %d submission", m_frameNum);
-        CODECHAL_DECODE_CHK_STATUS_RETURN(m_osInterface->pfnDecompResource(m_osInterface, &m_destSurface.OsResource));
-        CODECHAL_DECODE_CHK_STATUS_RETURN(m_osInterface->pfnSetGpuContext(m_osInterface, m_videoContext));
-    }
-#endif
 
     return eStatus;
 }
@@ -395,6 +402,11 @@ MOS_STATUS CodechalDecodeAvcG12::DecodePrimitiveLevel()
         CodecHalDecodeSinglePipeVE_PopulateHintParams(m_veState, &cmdBuffer, true);
     }
 
+    if (m_osInterface->osCpInterface->IsHMEnabled())
+    {
+        HalOcaInterface::DumpCpParam(cmdBuffer, *m_osInterface->pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
+    }
+
     HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
 
     CODECHAL_DECODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_videoContextUsesNullHw));
@@ -478,4 +490,34 @@ CodechalDecodeAvcG12::CodechalDecodeAvcG12(
     CODECHAL_DECODE_CHK_NULL_NO_STATUS_RETURN(m_osInterface);
 
     Mos_CheckVirtualEngineSupported(m_osInterface, true, true);
-};
+}
+
+MOS_STATUS CodechalDecodeAvcG12::FormatAvcMonoPicture(PMOS_SURFACE surface)
+{
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+    PCODEC_AVC_PIC_PARAMS picParams = (PCODEC_AVC_PIC_PARAMS)m_avcPicParams;
+    if (picParams->seq_fields.chroma_format_idc != avcChromaFormatMono)
+    {
+        CODECHAL_DECODE_VERBOSEMESSAGE("None mono case");
+        return MOS_STATUS_SUCCESS;
+    }
+
+    if (surface == nullptr || Mos_ResourceIsNull(&surface->OsResource))
+    {
+        CODECHAL_DECODE_ASSERTMESSAGE("Surface pointer is NULL!");
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
+
+#ifdef _MMC_SUPPORTED
+    // Initialize the UV aux data of protected surfaces before HucCopy of UV plane
+    if (m_mmc && m_mmc->IsMmcEnabled() && !MEDIA_IS_WA(m_waTable, Wa_1408785368) &&
+        m_secureDecoder && m_osInterface->osCpInterface->IsHMEnabled())
+    {
+        CODECHAL_DECODE_VERBOSEMESSAGE("Initialize the UV aux data for %d submission", m_frameNum);
+        CODECHAL_DECODE_CHK_STATUS_RETURN(m_secureDecoder->InitAuxSurface(&surface->OsResource, true));
+    }
+#endif
+
+    return CodechalDecodeAvc::FormatAvcMonoPicture(surface);
+}

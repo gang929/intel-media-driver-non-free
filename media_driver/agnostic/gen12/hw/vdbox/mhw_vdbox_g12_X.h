@@ -32,6 +32,9 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "mos_os.h"
 #include "mhw_vdbox.h"
 
+#define MmcEnable(x) ((x) == MOS_MEMCOMP_RC || (x) == MOS_MEMCOMP_MC)
+#define MmcIsRc(x) ((x) == MOS_MEMCOMP_RC)
+
 // Meta/MV, DeBlock, SAO, VDEnc, HSAO
 const bool RowStoreCacheEnableHEVC[16][5] =
 {
@@ -82,6 +85,7 @@ struct MHW_VDBOX_PIPE_MODE_SELECT_PARAMS_G12 : public MHW_VDBOX_PIPE_MODE_SELECT
     bool                        bHEVCSeparateTileProgramming = false;
     bool                        bStreamingBufferEnabled = false;
     bool                        bIsRandomAccess = false;
+    bool                        bLookaheadPass = false;
 };
 using PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS_G12 = MHW_VDBOX_PIPE_MODE_SELECT_PARAMS_G12 *;
 

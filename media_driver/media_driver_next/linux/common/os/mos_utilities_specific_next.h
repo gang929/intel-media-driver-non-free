@@ -29,13 +29,9 @@
 #include "mos_defs.h"
 #include "mos_utilities_specific.h"
 
-typedef MosMutex MosMutexNext;
-
-class MosUtilUserInterfaceNext;
 class MosUtilitiesSpecificNext
 {
 public:
-
 
 /*----------------------------------------------------------------------------
 | Name      : MosUserFeatureSetValueExFile
@@ -292,10 +288,8 @@ private:
     static MOS_STATUS UserFeatureGetKeyNamebyId(void  *UFKey, char  *pcKeyName);
 
 public:
-    static const char* m_szUserFeatureFile;
-    static PUFKEYOPS   m_ufKeyOps;
-#if _MEDIA_RESERVED
-    static MosUtilUserInterfaceNext  *m_utilUserInterface;
-#endif
+    static const char*          m_szUserFeatureFile;
+    static int32_t              m_mosTraceFd;
+    static const char* const    m_mosTracePath;
 };
 #endif // __MOS_UTILITIES_SPECIFIC_NEXT_H__

@@ -56,7 +56,10 @@ protected:
     CmThreadSpace *    m_threadSpaceBrcUpdate = nullptr;
     CmThreadSpace *    m_threadSpaceBrcLCUQP = nullptr;
     CmKernel           *m_cmKrnBrc = nullptr;
-    CmProgram          *m_cmProgramBrc = nullptr;
+    CmKernel           *m_cmKrnBrcInit = nullptr;
+    CmProgram          *m_cmProgramBrcInit = nullptr;
+    CmKernel           *m_cmKrnBrcReset = nullptr;
+    CmProgram          *m_cmProgramBrcReset = nullptr;
     CmKernel           *m_cmKrnBrcUpdate = nullptr;
     CmProgram          *m_cmProgramBrcUpdate = nullptr;
     CmKernel           *m_cmKrnBrcLCUQP = nullptr;
@@ -77,7 +80,7 @@ public:
     //! \brief    Constructor
     //!
 
-    uint32_t            m_brcNumPakPasses;
+    uint32_t            m_brcNumPakPasses = 0;
     CodecHalHevcMbencG12* encoderBrc;
     CodecHalHevcBrcG12(CodecHalHevcMbencG12* encoder) { encoderBrc = encoder; };
     //!

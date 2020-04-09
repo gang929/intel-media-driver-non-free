@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2019, Intel Corporation
+* Copyright (c) 2017-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -32,7 +32,7 @@
 #include "mhw_vdbox_vdenc_g12_X.h"
 #include "mhw_vdbox_g12_X.h"
 #include "mhw_render_g12_X.h"
-#include "mos_util_user_interface_g12.h"
+#include "media_user_settings_mgr_g12.h"
 #include "codeckrnheader.h"
 #if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 #include "igcodeckrn_g12.h"
@@ -366,9 +366,10 @@ struct BrcInitDmem
     uint8_t     INIT_AdaptiveCostEnable_U8;           // 0: disabled, 1: enabled
     uint8_t     INIT_AdaptiveHMEExtensionEnable_U8;   // 0: disabled, 1: enabled
     uint8_t     INIT_ICQReEncode_U8;                  // 0: disabled, 1: enabled
-    uint8_t     Reserved_u8;                                // must be zero
+    uint8_t     INIT_LookaheadDepth_U8;               // Lookahead depth in unit of frames [0, 127]
     uint8_t     INIT_SinglePassOnly;                  // 0: disabled, 1: enabled
-    uint8_t     RSVD2[56];                            // must be zero
+    uint8_t     INIT_New_DeltaQP_Adaptation_U8;       // = 1 to enable new delta QP adaption
+    uint8_t     RSVD2[55];                            // must be zero
 };
 using PBrcInitDmem = struct BrcInitDmem*;
 
@@ -442,7 +443,11 @@ struct BrcUpdateDmem
     int8_t       HME0YOffset_I8;    // default = 24, Frame level Y offset from the co-located (0, 0) location for HME0.
     int8_t       HME1XOffset_I8;    // default = -32, Frame level X offset from the co-located (0, 0) location for HME1.
     int8_t       HME1YOffset_I8;    // default = -24, Frame level Y offset from the co-located (0, 0) location for HME1.
-    uint8_t     RSVD2[28];
+    uint8_t      MOTION_ADAPTIVE_G4;
+    uint8_t      EnableLookAhead;
+    uint8_t      UPD_LA_Data_Offset_U8;
+    uint8_t      UPD_CQMEnabled_U8;  // 0 indicates CQM is disabled for current frame; otherwise CQM is enabled.
+    uint8_t      RSVD2[24];
 };
 using PBrcUpdateDmem = struct BrcUpdateDmem*;
 
@@ -700,6 +705,11 @@ MOS_STATUS CodechalVdencAvcStateG12::SetGpuCtxCreatOption()
         CODECHAL_ENCODE_CHK_STATUS_RETURN(CodecHalEncodeSinglePipeVE_ConstructParmsForGpuCtxCreation(
             m_sinlgePipeVeState,
             (PMOS_GPUCTX_CREATOPTIONS_ENHANCED)m_gpuCtxCreatOpt));
+
+        PMOS_GPUCTX_CREATOPTIONS_ENHANCED gpuCtxCreatOpts =
+            dynamic_cast<PMOS_GPUCTX_CREATOPTIONS_ENHANCED>(m_gpuCtxCreatOpt);
+
+        gpuCtxCreatOpts->Flags |=  (1 << 2);
     }
 
     return eStatus;
@@ -732,6 +742,11 @@ MOS_STATUS CodechalVdencAvcStateG12::SubmitCommandBuffer(
 
     CODECHAL_ENCODE_CHK_NULL_RETURN(cmdBuffer);
 
+    if (m_osInterface->osCpInterface->IsHMEnabled())
+    {
+        HalOcaInterface::DumpCpParam(*cmdBuffer, *m_osInterface->pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
+    }
+
     HalOcaInterface::On1stLevelBBEnd(*cmdBuffer, *m_osInterface->pOsContext);
     CODECHAL_ENCODE_CHK_STATUS_RETURN(SetAndPopulateVEHintParams(cmdBuffer));
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, cmdBuffer, nullRendering));
@@ -747,9 +762,6 @@ MOS_STATUS CodechalVdencAvcStateG12::InitKernelStateSFD()
     auto renderEngineInterface = m_hwInterface->GetRenderInterface();
     auto stateHeapInterface    = m_renderEngineInterface->m_stateHeapInterface;
     CODECHAL_ENCODE_CHK_NULL_RETURN(stateHeapInterface);
-
-    m_sfdKernelState = MOS_New(MHW_KERNEL_STATE);
-    CODECHAL_ENCODE_CHK_NULL_RETURN(m_sfdKernelState);
 
     uint8_t* kernelBinary;
     uint32_t kernelSize;
@@ -889,6 +901,24 @@ MOS_STATUS CodechalVdencAvcStateG12::SetDmemHuCBrcInitReset()
 
     hucVDEncBrcInitDmem->INIT_SinglePassOnly = m_vdencSinglePassEnable ? true : false;
 
+    if (m_avcSeqParam->ScenarioInfo == ESCENARIO_GAMESTREAMING)
+    {
+        if (m_avcSeqParam->RateControlMethod == RATECONTROL_VBR)
+        {
+            m_avcSeqParam->MaxBitRate = m_avcSeqParam->TargetBitRate;
+        }
+
+        // Disable delta QP adaption for non-VCM/ICQ/LowDelay until we have better algorithm
+        if ((m_avcSeqParam->RateControlMethod != RATECONTROL_VCM) &&
+            (m_avcSeqParam->RateControlMethod != RATECONTROL_ICQ) &&
+            (m_avcSeqParam->FrameSizeTolerance != EFRAMESIZETOL_EXTREMELY_LOW))
+        {
+            hucVDEncBrcInitDmem->INIT_DeltaQP_Adaptation_U8 = 0;
+        }
+
+        hucVDEncBrcInitDmem->INIT_New_DeltaQP_Adaptation_U8 = 1;
+    }
+
     if (((m_avcSeqParam->TargetUsage & 0x07) == TARGETUSAGE_BEST_SPEED) &&
         (m_avcSeqParam->FrameWidth >= m_singlePassMinFrameWidth) &&
         (m_avcSeqParam->FrameHeight >= m_singlePassMinFrameHeight) &&
@@ -896,6 +926,8 @@ MOS_STATUS CodechalVdencAvcStateG12::SetDmemHuCBrcInitReset()
     {
         hucVDEncBrcInitDmem->INIT_SinglePassOnly = true;
     }
+
+    hucVDEncBrcInitDmem->INIT_LookaheadDepth_U8 = m_lookaheadDepth;
 
     //Override the DistQPDelta setting
     if (m_mbBrcEnabled)
@@ -957,6 +989,15 @@ MOS_STATUS CodechalVdencAvcStateG12::SetDmemHuCBrcUpdate()
     }
     hucVDEncBrcDmem->UPD_WidthInMB_U16  = m_picWidthInMb;
     hucVDEncBrcDmem->UPD_HeightInMB_U16 = m_picHeightInMb;
+
+    hucVDEncBrcDmem->MOTION_ADAPTIVE_G4 = (m_avcSeqParam->ScenarioInfo == ESCENARIO_GAMESTREAMING);
+    hucVDEncBrcDmem->UPD_CQMEnabled_U8  = m_avcSeqParam->seq_scaling_matrix_present_flag || m_avcPicParam->pic_scaling_matrix_present_flag;
+
+    if (m_lookaheadDepth > 0)
+    {
+        hucVDEncBrcDmem->EnableLookAhead = 1;
+        hucVDEncBrcDmem->UPD_LA_Data_Offset_U8 = m_currLaDataIdx;
+    }
 
     CODECHAL_DEBUG_TOOL(
         CODECHAL_ENCODE_CHK_STATUS_RETURN(PopulateBrcUpdateParam(
@@ -1066,7 +1107,7 @@ MOS_STATUS CodechalVdencAvcStateG12::AddVdencWalkerStateCmd(
     return eStatus;
 }
 
-MOS_STATUS CodechalVdencAvcStateG12::CalculateVdencPictureStateCommandSize()
+MOS_STATUS CodechalVdencAvcStateG12::CalculateVdencCommandsSize()
 {
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
@@ -1074,6 +1115,7 @@ MOS_STATUS CodechalVdencAvcStateG12::CalculateVdencPictureStateCommandSize()
 
     MHW_VDBOX_STATE_CMDSIZE_PARAMS_G12 stateCmdSizeParams;
     uint32_t vdencPictureStatesSize, vdencPicturePatchListSize;
+    uint32_t vdencSliceStatesSize, vdencSlicePatchListSize;
     m_hwInterface->GetHxxStateCommandSize(
         CODECHAL_ENCODE_MODE_AVC,
         (uint32_t*)&vdencPictureStatesSize,
@@ -1083,6 +1125,7 @@ MOS_STATUS CodechalVdencAvcStateG12::CalculateVdencPictureStateCommandSize()
     m_pictureStatesSize += vdencPictureStatesSize;
     m_picturePatchListSize += vdencPicturePatchListSize;
 
+    // Picture Level Commands
     m_hwInterface->GetVdencStateCommandsDataSize(
         CODECHAL_ENCODE_MODE_AVC,
         (uint32_t*)&vdencPictureStatesSize,
@@ -1090,6 +1133,16 @@ MOS_STATUS CodechalVdencAvcStateG12::CalculateVdencPictureStateCommandSize()
 
     m_pictureStatesSize += vdencPictureStatesSize;
     m_picturePatchListSize += vdencPicturePatchListSize;
+
+        // Slice Level Commands
+    m_hwInterface->GetVdencPrimitiveCommandsDataSize(
+        CODECHAL_ENCODE_MODE_AVC,
+        (uint32_t*)&vdencSliceStatesSize,
+        (uint32_t*)&vdencSlicePatchListSize
+    );
+
+    m_sliceStatesSize += vdencSliceStatesSize;
+    m_slicePatchListSize += vdencSlicePatchListSize;
 
     return eStatus;
 }
@@ -1150,6 +1203,7 @@ void CodechalVdencAvcStateG12::SetMfxAvcImgStateParams(MHW_VDBOX_AVC_IMG_PARAMS&
     param.bVDEncPerfModeEnabled =
         m_vdencInterface->IsPerfModeSupported() && m_perfModeEnabled[m_avcSeqParam->TargetUsage];
     paramsG12->bVDEncUltraModeEnabled = m_vdencUltraModeEnable;
+    param.bPerMBStreamOut = m_perMBStreamOutEnable;
     if (((m_avcSeqParam->TargetUsage & 0x07) == TARGETUSAGE_BEST_SPEED) &&
         (m_avcSeqParam->FrameWidth >= m_singlePassMinFrameWidth) &&
         (m_avcSeqParam->FrameHeight >= m_singlePassMinFrameHeight) &&
@@ -1165,13 +1219,6 @@ PMHW_VDBOX_STATE_CMDSIZE_PARAMS CodechalVdencAvcStateG12::CreateMhwVdboxStateCmd
     PMHW_VDBOX_STATE_CMDSIZE_PARAMS cmdSizeParams = MOS_New(MHW_VDBOX_STATE_CMDSIZE_PARAMS_G12);
 
     return cmdSizeParams;
-}
-
-PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS CodechalVdencAvcStateG12::CreateMhwVdboxPipeModeSelectParams()
-{
-    PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS pipeModeSelectParams = MOS_New(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS_G12);
-
-    return pipeModeSelectParams;
 }
 
 PMHW_VDBOX_AVC_IMG_PARAMS CodechalVdencAvcStateG12::CreateMhwVdboxAvcImgParams()

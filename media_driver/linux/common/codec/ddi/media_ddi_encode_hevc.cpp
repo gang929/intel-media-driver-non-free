@@ -737,20 +737,20 @@ VAStatus DdiEncodeHevc::ParseSlcParams(
             hevcSlcParams->luma_offset[0][i]       = vaEncSlcParamsHEVC->luma_offset_l0[i];
             hevcSlcParams->delta_luma_weight[0][i] = vaEncSlcParamsHEVC->delta_luma_weight_l0[i];
 
-            hevcSlcParams->chroma_offset[0][i][0]       = vaEncSlcParamsHEVC->chroma_offset_l0[i][0];
+            hevcSlcParams->chroma_offset[0][i][0]       = MOS_CLAMP_MIN_MAX(vaEncSlcParamsHEVC->chroma_offset_l0[i][0], minChromaOffset, maxChromaOffset);
             hevcSlcParams->delta_chroma_weight[0][i][0] = vaEncSlcParamsHEVC->delta_chroma_weight_l0[i][0];
 
-            hevcSlcParams->chroma_offset[0][i][1]       = vaEncSlcParamsHEVC->chroma_offset_l0[i][1];
+            hevcSlcParams->chroma_offset[0][i][1]       = MOS_CLAMP_MIN_MAX(vaEncSlcParamsHEVC->chroma_offset_l0[i][1], minChromaOffset, maxChromaOffset);
             hevcSlcParams->delta_chroma_weight[0][i][1] = vaEncSlcParamsHEVC->delta_chroma_weight_l0[i][1];
 
             // list 1
             hevcSlcParams->luma_offset[1][i]       = vaEncSlcParamsHEVC->luma_offset_l1[i];
             hevcSlcParams->delta_luma_weight[1][i] = vaEncSlcParamsHEVC->delta_luma_weight_l1[i];
 
-            hevcSlcParams->chroma_offset[1][i][0]       = vaEncSlcParamsHEVC->chroma_offset_l1[i][0];
+            hevcSlcParams->chroma_offset[1][i][0]       = MOS_CLAMP_MIN_MAX(vaEncSlcParamsHEVC->chroma_offset_l1[i][0], minChromaOffset, maxChromaOffset);
             hevcSlcParams->delta_chroma_weight[1][i][0] = vaEncSlcParamsHEVC->delta_chroma_weight_l1[i][0];
 
-            hevcSlcParams->chroma_offset[1][i][1]       = vaEncSlcParamsHEVC->chroma_offset_l1[i][1];
+            hevcSlcParams->chroma_offset[1][i][1]       = MOS_CLAMP_MIN_MAX(vaEncSlcParamsHEVC->chroma_offset_l1[i][1], minChromaOffset, maxChromaOffset);
             hevcSlcParams->delta_chroma_weight[1][i][1] = vaEncSlcParamsHEVC->delta_chroma_weight_l1[i][1];
         }
 
@@ -1224,17 +1224,16 @@ VAStatus DdiEncodeHevc::ParseMiscParams(void *ptr)
                 pic_param_roi.Top    /= blockSize;
                 pic_param_roi.Bottom /= blockSize;
 
-                // DDI defination for right and bottom parameters is inclusive whereas
-                // the defination in BRC kernel input is exclusive. So adding 1 to right & bottom.
-                 pic_param_roi.Right += 1;
-                 pic_param_roi.Bottom += 1;
-
                  // check frame boundary
                  pic_param_roi.Left   = pic_param_roi.Left  > rightBorder  ? rightBorder : pic_param_roi.Left;
                  pic_param_roi.Right  = pic_param_roi.Right  > rightBorder  ? rightBorder  : pic_param_roi.Right;
                  pic_param_roi.Top    = pic_param_roi.Top    > bottomBorder ? bottomBorder : pic_param_roi.Top;
                  pic_param_roi.Bottom = pic_param_roi.Bottom > bottomBorder ? bottomBorder : pic_param_roi.Bottom;
 
+                 // DDI defination for right and bottom parameters is inclusive whereas
+                 // the defination in BRC kernel input is exclusive. So adding 1 to right & bottom.
+                 pic_param_roi.Right += 1;
+                 pic_param_roi.Bottom += 1;
             }
             picParams->NumROI = MOS_MIN(vaEncMiscParamROI->num_roi, maxROIsupported);
         }

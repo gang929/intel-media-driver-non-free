@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2014-2018, Intel Corporation
+* Copyright (c) 2014-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -48,6 +48,7 @@
 #define MHW_VDBOX_HCP_RECON_UV_PLANE_ALIGNMENT            8
 
 #define MHW_VDBOX_PAK_BITSTREAM_OVERFLOW_SIZE             400
+#define MHW_VDBOX_PAK_SLICE_HEADER_OVERFLOW_SIZE          50
 #define MHW_VDBOX_VDENC_DYNAMIC_SLICE_WA_COUNT            1500
 
 // Rowstore Cache values
@@ -218,6 +219,7 @@ struct MHW_VDBOX_PIPE_MODE_SELECT_PARAMS
 {
     uint32_t                    Mode = 0;
     bool                        bStreamOutEnabled = false;
+    bool                        bStreamOutEnabledExtEnabled = false;
     bool                        bShortFormatInUse = false;
     bool                        bVC1OddFrameHeight = false;
     bool                        pakFrmLvlStrmoutEnable = false;
@@ -367,6 +369,7 @@ typedef struct _MHW_VDBOX_IND_OBJ_BASE_ADDR_PARAMS
     uint32_t                    dwMvObjectOffset;
     PMOS_RESOURCE               presPakBaseObjectBuffer;
     uint32_t                    dwPakBaseObjectSize;
+    uint32_t                    dwPakBaseObjectOffset;
     PMOS_RESOURCE               presPakTileSizeStasBuffer;
     uint32_t                    dwPakTileSizeStasBufferSize;
     uint32_t                    dwPakTileSizeRecordOffset;
@@ -421,6 +424,7 @@ struct MHW_VDBOX_AVC_IMG_PARAMS
     bool                                    bVdencBRCEnabled = false;
     bool                                    bSliceSizeStreamOutEnabled = false;
     bool                                    bCrePrefetchEnable = false;
+    bool                                    bPerMBStreamOut = false;
 
     uint32_t                                dwMbSlcThresholdValue = 0;  // For VDENC dynamic slice size control
     uint32_t                                dwSliceThresholdTable = 0;

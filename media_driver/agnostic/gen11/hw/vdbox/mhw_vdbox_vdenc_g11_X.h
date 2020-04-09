@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2018, Intel Corporation
+* Copyright (c) 2017-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -243,7 +243,7 @@ public:
 
         MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
 
-        if (MEDIA_IS_SKU(skuTable, FtrSimulationMode))
+        if (this->m_osInterface->bSimIsActive)
         {
             // Disable RowStore Cache on simulation by default
             userFeatureData.u32Data = 1;
@@ -440,6 +440,40 @@ public:
         return MOS_STATUS_SUCCESS;
     }
 
+    MOS_STATUS GetVdencPrimitiveCommandsDataSize(
+        uint32_t                        mode,
+        uint32_t                        *commandsSize,
+        uint32_t                        *patchListSize)
+    {
+        MHW_FUNCTION_ENTER;
+
+        uint32_t            maxSize = 0;
+        uint32_t            patchListMaxSize = 0;
+        uint32_t            standard = CodecHal_GetStandardFromMode(mode);
+
+        if (standard == CODECHAL_AVC)
+        {
+            maxSize =
+                TVdencCmds::VDENC_WEIGHTSOFFSETS_STATE_CMD::byteSize +
+                TVdencCmds::VDENC_WALKER_STATE_CMD::byteSize +
+                TVdencCmds::VD_PIPELINE_FLUSH_CMD::byteSize;
+
+            patchListMaxSize = VDENC_PIPE_BUF_ADDR_STATE_CMD_NUMBER_OF_ADDRESSES;
+        }
+        else
+        {
+            MHW_ASSERTMESSAGE("Unsupported encode mode.");
+            *commandsSize  = 0;
+            *patchListSize = 0;
+            return MOS_STATUS_UNKNOWN;
+        }
+
+        *commandsSize  = maxSize;
+        *patchListSize = patchListMaxSize;
+
+        return MOS_STATUS_SUCCESS;
+    }
+
     MOS_STATUS AddVdencPipeModeSelectCmd(
         PMOS_COMMAND_BUFFER                  cmdBuffer,
         PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS   params)
@@ -529,7 +563,7 @@ public:
             cmd.RowStoreScratchBuffer.BufferPictureFields.DW0.CacheSelect = TVdencCmds::VDENC_Surface_Control_Bits_CMD::CACHE_SELECT_UNNAMED1;
             cmd.RowStoreScratchBuffer.LowerAddress.DW0.Value              = this->m_vdencRowStoreCache.dwAddress << 6;
         }
-        else if (params->presVdencIntraRowStoreScratchBuffer != nullptr)
+        else if (!Mos_ResourceIsNull(params->presVdencIntraRowStoreScratchBuffer))
         {
             cmd.RowStoreScratchBuffer.BufferPictureFields.DW0.MemoryObjectControlState =
                 this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_VDENC_ROW_STORE_BUFFER_CODEC].Value;
@@ -1690,6 +1724,18 @@ public:
         PMHW_VDBOX_VDENC_CMD2_STATE         params)
     {
         return MOS_STATUS_SUCCESS;
+    }
+
+    PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS CreateMhwVdboxPipeModeSelectParams()
+    {
+        PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS pipeModeSelectParams = MOS_New(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS_G11);
+
+        return pipeModeSelectParams;
+    }
+
+    void ReleaseMhwVdboxPipeModeSelectParams(PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS pipeModeSelectParams) 
+    {
+        MOS_Delete(pipeModeSelectParams);
     }
 };
 

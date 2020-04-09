@@ -1,6 +1,6 @@
 /*===================== begin_copyright_notice ==================================
 
-Copyright (c) 2017-2019, Intel Corporation
+Copyright (c) 2017-2020, Intel Corporation
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -119,7 +119,53 @@ static bool InitTglShadowSku(struct GfxDeviceInfo *devInfo,
     skuTable->FtrDisplayYTiling = 1;
     skuTable->FtrEDram = devInfo->hasERAM;
 
+    bool enableCodecMMC = false;
+    bool enableVPMMC    = false;
+    bool disableMMC     = false;
     skuTable->FtrE2ECompression = 1;
+    // Disable MMC for all components if set reg key
+    MOS_USER_FEATURE_VALUE_DATA userFeatureData;
+    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+    MOS_UserFeature_ReadValue_ID(
+        nullptr,
+        __MEDIA_USER_FEATURE_VALUE_DISABLE_MMC_ID,
+        &userFeatureData);
+    if (userFeatureData.bData)
+    {
+        disableMMC = true;
+    }
+
+    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+    MOS_UserFeature_ReadValue_ID(
+        nullptr,
+        __VPHAL_ENABLE_MMC_ID,
+        &userFeatureData);
+    if (userFeatureData.bData)
+    {
+        enableVPMMC = true;
+    }
+
+    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+    MOS_UserFeature_ReadValue_ID(
+        nullptr,
+        __MEDIA_USER_FEATURE_VALUE_CODEC_MMC_ENABLE_ID,
+        &userFeatureData);
+    if (userFeatureData.bData)
+    {
+        enableCodecMMC = true;
+    }
+
+    if (disableMMC)
+    {
+        skuTable->FtrE2ECompression = 0;
+    }else
+    {
+        if(!enableCodecMMC && !enableVPMMC)
+        {
+            skuTable->FtrE2ECompression = 0;
+        }
+    }
+
     skuTable->FtrLinearCCS = 1;
     skuTable->FtrTileY = 1;
 
@@ -146,11 +192,34 @@ static bool InitTglShadowWa(struct GfxDeviceInfo *devInfo,
     waTable->WaDisregardPlatformChecks          = 1;
     waTable->Wa4kAlignUVOffsetNV12LinearSurface = 1;
 
-    // Set it to 1 if need to support 256B compress mode
-    waTable->WaLimit128BMediaCompr = 1;
+    // Set it to 0 if need to support 256B compress mode
+    waTable->WaLimit128BMediaCompr = 0;
+
+    //source and recon surfaces need to be aligned to the LCU size
+    waTable->WaAlignYUVResourceToLCU = 1;
 
     return true;
 }
+
+static struct GfxDeviceInfo tgllpGt1Info = {
+    .platformType  = PLATFORM_MOBILE,
+    .productFamily = IGFX_TIGERLAKE_LP,
+    .displayFamily = IGFX_GEN12_CORE,
+    .renderFamily  = IGFX_GEN12_CORE,
+    .eGTType       = GTTYPE_GT1,
+    .L3CacheSizeInKb = 0,
+    .L3BankCount   = 0,
+    .EUCount       = 0,
+    .SliceCount    = 0,
+    .SubSliceCount = 0,
+    .MaxEuPerSubSlice = 0,
+    .isLCIA        = 0,
+    .hasLLC        = 0,
+    .hasERAM       = 0,
+    .InitMediaSysInfo = InitTglMediaSysInfo,
+    .InitShadowSku    = InitTglShadowSku,
+    .InitShadowWa     = InitTglShadowWa,
+};
 
 static struct GfxDeviceInfo tgllpGt2Info = {
     .platformType  = PLATFORM_MOBILE,
@@ -190,5 +259,17 @@ static bool tgllpGt2Device9a68 = DeviceInfoFactory<GfxDeviceInfo>::
 static bool tgllpGt2Device9a70 = DeviceInfoFactory<GfxDeviceInfo>::
     RegisterDevice(0x9A70, &tgllpGt2Info);
 
-static bool tgllpGt2Device9a78 = DeviceInfoFactory<GfxDeviceInfo>::
-    RegisterDevice(0x9A78, &tgllpGt2Info);
+static bool tgllpGt1Device9a78 = DeviceInfoFactory<GfxDeviceInfo>::
+    RegisterDevice(0x9A78, &tgllpGt1Info);
+
+static bool tgllpGt2Device9ac9 = DeviceInfoFactory<GfxDeviceInfo>::
+    RegisterDevice(0x9AC9, &tgllpGt2Info);
+
+static bool tgllpGt2Device9af8 = DeviceInfoFactory<GfxDeviceInfo>::
+    RegisterDevice(0x9AF8, &tgllpGt2Info);
+
+static bool tgllpGt2Device9ac0 = DeviceInfoFactory<GfxDeviceInfo>::
+    RegisterDevice(0x9AC0, &tgllpGt2Info);
+
+static bool tgllpGt2Device9ad9 = DeviceInfoFactory<GfxDeviceInfo>::
+    RegisterDevice(0x9AD9, &tgllpGt2Info);

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2018, Intel Corporation
+* Copyright (c) 2009-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -125,7 +125,7 @@ enum DdiSurfaceFormat
 
 // should be defined in libdrm, this is a temporary solution to pass QuickBuild
 #define I915_EXEC_VEBOX                  (4<<0)
-#define I915_EXEC_VCS2                   (5<<0)
+#define I915_EXEC_VCS2                   (7<<0)
 
 // I915_EXEC_BSD_* -- Attempt to provide backwards and forwards
 // compatibility with versions of include/drm/i915_drm.h that do not
@@ -174,7 +174,7 @@ typedef enum _MOS_MEDIA_OPERATION
 typedef enum _MOS_GPU_NODE
 {
     MOS_GPU_NODE_3D      = I915_EXEC_RENDER,
-    MOS_GPU_NODE_COMPUTE = (6<<0), //To change to compute CS later when linux define the name
+    MOS_GPU_NODE_COMPUTE = (5<<0), //To change to compute CS later when linux define the name
     MOS_GPU_NODE_VE      = I915_EXEC_VEBOX,
     MOS_GPU_NODE_VIDEO   = I915_EXEC_BSD,
     MOS_GPU_NODE_VIDEO2  = I915_EXEC_VCS2,
@@ -289,7 +289,11 @@ struct _MOS_SPECIFIC_RESOURCE
     GraphicsResource*       pGfxResource;
     GraphicsResourceNext*   pGfxResourceNext;
     bool                    bConvertedFromDDIResource;
+    bool                    bExternalSurface;    //!< indicate the surface not allocated by media
 
+    // Tile switch
+    MOS_TILE_MODE_GMM   TileModeGMM;
+    bool                bGMMTileEnabled;
 };
 
 //!
@@ -356,6 +360,9 @@ struct MOS_SURFACE
     uint32_t                CompressionFormat;                                   //!< [out] Memory compression format
     // deprecated: not to use MmcState
     MOS_MEMCOMP_STATE       MmcState;                                            // Memory compression state
+    // Tile Switch
+    MOS_TILE_MODE_GMM   TileModeGMM;                                            //!< [out] Transparent GMM Tiletype specifying in hwcmd finally
+    bool                bGMMTileEnabled;                                        //!< [out] GMM defined tile mode flag
 };
 typedef MOS_SURFACE *PMOS_SURFACE;
 
@@ -388,7 +395,7 @@ typedef struct _PATCHLOCATIONLIST
 } PATCHLOCATIONLIST, *PPATCHLOCATIONLIST;
 
 //#define PATCHLOCATIONLIST_SIZE 25
-#define CODECHAL_MAX_REGS  128
+#define CODECHAL_MAX_REGS  256
 #define PATCHLOCATIONLIST_SIZE CODECHAL_MAX_REGS
 
 //!
@@ -487,7 +494,7 @@ struct MOS_CONTEXT_OFFSET
 
 // APO related
 #define FUTURE_PLATFORM_MOS_APO   1234
-void SetupApoMosSwitch(PLATFORM *platform);
+void SetupApoMosSwitch(int32_t fd);
 
 enum OS_SPECIFIC_RESOURCE_TYPE
 {
@@ -575,10 +582,34 @@ struct _MOS_OS_CONTEXT
 
     std::vector< struct MOS_CONTEXT_OFFSET> contextOffsetList;
 
+    bool                bSimIsActive;   //!< To indicate if simulation environment
+
     // Media memory decompression function
     void (* pfnMemoryDecompress)(
         PMOS_CONTEXT                pOsContext,
         PMOS_RESOURCE               pOsResource);
+
+    //!
+    //! \brief  the function ptr for surface copy function
+    //!
+    void  (* pfnMediaMemoryCopy )(
+        PMOS_CONTEXT       pOsContext,
+        PMOS_RESOURCE      pInputResource,
+        PMOS_RESOURCE      pOutputResource,
+        bool               bOutputCompressed);
+
+    //!
+    //! \brief  the function ptr for Media Memory 2D copy function
+    //!
+    void (* pfnMediaMemoryCopy2D)(
+        PMOS_CONTEXT       pOsContext,
+        PMOS_RESOURCE      pInputResource,
+        PMOS_RESOURCE      pOutputResource,
+        uint32_t           copyWidth,
+        uint32_t           copyHeight,
+        uint32_t           copyInputOffset,
+        uint32_t           copyOutputOffset,
+        bool               bOutputCompressed);
 
     // Os Context interface functions
     void (* pfnDestroy)(
@@ -874,6 +905,19 @@ PMOS_RESOURCE Mos_Specific_GetMarkerResource(
 //!
 uint32_t Mos_Specific_GetTsFrequency(
     PMOS_INTERFACE         pOsInterface);
+    
+//!
+//! \brief    Checks whether the requested resource is releasable
+//! \param    PMOS_INTERFACE pOsInterface
+//!           [in] OS Interface
+//! \param    PMOS_RESOURCE pOsResource
+//!           [in] Pointer to OS Resource
+//! \return   MOS_STATUS
+//!           MOS_STATUS_SUCCESS if requested can be released, otherwise MOS_STATUS_UNKNOWN
+//!
+MOS_STATUS Mos_Specific_IsResourceReleasable(
+    PMOS_INTERFACE         pOsInterface,
+    PMOS_RESOURCE          pOsResource);
 
 #if (_DEBUG || _RELEASE_INTERNAL)
 MOS_LINUX_BO * Mos_GetNopCommandBuffer_Linux(
