@@ -168,6 +168,7 @@ protected:
 
     // Auxiliary
     MEDIA_FEATURE_TABLE           *m_pSkuTable;
+    MEDIA_WA_TABLE              *m_pWaTable;
 
     void (*m_modifyKdllFunctionPointers)(PKdll_State);
 
@@ -456,6 +457,13 @@ protected:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     virtual MOS_STATUS AllocateDebugDumper();
+
+    //!
+    //! \brief    Allocate surface dumper
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS CreateSurfaceDumper();
 
     //!
     //! \brief    Get Hdr path needed flag

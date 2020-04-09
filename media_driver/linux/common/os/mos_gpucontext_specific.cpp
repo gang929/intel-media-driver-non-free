@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2019, Intel Corporation
+* Copyright (c) 2018-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -146,7 +146,7 @@ MOS_STATUS GpuContextSpecific::Init(OsContext *osContext,
         m_i915Context[0]->pOsContext = osInterface->pOsContext;
 
         m_i915ExecFlag = I915_EXEC_DEFAULT;
-        if (GpuNode == MOS_GPU_NODE_3D || GpuNode == MOS_GPU_NODE_COMPUTE)
+        if (GpuNode == MOS_GPU_NODE_3D)
         {
             struct i915_engine_class_instance engine_map;
             engine_map.engine_class = I915_ENGINE_CLASS_RENDER;
@@ -184,6 +184,26 @@ MOS_STATUS GpuContextSpecific::Init(OsContext *osContext,
                 }
             }
         }
+        else if (GpuNode == MOS_GPU_NODE_COMPUTE)
+        {
+            unsigned int nengine = MAX_ENGINE_INSTANCE_NUM;
+            struct i915_engine_class_instance engine_map[MAX_ENGINE_INSTANCE_NUM];
+            __u16 engine_class = 4; //To change later when linux define the name
+            __u64 caps = 0;
+
+            MOS_ZeroMemory(engine_map, sizeof(engine_map));
+            if (mos_query_engines(osInterface->pOsContext->fd,engine_class,caps,&nengine,engine_map))
+            {
+                MOS_OS_ASSERTMESSAGE("Failed to query engines.\n");
+                return MOS_STATUS_UNKNOWN;
+            }
+
+            if (mos_set_context_param_load_balance(m_i915Context[0], engine_map, nengine))
+            {
+                MOS_OS_ASSERTMESSAGE("Failed to set balancer extension.\n");
+                return MOS_STATUS_UNKNOWN;
+            }
+        }
         else if (GpuNode == MOS_GPU_NODE_VIDEO || GpuNode == MOS_GPU_NODE_VIDEO2
                  || GpuNode == MOS_GPU_NODE_VE)
         {
@@ -192,10 +212,7 @@ MOS_STATUS GpuContextSpecific::Init(OsContext *osContext,
             __u16 engine_class = (GpuNode == MOS_GPU_NODE_VE)? I915_ENGINE_CLASS_VIDEO_ENHANCE : I915_ENGINE_CLASS_VIDEO;
             __u64 caps = 0;
 
-            if (m_createOptionEnhanced->UsingSFC)
-            {
-                caps |= I915_VIDEO_AND_ENHANCE_CLASS_CAPABILITY_SFC;
-            }
+            SetEngineQueryFlags(createOption, caps);
 
             MOS_ZeroMemory(engine_map, sizeof(engine_map));
             if (mos_query_engines(osInterface->pOsContext->fd,engine_class,caps,&nengine,engine_map))
@@ -751,6 +768,10 @@ MOS_STATUS GpuContextSpecific::SubmitCommandBuffer(
 
     // Map Resource to Aux if needed
     MapResourcesToAuxTable(cmd_bo);
+    for(auto it : m_secondaryCmdBufs)
+    {
+        MapResourcesToAuxTable(it.second->OsResource.bo);
+    }
 
     if (m_secondaryCmdBufs.size() >= 2)
     {

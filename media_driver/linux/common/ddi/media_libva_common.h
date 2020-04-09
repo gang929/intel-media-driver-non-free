@@ -156,6 +156,8 @@ typedef enum _DDI_MEDIA_FORMAT
     Media_Format_R5G6B5      ,
     Media_Format_R10G10B10A2 ,
     Media_Format_B10G10R10A2 ,
+    Media_Format_R10G10B10X2 ,
+    Media_Format_B10G10R10X2 ,
     Media_Format_CPU         ,
 
     Media_Format_YUY2        ,
@@ -194,10 +196,10 @@ typedef enum _DDI_MEDIA_FORMAT
 
 typedef enum _DDI_MEDIA_STATUS_REPORT_QUERY_STATE
 {
-    DDI_MEDIA_STATUS_REPORT_QUREY_STATE_INIT,
-    DDI_MEDIA_STATUS_REPORT_QUREY_STATE_PENDING,
-    DDI_MEDIA_STATUS_REPORT_QUREY_STATE_COMPLETED,
-    DDI_MEDIA_STATUS_REPORT_QUREY_STATE_RELEASED
+    DDI_MEDIA_STATUS_REPORT_QUERY_STATE_INIT,
+    DDI_MEDIA_STATUS_REPORT_QUERY_STATE_PENDING,
+    DDI_MEDIA_STATUS_REPORT_QUERY_STATE_COMPLETED,
+    DDI_MEDIA_STATUS_REPORT_QUERY_STATE_RELEASED
 } DDI_MEDIA_STATUS_REPORT_QUERY_STATE;
 
 //!
@@ -459,6 +461,28 @@ struct DDI_MEDIA_CONTEXT
         PMOS_CONTEXT  pMosCtx,
         PMOS_RESOURCE pOsResource);
 
+    //!
+    //! \brief  the function ptr for surface copy function
+    //!
+    void  (* pfnMediaMemoryCopy )(
+        PMOS_CONTEXT       pMosCtx,
+        PMOS_RESOURCE      pInputResource,
+        PMOS_RESOURCE      pOutputResource,
+        bool               bOutputCompressed);
+
+    //!
+    //! \brief  the function ptr for Media Memory 2D copy function
+    //!
+    void (* pfnMediaMemoryCopy2D)(
+        PMOS_CONTEXT       pMosCtx,
+        PMOS_RESOURCE      pInputResource,
+        PMOS_RESOURCE      pOutputResource,
+        uint32_t           copyWidth,
+        uint32_t           copyHeight,
+        uint32_t           copyInputOffset,
+        uint32_t           copyOutputOffset,
+        bool               bOutputCompressed);
+
     PLATFORM            platform;
 
     MediaLibvaCaps     *m_caps;
@@ -483,6 +507,7 @@ struct DDI_MEDIA_CONTEXT
     MEDIA_MUTEX_T    PutSurfaceRenderMutex;
     MEDIA_MUTEX_T    PutSurfaceSwapBufferMutex;
 #endif
+    bool apoMosEnabled;
 };
 
 static __inline PDDI_MEDIA_CONTEXT DdiMedia_GetMediaContext (VADriverContextP ctx)

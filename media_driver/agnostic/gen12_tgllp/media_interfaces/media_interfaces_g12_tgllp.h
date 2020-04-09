@@ -93,6 +93,9 @@
 
 #ifdef _VP9_ENCODE_VDENC_SUPPORTED
 #include "codechal_vdenc_vp9_g12.h"
+#ifdef _APOGEIOS_SUPPORTED
+#include "encode_vp9_vdenc_pipeline_adapter_m12.h"
+#endif
 #endif
 
 #ifdef _MPEG2_ENCODE_VME_SUPPORTED
@@ -121,11 +124,11 @@
 #include "cm_hal_g12.h"
 #include "vphal_g12_tgllp.h"
 #include "renderhal_g12.h"
-#include "mos_util_user_interface_g12.h"
+#include "media_user_settings_mgr_g12.h"
 
 #include "codechal_decode_histogram_g12.h"
 
-#if 0 
+#if LINUX
 #include "vp_pipeline_adapter_g12.h"
 #endif
 
@@ -259,7 +262,7 @@ protected:
 class MosUtilDeviceG12Tgllp : public MosUtilDevice
 {
 public:
-    using MosUtil = MosUtilUserInterface_g12;
+    using MosUtil = MediaUserSettingsMgr_g12;
 
     MOS_STATUS Initialize();
 };

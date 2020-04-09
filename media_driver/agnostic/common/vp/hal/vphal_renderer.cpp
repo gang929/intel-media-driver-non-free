@@ -775,7 +775,9 @@ MOS_STATUS VphalRenderer::RenderPass(
                 {
                     VPHAL_RENDER_CHK_STATUS(RenderComposite(pRenderParams, &RenderPassData));
                 }
-                else if (VpHal_RndrIsHdrPathNeeded(this, pRenderParams, &RenderPassData) && !pHdrState->bBypassHdrKernelPath)
+                else if (VpHal_RndrIsHdrPathNeeded(this, pRenderParams, &RenderPassData) &&
+                        (pHdrState &&
+                         !pHdrState->bBypassHdrKernelPath))
                 {
                     VPHAL_RENDER_CHK_STATUS(VpHal_RndrRenderHDR(this, pRenderParams, &RenderPassData));
                 }
@@ -876,7 +878,7 @@ MOS_STATUS VphalRenderer::RenderSingleStream(
             pRenderParams->pSrc[pRenderPassData->uiSrcIndex] = pRenderPassData->pSrcSurface;
         }
 
-        if (pRenderPassData->bHdrNeeded && !pHdrState->bBypassHdrKernelPath)
+        if (pRenderPassData->bHdrNeeded && (pHdrState && !pHdrState->bBypassHdrKernelPath))
         {
             pRenderPassData->bCompNeeded = false;
         }
@@ -1480,11 +1482,21 @@ finish:
         if (pKernelBin)
         {
             MOS_SafeFreeMemory(pKernelBin);
+            if (pKernelDllState && pKernelDllState->ComponentKernelCache.pCache == pKernelBin)
+            {
+                pKernelDllState->ComponentKernelCache.pCache = nullptr;
+            }
+            pKernelBin = nullptr;
         }
 
         if (pFcPatchBin)
         {
             MOS_SafeFreeMemory(pFcPatchBin);
+            if (pKernelDllState && pKernelDllState->CmFcPatchCache.pCache == pFcPatchBin)
+            {
+                pKernelDllState->CmFcPatchCache.pCache = nullptr;
+            }
+            pFcPatchBin = nullptr;
         }
     }
     return eStatus;
@@ -1713,6 +1725,7 @@ VphalRenderer::VphalRenderer(
     m_pRenderHal(pRenderHal),
     m_pOsInterface(pRenderHal ? pRenderHal->pOsInterface : nullptr),
     m_pSkuTable(nullptr),
+    m_pWaTable(nullptr),
     m_modifyKdllFunctionPointers(nullptr),
     uiSsdControl(0),
     bDpRotationUsed(false),
@@ -1746,6 +1759,7 @@ VphalRenderer::VphalRenderer(
 
     // Get SKU table
     m_pSkuTable = m_pOsInterface->pfnGetSkuTable(m_pOsInterface);
+    m_pWaTable  = m_pOsInterface->pfnGetWaTable(m_pOsInterface);
 
 finish:
     if (pStatus)
@@ -2056,6 +2070,20 @@ finish:
     return;
 }
 
+//!
+//! \brief    Allocate surface dumper
+//! \return   MOS_STATUS
+//!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+//!
+MOS_STATUS VphalRenderer::CreateSurfaceDumper()
+{
+#if (_DEBUG || _RELEASE_INTERNAL)
+    VPHAL_DBG_SURF_DUMP_CREATE()
+    VPHAL_RENDER_CHK_NULL_RETURN(m_surfaceDumper);
+#endif
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS VphalRenderer::AllocateDebugDumper()
 {
     PRENDERHAL_INTERFACE pRenderHal = m_pRenderHal;
@@ -2073,13 +2101,7 @@ MOS_STATUS VphalRenderer::AllocateDebugDumper()
 #if (_DEBUG || _RELEASE_INTERNAL)
 
     // Initialize Surface Dumper
-    VPHAL_DBG_SURF_DUMP_CREATE()
-    if (m_surfaceDumper == nullptr)
-    {
-        VPHAL_RENDER_ASSERTMESSAGE("Invalid null pointer!");
-        eStatus = MOS_STATUS_NULL_POINTER;
-        goto finish;
-    }
+    VPHAL_RENDER_CHK_STATUS(CreateSurfaceDumper());
 
     // Initialize State Dumper
     VPHAL_DBG_STATE_DUMPPER_CREATE()

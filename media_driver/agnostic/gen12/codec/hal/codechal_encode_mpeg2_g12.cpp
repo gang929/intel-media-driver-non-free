@@ -30,7 +30,6 @@
 #include "codechal_mmc_encode_mpeg2_g12.h"
 #include "mhw_render_g12_X.h"
 #include "igcodeckrn_g12.h"
-#include "mos_util_user_interface_g12.h"
 #include "codeckrnheader.h"
 
 struct KernelHeader
@@ -2175,7 +2174,7 @@ MOS_STATUS CodechalEncodeMpeg2G12::ExecuteKernelFunctions()
     if (m_brcBuffers.pMbEncKernelStateInUse)
     {
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpCurbe(
-            CODECHAL_MEDIA_STATE_BRC_UPDATE,
+            CODECHAL_MEDIA_STATE_ENC_NORMAL,
             m_brcBuffers.pMbEncKernelStateInUse));
     }
     if (m_mbencBrcBufferSize>0)

@@ -112,7 +112,8 @@ MOS_STATUS CodechalDecodeJpegG12::SetFrameStates()
     }
 
 #ifdef _MMC_SUPPORTED
-    if (m_mmc && m_mmc->IsMmcEnabled() && MEDIA_IS_WA(m_waTable, WaClearCcsVe) && 
+    // To WA invalid aux data caused HW issue when MMC on
+    if (m_mmc && m_mmc->IsMmcEnabled() && MEDIA_IS_WA(m_waTable, Wa_1408785368) && 
         !Mos_ResourceIsNull(&m_destSurface.OsResource) && 
         m_destSurface.OsResource.bConvertedFromDDIResource)
     {
@@ -521,6 +522,11 @@ MOS_STATUS CodechalDecodeJpegG12::DecodePrimitiveLevel()
     if ( MOS_VE_SUPPORTED(m_osInterface))
     {
         CodecHalDecodeSinglePipeVE_PopulateHintParams(m_veState, &cmdBuffer, false);
+    }
+
+    if (m_osInterface->osCpInterface->IsHMEnabled())
+    {
+        HalOcaInterface::DumpCpParam(cmdBuffer, *m_osInterface->pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
     }
 
     HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);

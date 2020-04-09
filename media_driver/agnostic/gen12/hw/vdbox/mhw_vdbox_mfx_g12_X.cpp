@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2019, Intel Corporation
+* Copyright (c) 2017-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -80,8 +80,7 @@ void MhwVdboxMfxInterfaceG12::InitRowstoreUserFeatureSettings()
     MOS_USER_FEATURE_VALUE_DATA userFeatureData;
 
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-
-    if (MEDIA_IS_SKU(m_skuTable, FtrSimulationMode))
+    if (m_osInterface->bSimIsActive)
     {
         // GEN12 can support row store cache
         userFeatureData.u32Data = 1;
@@ -345,18 +344,20 @@ MOS_STATUS MhwVdboxMfxInterfaceG12::GetMfxStateCommandsDataSize(
         {
             maxSize +=
                 mhw_mi_g12_X::MI_CONDITIONAL_BATCH_BUFFER_END_CMD::byteSize +
-                mhw_mi_g12_X::MI_FLUSH_DW_CMD::byteSize * 3 +   // 3 extra MI_FLUSH_DWs for encode
-                mhw_vdbox_mfx_g12_X::MFX_FQM_STATE_CMD::byteSize * 4 +   // FQM_State sent 4 times
-                mhw_mi_g12_X::MI_STORE_REGISTER_MEM_CMD::byteSize * 8 +   // 5 extra register queries for encode, 3 extra slice level commands for BrcPakStatistics
-                mhw_mi_g12_X::MI_STORE_DATA_IMM_CMD::byteSize * 3 +   // slice level commands for StatusReport, BrcPakStatistics
-                MHW_VDBOX_PAK_BITSTREAM_OVERFLOW_SIZE;                // accounting for the max DW payload for PAK_INSERT_OBJECT, for frame header payload
+                mhw_mi_g12_X::MI_FLUSH_DW_CMD::byteSize * 3 +                 // 3 extra MI_FLUSH_DWs for encode
+                mhw_vdbox_mfx_g12_X::MFX_FQM_STATE_CMD::byteSize * 4 +        // FQM_State sent 4 times
+                mhw_mi_g12_X::MI_STORE_REGISTER_MEM_CMD::byteSize * 8 +       // 5 extra register queries for encode, 3 extra slice level commands for BrcPakStatistics
+                mhw_mi_g12_X::MI_STORE_DATA_IMM_CMD::byteSize * 3 +           // slice level commands for StatusReport, BrcPakStatistics
+                MHW_VDBOX_PAK_BITSTREAM_OVERFLOW_SIZE +                       // accounting for the max DW payload for PAK_INSERT_OBJECT, for frame header payload
+                mhw_vdbox_mfx_g12_X::MFX_PAK_INSERT_OBJECT_CMD::byteSize * 4; // for inserting AU, SPS, PSP, SEI headers before first slice header
 
             patchListMaxSize +=
                 PATCH_LIST_COMMAND(MI_CONDITIONAL_BATCH_BUFFER_END_CMD) +
-                PATCH_LIST_COMMAND(MI_FLUSH_DW_CMD) * 3 +   // 3 extra MI_FLUSH_DWs for encode
-                PATCH_LIST_COMMAND(MFX_FQM_STATE_CMD) * 4 +   // FQM_State sent 4 times
-                PATCH_LIST_COMMAND(MI_STORE_REGISTER_MEM_CMD) * 8 +   // 5 extra register queries for encode, 3 extra slice level commands for BrcPakStatistics
-                PATCH_LIST_COMMAND(MI_STORE_DATA_IMM_CMD) * 3;// slice level commands for StatusReport, BrcPakStatistics
+                PATCH_LIST_COMMAND(MI_FLUSH_DW_CMD) * 3 +              // 3 extra MI_FLUSH_DWs for encode
+                PATCH_LIST_COMMAND(MFX_FQM_STATE_CMD) * 4 +            // FQM_State sent 4 times
+                PATCH_LIST_COMMAND(MI_STORE_REGISTER_MEM_CMD) * 8 +    // 5 extra register queries for encode, 3 extra slice level commands for BrcPakStatistics
+                PATCH_LIST_COMMAND(MI_STORE_DATA_IMM_CMD) * 3;         // slice level commands for StatusReport, BrcPakStatistics
+                PATCH_LIST_COMMAND(MFC_AVC_PAK_INSERT_OBJECT_CMD) * 4; // for inserting AU, SPS, PSP, SEI headers before first slice header
         }
     }
     else if (standard == CODECHAL_VC1)
@@ -499,26 +500,33 @@ MOS_STATUS MhwVdboxMfxInterfaceG12::GetMfxPrimitiveCommandsDataSize(
         else // CODECHAL_ENCODE_MODE_AVC
         {
             // 1 PAK_INSERT_OBJECT inserted for every end of frame/stream with 1 DW payload
-            maxSize = mhw_vdbox_mfx_g12_X::MFX_PAK_INSERT_OBJECT_CMD::byteSize + sizeof(uint32_t) +
-                    mhw_vdbox_mfx_g12_X::MFX_AVC_SLICE_STATE_CMD::byteSize +
-                    (2 * mhw_vdbox_mfx_g12_X::MFX_AVC_REF_IDX_STATE_CMD::byteSize) +
-                    (2 * mhw_vdbox_mfx_g12_X::MFX_AVC_WEIGHTOFFSET_STATE_CMD::byteSize) +
-                    mhw_vdbox_mfx_g12_X::MFX_PAK_INSERT_OBJECT_CMD::byteSize +
-                    MHW_VDBOX_PAK_BITSTREAM_OVERFLOW_SIZE + // slice header payload
-                    mhw_mi_g12_X::MI_BATCH_BUFFER_START_CMD::byteSize;
-
-            patchListMaxSize = PATCH_LIST_COMMAND(MFC_AVC_PAK_INSERT_OBJECT_CMD) +
-                    PATCH_LIST_COMMAND(MFX_AVC_SLICE_STATE_CMD) +
-                    (2 * PATCH_LIST_COMMAND(MFX_AVC_REF_IDX_STATE_CMD)) +
-                    (2 * PATCH_LIST_COMMAND(MFX_AVC_WEIGHTOFFSET_STATE_CMD)) +
-                    PATCH_LIST_COMMAND(MFC_AVC_PAK_INSERT_OBJECT_CMD) +
-                    PATCH_LIST_COMMAND(MI_BATCH_BUFFER_START_CMD);
+            maxSize = mhw_vdbox_mfx_g12_X::MFX_PAK_INSERT_OBJECT_CMD::byteSize + sizeof(uint32_t);
+            patchListMaxSize = PATCH_LIST_COMMAND(MFC_AVC_PAK_INSERT_OBJECT_CMD);
 
             if (isModeSpecific)
             {
                 // isModeSpecific = bSingleTaskPhaseSupported for AVC encode
-                maxSize += mhw_mi_g12_X::MI_BATCH_BUFFER_START_CMD::byteSize;
-                patchListMaxSize += PATCH_LIST_COMMAND(MI_BATCH_BUFFER_START_CMD);
+                maxSize += (2 * mhw_mi_g12_X::MI_BATCH_BUFFER_START_CMD::byteSize);
+                patchListMaxSize += (2 * PATCH_LIST_COMMAND(MI_BATCH_BUFFER_START_CMD));
+            }
+            else
+            {
+                maxSize +=
+                    (2 * mhw_vdbox_mfx_g12_X::MFX_AVC_REF_IDX_STATE_CMD::byteSize) +
+                    (2 * mhw_vdbox_mfx_g12_X::MFX_AVC_WEIGHTOFFSET_STATE_CMD::byteSize) +
+                    mhw_vdbox_mfx_g12_X::MFX_AVC_SLICE_STATE_CMD::byteSize +
+                    MHW_VDBOX_PAK_SLICE_HEADER_OVERFLOW_SIZE + // slice header payload
+                    (2 * mhw_vdbox_mfx_g12_X::MFX_PAK_INSERT_OBJECT_CMD::byteSize) +
+                    mhw_mi_g12_X::MI_BATCH_BUFFER_START_CMD::byteSize +
+                    mhw_mi_g12_X::MI_FLUSH_DW_CMD::byteSize;
+
+                patchListMaxSize +=
+                    (2 * PATCH_LIST_COMMAND(MFX_AVC_REF_IDX_STATE_CMD)) +
+                    (2 * PATCH_LIST_COMMAND(MFX_AVC_WEIGHTOFFSET_STATE_CMD)) +
+                    PATCH_LIST_COMMAND(MFX_AVC_SLICE_STATE_CMD) +
+                    (2 * PATCH_LIST_COMMAND(MFC_AVC_PAK_INSERT_OBJECT_CMD)) +
+                    PATCH_LIST_COMMAND(MI_BATCH_BUFFER_START_CMD) +
+                    PATCH_LIST_COMMAND(MI_FLUSH_DW_CMD);
             }
         }
     }
@@ -663,6 +671,12 @@ MOS_STATUS MhwVdboxMfxInterfaceG12::AddMfxPipeModeSelectCmd(
         cmd.DW1.FrameStatisticsStreamoutEnable = 1;
     }
 
+    if (params->bStreamOutEnabledExtEnabled)
+    {
+        // Enable PerMB streamOut PAK Statistics
+        cmd.DW1.StreamOutEnable = 1;
+        cmd.DW1.ExtendedStreamOutEnable = true;
+    }
     MHW_MI_CHK_STATUS(Mos_AddCommand(cmdBuffer, &cmd, sizeof(cmd)));
 
     //for gen 12, we need to add MFX wait for both KIN and VRT before and after MFX Pipemode select...
@@ -761,6 +775,19 @@ MOS_STATUS MhwVdboxMfxInterfaceG12::AddMfxPipeBufAddrCmd(
     resourceParams.HwCommandType = MOS_MFX_PIPE_BUF_ADDR;
 
     mhw_vdbox_mfx_g12_X::MFX_PIPE_BUF_ADDR_STATE_CMD cmd;
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+    MOS_USER_FEATURE_VALUE_WRITE_DATA UserFeatureWriteData = __NULL_USER_FEATURE_VALUE_WRITE_DATA__;
+    UserFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_IS_CODEC_ROW_STORE_CACHE_ENABLED_ID;
+    if (m_intraRowstoreCache.bEnabled               ||
+        m_deblockingFilterRowstoreCache.bEnabled    ||
+        m_bsdMpcRowstoreCache.bEnabled              ||
+        m_mprRowstoreCache.bEnabled)
+    {
+        UserFeatureWriteData.Value.i32Data = 1;
+    }
+    MOS_UserFeature_WriteValues_ID(nullptr, &UserFeatureWriteData, 1);
+#endif
 
     // Encoding uses both surfaces regardless of deblocking status
     if (params->psPreDeblockSurface != nullptr)

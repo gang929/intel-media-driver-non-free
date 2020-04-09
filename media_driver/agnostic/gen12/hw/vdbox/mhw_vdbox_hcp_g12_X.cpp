@@ -362,8 +362,7 @@ void MhwVdboxHcpInterfaceG12::InitRowstoreUserFeatureSettings()
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
 
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-
-    if (MEDIA_IS_SKU(m_skuTable, FtrSimulationMode))
+    if (m_osInterface->bSimIsActive)
     {
         // GEN12 can support row store cache
         userFeatureData.u32Data = 1;
@@ -1533,12 +1532,12 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpDecodeSurfaceStateCmd(
         }
     }
 
-    cmd->DW3.DefaultAlphaValue = 0; // needs to be programmable
+    cmd->DW3.DefaultAlphaValue = 0xffff; // needs to be programmable
 
     if (params->ucSurfaceStateId != CODECHAL_HCP_DECODED_SURFACE_ID) //MMC is not need in HCP_SURFACE_STATE for non reference surfaces
     {
-        cmd->DW4.MemoryCompressionEnable = (params->mmcState == MOS_MEMCOMP_RC || params->mmcState == MOS_MEMCOMP_MC) ? ((~params->mmcSkipMask) & 0xff) : 0;
-        cmd->DW4.CompressionType = (params->mmcState == MOS_MEMCOMP_RC) ? 0xff : 0;
+        cmd->DW4.MemoryCompressionEnable = MmcEnable(params->mmcState) ? ((~params->mmcSkipMask) & 0xff) : 0;
+        cmd->DW4.CompressionType         = MmcIsRc(params->mmcState) ? 0xff : 0;
     }
 
     return eStatus;
@@ -1646,8 +1645,8 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpEncodeSurfaceStateCmd(
         cmd->DW3.YOffsetForVCr = params->dwReconSurfHeight;
     }
 
-    cmd->DW4.MemoryCompressionEnable = (params->mmcState == MOS_MEMCOMP_RC || params->mmcState == MOS_MEMCOMP_MC) ? ((~params->mmcSkipMask) & 0xff) : 0;
-    cmd->DW4.CompressionType = (params->mmcState == MOS_MEMCOMP_RC) ? 0xff : 0;
+    cmd->DW4.MemoryCompressionEnable = MmcEnable(params->mmcState) ? ((~params->mmcSkipMask) & 0xff) : 0;
+    cmd->DW4.CompressionType         = MmcIsRc(params->mmcState) ? 0xff : 0;
 
     return eStatus;
 }
@@ -1667,6 +1666,22 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpPipeBufAddrCmd(
     MOS_SURFACE details;
     mhw_vdbox_hcp_g12_X::HCP_PIPE_BUF_ADDR_STATE_CMD cmd;
 
+#if (_DEBUG || _RELEASE_INTERNAL)
+    MOS_USER_FEATURE_VALUE_WRITE_DATA UserFeatureWriteData = __NULL_USER_FEATURE_VALUE_WRITE_DATA__;
+    UserFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_IS_CODEC_ROW_STORE_CACHE_ENABLED_ID;
+    if (m_hevcDatRowStoreCache.bEnabled     ||
+        m_hevcDfRowStoreCache.bEnabled      ||
+        m_hevcSaoRowStoreCache.bEnabled     ||
+        m_hevcHSaoRowStoreCache.bEnabled    ||
+        m_vp9HvdRowStoreCache.bEnabled      ||
+        m_vp9DatRowStoreCache.bEnabled      ||
+        m_vp9DfRowStoreCache.bEnabled)
+    {
+        UserFeatureWriteData.Value.i32Data = 1;
+    }
+    MOS_UserFeature_WriteValues_ID(nullptr, &UserFeatureWriteData, 1);
+#endif
+
     MOS_ZeroMemory(&resourceParams, sizeof(resourceParams));
 
     // 1. MHW_VDBOX_HCP_GENERAL_STATE_SHIFT(6) may not work with DecodedPicture
@@ -1676,9 +1691,8 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpPipeBufAddrCmd(
 
     //Decoded Picture
     cmd.DecodedPictureMemoryAddressAttributes.DW0.Value |= m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_PRE_DEBLOCKING_CODEC].Value;
-    cmd.DecodedPictureMemoryAddressAttributes.DW0.BaseAddressMemoryCompressionEnable =
-        (params->PreDeblockSurfMmcState == MOS_MEMCOMP_MC || params->PreDeblockSurfMmcState == MOS_MEMCOMP_RC) ? 1 : 0;
-    cmd.DecodedPictureMemoryAddressAttributes.DW0.CompressionType = (params->PreDeblockSurfMmcState == MOS_MEMCOMP_RC) ? 1 : 0;
+    cmd.DecodedPictureMemoryAddressAttributes.DW0.BaseAddressMemoryCompressionEnable = MmcEnable(params->PreDeblockSurfMmcState) ? 1 : 0;
+    cmd.DecodedPictureMemoryAddressAttributes.DW0.CompressionType                    = MmcIsRc(params->PreDeblockSurfMmcState) ? 1 : 0;
 
     cmd.DecodedPictureMemoryAddressAttributes.DW0.BaseAddressTiledResourceMode = Mhw_ConvertToTRMode(params->psPreDeblockSurface->TileType);
 
@@ -1950,9 +1964,8 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpPipeBufAddrCmd(
     {
         cmd.OriginalUncompressedPictureSourceMemoryAddressAttributes.DW0.Value |=
             m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_ORIGINAL_UNCOMPRESSED_PICTURE_ENCODE].Value;
-        cmd.OriginalUncompressedPictureSourceMemoryAddressAttributes.DW0.BaseAddressMemoryCompressionEnable =
-            (params->RawSurfMmcState == MOS_MEMCOMP_MC || params->RawSurfMmcState == MOS_MEMCOMP_RC) ? 1 : 0;
-        cmd.OriginalUncompressedPictureSourceMemoryAddressAttributes.DW0.CompressionType = (params->RawSurfMmcState == MOS_MEMCOMP_RC) ? 1 : 0;
+        cmd.OriginalUncompressedPictureSourceMemoryAddressAttributes.DW0.BaseAddressMemoryCompressionEnable = MmcEnable(params->RawSurfMmcState) ? 1 : 0;
+        cmd.OriginalUncompressedPictureSourceMemoryAddressAttributes.DW0.CompressionType = MmcIsRc(params->RawSurfMmcState) ? 1 : 0;
 
         cmd.OriginalUncompressedPictureSourceMemoryAddressAttributes.DW0.BaseAddressTiledResourceMode = Mhw_ConvertToTRMode(params->psRawSurface->TileType);
 
@@ -2524,17 +2537,24 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpDecodePicStateCmd(
     MHW_MI_CHK_NULL(params);
     MHW_MI_CHK_NULL(params->pHevcPicParams);
 
-    mhw_vdbox_hcp_g12_X::HCP_PIC_STATE_CMD  *cmd =
-        (mhw_vdbox_hcp_g12_X::HCP_PIC_STATE_CMD*)cmdBuffer->pCmdPtr;
-
-    MHW_MI_CHK_STATUS(MhwVdboxHcpInterfaceGeneric<mhw_vdbox_hcp_g12_X>::AddHcpDecodePicStateCmd(cmdBuffer, params));
-
     auto paramsG12 = dynamic_cast<PMHW_VDBOX_HEVC_PIC_STATE_G12>(params);
     MHW_MI_CHK_NULL(paramsG12);
 
     auto hevcPicParams = paramsG12->pHevcPicParams;
     auto hevcExtPicParams = paramsG12->pHevcExtPicParams;
     auto hevcSccPicParams = paramsG12->pHevcSccPicParams;
+
+    if (hevcExtPicParams && hevcExtPicParams->PicRangeExtensionFlags.fields.cabac_bypass_alignment_enabled_flag == 1)
+    {
+        MHW_ASSERTMESSAGE("HW decoder doesn't support HEVC High Throughput profile so far.");
+        MHW_ASSERTMESSAGE("So cabac_bypass_alignment_enabled_flag cannot equal to 1.");
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
+
+    mhw_vdbox_hcp_g12_X::HCP_PIC_STATE_CMD  *cmd =
+        (mhw_vdbox_hcp_g12_X::HCP_PIC_STATE_CMD*)cmdBuffer->pCmdPtr;
+
+    MHW_MI_CHK_STATUS(MhwVdboxHcpInterfaceGeneric<mhw_vdbox_hcp_g12_X>::AddHcpDecodePicStateCmd(cmdBuffer, params));
 
     // RExt fields
     cmd->DW2.ChromaSubsampling           = hevcPicParams->chroma_format_idc;

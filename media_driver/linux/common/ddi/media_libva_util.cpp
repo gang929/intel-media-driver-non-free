@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2019, Intel Corporation
+* Copyright (c) 2009-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -181,6 +181,8 @@ VAStatus DdiMediaUtil_AllocateSurface(
         case Media_Format_R8G8B8:
         case Media_Format_R10G10B10A2:
         case Media_Format_B10G10R10A2:
+        case Media_Format_R10G10B10X2:
+        case Media_Format_B10G10R10X2:
         case Media_Format_A16R16G16B16:
         case Media_Format_A16B16G16R16:
             if (VA_SURFACE_ATTRIB_USAGE_HINT_ENCODER != mediaSurface->surfaceUsageHint)
@@ -369,7 +371,6 @@ VAStatus DdiMediaUtil_AllocateSurface(
 
     gmmParams.ArraySize             = 1;
     gmmParams.Type                  = RESOURCE_2D;
-    //gmmParams.Format                = DdiMediaUtil_ConvertMediaFmtToGmmFmt(format);
     gmmParams.Format                = mediaDrvCtx->m_caps->ConvertMediaFmtToGmmFmt(format);
     gmmParams.CpTag                 = tag;
 
@@ -381,23 +382,18 @@ VAStatus DdiMediaUtil_AllocateSurface(
         case I915_TILING_Y:
             // Disable MMC for application required surfaces, because some cases' output streams have corruption.
             gmmParams.Flags.Gpu.MMC    = false;
-
-            if (mediaDrvCtx->m_auxTableMgr)
+            if (MEDIA_IS_SKU(&mediaDrvCtx->SkuTable, FtrE2ECompression))
             {
                 gmmParams.Flags.Gpu.MMC = true;
                 gmmParams.Flags.Info.MediaCompressed = 1;
                 gmmParams.Flags.Gpu.CCS = 1;
                 gmmParams.Flags.Gpu.RenderTarget = 1;
                 gmmParams.Flags.Gpu.UnifiedAuxSurface = 1;
-            }
-            else if (MEDIA_IS_SKU(&mediaDrvCtx->SkuTable, FtrE2ECompression) &&
-                     MEDIA_IS_SKU(&mediaDrvCtx->SkuTable, FtrFlatPhysCCS))
-            {
-                gmmParams.Flags.Gpu.MMC = true;
-                gmmParams.Flags.Info.MediaCompressed = 1;
-                gmmParams.Flags.Gpu.CCS = 1;
-                gmmParams.Flags.Gpu.RenderTarget = 1;
-                gmmParams.Flags.Gpu.UnifiedAuxSurface = 0;
+
+                if(MEDIA_IS_SKU(&mediaDrvCtx->SkuTable, FtrFlatPhysCCS))
+                {
+                    gmmParams.Flags.Gpu.UnifiedAuxSurface = 0;
+                }
             }
             break;
         case I915_TILING_X:
@@ -423,7 +419,7 @@ VAStatus DdiMediaUtil_AllocateSurface(
     uint32_t    gmmHeight;
 
     gmmPitch    = (uint32_t)gmmResourceInfo->GetRenderPitch();
-    if( DdiMediaUtil_IsExternalSurface(mediaSurface) && ( mediaSurface->pSurfDesc->uiVaMemType == VA_SURFACE_ATTRIB_MEM_TYPE_USER_PTR ) && mediaSurface->pSurfDesc->uiPitches[0])
+    if( DdiMediaUtil_IsExternalSurface(mediaSurface) && mediaSurface->pSurfDesc->uiPitches[0])
     {
         gmmResourceInfo->OverridePitch(mediaSurface->pSurfDesc->uiPitches[0]);
     }
@@ -441,6 +437,22 @@ VAStatus DdiMediaUtil_AllocateSurface(
     if (!DdiMediaUtil_IsExternalSurface(mediaSurface) ||
         mediaSurface->pSurfDesc->uiVaMemType == VA_SURFACE_ATTRIB_MEM_TYPE_VA)
     {
+        switch (gmmResourceInfo->GetTileType())
+        {
+            case GMM_TILED_Y:
+                tileformat = I915_TILING_Y;
+                break;
+            case GMM_TILED_X:
+                tileformat = I915_TILING_X;
+                break;
+            case GMM_NOT_TILED:
+                tileformat = I915_TILING_NONE;
+                break;
+            default:
+                tileformat = I915_TILING_Y;
+                break;
+        }
+
         unsigned long  ulPitch = 0;
         if ( tileformat == I915_TILING_NONE )
         {

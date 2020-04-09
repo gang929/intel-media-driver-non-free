@@ -244,7 +244,7 @@ void MhwVdboxHcpInterfaceG11::InitRowstoreUserFeatureSettings()
     MOS_USER_FEATURE_VALUE_DATA userFeatureData;
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
 
-    if (MEDIA_IS_SKU(m_skuTable, FtrSimulationMode))
+    if (m_osInterface->bSimIsActive)
     {
         // Disable RowStore Cache on simulation by default
         userFeatureData.u32Data = 1;
@@ -1294,7 +1294,7 @@ MOS_STATUS MhwVdboxHcpInterfaceG11::AddHcpDecodeSurfaceStateCmd(
         }
     }
 
-    cmd->DW3.DefaultAlphaValue = 0; // needs to be programmable
+    cmd->DW3.DefaultAlphaValue = 0xffff; // needs to be programmable
 
     return eStatus;
 }
@@ -1417,6 +1417,21 @@ MOS_STATUS MhwVdboxHcpInterfaceG11::AddHcpPipeBufAddrCmd(
     MHW_RESOURCE_PARAMS resourceParams;
     MOS_SURFACE details;
     mhw_vdbox_hcp_g11_X::HCP_PIPE_BUF_ADDR_STATE_CMD cmd;
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+    MOS_USER_FEATURE_VALUE_WRITE_DATA UserFeatureWriteData = __NULL_USER_FEATURE_VALUE_WRITE_DATA__;
+    UserFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_IS_CODEC_ROW_STORE_CACHE_ENABLED_ID;
+    if (m_hevcDatRowStoreCache.bEnabled ||
+        m_hevcDfRowStoreCache.bEnabled  ||
+        m_hevcSaoRowStoreCache.bEnabled ||
+        m_vp9HvdRowStoreCache.bEnabled  ||
+        m_vp9DatRowStoreCache.bEnabled  ||
+        m_vp9DfRowStoreCache.bEnabled)
+    {
+        UserFeatureWriteData.Value.i32Data = 1;
+    }
+    MOS_UserFeature_WriteValues_ID(nullptr, &UserFeatureWriteData, 1);
+#endif
 
     MOS_ZeroMemory(&resourceParams, sizeof(resourceParams));
 
@@ -2274,15 +2289,22 @@ MOS_STATUS MhwVdboxHcpInterfaceG11::AddHcpDecodePicStateCmd(
     MHW_MI_CHK_NULL(params);
     MHW_MI_CHK_NULL(params->pHevcPicParams);
 
-    mhw_vdbox_hcp_g11_X::HCP_PIC_STATE_CMD  *cmd =
-        (mhw_vdbox_hcp_g11_X::HCP_PIC_STATE_CMD*)cmdBuffer->pCmdPtr;
-
-    MHW_MI_CHK_STATUS(MhwVdboxHcpInterfaceGeneric<mhw_vdbox_hcp_g11_X>::AddHcpDecodePicStateCmd(cmdBuffer, params));
-
     auto paramsG11 = dynamic_cast<PMHW_VDBOX_HEVC_PIC_STATE_G11>(params);
     MHW_MI_CHK_NULL(paramsG11);
     auto hevcPicParams = paramsG11->pHevcPicParams;
     auto hevcExtPicParams = paramsG11->pHevcExtPicParams;
+
+    if (hevcExtPicParams && hevcExtPicParams->PicRangeExtensionFlags.fields.cabac_bypass_alignment_enabled_flag == 1)
+    {
+        MHW_ASSERTMESSAGE("HW decoder doesn't support HEVC High Throughput profile so far.");
+        MHW_ASSERTMESSAGE("So cabac_bypass_alignment_enabled_flag cannot equal to 1.");
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
+
+    mhw_vdbox_hcp_g11_X::HCP_PIC_STATE_CMD  *cmd =
+        (mhw_vdbox_hcp_g11_X::HCP_PIC_STATE_CMD*)cmdBuffer->pCmdPtr;
+
+    MHW_MI_CHK_STATUS(MhwVdboxHcpInterfaceGeneric<mhw_vdbox_hcp_g11_X>::AddHcpDecodePicStateCmd(cmdBuffer, params));
 
     // RExt fields
     cmd->DW2.ChromaSubsampling           = hevcPicParams->chroma_format_idc;

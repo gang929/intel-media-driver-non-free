@@ -28,6 +28,7 @@
 #include "vphal_render_vebox_memdecomp_g12.h"
 #include "mhw_vebox_hwcmd_g12_X.h"
 #include "mhw_vebox_g12_X.h"
+#include "hal_oca_interface.h"
 
 MediaVeboxDecompStateG12::MediaVeboxDecompStateG12() :
     MediaVeboxDecompState()
@@ -44,8 +45,14 @@ MOS_STATUS MediaVeboxDecompStateG12::RenderDecompCMD(PMOS_SURFACE surface)
     MHW_MI_FLUSH_DW_PARAMS              flushDwParams;
     uint32_t                            streamID = 0;
     const MHW_VEBOX_HEAP                *veboxHeap = nullptr;
+    MOS_CONTEXT *                       pOsContext     = nullptr;
+    PMHW_MI_MMIOREGISTERS               pMmioRegisters = nullptr;
 
     VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(surface);
+    VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(m_osInterface);
+    VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(pOsContext = m_osInterface->pOsContext);
+    VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(m_mhwMiInterface);
+    VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(pMmioRegisters = m_mhwMiInterface->GetMmioRegisters());
 
     if (surface->CompressionMode                &&
         surface->CompressionMode != MOS_MMC_MC  &&
@@ -86,6 +93,9 @@ MOS_STATUS MediaVeboxDecompStateG12::RenderDecompCMD(PMOS_SURFACE surface)
     MOS_ZeroMemory(&cmdBuffer, sizeof(MOS_COMMAND_BUFFER));
 
     VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(m_osInterface->pfnGetCommandBuffer(m_osInterface, &cmdBuffer, 0));
+
+    HalOcaInterface::On1stLevelBBStart(cmdBuffer, *pOsContext, m_osInterface->CurrentGpuContextHandle, *m_mhwMiInterface, *pMmioRegisters);
+
     VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(InitCommandBuffer(&cmdBuffer));
 
     // Prepare Vebox_Surface_State, surface input/and output are the same but the compressed status.
@@ -108,6 +118,8 @@ MOS_STATUS MediaVeboxDecompStateG12::RenderDecompCMD(PMOS_SURFACE surface)
         &cmdBuffer,
         &mhwVeboxSurfaceStateCmdParams));
 
+    HalOcaInterface::OnDispatch(cmdBuffer, *pOsContext, *m_mhwMiInterface, *pMmioRegisters);
+
     //---------------------------------
     // Send CMD: Vebox_Tiling_Convert
     //---------------------------------
@@ -129,6 +141,13 @@ MOS_STATUS MediaVeboxDecompStateG12::RenderDecompCMD(PMOS_SURFACE surface)
             &cmdBuffer,
             &flushDwParams));
     }
+
+    if (m_osInterface->osCpInterface->IsHMEnabled())
+    {
+        HalOcaInterface::DumpCpParam(cmdBuffer, *pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
+    }
+
+    HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *pOsContext);
 
     VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(m_mhwMiInterface->AddMiBatchBufferEnd(
         &cmdBuffer,
@@ -203,8 +222,15 @@ MOS_STATUS MediaVeboxDecompStateG12::RenderDoubleBufferDecompCMD(
     VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(&outputSurface->OsResource);
     VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(m_osInterface->osCpInterface);
 
+    //there is a new usage that input surface is clear and output surface is secure.
+    //replace Huc Copy by DoubleBuffer resolve to update ccs data.
+    //So need consolidate both input/output surface information to decide cp context.
+     PMOS_SURFACE surfaceArray[2];
+     surfaceArray[0] = inputSurface;
+     surfaceArray[1] = outputSurface;
+
     // preprocess in cp first
-    m_osInterface->osCpInterface->PrepareResources((void **)&inputSurface, 1, nullptr, 0);
+    m_osInterface->osCpInterface->PrepareResources((void **)&surfaceArray, sizeof(surfaceArray) / sizeof(PMOS_SURFACE), nullptr, 0);
 
     // initialize the command buffer struct
     MOS_ZeroMemory(&cmdBuffer, sizeof(MOS_COMMAND_BUFFER));

@@ -39,7 +39,7 @@
 #include "mhw_vdbox_g12_X.h"
 #include "mhw_mi_g12_X.h"
 #include "mhw_render_g12_X.h"
-#include "mos_util_user_interface_g12.h"
+#include "media_user_settings_mgr_g12.h"
 #include "cm_queue_rt.h"
 #include "codechal_debug.h"
 
@@ -3203,7 +3203,7 @@ MOS_STATUS CodechalEncHevcStateG12::GetSystemPipeNumberCommon()
     MOS_STATUS statusKey = MOS_STATUS_SUCCESS;
     statusKey            = MOS_UserFeature_ReadValue_ID(
         nullptr,
-        __MEDIA_USER_FEATURE_VALUE_ENCODE_DISABLE_SCALABILITY_G12,
+        __MEDIA_USER_FEATURE_VALUE_ENCODE_DISABLE_SCALABILITY,
         &userFeatureData);
 
     bool disableScalability = true;
@@ -3350,7 +3350,7 @@ MOS_STATUS CodechalEncHevcStateG12::Initialize(CodechalSetting *settings)
     userFeatureData.StringData.pStringData = stringData;
     statusKey                              = MOS_UserFeature_ReadValue_ID(
         nullptr,
-        __MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_PAK_ONLY_ID_G12,
+        __MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_PAK_ONLY_ID,
         &userFeatureData);
 
     if (statusKey == MOS_STATUS_SUCCESS && userFeatureData.StringData.uSize > 0)
@@ -3457,7 +3457,7 @@ MOS_STATUS CodechalEncHevcStateG12::Initialize(CodechalSetting *settings)
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
     MOS_UserFeature_ReadValue_ID(
         nullptr,
-        __MEDIA_USER_FEATURE_VALUE_HEVC_VME_ENCODE_SSE_ENABLE_ID_G12,
+        __MEDIA_USER_FEATURE_VALUE_HEVC_VME_ENCODE_SSE_ENABLE_ID,
         &userFeatureData);
     m_sseSupported = userFeatureData.i32Data ? true : false;
 
@@ -3518,7 +3518,7 @@ MOS_STATUS CodechalEncHevcStateG12::Initialize(CodechalSetting *settings)
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
     statusKey = MOS_UserFeature_ReadValue_ID(
         nullptr,
-        __MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_ENABLE_HW_STITCH_G12,
+        __MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_ENABLE_HW_STITCH,
         &userFeatureData);
     m_enableTileStitchByHW = userFeatureData.i32Data ? true : false;
 
@@ -3526,7 +3526,7 @@ MOS_STATUS CodechalEncHevcStateG12::Initialize(CodechalSetting *settings)
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
     statusKey = MOS_UserFeature_ReadValue_ID(
         nullptr,
-        __MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_ENABLE_HW_SEMAPHORE_G12,
+        __MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_ENABLE_HW_SEMAPHORE,
         &userFeatureData);
     m_enableHWSemaphore = userFeatureData.i32Data ? true : false;
 
@@ -3541,14 +3541,14 @@ MOS_STATUS CodechalEncHevcStateG12::Initialize(CodechalSetting *settings)
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
     statusKey = MOS_UserFeature_ReadValue_ID(
         nullptr,
-        __MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_ENABLE_VE_DEBUG_OVERRIDE_G12,
+        __MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_ENABLE_VE_DEBUG_OVERRIDE,
         &userFeatureData);
     m_kmdVeOveride.Value = (uint64_t)userFeatureData.i64Data;
 
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
     MOS_UserFeature_ReadValue_ID(
         nullptr,
-        __MEDIA_USER_FEATURE_VALUE_HEVC_VME_FORCE_SCALABILITY_ID_G12,
+        __MEDIA_USER_FEATURE_VALUE_HEVC_VME_FORCE_SCALABILITY_ID,
         &userFeatureData);
     m_forceScalability = userFeatureData.i32Data ? true : false;
 
@@ -6120,10 +6120,29 @@ MOS_STATUS CodechalEncHevcStateG12::GenerateSkipFrameMbCodeSurface(SkipFrameInfo
     auto pakObjData = (HcpPakObjectG12 *)data;
     auto cuData     = (EncodeHevcCuDataG12 *)(data + m_mvOffset);
 
-    auto const ctbSize        = 1 << (m_hevcSeqParams->log2_max_coding_block_size_minus3 + 3);
-    auto const maxNumCuInCtb  = (ctbSize / CODECHAL_HEVC_MIN_CU_SIZE) * (ctbSize / CODECHAL_HEVC_MIN_CU_SIZE);
-    auto const picWidthInCtb  = MOS_ROUNDUP_DIVIDE(m_frameWidth, ctbSize);
-    auto const picHeightInCtb = MOS_ROUNDUP_DIVIDE(m_frameHeight, ctbSize);
+    auto const ctbSize          = 1 << (m_hevcSeqParams->log2_max_coding_block_size_minus3 + 3);
+    auto const maxNumCuInCtb    = (ctbSize / CODECHAL_HEVC_MIN_CU_SIZE) * (ctbSize / CODECHAL_HEVC_MIN_CU_SIZE);
+    auto const picWidthInCtb    = MOS_ROUNDUP_DIVIDE(m_frameWidth, ctbSize);
+    auto const picHeightInCtb   = MOS_ROUNDUP_DIVIDE(m_frameHeight, ctbSize);
+    uint32_t   num_tile_columns = m_hevcPicParams->num_tile_columns_minus1 + 1;
+    uint32_t * tileColumnsStartPosition{new uint32_t[num_tile_columns]{}};
+
+    for (uint32_t i = 0; i < (num_tile_columns); i++)
+    {
+        if (m_hevcPicParams->tile_column_width[i] == 0)
+        {
+            tileColumnsStartPosition[i] = picWidthInCtb;
+            break;
+        }
+
+        if (i == 0)
+        {
+            tileColumnsStartPosition[i] = m_hevcPicParams->tile_column_width[i];
+            continue;
+        }
+
+        tileColumnsStartPosition[i] = tileColumnsStartPosition[i - 1] + m_hevcPicParams->tile_column_width[i];
+    }
 
     // Prepare CTB splits for corner cases:
     // Last column
@@ -6142,14 +6161,33 @@ MOS_STATUS CodechalEncHevcStateG12::GenerateSkipFrameMbCodeSurface(SkipFrameInfo
     uint32_t ctbXAddr;
     uint32_t ctbYAddr;
     uint32_t nCUs;
+    uint32_t tileEnd;
+    uint32_t tileStart;
     for (uint32_t slcIdx = 0; slcIdx < m_numSlices; ++slcIdx)
     {
         sliceFirstCtbIdx = m_hevcSliceParams[slcIdx].slice_segment_address;
-        for (uint32_t ctbIdxInSlice = 0; ctbIdxInSlice < m_hevcSliceParams[slcIdx].NumLCUsInSlice; ++ctbIdxInSlice, ++pakObjData)
+        tileEnd          = 0;
+        tileStart        = 0;
+        ctbXAddr         = sliceFirstCtbIdx % picWidthInCtb;
+        ctbYAddr         = sliceFirstCtbIdx / picWidthInCtb;
+        for (uint32_t i = 0; i < num_tile_columns; i++)
         {
-            ctbXAddr = (sliceFirstCtbIdx + ctbIdxInSlice) % picWidthInCtb;
-            ctbYAddr = (sliceFirstCtbIdx + ctbIdxInSlice) / picWidthInCtb;
+            //Determine what tile slice belongs to
+            if (ctbXAddr < tileColumnsStartPosition[i])
+            {
+                tileEnd   = tileColumnsStartPosition[i];
+                tileStart = (i == 0) ? 0 : tileColumnsStartPosition[i - 1];
+                break;
+            }
+        }
 
+        for (uint32_t ctbIdxInSlice = 0; ctbIdxInSlice < m_hevcSliceParams[slcIdx].NumLCUsInSlice; ++ctbIdxInSlice, ++pakObjData, ++ctbXAddr)
+        {
+            if (ctbXAddr >= tileEnd)
+            {
+                ctbYAddr++;
+                ctbXAddr = tileStart;
+            }
             pakObjData->DW0.Type                    = 0x03;
             pakObjData->DW0.Opcode                  = 0x27;
             pakObjData->DW0.SubOp                   = 0x21;
@@ -6203,8 +6241,9 @@ MOS_STATUS CodechalEncHevcStateG12::GenerateSkipFrameMbCodeSurface(SkipFrameInfo
 
                 // Note that this can work only for B slices.
                 // If P slice support appears, we need to have the 2nd skipFrameMbCodeSurface
-                cuData->DW7_InterPredIdcMv0 = 2;  // bidirectional
-                cuData->DW7_InterPredIdcMv1 = 2;  // bidirectional
+                // When panic mode is triggered backwards reference only should be used
+                cuData->DW7_InterPredIdcMv0 = 0;
+                cuData->DW7_InterPredIdcMv1 = 0;
 
                 if (bCtbCrossRightBottomPicBoundary)
                 {
@@ -6242,11 +6281,25 @@ MOS_STATUS CodechalEncHevcStateG12::GenerateSkipFrameMbCodeSurface(SkipFrameInfo
                 }
             }
             cuData += (maxNumCuInCtb - nCUs);  // Shift to CUs of next CTB
+
+
         }
     }
     m_osInterface->pfnUnlockResource(m_osInterface, &skipframeInfo.m_resMbCodeSkipFrameSurface);
+    delete[] tileColumnsStartPosition;
 
     skipframeInfo.numSlices = m_numSlices;
+    uint32_t mbCodeSize     = m_mbCodeSize + 8 * CODECHAL_CACHELINE_SIZE;
+
+    #if USE_CODECHAL_DEBUG_TOOL
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpBuffer(
+        &skipframeInfo.m_resMbCodeSkipFrameSurface,
+        CodechalDbgAttr::attrInput,
+        "SkipFrameSurface",
+        mbCodeSize,
+        0,
+        CODECHAL_MEDIA_STATE_BRC_UPDATE));
+    #endif
 
     return eStatus;
 }
@@ -8943,7 +8996,10 @@ void CodechalEncHevcStateG12::InitSwScoreBoardParams(CodechalEncodeSwScoreboard:
         // m_numberConcurrentGroup should  default to 2 here for TU1. the only other value allowed from reg key will be 1
         m_degree45Needed = false;
     }
-
+    else if (m_hevcSeqParams->TargetUsage == 4)
+    {
+        m_numberConcurrentGroup = MOS_MIN(m_maxWavefrontsforTU4, m_numberConcurrentGroup);
+    }
     DecideConcurrentGroupAndWaveFrontNumber();
 
     DependencyPattern walkPattern;
@@ -9009,14 +9065,14 @@ MOS_STATUS CodechalEncHevcStateG12::UserFeatureKeyReport()
 #if (_DEBUG || _RELEASE_INTERNAL)
     CodecHalEncode_WriteKey(__MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_REGION_NUMBER_ID, m_numberConcurrentGroup);
     CodecHalEncode_WriteKey(__MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_SUBTHREAD_NUM_ID_G12, m_numberEncKernelSubThread);
-    CodecHalEncode_WriteKey64(__MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_ENABLE_VE_DEBUG_OVERRIDE_G12, m_kmdVeOveride.Value);
+    CodecHalEncode_WriteKey64(__MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_ENABLE_VE_DEBUG_OVERRIDE, m_kmdVeOveride.Value);
 
     if (m_pakOnlyTest)
     {
-        CodecHalEncode_WriteStringKey(__MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_PAK_ONLY_ID_G12, m_pakOnlyDataFolder, strlen(m_pakOnlyDataFolder));
+        CodecHalEncode_WriteStringKey(__MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_PAK_ONLY_ID, m_pakOnlyDataFolder, strlen(m_pakOnlyDataFolder));
     }
     CodecHalEncode_WriteKey(__MEDIA_USER_FEATURE_VALUE_ENCODE_USED_VDBOX_NUM_ID, m_numPipe);
-    CodecHalEncode_WriteKey(__MEDIA_USER_FEATURE_VALUE_ENABLE_ENCODE_VE_CTXSCHEDULING_ID_G12, MOS_VE_CTXBASEDSCHEDULING_SUPPORTED(m_osInterface));
+    CodecHalEncode_WriteKey(__MEDIA_USER_FEATURE_VALUE_ENABLE_ENCODE_VE_CTXSCHEDULING_ID, MOS_VE_CTXBASEDSCHEDULING_SUPPORTED(m_osInterface));
 #endif
 
     return eStatus;

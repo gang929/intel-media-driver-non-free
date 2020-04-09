@@ -72,7 +72,7 @@ MOS_STATUS CodechalEncodeCscDsG11::AllocateSurfaceCsc()
     return eStatus;
 }
 
-MOS_STATUS CodechalEncodeCscDsG11::CheckRawColorFormat(MOS_FORMAT format)
+MOS_STATUS CodechalEncodeCscDsG11::CheckRawColorFormat(MOS_FORMAT format, MOS_TILE_TYPE tileType)
 {
     CODECHAL_ENCODE_FUNCTION_ENTER;
 
@@ -250,6 +250,8 @@ MOS_STATUS CodechalEncodeCscDsG11::SetKernelParamsCsc(KernelParams* params)
     else
     {
         // do 16x/32x downscaling
+        inputFrameWidth = m_encoder->m_downscaledWidth4x;
+        inputFrameHeight = m_encoder->m_downscaledHeight4x;
         m_curbeParams.bConvertFlag = false;
         mbStatsSurface = nullptr;
 

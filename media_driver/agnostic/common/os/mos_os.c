@@ -56,17 +56,6 @@ AutoPerfUtility::~AutoPerfUtility()
     }
 }
 
-//!
-//! \brief GLOBAL INITIALIZERS
-//!
-const MOS_USER_FEATURE g_MosUserFeatureInit =
-{
-    MOS_USER_FEATURE_TYPE_INVALID,                                              // Type
-    nullptr,                                                                       // pSettingPath
-    nullptr,                                                                       // pSettingsValues
-    0                                                                           // uiNumSettingValues
-};
-
 #if MOS_MEDIASOLO_SUPPORTED
 void *   _MOS_INTERFACE::pvSoloContext = nullptr; 
 uint32_t _MOS_INTERFACE::soloRefCnt = 0;
@@ -115,9 +104,13 @@ MOS_STATUS Mos_AddCommand(
     {
         pCmdBuffer->iOffset    -= dwCmdSizeDwAligned;
         pCmdBuffer->iRemaining += dwCmdSizeDwAligned;
-        MOS_OS_ASSERTMESSAGE("Unable to add command (no space).");
+        MOS_OS_ASSERTMESSAGE("Unable to add command: remaining space = %d, command size = %d.",
+                            pCmdBuffer->iRemaining, dwCmdSizeDwAligned);
         return MOS_STATUS_UNKNOWN;
     }
+
+    MOS_OS_VERBOSEMESSAGE("The command was successfully added: remaining space = %d, buffer size = %d.",
+                        pCmdBuffer->iRemaining, pCmdBuffer->iOffset + pCmdBuffer->iRemaining);
 
     MOS_SecureMemcpy(pCmdBuffer->pCmdPtr, dwCmdSize, pCmd, dwCmdSize);
     pCmdBuffer->pCmdPtr += (dwCmdSizeDwAligned / sizeof(uint32_t));
@@ -756,9 +749,6 @@ MOS_STATUS Mos_InitInterface(
     pOsUserFeatureInterface = &pOsInterface->UserFeatureInterface;
     MOS_OS_CHK_NULL_RETURN(pOsUserFeatureInterface);
 
-    // Setup Member variables
-    pOsUserFeatureInterface->pUserFeatureInit = &g_MosUserFeatureInit;
-
     // Setup Member functions
     pOsInterface->pfnFillResource       = Mos_OsFillResource;
     pOsInterface->pfnWaitOnResource     = Mos_OsWaitOnResource;
@@ -769,6 +759,7 @@ MOS_STATUS Mos_InitInterface(
     pOsInterface->veDefaultEnable       = true;
 
     pOsInterface->streamIndex = 0;
+    pOsInterface->bSimIsActive = 0;
 
     eStatus = Mos_Specific_InitInterface(pOsInterface, pOsDriverContext);
     if (eStatus != MOS_STATUS_SUCCESS)
@@ -1001,7 +992,7 @@ MOS_STATUS Mos_CheckVirtualEngineSupported(
     PLATFORM                    platform;
     MOS_USER_FEATURE_VALUE_DATA userFeatureData;
 
-    MOS_OS_ASSERT(osInterface);
+    MOS_OS_CHK_NULL_RETURN(osInterface);
     MOS_ZeroMemory(&platform, sizeof(PLATFORM));
 
     osInterface->pfnGetPlatform(osInterface, &platform);

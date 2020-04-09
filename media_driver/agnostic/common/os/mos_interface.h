@@ -58,21 +58,22 @@ typedef struct _MOS_VIRTUALENGINE_INIT_PARAMS MOS_VIRTUALENGINE_INIT_PARAMS, *PM
 typedef struct _MOS_CMD_BUF_ATTRI_VE MOS_CMD_BUF_ATTRI_VE, *PMOS_CMD_BUF_ATTRI_VE;
 class MosInterface
 {
-public:
+protected:
     //!
     //! \brief   Destructor
     //! \details There is no members in Mos Interface, it's pure interface.
     //!          Never call the Destructor of Mos interface
     //!
-    ~MosInterface() = delete;
+    ~MosInterface() = default;
     
     //!
     //! \brief   Constructor
     //! \details There is no members in Mos Interface, it's pure interface.
     //!          Never call the Constructor of Mos interface
     //!
-    MosInterface() = delete;
+    MosInterface() = default;
 
+public:
     //!
     //! \brief    Create Os Device Context
     //! \details  Create the Os Device Context in device level.
@@ -939,8 +940,8 @@ public:
         GPU_CONTEXT_HANDLE requsetorGpuContext = MOS_GPU_CONTEXT_INVALID_HANDLE);
         
     //!
-    //! \brief    Resource Sync
-    //! \details  [Resource Interface] Internal Sync Call Back based on resource
+    //! \brief    Resource Sync call back between Media and 3D for resource Sync
+    //! \details  [Resource Interface] Sync Call Back based on resource
     //! \details  Caller: DDI only
     //! \details  Resource is shared by different cmd buffers on different GPU contexts.
     //!           Adding sync object into requestor GPU context queue to resolve the hazard if necessary.
@@ -958,24 +959,24 @@ public:
     //!           GPU Context handle of the queue being waiting for.
     //! \param    [in] requestorCtx
     //!           GPU Context handle of current GPU which requesting to use the resoure and find the hazard to wait the busy context.
-    //! \param    [in] osHandle
+    //! \param    [in] osRequestorHandle
     //!           OS runtime handle of requestor context
     //!
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    static MOS_STATUS ResourceSync(    
+    static MOS_STATUS ResourceSyncCallback(    
         OsSpecificRes          resource,
         MOS_DEVICE_HANDLE      deviceContext,
         uint32_t               index,
         SYNC_HAZARD            hazardType,
         GPU_CONTEXT_HANDLE     busyCtx,
         GPU_CONTEXT_HANDLE     requestorCtx,
-        OS_HANDLE              osHandle);
+        OS_HANDLE              osRequestorHandle);
 
     //!
-    //! \brief    Lock Sync
-    //! \details  [Resource Interface] Internal Lock Sync Call Back
+    //! \brief    Lock Sync Callback between Media and 3D
+    //! \details  [Resource Interface] Lock Sync Call Back
     //! \details  Caller: DDI only
     //! \details  Resource is used in a cmd buffer on an existing GPU context.
     //!           Before Locking the resource, make sure the resource finished used by all GPU contexts which are using this resource.
@@ -998,7 +999,7 @@ public:
     //!           Return MOS_STATUS_SUCCESS if successful, MOS_STATUS_STILL_DRAWING if doNotWait
     //!           is set to true and resoure is still being used in HW, otherwise failed
     //!        
-    static MOS_STATUS LockSync(    
+    static MOS_STATUS LockSyncCallback(    
         OsSpecificRes           resource,
         MOS_DEVICE_HANDLE       deviceContext,
         uint32_t                index,
@@ -1134,6 +1135,59 @@ public:
         MOS_STREAM_HANDLE streamState,
         MOS_RESOURCE_HANDLE resource,
         uint32_t *resMmcFormat);
+
+    //!
+    //! \brief    Double buffer copy resource
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [in] inputResource
+    //!           Input resource to copy.
+    //! \param    [out] outputResource
+    //!           Output resource.
+    //! \param    [in] outputCompressed
+    //!           Insdicate if output resource is compressed.
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS DoubleBufferCopyResource(
+        MOS_STREAM_HANDLE   streamState,
+        MOS_RESOURCE_HANDLE inputResource,
+        MOS_RESOURCE_HANDLE outputResource,
+        bool                outputCompressed);
+
+    //!
+    //! \brief    Copy Resource to Another Buffer
+    //! \details  Decompress and Copy Resource to Another 2D Buffer
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    inputResource
+    //!           [in] Input Resource object
+    //! \param    outputResource
+    //!           [out] output Resource object
+    //! \param    [in] copyWidth
+    //!           The 2D surface Width
+    //! \param    [in] copyHeight
+    //!           The 2D surface height
+    //! \param    [in] copyInputOffset
+    //!           The offset of copied surface from
+    //! \param    [in] copyOutputOffset
+    //!           The offset of copied to
+    //! \param    [in] outputCompressed
+    //!           True means apply compression on output surface, else output uncompressed surface
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if successful
+    //!
+    static MOS_STATUS MediaCopyResource2D(
+        MOS_STREAM_HANDLE   streamState,
+        MOS_RESOURCE_HANDLE inputResource,
+        MOS_RESOURCE_HANDLE outputResource,
+        uint32_t            copyWidth,
+        uint32_t            copyHeight,
+        uint32_t            copyInputOffset,
+        uint32_t            copyOutputOffset,
+        bool                outputCompressed);
 
     // GPU Status interfaces
 

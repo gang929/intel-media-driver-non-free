@@ -37,7 +37,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 #if _MEDIA_RESERVED
-#include "codechal_util_user_interface_ext.h"
+#include "codechal_user_settings_mgr_ext.h"
+#include "vphal_user_settings_mgr_ext.h"
 #endif // _MEDIA_RESERVED
 #ifndef ANDROID
 #include <sys/ipc.h>   // System V IPC
@@ -49,7 +50,14 @@
 #include <cutils/properties.h>
 #endif // ANDROID
 
+#include "mos_utilities_specific_next.h"
 static const char* szUserFeatureFile = USER_FEATURE_FILE;
+
+#if _MEDIA_RESERVED
+static MediaUserSettingsMgr *codecUserFeatureExt = nullptr;
+static MediaUserSettingsMgr *vpUserFeatureExt    = nullptr;
+#endif
+
 
 #ifdef __cplusplus
 
@@ -140,10 +148,6 @@ static int32_t MosTraceFd = -1;
 
 #define MOSd64     __MOS64_PREFIX "d"
 #define MOSu64     __MOS64_PREFIX "u"
-
-#if _MEDIA_RESERVED
-MosUtilUserInterface  *utilUserInterface = nullptr;
-#endif // _MEDIA_RESERVED
 
 //!
 //! \brief mutex for mos utilities multi-threading protection
@@ -1042,6 +1046,7 @@ static MOS_STATUS _UserFeature_DumpFile(const char * const szFileName, MOS_PUF_K
                         MOS_FreeMemory(CurValue[i].ulValueBuf);
                     }
                 }
+                MOS_FreeMemory(CurValue);
                 MOS_FreeMemory(CurKey);
             }
         }
@@ -1054,6 +1059,7 @@ static MOS_STATUS _UserFeature_DumpFile(const char * const szFileName, MOS_PUF_K
                     MOS_FreeMemory(CurValue[i].ulValueBuf);
                 }
             }
+            MOS_FreeMemory(CurValue);
             MOS_FreeMemory(CurKey);
         }
     }
@@ -1066,6 +1072,7 @@ static MOS_STATUS _UserFeature_DumpFile(const char * const szFileName, MOS_PUF_K
                 MOS_FreeMemory(CurValue[i].ulValueBuf);
             }
         }
+        MOS_FreeMemory(CurValue);
         MOS_FreeMemory(CurKey);
     }
     fclose(File);
@@ -1431,7 +1438,7 @@ MOS_STATUS MOS_CheckMountStatus(char  *pKeyWord)
     MOS_OS_CHK_NULL(file);
     MOS_OS_CHK_NULL(pKeyWord);
 
-    while( fscanf( file, "%s %s %s %s %s %s\n", sPartitionPath, sMountPoint, sSystemType, sTemp0, sTemp1, sTemp2 ) > 0 )
+    while( fscanf( file, "%255s %255s %255s %255s %255s %255s\n", sPartitionPath, sMountPoint, sSystemType, sTemp0, sTemp1, sTemp2 ) > 0 )
     {
         if( strcmp(sSystemType, pKeyWord) == 0 )
         {
@@ -2182,9 +2189,10 @@ MOS_STATUS MOS_UserFeatureSetValueEx_File(
     return eStatus;
 }
 
-MOS_STATUS MOS_OS_Utilities_Init()
+MOS_STATUS MOS_OS_Utilities_Init(PMOS_USER_FEATURE_KEY_PATH_INFO userFeatureKeyPathInfo)
 {
     MOS_STATUS     eStatus = MOS_STATUS_SUCCESS;
+    MOS_UNUSED(userFeatureKeyPathInfo);
 
     // lock mutex to avoid multi init in multi-threading env
     MOS_LockMutex(&gMosUtilMutex);
@@ -2231,8 +2239,10 @@ MOS_STATUS MOS_OS_Utilities_Init()
         }
         //Init MOS User Feature Key from mos desc table
         eStatus = MOS_DeclareUserFeatureKeysForAllDescFields();
+
 #if _MEDIA_RESERVED
-        utilUserInterface = new CodechalUtilUserInterface();
+        codecUserFeatureExt = new CodechalUserSettingsMgr();
+        vpUserFeatureExt    = new VphalUserSettingsMgr();
 #endif // _MEDIA_RESERVED
         eStatus = MOS_GenerateUserFeatureKeyXML();
 #if MOS_MESSAGES_ENABLED
@@ -2275,7 +2285,16 @@ MOS_STATUS MOS_OS_Utilities_Close()
 
         eStatus = MOS_DestroyUserFeatureKeysForAllDescFields();
 #if _MEDIA_RESERVED
-        if (utilUserInterface) delete utilUserInterface;
+        if (codecUserFeatureExt)
+        {
+            delete codecUserFeatureExt;
+            codecUserFeatureExt = nullptr;
+        }
+        if (vpUserFeatureExt)
+        {
+            delete vpUserFeatureExt;
+            vpUserFeatureExt = nullptr;
+        }
 #endif // _MEDIA_RESERVED
 #if (_DEBUG || _RELEASE_INTERNAL)
         // MOS maintains a reference counter,
@@ -2310,7 +2329,7 @@ MOS_STATUS MOS_UserFeatureOpenKey(
     }
     else
     {
-        return MOS_UserFeatureOpenKey(UFKey, lpSubKey, ulOptions, samDesired, phkResult);
+        return MOS_UserFeatureOpenKey_File(UFKey, lpSubKey, ulOptions, samDesired, phkResult);
     }
 }
 
@@ -2924,6 +2943,10 @@ MOS_STATUS MOS_GetLocalTime(
 
 void MOS_TraceEventInit()
 {
+    if (g_apoMosEnabled)
+    {
+        return MosUtilities::MosTraceEventInit();
+    }
     // close first, if already opened.
     if (MosTraceFd >= 0)
     {
@@ -2936,12 +2959,21 @@ void MOS_TraceEventInit()
 
 void MOS_TraceEventClose()
 {
+    if (g_apoMosEnabled)
+    {
+        return MosUtilities::MosTraceEventClose();
+    }
     if (MosTraceFd >= 0)
     {
         close(MosTraceFd);
         MosTraceFd = -1;
     }
     return;
+}
+
+void MOS_TraceSetupInfo(uint32_t DrvVer, uint32_t PlatFamily, uint32_t RenderFamily, uint32_t DeviceID)
+{
+    // not implemented
 }
 
 #define TRACE_EVENT_MAX_SIZE    4096
@@ -2953,6 +2985,11 @@ void MOS_TraceEvent(
     void * const     pArg2,
     uint32_t         dwSize2)
 {
+    if (g_apoMosEnabled)
+    {
+        return MosUtilities::MosTraceEvent(usId, ucType, pArg1, dwSize1, pArg2, dwSize2);
+    }
+
     if (MosTraceFd >= 0)
     {
         char  *pTraceBuf = (char *)MOS_AllocAndZeroMemory(TRACE_EVENT_MAX_SIZE);
@@ -2998,9 +3035,9 @@ void MOS_TraceEvent(
 }
 
 void MOS_TraceDataDump(
-    char * const pcName,
+    const char * pcName,
     uint32_t     flags,
-    void *const  pBuf,
+    const void * pBuf,
     uint32_t     dwSize)
 {
     // not implemented

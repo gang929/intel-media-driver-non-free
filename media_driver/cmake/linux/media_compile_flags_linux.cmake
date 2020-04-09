@@ -160,7 +160,7 @@ if(NOT ${PLATFORM} STREQUAL "android")
 endif()
 
 set(MEDIA_COMPILER_FLAGS_RELEASEINTERNAL
-    -O2
+    -O0
     -fno-omit-frame-pointer
 )
 
@@ -214,8 +214,12 @@ if(${PLATFORM} STREQUAL "linux")
     endforeach()
 endif()
 
-if (DEFINED MEDIA_VERSION)
-    add_definitions(-DUFO_VERSION="${MEDIA_VERSION}")
-elseif (DEFINED ENV{MEDIA_VERSION})
-    add_definitions(-DUFO_VERSION="$ENV{MEDIA_VERSION}")
-endif()
+execute_process(
+  COMMAND git rev-parse --short HEAD
+  OUTPUT_VARIABLE GIT_COMMIT
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+add_definitions(-DMEDIA_VERSION="${MEDIA_VERSION}")
+add_definitions(-DMEDIA_VERSION_DETAILS="${GIT_COMMIT}")

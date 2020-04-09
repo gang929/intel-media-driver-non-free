@@ -28,8 +28,9 @@
 
 #include "mhw_vebox_g12_X.h"
 #include "mos_solo_generic.h"
-#include "mos_util_user_interface_g12.h"
+#include "media_user_settings_mgr_g12.h"
 #include "mhw_mi_g12_X.h"
+#include "hal_oca_interface.h"
 
 
 // H2S Manual Mode Coef
@@ -229,7 +230,7 @@ MhwVeboxInterfaceG12::MhwVeboxInterfaceG12(
     MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
     MOS_UserFeature_ReadValue_ID(
         nullptr,
-        __MEDIA_USER_FEATURE_VALUE_VEBOX_SPLIT_RATIO_ID_G12,
+        __MEDIA_USER_FEATURE_VALUE_VEBOX_SPLIT_RATIO_ID,
         &UserFeatureData);
     m_veboxSplitRatio = UserFeatureData.u32Data;
 #endif
@@ -383,9 +384,16 @@ void MhwVeboxInterfaceG12::SetVeboxIecpStateBecsc(
 
     pVeboxIecpState->AlphaAoiState.DW0.AlphaFromStateSelect = pVeboxIecpParams->bAlphaEnable;
 
-    // Alpha is U16, but the SW alpha is calculated as 8bits,
-    // so left shift it 8bits to be in the position of MSB
-    pVeboxIecpState->AlphaAoiState.DW0.ColorPipeAlpha = pVeboxIecpParams->wAlphaValue * 256;
+    if (pVeboxIecpParams->dstFormat == Format_Y416)
+    {
+        pVeboxIecpState->AlphaAoiState.DW0.ColorPipeAlpha = pVeboxIecpParams->wAlphaValue;
+    }
+    else
+    {
+        // Alpha is U16, but the SW alpha is calculated as 8bits,
+        // so left shift it 8bits to be in the position of MSB
+        pVeboxIecpState->AlphaAoiState.DW0.ColorPipeAlpha = pVeboxIecpParams->wAlphaValue * 256;
+    }
 
 #undef SET_COEFS
 #undef SET_INPUT_OFFSETS
@@ -708,6 +716,7 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxState(
 {
     MOS_STATUS                        eStatus;
     PMOS_INTERFACE                    pOsInterface;
+    PMOS_CONTEXT                      pOsContext = nullptr;
     PMOS_RESOURCE                     pVeboxParamResource = nullptr;
     PMOS_RESOURCE                     pVeboxHeapResource  = nullptr;
     PMHW_VEBOX_HEAP                   pVeboxHeap;
@@ -720,12 +729,14 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxState(
     mhw_vebox_g12_X::VEBOX_STATE_CMD  cmd;
 
     MHW_CHK_NULL(m_osInterface);
+    MHW_CHK_NULL(m_osInterface->pOsContext);
     MHW_CHK_NULL(pCmdBuffer);
     MHW_CHK_NULL(pVeboxStateCmdParams);
 
     // Initialize
     eStatus         = MOS_STATUS_SUCCESS;
     pOsInterface    = m_osInterface;
+    pOsContext      = m_osInterface->pOsContext;
     pVeboxMode      = &pVeboxStateCmdParams->VeboxMode;
     pLUT3D          = &pVeboxStateCmdParams->LUT3D;
     pChromaSampling = &pVeboxStateCmdParams->ChromaSampling;
@@ -746,6 +757,9 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxState(
             // Calculate the instance base address
             uiInstanceBaseAddr = pVeboxHeap->uiInstanceSize * pVeboxHeap->uiCurState;
         }
+
+        TraceIndirectStateInfo(*pCmdBuffer, *pOsContext, bCmBuffer, pVeboxStateCmdParams->bUseVeboxHeapKernelResource);
+
         MOS_ZeroMemory(&ResourceParams, sizeof(ResourceParams));
         if (bCmBuffer)
         {
@@ -765,6 +779,8 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxState(
             pOsInterface,
             pCmdBuffer,
             &ResourceParams));
+
+        HalOcaInterface::OnIndirectState(*pCmdBuffer, *pOsContext, ResourceParams.presResource, ResourceParams.dwOffset, false, m_veboxSettings.uiDndiStateSize);
 
         MOS_ZeroMemory(&ResourceParams, sizeof(ResourceParams));
         if (bCmBuffer)
@@ -786,6 +802,8 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxState(
             pOsInterface,
             pCmdBuffer,
             &ResourceParams));
+
+        HalOcaInterface::OnIndirectState(*pCmdBuffer, *pOsContext, ResourceParams.presResource, ResourceParams.dwOffset, false, m_veboxSettings.uiIecpStateSize);
 
         if (pVeboxStateCmdParams->pVebox1DLookUpTables)
         {
@@ -824,6 +842,8 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxState(
                 pOsInterface,
                 pCmdBuffer,
                 &ResourceParams));
+
+            HalOcaInterface::OnIndirectState(*pCmdBuffer, *pOsContext, ResourceParams.presResource, ResourceParams.dwOffset, false, m_veboxSettings.uiGamutStateSize);
         }
 
         MOS_ZeroMemory(&ResourceParams, sizeof(ResourceParams));
@@ -847,6 +867,8 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxState(
             pCmdBuffer,
             &ResourceParams));
 
+        HalOcaInterface::OnIndirectState(*pCmdBuffer, *pOsContext, ResourceParams.presResource, ResourceParams.dwOffset, false, m_veboxSettings.uiVertexTableSize);
+
         MOS_ZeroMemory(&ResourceParams, sizeof(ResourceParams));
         if (bCmBuffer)
         {
@@ -868,6 +890,8 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxState(
             pOsInterface,
             pCmdBuffer,
             &ResourceParams));
+
+        HalOcaInterface::OnIndirectState(*pCmdBuffer, *pOsContext, ResourceParams.presResource, ResourceParams.dwOffset, false, m_veboxSettings.uiCapturePipeStateSize);
 
         if (pVeboxStateCmdParams->pLaceLookUpTables)
         {
@@ -906,6 +930,8 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxState(
             pCmdBuffer,
             &ResourceParams));
 
+        HalOcaInterface::OnIndirectState(*pCmdBuffer, *pOsContext, ResourceParams.presResource, ResourceParams.dwOffset, false, m_veboxSettings.uiGammaCorrectionStateSize);
+
         if (pVeboxStateCmdParams->pVebox3DLookUpTables)
         {
             MOS_ZeroMemory(&ResourceParams, sizeof(ResourceParams));
@@ -920,7 +946,7 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxState(
                 pOsInterface,
                 pCmdBuffer,
                 &ResourceParams));
-        }        
+        }
     }
     else
     {
@@ -953,6 +979,8 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxState(
             pOsInterface,
             pCmdBuffer,
             &ResourceParams));
+
+        HalOcaInterface::OnIndirectState(*pCmdBuffer, *pOsContext, ResourceParams.presResource, 0, true, 0);
     }
 
     MHW_CHK_NULL(pVeboxMode);
@@ -1022,15 +1050,21 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxDiIecp(
 
     if (pVeboxDiIecpCmdParams->pOsResCurrInput)
     {
-        cmd.DW2.CurrentFrameSurfaceControlBitsMemoryCompressionEnable =
-            (pVeboxDiIecpCmdParams->CurInputSurfMMCState != MOS_MEMCOMP_DISABLED) ? 1 : 0;
-        cmd.DW2.CurrentFrameSurfaceControlBitsMemoryCompressionMode =
-            (pVeboxDiIecpCmdParams->CurInputSurfMMCState == MOS_MEMCOMP_HORIZONTAL) ? 0 : 1;
+        if (pVeboxDiIecpCmdParams->CurInputSurfMMCState != MOS_MEMCOMP_DISABLED)
+        {
+            mhw_vebox_g12_X::VEB_DI_IECP_COMMAND_SURFACE_CONTROL_BITS_CMD *pSurfCtrlBits;
+            pSurfCtrlBits = (mhw_vebox_g12_X::VEB_DI_IECP_COMMAND_SURFACE_CONTROL_BITS_CMD*)&pVeboxDiIecpCmdParams->CurrInputSurfCtrl.Value;
+            pSurfCtrlBits->DW0.MemoryCompressionEnable = 1;
+            pSurfCtrlBits->DW0.CompressionType = pSurfCtrlBits->MEMORY_COMPRESSION_TYPE_MEDIA_COMPRESSION_ENABLE;
+            if (pVeboxDiIecpCmdParams->CurInputSurfMMCState == MOS_MEMCOMP_RC)
+            {
+                pSurfCtrlBits->DW0.CompressionType = pSurfCtrlBits->MEMORY_COMPRESSION_TYPE_RENDER_COMPRESSION_ENABLE;
+            }
+        }
 
         MOS_ZeroMemory(&ResourceParams, sizeof(ResourceParams));
-        ResourceParams.dwLsbNum        = MHW_VEBOX_DI_IECP_SHIFT;
         ResourceParams.presResource    = pVeboxDiIecpCmdParams->pOsResCurrInput;
-        ResourceParams.dwOffset        = pVeboxDiIecpCmdParams->dwCurrInputSurfOffset;
+        ResourceParams.dwOffset        = pVeboxDiIecpCmdParams->dwCurrInputSurfOffset + pVeboxDiIecpCmdParams->CurrInputSurfCtrl.Value;
         ResourceParams.pdwCmd          = & (cmd.DW2.Value);
         ResourceParams.dwLocationInCmd = 2;
         ResourceParams.HwCommandType   = MOS_VEBOX_DI_IECP;
@@ -1039,13 +1073,6 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxDiIecp(
             pOsInterface,
             pCmdBuffer,
             &ResourceParams));
-    }
-
-    // Remove this after VPHAL moving to new cmd definition --- assign MOCS/MMC bits directly
-    if (pVeboxDiIecpCmdParams->CurInputSurfMMCState == 0)
-    {
-        // bit 0 ~ 10 is MOCS/MMC bits
-        cmd.DW2.Value = (cmd.DW2.Value & 0xFFFFF800) + pVeboxDiIecpCmdParams->CurrInputSurfCtrl.Value;
     }
 
     if (pVeboxDiIecpCmdParams->pOsResPrevInput)

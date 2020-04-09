@@ -430,7 +430,7 @@ typedef struct _MOS_ALLOC_GFXRES_PARAMS
     MOS_TILE_TYPE       TileType;                                               //!< [in] Defines the layout of a physical page. Optimal choice depends on usage model.
     MOS_FORMAT          Format;                                                 //!< [in] Pixel format
     void                *pSystemMemory;                                         //!< [in] Optional parameter. If non null, TileType must be set to linear.
-    const char          *pBufName;                                              //!< [in] Optional parameter only used in Linux. A string indicates the buffer name and is used for debugging. nullptr is OK.
+    const char          *pBufName;                                              //!< [in] Optional parameter. A string indicates the buffer name and is used for debugging. nullptr is OK.
     int32_t             bIsCompressible;                                        //!< [in] Resource is compressible or not.
     MOS_RESOURCE_MMC_MODE   CompressionMode;                                    //!< [in] Compression mode.
     int32_t             bIsPersistent;                                          //!< [in] Optional parameter. Used to indicate that resource can not be evicted
@@ -622,7 +622,7 @@ typedef struct _MOS_INTERFACE
     int32_t                         bUsesCmdBufHeaderInResize;
     int32_t                         bEnableKmdMediaFrameTracking;
     int32_t                         bNoParsingAssistanceInKmd;
-    bool                            bPitchAndUVPatchingNeeded;
+    bool                            bPitchAndUVPatchingNeeded = false;
     uint32_t                        dwCommandBufferReservedSpace;
     uint32_t                        dwNumNalUnitBytesIncluded;
 
@@ -965,6 +965,16 @@ typedef struct _MOS_INTERFACE
         PMOS_RESOURCE         pOutputOsResource,
         bool                  bOutputCompressed);
 
+    MOS_STATUS(*pfnMediaCopyResource2D) (
+        PMOS_INTERFACE        pOsInterface,
+        PMOS_RESOURCE         pInputOsResource,
+        PMOS_RESOURCE         pOutputOsResource,
+        uint32_t              copyWidth,
+        uint32_t              copyHeight,
+        uint32_t              copyInputOffset,
+        uint32_t              copyOutputOffset,
+        bool                  bOutputCompressed);
+
     MOS_STATUS (* pfnFillResource) (
         PMOS_INTERFACE              pOsInterface,
         PMOS_RESOURCE               pResource,
@@ -1175,6 +1185,12 @@ typedef struct _MOS_INTERFACE
         PMOS_ALLOC_GFXRES_PARAMS    pParams);
 
     MOS_STATUS(*pfnSkipResourceSync)(
+        PMOS_RESOURCE               pOsResource);
+
+    MOS_STATUS(*pfnSkipResourceSyncDynamic)(
+        PMOS_RESOURCE               pOsResource);
+
+    MOS_STATUS(*pfnEnableResourceSyncDynamic)(
         PMOS_RESOURCE               pOsResource);
 
     bool(*pfnIsValidStreamID)(

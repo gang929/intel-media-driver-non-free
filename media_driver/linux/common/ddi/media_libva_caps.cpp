@@ -762,7 +762,13 @@ VAStatus MediaLibvaCaps::CreateEncAttributes(
         attrib.value = attribValMaxFrameSize.value;
         (*attribList)[attrib.type] = attrib.value;
     }
-
+    
+    if (IsAvcProfile(profile) && (entrypoint == VAEntrypointEncSliceLP))
+    {
+        attrib.type = (VAConfigAttribType) VAConfigAttribPredictionDirection;
+        attrib.value = VA_PREDICTION_DIRECTION_PREVIOUS;
+        (*attribList)[attrib.type] = attrib.value;
+    }
     return status;
 }
 
@@ -1982,29 +1988,7 @@ VAStatus MediaLibvaCaps::CheckEncodeResolution(
 
 VAStatus MediaLibvaCaps::CheckProfile(VAProfile profile)
 {
-    VAStatus status = VA_STATUS_SUCCESS;
-    if (IsVc1Profile(profile))
-    {
-        MOS_USER_FEATURE       userFeature;
-        MOS_USER_FEATURE_VALUE userFeatureValue;
-        MOS_ZeroMemory(&userFeatureValue, sizeof(userFeatureValue));
-        userFeatureValue.u32Data    = true;
-        userFeature.Type            = MOS_USER_FEATURE_TYPE_USER;
-        userFeature.pValues         = &userFeatureValue;
-        userFeature.uiNumValues     = 1;
-        MOS_UserFeature_ReadValue(
-            nullptr,
-            &userFeature,
-            "VC1Enabled",
-            MOS_USER_FEATURE_VALUE_TYPE_INT32);
-
-        if (!userFeatureValue.u32Data)
-        {
-            status = VA_STATUS_ERROR_UNSUPPORTED_PROFILE;
-        }
-
-    }
-    return status;
+    return VA_STATUS_SUCCESS;
 }
 
 VAStatus MediaLibvaCaps::CreateConfig(
@@ -3086,7 +3070,9 @@ GMM_RESOURCE_FORMAT MediaLibvaCaps::ConvertMediaFmtToGmmFmt(
         case Media_Format_Buffer     : return GMM_FORMAT_RENDER_8BIT;
         case Media_Format_P010       : return GMM_FORMAT_P010_TYPE;
         case Media_Format_R10G10B10A2: return GMM_FORMAT_R10G10B10A2_UNORM_TYPE;
-        case Media_Format_B10G10R10A2: return GMM_FORMAT_B10G10R10A2_UNORM_TYPE;   
+        case Media_Format_B10G10R10A2: return GMM_FORMAT_B10G10R10A2_UNORM_TYPE;
+        case Media_Format_R10G10B10X2: return GMM_FORMAT_R10G10B10A2_UNORM_TYPE;
+        case Media_Format_B10G10R10X2: return GMM_FORMAT_B10G10R10A2_UNORM_TYPE;
         default                      : return GMM_FORMAT_INVALID;
     }
 }
@@ -3128,6 +3114,8 @@ GMM_RESOURCE_FORMAT MediaLibvaCaps::ConvertFourccToGmmFmt(uint32_t fourcc)
         case VA_FOURCC_Y800   : return GMM_FORMAT_GENERIC_8BIT;
         case VA_FOURCC_A2R10G10B10   : return GMM_FORMAT_R10G10B10A2_UNORM_TYPE;
         case VA_FOURCC_A2B10G10R10   : return GMM_FORMAT_B10G10R10A2_UNORM_TYPE;
+        case VA_FOURCC_X2R10G10B10   : return GMM_FORMAT_R10G10B10A2_UNORM_TYPE;
+        case VA_FOURCC_X2B10G10R10   : return GMM_FORMAT_B10G10R10A2_UNORM_TYPE;
         default               : return GMM_FORMAT_INVALID;
     }
 }

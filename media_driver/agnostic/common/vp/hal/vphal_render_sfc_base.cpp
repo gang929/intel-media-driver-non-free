@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2012-2019, Intel Corporation
+* Copyright (c) 2012-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -64,6 +64,8 @@ MOS_STATUS VpHal_InitMhwOutSurfParams(
     pMhwOutSurfParams->dwHeight                    = pSfcPipeOutSurface->dwHeight;
     pMhwOutSurfParams->dwPitch                     = pSfcPipeOutSurface->dwPitch;
     pMhwOutSurfParams->TileType                    = pSfcPipeOutSurface->TileType;
+    pMhwOutSurfParams->TileModeGMM                 = pSfcPipeOutSurface->TileModeGMM;
+    pMhwOutSurfParams->bGMMTileEnabled             = pSfcPipeOutSurface->bGMMTileEnabled;
     pMhwOutSurfParams->pOsResource                 = &(pSfcPipeOutSurface->OsResource);
     pMhwOutSurfParams->Format                      = pSfcPipeOutSurface->Format;
     pMhwOutSurfParams->bCompressible               = pSfcPipeOutSurface->bCompressible;
@@ -205,15 +207,32 @@ void VphalSfcState::AdjustBoundary(
     uint32_t*                   pdwSurfaceWidth,
     uint32_t*                   pdwSurfaceHeight)
 {
-    uint32_t   dwVeboxHeight;
-    uint32_t   dwVeboxWidth;
-    uint32_t   dwVeboxBottom;
-    uint32_t   dwVeboxRight;
+    uint32_t        dwVeboxHeight;
+    uint32_t        dwVeboxWidth;
+    uint32_t        dwVeboxBottom;
+    uint32_t        dwVeboxRight;
+    MEDIA_WA_TABLE *pWaTable = nullptr;
 
     VPHAL_RENDER_CHK_NULL_NO_STATUS(m_sfcInterface);
+    VPHAL_RENDER_CHK_NULL_NO_STATUS(m_osInterface);
     VPHAL_RENDER_CHK_NULL_NO_STATUS(pSurface);
     VPHAL_RENDER_CHK_NULL_NO_STATUS(pdwSurfaceWidth);
     VPHAL_RENDER_CHK_NULL_NO_STATUS(pdwSurfaceHeight);
+
+    pWaTable = m_osInterface->pfnGetWaTable(m_osInterface);
+    VPHAL_RENDER_CHK_NULL_NO_STATUS(pWaTable);
+
+    if (MEDIA_IS_WA(pWaTable, WaVeboxInputHeight16Aligned) &&
+       (pSurface->Format == Format_NV12                    ||
+        pSurface->Format == Format_P010                    ||
+        pSurface->Format == Format_P016))
+    {
+        m_sfcInterface->m_veHeightAlignment = 16;
+    }
+    else
+    {
+        m_sfcInterface->m_veHeightAlignment = MHW_SFC_VE_HEIGHT_ALIGN;
+    }
 
     // For the VEBOX output to SFC, the width is multiple of 16 and height
     // is multiple of 4
@@ -895,6 +914,7 @@ MOS_STATUS VphalSfcState::SetSfcStateParams(
     dwVeboxRight           = (uint32_t)pSrcSurface->rcSrc.right;
     dstColorPack           = VpHal_GetSurfaceColorPack(pOutSurface->Format);
 
+    VPHAL_RENDER_CHK_NULL(pSfcStateParams);
     MOS_ZeroMemory(pSfcStateParams, sizeof(*pSfcStateParams));
 
     pSfcStateParams->sfcPipeMode = MEDIASTATE_SFC_PIPE_VE_TO_SFC;
@@ -1054,7 +1074,7 @@ MOS_STATUS VphalSfcState::SetSfcStateParams(
 
     // Refine the Scaling ratios in the X and Y direction. SFC output Scaled size may be changed based on the restriction of SFC alignment.
     // The scaling ratio could be changed and not equal to the fScaleX/Y.
-    // Driver must make sure that the scaling ratio should be matched with the output/input size before send to HW  
+    // Driver must make sure that the scaling ratio should be matched with the output/input size before send to HW
     pSfcStateParams->fAVSXScalingRatio              = (float)pSfcStateParams->dwScaledRegionWidth / (float)pSfcStateParams->dwSourceRegionWidth;
     pSfcStateParams->fAVSYScalingRatio              = (float)pSfcStateParams->dwScaledRegionHeight / (float)pSfcStateParams->dwSourceRegionHeight;
 
@@ -1129,7 +1149,11 @@ MOS_STATUS VphalSfcState::SetSfcStateParams(
             (m_colorFillSrcCspace          != src_cspace)  ||
             (m_colorFillRTCspace           != dst_cspace))
         {
-            VpHal_CSC_8(&m_colorFillColorDst, &Src, src_cspace, dst_cspace);
+            // Clean history Dst BG Color if hit unsupported format
+            if (!VpHal_CSC_8(&m_colorFillColorDst, &Src, src_cspace, dst_cspace))
+            {
+                MOS_ZeroMemory(&m_colorFillColorDst, sizeof(m_colorFillColorDst));
+            }
 
             // store the values for next iteration
             m_colorFillColorSrc    = Src;
@@ -1162,17 +1186,27 @@ MOS_STATUS VphalSfcState::SetSfcStateParams(
         pSfcStateParams->fColorFillAPixel  = (float)Src.A / 255.0F;
     }
 
-    if (pAlphaParams                              &&
-        ((pOutSurface->Format == Format_A8R8G8B8) ||
-         (pOutSurface->Format == Format_A8B8G8R8) ||
-         (pOutSurface->Format  == Format_AYUV)))
+    if (pAlphaParams)
     {
         switch (pAlphaParams->AlphaMode)
         {
-            case VPHAL_ALPHA_FILL_MODE_NONE:
+        case VPHAL_ALPHA_FILL_MODE_NONE:
+            if (pOutSurface->Format == Format_A8R8G8B8    ||
+                pOutSurface->Format == Format_A8B8G8R8    ||
+                pOutSurface->Format == Format_R10G10B10A2 ||
+                pOutSurface->Format == Format_B10G10R10A2 ||
+                pOutSurface->Format == Format_AYUV        ||
+                pOutSurface->Format == Format_Y410        ||
+                pOutSurface->Format == Format_Y416)
+            {
                 pSfcStateParams->fAlphaPixel      = pAlphaParams->fAlpha;
                 pSfcStateParams->fColorFillAPixel = pAlphaParams->fAlpha;
-                break;
+            }
+            else
+            {
+                pSfcStateParams->fAlphaPixel      = 1.0F;
+            }
+            break;
 
             case VPHAL_ALPHA_FILL_MODE_BACKGROUND:
                 pSfcStateParams->fAlphaPixel = m_renderData.bColorFill ?
@@ -1332,7 +1366,9 @@ MOS_STATUS VphalSfcState::SetAvsStateParams()
         m_renderData.fScaleX,
         m_renderData.fScaleY,
         m_renderData.SfcSrcChromaSiting,
-        true));
+        true,
+        0,
+        0));
 
 finish:
     return eStatus;

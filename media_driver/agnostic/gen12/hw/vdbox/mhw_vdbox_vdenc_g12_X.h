@@ -1,6 +1,6 @@
 /*===================== begin_copyright_notice ==================================
 
-Copyright (c) 2017-2019, Intel Corporation
+Copyright (c) 2017-2020, Intel Corporation
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -51,6 +51,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define VP9VDENCROWSTORE_BASEADDRESS_768                                  768
 #define RESERVED_VDENC_ROWSTORE_BASEADDRESS                               2370
 #define RESERVED_VDENC_IPDL_ROWSTORE_BASEADDRESS                          384
+#define AVC_VDENC_IPDL_ROWSTORE_BASEADDRESS                               512
 
 #define GEN12_AVC_VDENC_ROWSTORE_BASEADDRESS                                  1280
 #define GEN12_AVC_VDENC_ROWSTORE_BASEADDRESS_MBAFF                            1536
@@ -157,8 +158,7 @@ protected:
         MHW_MI_CHK_NULL(skuTable);
 
         MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-
-        if (MEDIA_IS_SKU(skuTable, FtrSimulationMode))
+        if (this->m_osInterface->bSimIsActive)
         {
             // Disable RowStore Cache on simulation by default
             userFeatureData.u32Data = 1;
@@ -455,6 +455,14 @@ public:
             this->m_vdencIpdlRowstoreCache.dwAddress = RESERVED_VDENC_IPDL_ROWSTORE_BASEADDRESS;
 
         }
+        else if (this->m_vdencRowStoreCache.bSupported && rowstoreParams->Mode == CODECHAL_ENCODE_MODE_AVC)
+        {
+            this->m_vdencRowStoreCache.bEnabled = true;
+
+            //IPDL
+            this->m_vdencIpdlRowstoreCache.dwAddress = AVC_VDENC_IPDL_ROWSTORE_BASEADDRESS;
+
+        }
 
         return MOS_STATUS_SUCCESS;
     }
@@ -551,6 +559,46 @@ public:
         return MOS_STATUS_SUCCESS;
     }
 
+    uint32_t GetAvcSliceMaxSize()
+    {
+        uint32_t maxSize =
+            TVdencCmds::VDENC_WEIGHTSOFFSETS_STATE_CMD::byteSize +
+            TVdencCmds::VDENC_WALKER_STATE_CMD::byteSize +
+            TVdencCmds::VD_PIPELINE_FLUSH_CMD::byteSize;
+
+        return maxSize;
+    }
+
+    MOS_STATUS GetVdencPrimitiveCommandsDataSize(
+        uint32_t                        mode,
+        uint32_t                        *commandsSize,
+        uint32_t                        *patchListSize) override
+    {
+        MHW_FUNCTION_ENTER;
+
+        uint32_t            maxSize = 0;
+        uint32_t            patchListMaxSize = 0;
+        uint32_t            standard = CodecHal_GetStandardFromMode(mode);
+
+        if (standard == CODECHAL_AVC)
+        {
+            maxSize = GetAvcSliceMaxSize();
+            patchListMaxSize = VDENC_PIPE_BUF_ADDR_STATE_CMD_NUMBER_OF_ADDRESSES;
+        }
+        else
+        {
+            MHW_ASSERTMESSAGE("Unsupported encode mode.");
+            *commandsSize = 0;
+            *patchListSize = 0;
+            return MOS_STATUS_UNKNOWN;
+        }
+
+        *commandsSize = maxSize;
+        *patchListSize = patchListMaxSize;
+
+        return MOS_STATUS_SUCCESS;
+    }
+
     MOS_STATUS AddVdencPipeModeSelectCmd(
         PMOS_COMMAND_BUFFER                cmdBuffer,
         PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS params) override
@@ -567,7 +615,7 @@ public:
         cmd.DW1.ScalabilityMode                = !(paramsG12->MultiEngineMode == MHW_VDBOX_HCP_MULTI_ENGINE_MODE_FE_LEGACY);
         if (CODECHAL_ENCODE_MODE_HEVC == params->Mode || CODECHAL_ENCODE_RESERVED_0 == params->Mode)
         {
-            cmd.DW1.FrameStatisticsStreamOutEnable = paramsG12->bBRCEnabled;
+            cmd.DW1.FrameStatisticsStreamOutEnable = paramsG12->bBRCEnabled || paramsG12->bLookaheadPass;
         }
         // AVC VENC to be optimized later
         else
@@ -656,10 +704,8 @@ public:
 
         if (params->psRawSurface != nullptr)
         {
-            cmd.OriginalUncompressedPicture.PictureFields.DW0.MemoryCompressionEnable =
-                (params->RawSurfMmcState == MOS_MEMCOMP_RC || params->RawSurfMmcState == MOS_MEMCOMP_MC) ? 1 : 0;
-            cmd.OriginalUncompressedPicture.PictureFields.DW0.CompressionType = 
-                (params->RawSurfMmcState == MOS_MEMCOMP_RC) ? 1 : 0;
+            cmd.OriginalUncompressedPicture.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(params->RawSurfMmcState) ? 1 : 0;
+            cmd.OriginalUncompressedPicture.PictureFields.DW0.CompressionType = MmcIsRc(params->RawSurfMmcState) ? 1 : 0;
             cmd.OriginalUncompressedPicture.PictureFields.DW0.MemoryObjectControlState =
                 this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_ORIGINAL_UNCOMPRESSED_PICTURE_ENCODE].Value;
 
@@ -682,7 +728,7 @@ public:
             cmd.RowStoreScratchBuffer.BufferPictureFields.DW0.CacheSelect = TVdencCmds::VDENC_Surface_Control_Bits_CMD::CACHE_SELECT_UNNAMED1;
             cmd.RowStoreScratchBuffer.LowerAddress.DW0.Value              = this->m_vdencRowStoreCache.dwAddress << 6;
         }
-        else if (params->presVdencIntraRowStoreScratchBuffer != nullptr)
+        else if (!Mos_ResourceIsNull(params->presVdencIntraRowStoreScratchBuffer))
         {
             cmd.RowStoreScratchBuffer.BufferPictureFields.DW0.MemoryObjectControlState =
                 this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_VDENC_ROW_STORE_BUFFER_CODEC].Value;
@@ -809,29 +855,29 @@ public:
                 switch (refIdx)
                 {
                 case 0:
-                    cmd.FwdRef0.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                    cmd.FwdRef0.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                    cmd.FwdRef0.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                    cmd.FwdRef0.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                     cmd.FwdRef0.PictureFields.DW0.MemoryObjectControlState =
                         this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                     cmd.FwdRef0.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
                     break;
                 case 1:
-                    cmd.FwdRef1.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                    cmd.FwdRef1.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                    cmd.FwdRef1.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                    cmd.FwdRef1.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                     cmd.FwdRef1.PictureFields.DW0.MemoryObjectControlState =
                         this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                     cmd.FwdRef1.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
                     break;
                 case 2:
-                    cmd.FwdRef2.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                    cmd.FwdRef2.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                    cmd.FwdRef2.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                    cmd.FwdRef2.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                     cmd.FwdRef2.PictureFields.DW0.MemoryObjectControlState =
                         this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                     cmd.FwdRef2.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
                     break;
                 case 3:
-                    cmd.BwdRef0.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                    cmd.BwdRef0.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                    cmd.BwdRef0.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                    cmd.BwdRef0.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                     cmd.BwdRef0.PictureFields.DW0.MemoryObjectControlState =
                         this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                     cmd.BwdRef0.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
@@ -876,15 +922,15 @@ public:
                     switch (refIdx)
                     {
                     case 0:
-                        cmd.DsFwdRef0.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                        cmd.DsFwdRef0.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                        cmd.DsFwdRef0.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                        cmd.DsFwdRef0.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                         cmd.DsFwdRef0.PictureFields.DW0.MemoryObjectControlState =
                             this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                         cmd.DsFwdRef0.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
                         break;
                     case 1:
-                        cmd.DsFwdRef1.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                        cmd.DsFwdRef1.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                        cmd.DsFwdRef1.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                        cmd.DsFwdRef1.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                         cmd.DsFwdRef1.PictureFields.DW0.MemoryObjectControlState =
                             this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                         cmd.DsFwdRef1.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
@@ -925,15 +971,15 @@ public:
                     switch (refIdx)
                     {
                     case 0:
-                        cmd.DsFwdRef0.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                        cmd.DsFwdRef0.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                        cmd.DsFwdRef0.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                        cmd.DsFwdRef0.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                         cmd.DsFwdRef0.PictureFields.DW0.MemoryObjectControlState =
                             this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                         cmd.DsFwdRef0.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
                         break;
                     case 1:
-                        cmd.DsFwdRef1.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                        cmd.DsFwdRef1.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                        cmd.DsFwdRef1.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                        cmd.DsFwdRef1.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                         cmd.DsFwdRef1.PictureFields.DW0.MemoryObjectControlState =
                             this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                         cmd.DsFwdRef1.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
@@ -972,15 +1018,15 @@ public:
                     switch (refIdx)
                     {
                     case 0:
-                        cmd.DsFwdRef04X.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                        cmd.DsFwdRef04X.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                        cmd.DsFwdRef04X.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                        cmd.DsFwdRef04X.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                         cmd.DsFwdRef04X.PictureFields.DW0.MemoryObjectControlState =
                             this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                         cmd.DsFwdRef04X.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
                         break;
                     case 1:
-                        cmd.DsFwdRef14X.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                        cmd.DsFwdRef14X.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                        cmd.DsFwdRef14X.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                        cmd.DsFwdRef14X.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                         cmd.DsFwdRef14X.PictureFields.DW0.MemoryObjectControlState =
                             this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                         cmd.DsFwdRef14X.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
@@ -1020,8 +1066,8 @@ public:
                 mmcMode = (params->PostDeblockSurfMmcState != MOS_MEMCOMP_DISABLED) ?
                     params->PostDeblockSurfMmcState : params->PreDeblockSurfMmcState;
 
-                cmd.BwdRef0.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                cmd.BwdRef0.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                cmd.BwdRef0.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                cmd.BwdRef0.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                 cmd.BwdRef0.PictureFields.DW0.MemoryObjectControlState =
                     this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                 cmd.BwdRef0.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
@@ -1046,8 +1092,8 @@ public:
 
                 mmcMode = params->Ps8xDsSurfMmcState;
 
-                cmd.DsBwdRef0.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                cmd.DsBwdRef0.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                cmd.DsBwdRef0.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                cmd.DsBwdRef0.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                 cmd.DsBwdRef0.PictureFields.DW0.MemoryObjectControlState =
                     this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                 cmd.DsBwdRef0.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
@@ -1072,8 +1118,8 @@ public:
                 resourceParams.pdwCmd = (uint32_t*)&(cmd.DsBwdRef04X.LowerAddress);
 
                 mmcMode = params->Ps4xDsSurfMmcState;
-                cmd.DsBwdRef04X.PictureFields.DW0.MemoryCompressionEnable = (mmcMode == MOS_MEMCOMP_RC || mmcMode == MOS_MEMCOMP_MC) ? 1 : 0;
-                cmd.DsBwdRef04X.PictureFields.DW0.CompressionType = (mmcMode == MOS_MEMCOMP_RC) ? 1 : 0;
+                cmd.DsBwdRef04X.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(mmcMode) ? 1 : 0;
+                cmd.DsBwdRef04X.PictureFields.DW0.CompressionType         = MmcIsRc(mmcMode) ? 1 : 0;
                 cmd.DsBwdRef04X.PictureFields.DW0.MemoryObjectControlState =
                     this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
                 cmd.DsBwdRef04X.PictureFields.DW0.TiledResourceMode = Mhw_ConvertToTRMode(details.TileType);
@@ -1115,10 +1161,8 @@ public:
                 resourceParams.dwLocationInCmd = 49;
                 resourceParams.bIsWritable     = true;
 
-                cmd.ScaledReferenceSurface8X.PictureFields.DW0.MemoryCompressionEnable = 
-                    (params->Ps8xDsSurfMmcState == MOS_MEMCOMP_RC || params->Ps8xDsSurfMmcState == MOS_MEMCOMP_MC) ? 1 : 0;
-                cmd.ScaledReferenceSurface8X.PictureFields.DW0.CompressionType = 
-                    (params->Ps8xDsSurfMmcState == MOS_MEMCOMP_RC) ? 1 : 0;
+                cmd.ScaledReferenceSurface8X.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(params->Ps8xDsSurfMmcState) ? 1 : 0;
+                cmd.ScaledReferenceSurface8X.PictureFields.DW0.CompressionType         = MmcIsRc(params->Ps8xDsSurfMmcState) ? 1 : 0;
                 cmd.ScaledReferenceSurface8X.PictureFields.DW0.MemoryObjectControlState =
                     this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
 
@@ -1136,10 +1180,8 @@ public:
                 resourceParams.dwLocationInCmd = 52;
                 resourceParams.bIsWritable     = true;
 
-                cmd.ScaledReferenceSurface4X.PictureFields.DW0.MemoryCompressionEnable =
-                    (params->Ps4xDsSurfMmcState == MOS_MEMCOMP_RC || params->Ps4xDsSurfMmcState == MOS_MEMCOMP_MC) ? 1 : 0;
-                cmd.ScaledReferenceSurface4X.PictureFields.DW0.CompressionType =
-                    (params->Ps4xDsSurfMmcState == MOS_MEMCOMP_RC) ? 1 : 0;
+                cmd.ScaledReferenceSurface4X.PictureFields.DW0.MemoryCompressionEnable = MmcEnable(params->Ps4xDsSurfMmcState) ? 1 : 0;
+                cmd.ScaledReferenceSurface4X.PictureFields.DW0.CompressionType = MmcIsRc(params->Ps4xDsSurfMmcState) ? 1 : 0;
                 cmd.ScaledReferenceSurface4X.PictureFields.DW0.MemoryObjectControlState =
                     this->m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_REFERENCE_PICTURE_CODEC].Value;
 
@@ -1651,6 +1693,18 @@ public:
             cmd.DW30.RoiQpAdjustmentForZone3 = priorityLevelOrDQp[2];
         }
 
+        if (avcSeqParams->RateControlMethod != RATECONTROL_CQP)
+        {
+            cmd.DW30.QpAdjustmentForShapeBestIntra4X4Winner = 0;
+            cmd.DW30.QpAdjustmentForShapeBestIntra8X8Winner = 0;
+            cmd.DW30.QpAdjustmentForShapeBestIntra16X16Winner = 0;
+
+            cmd.DW31.BestdistortionQpAdjustmentForZone0 = 0;
+            cmd.DW31.BestdistortionQpAdjustmentForZone1 = 1;
+            cmd.DW31.BestdistortionQpAdjustmentForZone2 = 2;
+            cmd.DW31.BestdistortionQpAdjustmentForZone3 = 3;
+        }
+
         if (params->bVdencBRCEnabled && avcPicParams->NumDirtyROI && params->bVdencStreamInEnabled)
         {
             cmd.DW34.RoiEnable = true;
@@ -1788,6 +1842,7 @@ public:
                     cmd.DW7.TileRowstoreOffset = num32x32InX;
                 }
             }
+            cmd.DW16.AdaptiveChannelThreshold = 6;
         }
         else if (params->Mode == CODECHAL_ENCODE_MODE_VP9)
         {
@@ -1796,9 +1851,6 @@ public:
             MHW_MI_CHK_NULL(params->pVp9EncPicParams);
             auto vp9PicParams = params->pVp9EncPicParams;
             auto tileCodingParams = paramsG12->pTileCodingParams;
-
-            cmd.DW8.TileStreamoutOffsetEnable = 1;
-            cmd.DW6.StreaminOffsetEnable = 1;
 
             if (tileCodingParams == nullptr)
             {
@@ -1826,37 +1878,41 @@ public:
                 cmd.DW3.NumParEngine                 = paramsG12->dwNumberOfPipes;
                 cmd.DW3.TileNumber                   = paramsG12->dwTileId;
 
-                if (paramsG12->dwNumberOfPipes >= 1)
+                //Frame Stats Offset
+                cmd.DW8.TileStreamoutOffsetEnable = 1;
+                cmd.DW8.TileStreamoutOffset = (paramsG12->dwTileId * 19); // 3 CLs or 48 DWs of statistics data + 16CLs or 256 DWs of Histogram data
+
+                uint32_t tileStartXInSBs = (cmd.DW4.TileStartCtbX / CODEC_VP9_SUPER_BLOCK_WIDTH);
+                uint32_t tileStartYInSBs = (cmd.DW4.TileStartCtbY / CODEC_VP9_SUPER_BLOCK_HEIGHT);
+                //Aligned Tile height & frame width
+                uint32_t tileHeightInSBs = (cmd.DW5.TileHeight + 1 + (CODEC_VP9_SUPER_BLOCK_HEIGHT - 1)) / CODEC_VP9_SUPER_BLOCK_HEIGHT;
+                uint32_t frameWidthInSBs = (vp9PicParams->SrcFrameWidthMinus1 + 1 + (CODEC_VP9_SUPER_BLOCK_WIDTH - 1)) / CODEC_VP9_SUPER_BLOCK_WIDTH;
+
+                cmd.DW6.StreaminOffsetEnable = 1;
+                //StreamIn data is 4 CLs per LCU
+                cmd.DW6.TileStreaminOffset = (tileStartYInSBs * frameWidthInSBs + tileStartXInSBs * tileHeightInSBs) * (4);
+
+                // If Tile Column, compute PAK Object StreamOut Offsets
+                uint32_t tileLCUStreamOutOffsetInBytes = 0;
+                if (cmd.DW4.TileStartCtbY != 0 || cmd.DW4.TileStartCtbX != 0)
                 {
-                    uint32_t tileStartXInSBs = (cmd.DW4.TileStartCtbX / CODEC_VP9_SUPER_BLOCK_WIDTH);
-                    uint32_t tileStartYInSBs = (cmd.DW4.TileStartCtbY / CODEC_VP9_SUPER_BLOCK_HEIGHT);
-                    //Aligned Tile height & frame width
-                    uint32_t tileHeightInSBs = (cmd.DW5.TileHeight + 1 + (CODEC_VP9_SUPER_BLOCK_HEIGHT - 1)) / CODEC_VP9_SUPER_BLOCK_HEIGHT;
-                    uint32_t frameWidthInSBs = (vp9PicParams->SrcFrameWidthMinus1 + 1 + (CODEC_VP9_SUPER_BLOCK_WIDTH - 1)) / CODEC_VP9_SUPER_BLOCK_WIDTH;
+                    //Aligned Tile width & frame height
+                    uint32_t numOfSBs = tileStartYInSBs * frameWidthInSBs + tileStartXInSBs * tileHeightInSBs;
+                    //max LCU size is 64, min Cu size is 8
+                    uint32_t maxNumOfCUInSB = (CODEC_VP9_SUPER_BLOCK_HEIGHT / CODEC_VP9_MIN_BLOCK_HEIGHT) *
+                        (CODEC_VP9_SUPER_BLOCK_WIDTH / CODEC_VP9_MIN_BLOCK_WIDTH);
+                    tileLCUStreamOutOffsetInBytes = 2 * BYTES_PER_DWORD * numOfSBs * (NUM_PAK_DWS_PER_LCU + maxNumOfCUInSB * NUM_DWS_PER_CU);
+                }
 
-                    cmd.DW6.TileStreaminOffset = (tileStartYInSBs * frameWidthInSBs + tileStartXInSBs * tileHeightInSBs) * (4); //StreamIn data is 4 CLs per LCU
+                cmd.DW9.LcuStreamOutOffsetEnable = 1;
+                cmd.DW9.TileLcuStreamOutOffset = MOS_ROUNDUP_DIVIDE(tileLCUStreamOutOffsetInBytes, MHW_CACHELINE_SIZE);
 
-                                                                                                                                //Frame Stats Offset
-                    cmd.DW8.TileStreamoutOffset = (paramsG12->dwTileId * 19); // 3 CLs or 48 DWs of statistics data + 16CLs or 256 DWs of Histogram data              
-
-                                                                              // If Tile Column, compute PAK Object StreamOut Offsets 
-                    if (cmd.DW4.TileStartCtbY == 0)
-                    {
-                        //RowStore Offset Computation
-                        uint32_t num32x32sInX = (cmd.DW4.TileStartCtbX) / 32;
-                        cmd.DW7.RowStoreOffsetEnable = 1;
-                        cmd.DW7.TileRowstoreOffset = num32x32sInX;
-
-                        //Aligned Tile width & frame height
-                        uint32_t widthInSBs                    = (cmd.DW4.TileStartCtbX) / CODEC_VP9_SUPER_BLOCK_WIDTH;
-                        uint32_t frameHeightInSBs              = ((vp9PicParams->SrcFrameHeightMinus1 + 1) + (CODEC_VP9_SUPER_BLOCK_HEIGHT - 1)) / CODEC_VP9_SUPER_BLOCK_HEIGHT;
-                        uint32_t numOfSBs                      = widthInSBs * (frameHeightInSBs + 1);
-                        uint32_t maxNumOfCUInSB                = (CODEC_VP9_SUPER_BLOCK_HEIGHT / CODEC_VP9_MIN_BLOCK_HEIGHT)*(CODEC_VP9_SUPER_BLOCK_WIDTH / CODEC_VP9_MIN_BLOCK_WIDTH); //max LCU size is 64, min Cu size is 8
-                        uint32_t tileLCUStreamOutOffsetInBytes = 2 * 4 * ((numOfSBs * 5) + (numOfSBs*maxNumOfCUInSB * 8));
-
-                        cmd.DW9.LcuStreamOutOffsetEnable = 1;
-                        cmd.DW9.TileLcuStreamOutOffset   = MOS_ROUNDUP_DIVIDE(tileLCUStreamOutOffsetInBytes, MHW_CACHELINE_SIZE);
-                    }
+                if (cmd.DW4.TileStartCtbY == 0)
+                {
+                    //RowStore Offset Computation
+                    uint32_t num32x32sInX = (cmd.DW4.TileStartCtbX) / 32;
+                    cmd.DW7.RowStoreOffsetEnable = 1;
+                    cmd.DW7.TileRowstoreOffset = num32x32sInX;
                 }
             }
         }
@@ -2017,6 +2073,18 @@ public:
         MHW_MI_CHK_STATUS(Mos_AddCommand(cmdBuffer, &cmd, sizeof(cmd)));
 
         return MOS_STATUS_SUCCESS;
+    }
+
+    PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS CreateMhwVdboxPipeModeSelectParams() override
+    {
+        auto pipeModeSelectParams = MOS_New(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS_G12);
+
+        return pipeModeSelectParams;
+    }
+
+    void ReleaseMhwVdboxPipeModeSelectParams(PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS pipeModeSelectParams) override
+    {
+        MOS_Delete(pipeModeSelectParams);
     }
 };
 

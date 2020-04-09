@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2018, Intel Corporation
+* Copyright (c) 2017-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -128,13 +128,6 @@ public:
     PMHW_VDBOX_STATE_CMDSIZE_PARAMS CreateMhwVdboxStateCmdsizeParams() override;
 
     //!
-    //! \brief    Create PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS.
-    //!
-    //! \return   PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS
-    //!
-    PMHW_VDBOX_PIPE_MODE_SELECT_PARAMS CreateMhwVdboxPipeModeSelectParams() override;
-
-    //!
     //! \brief    Create PMHW_VDBOX_VDENC_WALKER_STATE_PARAMS.
     //!
     //! \return   PMHW_VDBOX_VDENC_WALKER_STATE_PARAMS
@@ -187,7 +180,7 @@ public:
 
 protected:
 
-    MOS_STATUS CalculateVdencPictureStateCommandSize() override;
+    MOS_STATUS CalculateVdencCommandsSize() override;
 
 private:
     static const uint32_t m_mvCostSkipBiasQPel[3][8];
