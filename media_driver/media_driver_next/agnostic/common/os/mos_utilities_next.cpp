@@ -270,6 +270,7 @@ void MosUtilities::MosFreeUserFeatureValueString(PMOS_USER_FEATURE_VALUE_STRING 
             if (pUserString->pStringData)
             {
                 MOS_FreeMemAndSetNull(pUserString->pStringData);
+                m_mosMemAllocFakeCounter--;
             }
             pUserString->uSize = 0;
         }
@@ -953,9 +954,6 @@ MOS_STATUS MosUtilities::MosCopyUserFeatureValueData(
                 pDstData->StringData.uSize,
                 pSrcData->StringData.pStringData,
                 pSrcData->StringData.uSize);
-
-            MOS_SafeFreeMemory(pSrcData->StringData.pStringData);
-            pSrcData->StringData.pStringData = nullptr;
         }
         break;
     case MOS_USER_FEATURE_VALUE_TYPE_MULTI_STRING:
@@ -1050,6 +1048,7 @@ MOS_STATUS MosUtilities::MosAssignUserFeatureValueData(
                 MOS_OS_ASSERTMESSAGE("Failed to allocate memory.");
                 return MOS_STATUS_NULL_POINTER;
             }
+            m_mosMemAllocFakeCounter++;
             eStatus = MosSecureStrcpy(
                 pDstData->StringData.pStringData,
                 pDstData->StringData.uSize + 1,
@@ -1555,10 +1554,23 @@ MOS_STATUS MosUtilities::MosUserFeatureReadValueString(
     }
     if (strlen(pcTmpStr) > 0)
     {
-        pFeatureValue->Value.StringData.pStringData = (char *)MOS_AllocAndZeroMemory(strlen(pcTmpStr) + 1);
+        if (!pFeatureValue->Value.StringData.pStringData)
+        {
+            m_mosMemAllocFakeCounter++;
+        }
+
+        if (pFeatureValue->Value.StringData.uSize < strlen(pcTmpStr))
+        {
+            pFeatureValue->Value.StringData.pStringData =
+                (char *)MOS_ReallocMemory(pFeatureValue->Value.StringData.pStringData, strlen(pcTmpStr) + 1);
+            pFeatureValue->Value.StringData.uSize = strlen(pcTmpStr);
+        }
+
+        MOS_OS_CHK_NULL_RETURN(pFeatureValue->Value.StringData.pStringData);
+
+        MosZeroMemory(pFeatureValue->Value.StringData.pStringData, pFeatureValue->Value.StringData.uSize + 1);
 
         MosSecureMemcpy(pFeatureValue->Value.StringData.pStringData, strlen(pcTmpStr), pcTmpStr, strlen(pcTmpStr));
-        pFeatureValue->Value.StringData.uSize = dwUFSize;
     }
     return eStatus;
 }
@@ -2035,6 +2047,8 @@ MOS_STATUS MosUtilities::MosUserFeatureWriteValuesTblID(
     MOS_STATUS                          eStatus            = MOS_STATUS_SUCCESS;
     char                                WritePathWithPID[MAX_PATH];
     int32_t                             pid;
+    uint64_t                            ulTraceData         = 0;
+    bool                                isValid             = false;
 
     //--------------------------------------------------
     MOS_OS_CHK_NULL_RETURN(pWriteValues);
@@ -2058,6 +2072,30 @@ MOS_STATUS MosUtilities::MosUserFeatureWriteValuesTblID(
         //append write path with pid
         sprintf_s(WritePathWithPID, MAX_PATH, "%s\\%d", pUserFeature->pcWritePath, pid);
 
+        // Trace data in case opening user feature for write fails
+        switch (pUserFeature->ValueType)
+        {
+            case MOS_USER_FEATURE_VALUE_TYPE_BOOL:
+            case MOS_USER_FEATURE_VALUE_TYPE_INT32:
+            case MOS_USER_FEATURE_VALUE_TYPE_UINT32:
+            case MOS_USER_FEATURE_VALUE_TYPE_FLOAT:
+                ulTraceData = pWriteValues[ui].Value.u32Data;
+                isValid = true;
+                break;
+            case MOS_USER_FEATURE_VALUE_TYPE_INT64:
+            case MOS_USER_FEATURE_VALUE_TYPE_UINT64:
+                ulTraceData = pWriteValues[ui].Value.u64Data;
+                isValid = true;
+                break;
+            default:
+                MOS_OS_NORMALMESSAGE("Unknown value type %d", pUserFeature->ValueType);
+        }
+
+        if (isValid)
+        {
+            MosTraceDataDictionary(pUserFeature->pValueName, &ulTraceData, sizeof(ulTraceData));
+        }
+
         //try to open Write path with pid first
         if ((eStatus = MosUserFeatureOpen(
                  pUserFeature->Type,
@@ -2072,7 +2110,7 @@ MOS_STATUS MosUtilities::MosUserFeatureWriteValuesTblID(
                      KEY_WRITE,
                      &UFKey)) != MOS_STATUS_SUCCESS)
             {
-                MOS_OS_NORMALMESSAGE("Failed to open user feature for reading.");
+                MOS_OS_NORMALMESSAGE("Failed to open user feature for writing.");
                 eStatus = MOS_STATUS_USER_FEATURE_KEY_OPEN_FAILED;
                 goto finish;
             }

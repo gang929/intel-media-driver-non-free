@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018, Intel Corporation
+* Copyright (c) 2018-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,26 +23,37 @@
 #define __VP_PIPELINE_ADAPTER_G12_H__
 
 #include "vphal_g12_tgllp.h"
-#include "vp_pipeline_g12.h"
+#include "vp_pipeline.h"
 #include "vp_pipeline_common.h"
+#include "vp_pipeline_adapter.h"
 
-class VpPipelineG12Adapter : public VphalStateG12Tgllp
+class VpPipelineG12Adapter : public VphalStateG12Tgllp, public VpPipelineAdapter
 {
 public:
     VpPipelineG12Adapter(
         PMOS_INTERFACE          pOsInterface,
         PMOS_CONTEXT            pOsDriverContext,
-        MOS_STATUS              *peStatus);
+        vp::VpPlatformInterface &vpPlatformInterface,
+        MOS_STATUS              &eStatus);
 
     //!
     //! \brief    VpPipelineG12Adapter Destuctor
     //! \details  Destroys VpPipelineG12Adapter and all internal states and objects
     //! \return   void
     //!
-     ~VpPipelineG12Adapter()
-     {
-        Destroy();
-     };
+    virtual ~VpPipelineG12Adapter();
+
+    //!
+    //! \brief    Performs VP Rendering
+    //! \details  Performs VP Rendering
+    //!           - call default render of video
+    //! \param    [in] pcRenderParams
+    //!           Pointer to Render Params
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS Render(
+        PCVPHAL_RENDER_PARAMS   pcRenderParams) override;
 
     //!
     //! \brief    Allocate VP Resources
@@ -55,30 +66,11 @@ public:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     virtual MOS_STATUS Allocate(
-      const VphalSettings     *pVpHalSettings);
-
-    virtual MOS_STATUS Execute(void    *params);
+      const VphalSettings     *pVpHalSettings) override;
 
     virtual MOS_STATUS GetStatusReport(
-        PQUERY_STATUS_REPORT_APP pQueryReport,
-        uint16_t                 numStatus);
-
-    virtual void Destroy();
-
-    //!
-    //! \brief    Performs VP Rendering
-    //! \details  Performs VP Rendering
-    //!           - call default render of video
-    //! \param    [in] pcRenderParams
-    //!           Pointer to Render Params
-    //! \return   MOS_STATUS
-    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
-    //!
-    virtual MOS_STATUS Render(
-        PCVPHAL_RENDER_PARAMS   pcRenderParams);
-
-    MOS_STATUS Prepare(
-        PCVPHAL_RENDER_PARAMS   pcRenderParams);
+        PQUERY_STATUS_REPORT_APP  pQueryReport,
+        uint16_t                  numStatus) override;
 
     //!
     //! \brief    Get feature reporting
@@ -86,16 +78,7 @@ public:
     //! \return   VphalFeatureReport*
     //!           Pointer to VPHAL_FEATURE_REPOR: rendering features reported
     //!
-    virtual VphalFeatureReport*       GetRenderFeatureReport();
-
-protected:
-    std::shared_ptr<vp::VpPipelineG12> m_vpPipeline = {};
-
-    VP_MHWINTERFACE                    m_vpMhwinterface = {};   //!< vp Mhw Interface
-    VP_PIPELINE_PARAMS                 m_vpPipelineParams = {};   //!< vp Pipeline params
-    VphalFeatureReport                *m_reporting = nullptr;
-    bool                               m_bApgEnabled = 0;    //!< VP APG path enabled
-
+    virtual VphalFeatureReport* GetRenderFeatureReport() override;
 };
 #endif // !__VP_PIPELINE_ADAPTER_G12_H__
 

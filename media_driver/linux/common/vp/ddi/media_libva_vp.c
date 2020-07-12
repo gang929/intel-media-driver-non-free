@@ -152,7 +152,7 @@ VAStatus VpGetExternalSurfaceInfo(
     PDDI_MEDIA_SURFACE pMediaSurface,
     PVPHAL_SURFACE pVphalSurface)
 {
-    if (pMediaSurface->pSurfDesc && !(pMediaSurface->pSurfDesc->uiFlags & VA_SURFACE_EXTBUF_DESC_PROTECTED))
+    if (pMediaSurface->pSurfDesc)
     {
         if (pMediaSurface->pSurfDesc->uiVaMemType == VA_SURFACE_ATTRIB_MEM_TYPE_KERNEL_DRM ||
             pMediaSurface->pSurfDesc->uiVaMemType == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME)
@@ -172,11 +172,22 @@ VAStatus VpGetExternalSurfaceInfo(
                     pVphalSurface->OsResource.VPlaneOffset.iYOffset       = 0;
                     break;
                 case 3:
-                    pVphalSurface->OsResource.YPlaneOffset.iSurfaceOffset = pMediaSurface->pSurfDesc->uiOffsets[0];
-                    pVphalSurface->OsResource.UPlaneOffset.iSurfaceOffset = pMediaSurface->pSurfDesc->uiOffsets[1];
-                    pVphalSurface->OsResource.UPlaneOffset.iYOffset       = 0;
-                    pVphalSurface->OsResource.VPlaneOffset.iSurfaceOffset = pMediaSurface->pSurfDesc->uiOffsets[2];
-                    pVphalSurface->OsResource.VPlaneOffset.iYOffset       = 0;
+                    if (pMediaSurface->format == Media_Format_YV12)
+                    {
+                        pVphalSurface->OsResource.YPlaneOffset.iSurfaceOffset = pMediaSurface->pSurfDesc->uiOffsets[0];
+                        pVphalSurface->OsResource.UPlaneOffset.iSurfaceOffset = pMediaSurface->pSurfDesc->uiOffsets[2];
+                        pVphalSurface->OsResource.UPlaneOffset.iYOffset       = 0;
+                        pVphalSurface->OsResource.VPlaneOffset.iSurfaceOffset = pMediaSurface->pSurfDesc->uiOffsets[1];
+                        pVphalSurface->OsResource.VPlaneOffset.iYOffset       = 0;
+                    }
+                    else
+                    {
+                        pVphalSurface->OsResource.YPlaneOffset.iSurfaceOffset = pMediaSurface->pSurfDesc->uiOffsets[0];
+                        pVphalSurface->OsResource.UPlaneOffset.iSurfaceOffset = pMediaSurface->pSurfDesc->uiOffsets[1];
+                        pVphalSurface->OsResource.UPlaneOffset.iYOffset       = 0;
+                        pVphalSurface->OsResource.VPlaneOffset.iSurfaceOffset = pMediaSurface->pSurfDesc->uiOffsets[2];
+                        pVphalSurface->OsResource.VPlaneOffset.iYOffset       = 0;
+                    }
                     break;
                 default:
                     DDI_ASSERTMESSAGE("Invalid plane number.");
@@ -223,8 +234,9 @@ VAStatus VpGetExternalSurfaceInfo(
         }
         else
         {
-            DDI_ASSERTMESSAGE("Unsupported memory type.");
-            return VA_STATUS_ERROR_UNSUPPORTED_BUFFERTYPE;
+            pVphalSurface->b16UsrPtr                   = false;
+            pVphalSurface->OsResource.b16UsrPtrMode    = false;
+            pVphalSurface->OsResource.bExternalSurface = false;
         }
     }
     else
@@ -312,6 +324,7 @@ MOS_FORMAT VpGetFormatFromMediaFormat(DDI_MEDIA_FORMAT mf)
     case Media_Format_P010:
         format = Format_P010;
         break;
+    case Media_Format_P012:
     case Media_Format_P016:
         format = Format_P016;
         break;
@@ -1249,6 +1262,12 @@ DdiVp_SetProcPipelineParams(
     //vaStatus = DdiVp_UpdateProcDeinterlaceParams(pVaDrvCtx, pVpHalSrcSurf, pPipelineParam);
     //DDI_CHK_RET(vaStatus, "Failed to update vphal advance deinterlace!");
 
+    // Use Render to do scaling for resolution larger than 8K
+    if(MEDIA_IS_WA(&pMediaCtx->WaTable, WaDisableVeboxFor8K))
+    {
+        pVpHalRenderParams->bDisableVeboxFor8K = true;
+    }
+
     // Scaling algorithm
     uScalingflags                    = pPipelineParam->filter_flags & VA_FILTER_SCALING_MASK;
     pVpHalSrcSurf->ScalingPreference = VPHAL_SCALING_PREFER_SFC;    // default
@@ -1612,7 +1631,9 @@ VAStatus DdiVp_InitCtx(VADriverContextP pVaDrvCtx, PDDI_VP_CONTEXT pVpCtx)
 
     pVpCtx->MosDrvCtx.pPerfData             = (PERF_DATA*)MOS_AllocAndZeroMemory(sizeof(PERF_DATA));
     pVpCtx->MosDrvCtx.m_osDeviceContext     = pMediaCtx->m_osDeviceContext;
-    if( nullptr == pVpCtx->MosDrvCtx.pPerfData)
+    pVpCtx->MosDrvCtx.m_apoMosEnabled       = pMediaCtx->m_apoMosEnabled;
+
+    if (nullptr == pVpCtx->MosDrvCtx.pPerfData)
     {
         return VA_STATUS_ERROR_ALLOCATION_FAILED;
     }
@@ -2024,6 +2045,12 @@ VPHAL_CSPACE DdiVp_GetColorSpaceFromMediaFormat(DDI_MEDIA_FORMAT format)
     case Media_Format_422V:
     case Media_Format_P010:
     case Media_Format_IMC3:
+    case Media_Format_AYUV:
+    case Media_Format_Y210:
+    case Media_Format_Y410:
+    case Media_Format_P016:
+    case Media_Format_Y216:
+    case Media_Format_Y416:
         ColorSpace = CSpace_BT601;
         break;
     default:
@@ -2259,6 +2286,7 @@ DdiVp_SetProcFilterDinterlaceParams(
             DIMode = DI_MODE_BOB;
             break;
         case VAProcDeinterlacingMotionAdaptive:
+        case VAProcDeinterlacingMotionCompensated:
             DIMode = DI_MODE_ADI;
             break;
         case VAProcDeinterlacingWeave:
@@ -2266,7 +2294,6 @@ DdiVp_SetProcFilterDinterlaceParams(
             return VA_STATUS_SUCCESS;
         case VAProcDeinterlacingNone:
             return VA_STATUS_SUCCESS;
-        case VAProcDeinterlacingMotionCompensated:
         default:
             VP_DDI_ASSERTMESSAGE("Deinterlacing type is unsupported.");
             return VA_STATUS_ERROR_UNIMPLEMENTED;
@@ -3655,6 +3682,10 @@ static bool hasAlphaInSurface(PVPHAL_SURFACE pSurface)
             case Format_A8B8G8R8:
             case Format_A8P8:
             case Format_AYUV:
+            case Format_Y410:
+            case Format_Y416:
+            case Format_R10G10B10A2:
+            case Format_B10G10R10A2:
                 return true;
             default:
                 return false;
@@ -3682,6 +3713,7 @@ DdiVp_SetProcPipelineBlendingParams(
 {
     PVPHAL_RENDER_PARAMS      pVpHalRenderParams;
     PVPHAL_SURFACE            pSrc;
+    PVPHAL_SURFACE            pTarget;
     bool                      bGlobalAlpha;
     bool                      bPreMultAlpha;
 
@@ -3712,8 +3744,21 @@ DdiVp_SetProcPipelineBlendingParams(
 
     // So far vaapi does not have alpha fill mode API.
     // And for blending support, we use VPHAL_ALPHA_FILL_MODE_NONE by default.
-    pVpHalRenderParams->pCompAlpha->fAlpha      = 1.0f;
-    pVpHalRenderParams->pCompAlpha->AlphaMode = VPHAL_ALPHA_FILL_MODE_NONE;
+    pTarget = pVpHalRenderParams->pTarget[0];
+    DDI_CHK_NULL(pTarget, "Null pTarget.", VA_STATUS_ERROR_INVALID_SURFACE);
+
+    //For surface with alpha, we need to bypass SFC that could change the output alpha.
+    if (hasAlphaInSurface(pSrc) &&
+        hasAlphaInSurface(pTarget))
+    {
+        pVpHalRenderParams->pCompAlpha->fAlpha      = 0.0f;
+        pVpHalRenderParams->pCompAlpha->AlphaMode = VPHAL_ALPHA_FILL_MODE_SOURCE_STREAM;
+    }
+    else
+    {
+        pVpHalRenderParams->pCompAlpha->fAlpha      = 1.0f;
+        pVpHalRenderParams->pCompAlpha->AlphaMode = VPHAL_ALPHA_FILL_MODE_NONE;
+    }
 
     // First, no Blending
     if(!blend_state)
@@ -4126,7 +4171,7 @@ DdiVp_QueryVideoProcFilterCaps (
 
         /* Deinterlacing filter */
         case VAProcFilterDeinterlacing:
-            uExistCapsNum  = 2;
+            uExistCapsNum = 3;
             /* set input filter caps number to the actual number of filters in vp module */
             *num_filter_caps = uExistCapsNum;
             /* set the actual filter caps attribute in vp module */
@@ -4139,8 +4184,9 @@ DdiVp_QueryVideoProcFilterCaps (
                     return VA_STATUS_ERROR_MAX_NUM_EXCEEDED;
                 }
 
-                diCap[0].type                         = VAProcDeinterlacingBob;
-                diCap[1].type                         = VAProcDeinterlacingMotionAdaptive;
+                diCap[0].type = VAProcDeinterlacingBob;
+                diCap[1].type = VAProcDeinterlacingMotionAdaptive;
+                diCap[2].type = VAProcDeinterlacingMotionCompensated;
             }
             break;
 

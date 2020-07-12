@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2019, Intel Corporation
+* Copyright (c) 2017-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -2746,17 +2746,17 @@ MOS_STATUS CodechalEncodeAvcBase::SetPictureStructs()
                 MOS_ALIGN_CEIL((m_downscaledFrameFieldHeightInMb4x * 4 * 10), 8);
             m_meMvBottomFieldOffset =
                 MOS_ALIGN_CEIL((m_downscaledWidthInMb4x * 32), 64) *
-                (m_downscaledFrameFieldHeightInMb4x * 4);
+                (m_downscaledFrameFieldHeightInMb4x * 4 * CODECHAL_ENCODE_ME_DATA_SIZE_MULTIPLIER);
             if (m_16xMeEnabled)
             {
                 m_meMv16xBottomFieldOffset =
                     MOS_ALIGN_CEIL((m_downscaledWidthInMb16x * 32), 64) *
-                    (m_downscaledFrameFieldHeightInMb16x * 4);
+                    (m_downscaledFrameFieldHeightInMb16x * 4 * CODECHAL_ENCODE_ME_DATA_SIZE_MULTIPLIER);
                 if (m_32xMeEnabled)
                 {
                     m_meMv32xBottomFieldOffset =
                         MOS_ALIGN_CEIL((m_downscaledWidthInMb32x * 32), 64) *
-                        (m_downscaledFrameFieldHeightInMb32x * 4);
+                        (m_downscaledFrameFieldHeightInMb32x * 4 * CODECHAL_ENCODE_ME_DATA_SIZE_MULTIPLIER);
                 }
             }
 
@@ -2767,17 +2767,17 @@ MOS_STATUS CodechalEncodeAvcBase::SetPictureStructs()
                     MOS_ALIGN_CEIL((m_downscaledFrameFieldHeightInMb4x * 4 * 10), 8));
                 m_hmeKernel->Set4xMeMvBottomFieldOffset(
                     MOS_ALIGN_CEIL((m_downscaledWidthInMb4x * 32), 64) *
-                    (m_downscaledFrameFieldHeightInMb4x * 4));
+                    (m_downscaledFrameFieldHeightInMb4x * 4 * CODECHAL_ENCODE_ME_DATA_SIZE_MULTIPLIER));
                 if (m_hmeKernel->Is16xMeEnabled())
                 {
                     m_hmeKernel->Set16xMeMvBottomFieldOffset(
                         MOS_ALIGN_CEIL((m_downscaledWidthInMb16x * 32), 64) *
-                        (m_downscaledFrameFieldHeightInMb16x * 4));
+                        (m_downscaledFrameFieldHeightInMb16x * 4 * CODECHAL_ENCODE_ME_DATA_SIZE_MULTIPLIER));
                     if (m_hmeKernel->Is32xMeEnabled())
                     {
                         m_hmeKernel->Set32xMeMvBottomFieldOffset(
                             MOS_ALIGN_CEIL((m_downscaledWidthInMb32x * 32), 64) *
-                            (m_downscaledFrameFieldHeightInMb32x * 4));
+                            (m_downscaledFrameFieldHeightInMb32x * 4 * CODECHAL_ENCODE_ME_DATA_SIZE_MULTIPLIER));
                     }
                 }
             }
@@ -3065,7 +3065,7 @@ MOS_STATUS CodechalEncodeAvcBase::EncodeMeKernel(
 
     if (!m_singleTaskPhaseSupported || m_lastTaskInPhase)
     {
-        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
         m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_renderContextUsesNullHw);
         m_lastTaskInPhase = false;
     }

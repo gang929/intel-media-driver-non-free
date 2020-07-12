@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2014-2019, Intel Corporation
+* Copyright (c) 2014-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -289,6 +289,12 @@ typedef struct _MHW_VEBOX_DNDI_PARAMS
     uint32_t  dwLPFWtLUT5;
     uint32_t  dwLPFWtLUT6;
     uint32_t  dwLPFWtLUT7;
+
+    //for SlimIPUDenoise
+    void *    pSystemMem = nullptr;
+    uint32_t  MemSizeInBytes;
+    bool      bEnableSlimIPUDenoise;
+
 } MHW_VEBOX_DNDI_PARAMS, *PMHW_VEBOX_DNDI_PARAMS;
 
 //!
@@ -728,7 +734,9 @@ typedef struct _MHW_VEBOX_SURFACE_PARAMS
     MOS_TILE_TYPE               TileType;            //!<  Tile Type
     MOS_TILE_MODE_GMM           TileModeGMM;         //!<  Tile Mode from GMM Definition
     bool                        bGMMTileEnabled;     //!<  GMM defined tile mode flag
+    RECT                        rcSrc = {0, 0, 0, 0};  //!< Source rectangle
     RECT                        rcMaxSrc;            //!< Max source rectangle
+    bool                        bVEBOXCroppingUsed = false;  //!<Vebox crop case need use rcSrc as vebox input.
     PMOS_RESOURCE               pOsResource;         //!<  Surface resource
 } MHW_VEBOX_SURFACE_PARAMS, *PMHW_VEBOX_SURFACE_PARAMS;
 

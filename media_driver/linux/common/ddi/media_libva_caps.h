@@ -787,6 +787,8 @@ protected:
 
     static const uint32_t m_encMinWidth = 32; //!< Minimum width for encoding
     static const uint32_t m_encMinHeight = 32; //!< Minimum height for encoding
+    static const uint32_t m_hevcVDEncMinWidth = 128; //!< Minimum width for HEVC VDEnc
+    static const uint32_t m_hevcVDEncMinHeight = 128; //!< Minimum height for HEVC VDEnc
     static const uint32_t m_encMax4kWidth =
         CODEC_4K_MAX_PIC_WIDTH; //!< Minimum width for encoding
     static const uint32_t m_encMax4kHeight =
@@ -800,6 +802,8 @@ protected:
     DDI_MEDIA_CONTEXT *m_mediaCtx; //!< Pointer to media context
 
     MediaLibvaCapsCpInterface* m_CapsCp;
+
+    static constexpr uint32_t m_configAttribNone = 0x00000000; //!< Define for empty attrib
 
     //!
     //! \brief  Store all the supported encode format
@@ -823,6 +827,8 @@ protected:
     std::vector<EncConfig> m_encConfigs; //!< Store supported encode configs
     std::vector<DecConfig> m_decConfigs; //!< Store supported decode configs
     std::vector<uint32_t> m_vpConfigs;   //!< Store supported vp configs
+
+    bool m_vdencActive = false;  //!< If vdenc is active on current platform
 
     //!
     //! \brief    Check entrypoint codec type
@@ -1062,6 +1068,26 @@ protected:
     //!           VA_STATUS_SUCCESS if success
     //!
     virtual VAStatus CreateDecAttributes(
+            VAProfile profile,
+            VAEntrypoint entrypoint,
+            AttribMap **attributeList);
+
+    //!
+    //! \brief    Create and intialize an attribute array give Vp profile and entrypoint
+    //!
+    //! \param    [in] profile
+    //!           VA profile
+    //!
+    //! \param    [in] entrypoint
+    //!           VA entrypoint
+    //!
+    //! \param    [in,out] attributeList
+    //!           Pointer to a pointer of AttribMap that will be created
+    //!
+    //! \return   VAStatus
+    //!           VA_STATUS_SUCCESS if success
+    //!
+    VAStatus CreateVpAttributes(
             VAProfile profile,
             VAEntrypoint entrypoint,
             AttribMap **attributeList);
@@ -1316,5 +1342,28 @@ protected:
             VAProfile profile,
             VAEntrypoint entrypoint,
             VAConfigAttrib* attrib);
+    //!
+    //! \brief    Check the encode attribute list  according to profile and entrypoint
+    //!
+    //! \param    [in] profile
+    //!           VAProfile
+    //!
+    //! \param    [in] entrypoint
+    //!           VAEntrypoint
+    //!
+    //! \param    [in] attrib
+    //!           Pointer to a pointer of VAConfigAttrib
+    //!
+    //! \param    [in] numAttribs
+    //!           number of of VAConfigAttrib
+    //!
+    //! \return   VAStatus
+    //!           VA_STATUS_SUCCESS if success
+    //!
+    VAStatus CheckAttribList(
+            VAProfile profile,
+            VAEntrypoint entrypoint,
+            VAConfigAttrib* attrib,
+            int32_t numAttribs);
 };
 #endif

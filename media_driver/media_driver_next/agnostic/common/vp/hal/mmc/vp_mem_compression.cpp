@@ -31,14 +31,14 @@
 
 VPMediaMemComp::VPMediaMemComp(
     PMOS_INTERFACE osInterface,
-    MhwMiInterface *miInterface)
-    :MediaMemComp(osInterface, miInterface)
+    PVP_MHWINTERFACE vpInterface)
+    :MediaMemComp(osInterface, vpInterface->m_mhwMiInterface)
 {
     m_mmcFeatureId = __VPHAL_ENABLE_MMC_ID;
     m_mmcInuseFeatureId = __VPHAL_ENABLE_MMC_IN_USE_ID;
 
 #if(LINUX)
-    m_bComponentMmcEnabled = false;
+    m_bComponentMmcEnabled = !MEDIA_IS_WA(vpInterface->m_waTable, WaDisableVPMmc);
 #else
     m_bComponentMmcEnabled = true;
 #endif

@@ -34,13 +34,6 @@ class MediaUserSettingsMgr_g12 : public MediaUserSettingsMgr
 public:
     MediaUserSettingsMgr_g12();
     virtual ~MediaUserSettingsMgr_g12();
-
-protected:
-    virtual bool SetDefaultValueChanged()
-    {
-        return MosUtilUserInterface::SetDefaultValueChanged(true);
-    }
-
 };
 
 //!
@@ -68,6 +61,8 @@ typedef enum _MOS_USER_FEATURE_VALUE_ID_G12
     __MEDIA_USER_FEATURE_VALUE_HEVC_VME_DISABLE_PANIC_MODE_ID_G12,
     __MEDIA_USER_FEATURE_VALUE_HEVC_VME_NUM_MEDIA_HWWALKER_INUSE_ID_G12,
     __MEDIA_USER_FEATURE_VALUE_HEVC_VME_BREAK12_ID_G12,
+    /* codec g12hp based */
+    __MEDIA_USER_FEATURE_VALUE_HEVC_VME_ENABLE_RENDER_CONTEXT_ID_G12HP,
     /* VP gen12 based */
     __MEDIA_USER_FEATURE_VALUE_SFC_OUTPUT_CENTERING_DISABLE_ID_G12,
     __MEDIA_USER_FEATURE_VALUE_SFC_OUTPUT_DTR_DISABLE_ID_G12,

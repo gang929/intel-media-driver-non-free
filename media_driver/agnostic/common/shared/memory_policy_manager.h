@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018, Intel Corporation
+* Copyright (c) 2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,28 +19,34 @@
 * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 * OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef __VP_PACKET_FACTORY_G12_H__
-#define __VP_PACKET_FACTORY_G12_H__
+//!
+//! \file     memory_policy_manager.h
+//! \brief    Defines interfaces for media memory policy manager.
 
-#include "media_cmd_packet.h"
-#include "mhw_sfc.h"
-#include "vp_pipeline_common.h"
-#include "vp_allocator.h"
 
-#include <vector>
-#include "hw_filter.h"
-#include "vp_packet_pipe.h"
+#ifndef __MEMORY_POLICY_MANAGER_H__
+#define __MEMORY_POLICY_MANAGER_H__
 
-namespace vp {
+#include "mos_os.h"
 
-class PacketFactoryG12 : public PacketFactory
+class MemoryPolicyManager
 {
 public:
-    PacketFactoryG12();
-    virtual ~PacketFactoryG12();
-    virtual VpCmdPacket *CreateVeboxPacket();
-    virtual VpCmdPacket *CreateRenderPacket();
+
+    //! \brief   Updates resource memory policy
+    //!
+    //! \details Update memory policy to decide which type of memory is allocated (device memory, system memory or default setting).
+    //!
+    //! \param   [in] skuTable
+    //!          The pointer to MEDIA_FEATURE_TABLE
+    //! \param   [in, out] resInfo
+    //!          The pointer to GMM_RESOURCE_INFO, resource description which gets updated
+    //! \param   [in] preferredMemType
+    //!          Prefer which type of memory is allocated (device memory, system memory or default setting).
+    //!
+    //! \return  new memory policy
+    static int UpdateMemoryPolicy(MEDIA_FEATURE_TABLE *skuTable, GMM_RESOURCE_INFO *resInfo, int preferredMemType = MOS_MEMPOOL_VIDEOMEMORY);
 };
 
-}
-#endif // !__VP_PACKET_PIPE_H__
+
+#endif //__MEMORY_POLICY_MANAGER_H__

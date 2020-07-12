@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2011-2018, Intel Corporation
+* Copyright (c) 2011-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -307,7 +307,9 @@ MOS_STATUS CodechalDecode::CreateGpuContexts(
         CodecHalDecodeMapGpuNodeToGpuContex(MOS_GPU_NODE_VIDEO, m_videoContextForWa, true);
     }
 
-    MOS_GPUCTX_CREATOPTIONS createOption;
+    MOS_GPUCTX_CREATOPTIONS_ENHANCED createOption;
+    createOption.UsingSFC = codecHalSettings->sfcInUseHinted && codecHalSettings->downsamplingHinted
+                          && (MEDIA_IS_SKU(m_skuTable, FtrSFCPipe)) && !(MEDIA_IS_SKU(m_skuTable, FtrDisableVDBox2SFC));
     eStatus = (MOS_STATUS)m_osInterface->pfnCreateGpuContext(
         m_osInterface,
         m_videoContextForWa,
@@ -520,9 +522,13 @@ MOS_STATUS CodechalDecode::Allocate (CodechalSetting * codecHalSettings)
     if (!m_mmc)
     {
         m_mmc = MOS_New(CodecHalMmcState, m_hwInterface);
+        CODECHAL_DECODE_CHK_NULL_RETURN(m_mmc);
     }
 
-    m_secureDecoder = Create_SecureDecodeInterface(codecHalSettings, m_hwInterface);
+    if (codecHalSettings->secureMode)
+    {
+        m_secureDecoder = Create_SecureDecodeInterface(codecHalSettings, m_hwInterface);
+    }
 
 #ifdef _DECODE_PROCESSING_SUPPORTED
     m_downsamplingHinted = codecHalSettings->downsamplingHinted ? true : false;
@@ -588,7 +594,7 @@ MOS_STATUS CodechalDecode::AllocateRefSurfaces(
             allocHeight,
             "DownsamplingRefSurface",
             format,
-            CodecHalMmcState::IsMmcEnabled());
+            m_mmc->IsMmcEnabled());
 
         if (eStatus != MOS_STATUS_SUCCESS)
         {
@@ -624,8 +630,8 @@ MOS_STATUS CodechalDecode::RefSurfacesResize(
         height,
         "DownsamplingRefSurface",
         format,
-        CodecHalMmcState::IsMmcEnabled());
-  
+        m_mmc->IsMmcEnabled());
+
     if (eStatus != MOS_STATUS_SUCCESS)
     {
         CODECHAL_DECODE_ASSERTMESSAGE("Failed to allocate decode downsampling reference surface.");
@@ -1741,16 +1747,13 @@ MOS_STATUS CodechalDecode::SendPrologWithFrameTracking(
         cmdBuffer->Attributes.dwMediaFrameTrackingAddrOffset = 0;
     }
 
-    if (m_mmc)
-    {
-        CODECHAL_DECODE_CHK_STATUS_RETURN(m_mmc->SendPrologCmd(m_miInterface, cmdBuffer, gpuContext));
-    }
+    CODECHAL_DECODE_CHK_STATUS_RETURN(m_mmc->SendPrologCmd(m_miInterface, cmdBuffer, gpuContext));
 
     MHW_GENERIC_PROLOG_PARAMS genericPrologParams;
     MOS_ZeroMemory(&genericPrologParams, sizeof(genericPrologParams));
     genericPrologParams.pOsInterface                    = m_osInterface;
     genericPrologParams.pvMiInterface                   = m_miInterface;
-    genericPrologParams.bMmcEnabled                     = CodecHalMmcState::IsMmcEnabled();
+    genericPrologParams.bMmcEnabled                     = m_mmc->IsMmcEnabled();
 
     CODECHAL_DECODE_CHK_STATUS_RETURN(Mhw_SendGenericPrologCmd(
         cmdBuffer,

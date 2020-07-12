@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2011-2019, Intel Corporation
+* Copyright (c) 2011-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -804,6 +804,35 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
         }
     }
 
+    // Allocate BT2020 CSC temp surface----------------------------------------------
+    if (pRenderData->b2PassesCSC)
+    {
+        VPHAL_RENDER_CHK_STATUS(VpHal_ReAllocateSurface(
+            pOsInterface,
+            &pVeboxState->m_BT2020CSCTempSurface,
+            "VeboxBT2020CSCTempSurface_g12",
+            Format_A8B8G8R8,
+            MOS_GFXRES_2D,
+            MOS_TILE_Y,
+            pVeboxState->m_currentSurface->dwWidth,
+            pVeboxState->m_currentSurface->dwHeight,
+            false,
+            MOS_MMC_DISABLED,
+            &bAllocated));
+
+        // Copy rect sizes so that if input surface state needs to adjust,
+        // output surface can be adjustted also.
+        pVeboxState->m_BT2020CSCTempSurface.rcSrc = pVeboxState->m_currentSurface->rcSrc;
+        pVeboxState->m_BT2020CSCTempSurface.rcDst = pVeboxState->m_currentSurface->rcDst;
+        // Copy max src rect
+        pVeboxState->m_BT2020CSCTempSurface.rcMaxSrc = pVeboxState->m_currentSurface->rcMaxSrc;
+
+        // Copy Rotation, it's used in setting SFC state
+        pVeboxState->m_BT2020CSCTempSurface.Rotation   = pVeboxState->m_currentSurface->Rotation;
+        pVeboxState->m_BT2020CSCTempSurface.SampleType = pVeboxState->m_currentSurface->SampleType;
+        pVeboxState->m_BT2020CSCTempSurface.ColorSpace = CSpace_sRGB;
+    }
+
     // Allocate Statistics State Surface----------------------------------------
     // Width to be a aligned on 64 bytes and height is 1/4 the height
     // Per frame information written twice per frame for 2 slices
@@ -1016,6 +1045,11 @@ void VPHAL_VEBOX_STATE_G12_BASE::FreeResources()
     pOsInterface->pfnFreeResource(
         pOsInterface,
         &pVeboxState->VeboxRGBHistogram.OsResource);
+
+    // Free BT2020 CSC temp surface for VEBOX used by BT2020 CSC
+    pOsInterface->pfnFreeResource(
+        pOsInterface,
+        &pVeboxState->m_BT2020CSCTempSurface.OsResource);
 
 #if VEBOX_AUTO_DENOISE_SUPPORTED
     // Free Spatial Attributes Configuration Surface for DN kernel
@@ -2303,6 +2337,12 @@ VPHAL_OUTPUT_PIPE_MODE VPHAL_VEBOX_STATE_G12_BASE::GetOutputPipe(
         goto finish;
     }
 
+    if (VeboxIs2PassesCSCNeeded(pSrcSurface, pcRenderParams->pTarget[0]))
+    {
+        OutputPipe = VPHAL_OUTPUT_PIPE_MODE_COMP;
+        goto finish;
+    }
+
     pTarget             = pcRenderParams->pTarget[0];
     VPHAL_RENDER_CHK_NULL_NO_STATUS(pcRenderParams->pTarget[0]);
 
@@ -2402,9 +2442,13 @@ bool VPHAL_VEBOX_STATE_G12_BASE::IsNeeded(
         ((pSrcSurface->dwWidth >= VPHAL_RNDR_8K_WIDTH || pSrcSurface->dwHeight >= VPHAL_RNDR_8K_HEIGHT) ||
          (pRenderTarget->dwWidth >= VPHAL_RNDR_8K_WIDTH || pRenderTarget->dwHeight >= VPHAL_RNDR_8K_HEIGHT)))
     {
-        VPHAL_RENDER_NORMALMESSAGE("Disable VEBOX/SFC for 8k resolution");
-        pRenderPassData->bCompNeeded = true;
-        goto finish;
+        // For HDR, still need Vebox to handle since there is no fallback Render path.
+        if (!pcRenderParams->pSrc[0]->pHDRParams && !pcRenderParams->pTarget[0]->pHDRParams)
+        {
+            VPHAL_RENDER_NORMALMESSAGE("Disable VEBOX/SFC for 8k resolution");
+            pRenderPassData->bCompNeeded = true;
+            goto finish;
+        }
     }
 
     pRenderData->Init();
@@ -2437,6 +2481,23 @@ bool VPHAL_VEBOX_STATE_G12_BASE::IsNeeded(
         goto finish;
     }
 
+    //If using Vebox to Crop, setting the bVEBOXCroppingUsed = true. We use the rcSrc to set Vebox width/height instead of using rcMaxsrc in VeboxAdjustBoundary().
+    if (IS_VPHAL_OUTPUT_PIPE_VEBOX(pRenderData) &&
+        ((uint32_t)pSrcSurface->rcSrc.bottom < pSrcSurface->dwHeight ||
+            (uint32_t)pSrcSurface->rcSrc.right < pSrcSurface->dwWidth))
+    {
+        pSrcSurface->bVEBOXCroppingUsed = true;
+        VPHAL_RENDER_NORMALMESSAGE("bVEBOXCroppingUsed = true, pSrcSurface->rcSrc.bottom: %d, pSrcSurface->rcSrc.right: %d; pSrcSurface->dwHeight: %d, pSrcSurface->dwHeight: %d;",
+            (uint32_t)pSrcSurface->rcSrc.bottom,
+            (uint32_t)pSrcSurface->rcSrc.right,
+            pSrcSurface->dwHeight,
+            pSrcSurface->dwWidth);
+    }
+    else
+    {
+        pSrcSurface->bVEBOXCroppingUsed = false;
+    }
+
     // Set MMC State
     SET_VPHAL_MMC_STATE(pRenderData, pVeboxState->bEnableMMC);
 
@@ -2462,6 +2523,11 @@ bool VPHAL_VEBOX_STATE_G12_BASE::IsNeeded(
         VeboxSetRenderingFlags(
             pSrcSurface,
             pRenderTarget);
+
+        if (pRenderData->b2PassesCSC)
+        {
+            pRenderData->bVeboxBypass = false;
+        }
 
         // Vebox is needed if Vebox isn't bypassed
         bVeboxNeeded = !pRenderData->bVeboxBypass;
@@ -2938,7 +3004,11 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::Initialize(
     // Read user feature key for MMC enable
     MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
     UserFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
-    UserFeatureData.bData       = false; // disable MMC by default
+#if(LINUX)
+    UserFeatureData.bData       = !MEDIA_IS_WA(pVeboxState->m_pWaTable, WaDisableVPMmc); // enable MMC by default
+#else
+    UserFeatureData.bData = true;
+#endif
     MOS_USER_FEATURE_INVALID_KEY_ASSERT(MOS_UserFeature_ReadValue_ID(
         nullptr,
         __VPHAL_ENABLE_MMC_ID,

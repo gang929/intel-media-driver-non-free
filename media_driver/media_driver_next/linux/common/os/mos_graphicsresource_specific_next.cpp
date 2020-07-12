@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, Intel Corporation
+* Copyright (c) 2019-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -30,6 +30,7 @@
 #include "mos_graphicsresource_specific_next.h"
 #include "mos_context_specific_next.h"
 #include "mos_os_specific_next.h"
+#include "memory_policy_manager.h"
 
 GraphicsResourceSpecificNext::GraphicsResourceSpecificNext()
 {
@@ -134,6 +135,7 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
     uint32_t           alignedHeight   = params.m_height;
     uint32_t           bufHeight       = params.m_height;
     GMM_RESOURCE_TYPE  resourceType    = RESOURCE_2D;
+    int32_t            mem_type        = MOS_MEMPOOL_VIDEOMEMORY;
 
     GMM_RESCREATE_PARAMS    gmmParams;
     MosUtilities::MosZeroMemory(&gmmParams, sizeof(gmmParams));
@@ -263,6 +265,11 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
         gmmResourceInfoPtr->SetMmcMode((GMM_RESOURCE_MMC_INFO)params.m_compressionMode, 0);
     }
 
+    if(!params.m_pSystemMemory)
+    {
+        mem_type = MemoryPolicyManager::UpdateMemoryPolicy(pOsContextSpecific->GetSkuTable(), gmmResourceInfoPtr, params.m_memType);
+    }
+
     uint32_t bufPitch        = GFX_ULONG_CAST(gmmResourceInfoPtr->GetRenderPitch());
     uint32_t bufSize         = GFX_ULONG_CAST(gmmResourceInfoPtr->GetSizeSurface());
     bufHeight                = gmmResourceInfoPtr->GetBaseHeight();
@@ -285,11 +292,19 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
     // Only Linear and Y TILE supported
     else if (tileFormatLinux == I915_TILING_NONE)
     {
-        boPtr = mos_bo_alloc(pOsContextSpecific->m_bufmgr, bufName, bufSize, 4096);
+        boPtr = mos_bo_alloc(pOsContextSpecific->m_bufmgr, bufName, bufSize, 4096, mem_type);
     }
     else
     {
-        boPtr = mos_bo_alloc_tiled(pOsContextSpecific->m_bufmgr, bufName, bufPitch, bufSize/bufPitch, 1, &tileFormatLinux, &linuxPitch, 0);
+        boPtr = mos_bo_alloc_tiled(pOsContextSpecific->m_bufmgr,
+                        bufName,
+                        bufPitch,
+                        bufSize/bufPitch,
+                        1,
+                        &tileFormatLinux,
+                        &linuxPitch,
+                        0,
+                        mem_type);
         bufPitch = (uint32_t)linuxPitch;
     }
 
@@ -442,16 +457,16 @@ void* GraphicsResourceSpecificNext::Lock(OsContextNext* osContextPtr, LockParams
             (((GmmFlags.Gpu.MMC || GmmFlags.Gpu.CCS) && GmmFlags.Info.MediaCompressed) ||
              pGmmResInfo->IsMediaMemoryCompressed(0)))
         {
-            if ((pOsContextSpecific->m_mediaMemDecompState == nullptr) ||
-                (pOsContextSpecific->m_memoryDecompress    == nullptr))
-            {
-                MOS_OS_ASSERTMESSAGE("m_mediaMemDecompState/m_memoryDecompress is not valid.");
-                return nullptr;
-            }
-
             MOS_RESOURCE mosResource = {};
             ConvertToMosResource(&mosResource);
-            pOsContextSpecific->m_memoryDecompress(pOsContextSpecific->m_mosContext, &mosResource);
+
+            MosDecompression *mosDecompression = pOsContextSpecific->GetMosDecompression();
+            if (nullptr == mosDecompression)
+            {
+                MOS_OS_ASSERTMESSAGE("mosDecompression is NULL.");
+                return nullptr;
+            }
+            mosDecompression->MemoryDecompress(&mosResource);
         }
 
         if(false == m_mapped)
@@ -743,11 +758,19 @@ MOS_STATUS GraphicsResourceSpecificNext::AllocateExternalResource(
     // Only Linear and Y TILE supported
     if (tileformat_linux == I915_TILING_NONE)
     {
-        bo = mos_bo_alloc(perStreamParameters->bufmgr, bufname, iSize, 4096);
+        bo = mos_bo_alloc(perStreamParameters->bufmgr, bufname, iSize, 4096, MOS_MEMPOOL_VIDEOMEMORY);
     }
     else
     {
-        bo     = mos_bo_alloc_tiled(perStreamParameters->bufmgr, bufname, iPitch, iSize / iPitch, 1, &tileformat_linux, &ulPitch, 0);
+        bo = mos_bo_alloc_tiled(perStreamParameters->bufmgr,
+                        bufname,
+                        iPitch,
+                        iSize / iPitch,
+                        1,
+                        &tileformat_linux,
+                        &ulPitch,
+                        0,
+                        MOS_MEMPOOL_VIDEOMEMORY);
         iPitch = (int32_t)ulPitch;
     }
 
@@ -873,12 +896,19 @@ void* GraphicsResourceSpecificNext::LockExternalResource(
             (((GmmFlags.Gpu.MMC || GmmFlags.Gpu.CCS) && GmmFlags.Info.MediaCompressed) ||
             resource->pGmmResInfo->IsMediaMemoryCompressed(0)))
         {
-            PMOS_CONTEXT pOsContext = perStreamParameters;
-
-            MOS_OS_ASSERT(pOsContext);
-            MOS_OS_ASSERT(pOsContext->ppMediaMemDecompState);
-            MOS_OS_ASSERT(pOsContext->pfnMemoryDecompress);
-            pOsContext->pfnMemoryDecompress(pOsContext, resource);
+            OsContextNext *osCtx = streamState->osDeviceContext;
+            if (nullptr == osCtx)
+            {
+                MOS_OS_ASSERTMESSAGE("osCtx is NULL.");
+                return nullptr;
+            }
+            MosDecompression *mosDecompression = osCtx->GetMosDecompression();
+            if (nullptr == mosDecompression)
+            {
+                MOS_OS_ASSERTMESSAGE("mosDecompression is NULL.");
+                return nullptr;
+            }
+            mosDecompression->MemoryDecompress(resource);
         }
 
         if (false == resource->bMapped)

@@ -47,13 +47,14 @@ public:
         {
             {AVC, DualPipe, VA_RT_FORMAT_YUV420},
             {AVC, Vdenc, VA_RT_FORMAT_YUV420 | VA_RT_FORMAT_YUV422 | VA_RT_FORMAT_YUV444},
-            {HEVC, DualPipe, VA_RT_FORMAT_YUV420 | VA_RT_FORMAT_YUV420_10BPP},
+            {HEVC, DualPipe, VA_RT_FORMAT_YUV420 | VA_RT_FORMAT_YUV420_10BPP | VA_RT_FORMAT_YUV420_12 |
+             VA_RT_FORMAT_YUV422 | VA_RT_FORMAT_YUV422_10 |  VA_RT_FORMAT_YUV422_12},
             {HEVC, Vdenc, VA_RT_FORMAT_YUV420 | VA_RT_FORMAT_YUV420_10BPP |
              VA_RT_FORMAT_YUV444 | VA_RT_FORMAT_YUV444_10 | VA_RT_FORMAT_RGB32 |
-             VA_RT_FORMAT_RGB32_10BPP},
+             VA_RT_FORMAT_RGB32_10BPP | VA_RT_FORMAT_YUV422 | VA_RT_FORMAT_YUV422_10},
             {VP9, Vdenc, VA_RT_FORMAT_YUV420 | VA_RT_FORMAT_YUV420_10BPP |
              VA_RT_FORMAT_YUV444 | VA_RT_FORMAT_YUV444_10 | VA_RT_FORMAT_RGB32 |
-             VA_RT_FORMAT_RGB32_10BPP},
+             VA_RT_FORMAT_RGB32_10BPP | VA_RT_FORMAT_YUV422 | VA_RT_FORMAT_YUV422_10},
         };
         m_encodeFormatTable = (struct EncodeFormatTable*)(&encodeFormatTableTGL[0]);
         m_encodeFormatCount = sizeof(encodeFormatTableTGL)/sizeof(struct EncodeFormatTable);
@@ -158,6 +159,10 @@ protected:
         CODEC_16K_MAX_PIC_WIDTH; //!< maxinum width for HEVC encode
     static const uint32_t m_maxHevcEncHeight =
         CODEC_12K_MAX_PIC_HEIGHT; //!< maxinum height for HEVC encode
+    static const uint32_t m_decAvcMaxWidth =
+        CODEC_4K_MAX_PIC_WIDTH; //!< Maximum width for AVC decode
+    static const uint32_t m_decAvcMaxHeight =
+        CODEC_4K_MAX_PIC_HEIGHT; //!< Maximum height for AVC decode
     static const uint32_t m_decHevcMax16kWidth =
         CODEC_16K_MAX_PIC_WIDTH; //!< Maximum width for HEVC decode
     static const uint32_t m_decHevcMax16kHeight =
@@ -170,6 +175,10 @@ protected:
         CODEC_8K_MAX_PIC_WIDTH; //!< maximum width for VP9 encode
     static const uint32_t m_maxVp9EncHeight =
         CODEC_8K_MAX_PIC_HEIGHT; //!< maximum height for VP9 encode
+    static const uint32_t m_minVp9EncWidth =
+        CODEC_128_MIN_PIC_WIDTH; //!< minimum width for VP9 encode
+    static const uint32_t m_minVp9EncHeight =
+        CODEC_96_MIN_PIC_HEIGHT; //!< minimum height for VP9 encode
     static const VAImageFormat m_G12ImageFormats[]; //!< Gen12 supported image formats
     static const VAConfigAttribValEncRateControlExt m_encVp9RateControlExt; //!< External enc rate control caps for VP9 encode
     virtual VAStatus GetPlatformSpecificAttrib(VAProfile profile,

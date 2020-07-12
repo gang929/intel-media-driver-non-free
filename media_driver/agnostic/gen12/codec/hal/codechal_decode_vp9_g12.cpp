@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2019, Intel Corporation
+* Copyright (c) 2017-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -48,7 +48,7 @@ CodechalDecodeVp9G12 ::  ~CodechalDecodeVp9G12()
      }
      if (m_scalabilityState)
      {
-         CodecHalDecodeScalability_Destroy(m_scalabilityState);
+         CodecHalDecodeScalability_Destroy_G12(m_scalabilityState);
          MOS_FreeMemAndSetNull(m_scalabilityState);
      }
      //Note: virtual engine interface destroy is done in MOS layer
@@ -182,7 +182,7 @@ MOS_STATUS CodechalDecodeVp9G12 :: AllocateResourcesVariableSizes()
     {
         if (m_secureDecoder && m_secureDecoder->IsAuxDataInvalid(&m_destSurface.OsResource))
         {
-            CODECHAL_DECODE_CHK_STATUS_RETURN(m_secureDecoder->InitAuxSurface(&m_destSurface.OsResource, false));
+            CODECHAL_DECODE_CHK_STATUS_RETURN(m_secureDecoder->InitAuxSurface(&m_destSurface.OsResource, false, true));
         }
         else
         {
@@ -783,6 +783,16 @@ MOS_STATUS CodechalDecodeVp9G12 :: DecodeStateLevel()
             m_scalabilityState,
             m_vp9PicParams,
             &hcpTileCodingParam));
+        //insert 2 dummy VD_CONTROL_STATE packets with data=0 before every HCP_TILE_CODING
+        if (MEDIA_IS_WA(m_waTable, Wa_14010222001))
+        {
+            MHW_MI_VD_CONTROL_STATE_PARAMS vdCtrlParam;
+            MOS_ZeroMemory(&vdCtrlParam, sizeof(MHW_MI_VD_CONTROL_STATE_PARAMS));
+            for (int i = 0; i < 2; i++)
+            {
+                CODECHAL_DECODE_CHK_STATUS_RETURN(static_cast<MhwMiInterfaceG12 *>(m_miInterface)->AddMiVdControlStateCmd(cmdBufferInUse, &vdCtrlParam));
+            }
+        }
         CODECHAL_DECODE_CHK_STATUS_RETURN(static_cast<MhwVdboxHcpInterfaceG12*>(m_hcpInterface)->AddHcpTileCodingCmd(
             cmdBufferInUse,
             &hcpTileCodingParam));
@@ -1056,20 +1066,12 @@ MOS_STATUS CodechalDecodeVp9G12 :: DecodePrimitiveLevel()
     bool submitCommand = true;
     if (MOS_VE_SUPPORTED(m_osInterface) && CodecHalDecodeScalabilityIsScalableMode(m_scalabilityState))
     {
-        if (m_osInterface->osCpInterface->IsHMEnabled())
-        {
-            HalOcaInterface::DumpCpParam(scdryCmdBuffer, *m_osInterface->pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
-        }
         submitCommand = CodecHalDecodeScalabilityIsToSubmitCmdBuffer_G12(m_scalabilityState);
-        HalOcaInterface::On1stLevelBBEnd(scdryCmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(scdryCmdBuffer, *m_osInterface);
     }
     else
     {
-        if (m_osInterface->osCpInterface->IsHMEnabled())
-        {
-            HalOcaInterface::DumpCpParam(primCmdBuffer, *m_osInterface->pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
-        }
-        HalOcaInterface::On1stLevelBBEnd(primCmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(primCmdBuffer, *m_osInterface);
     }
 
     if (submitCommand || m_osInterface->phasedSubmission)
@@ -1245,7 +1247,8 @@ MOS_STATUS CodechalDecodeVp9G12 :: AllocateStandard (
                 this,
                 m_scalabilityState,
                 m_hwInterface,
-                false));
+                false,
+                settings));
         }
         else
         {
@@ -1277,65 +1280,3 @@ MOS_STATUS CodechalDecodeVp9G12 :: AllocateStandard (
 
     return eStatus;
 }
-
-MOS_STATUS CodechalDecodeVp9G12::SetCencBatchBuffer(
-    PMOS_COMMAND_BUFFER cmdBuffer)
-{
-    CODECHAL_DECODE_CHK_NULL_RETURN(cmdBuffer);
-
-    MHW_BATCH_BUFFER        batchBuffer;
-    MOS_ZeroMemory(&batchBuffer, sizeof(MHW_BATCH_BUFFER));
-    MOS_RESOURCE *resHeap = nullptr;
-    CODECHAL_DECODE_CHK_NULL_RETURN(resHeap = m_cencBuf->secondLvlBbBlock->GetResource());
-
-    batchBuffer.OsResource   = *resHeap;
-    batchBuffer.dwOffset     = m_cencBuf->secondLvlBbBlock->GetOffset() + VP9_CENC_PRIMITIVE_CMD_OFFSET_IN_DW * 4;
-    batchBuffer.iSize        = m_cencBuf->secondLvlBbBlock->GetSize() - VP9_CENC_PRIMITIVE_CMD_OFFSET_IN_DW * 4;
-    batchBuffer.bSecondLevel = true;
-#if (_DEBUG || _RELEASE_INTERNAL)
-    batchBuffer.iLastCurrent = batchBuffer.iSize;
-#endif  // (_DEBUG || _RELEASE_INTERNAL)
-
-    CODECHAL_DECODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferStartCmd(
-        cmdBuffer,
-        &batchBuffer));
-
-    CODECHAL_DEBUG_TOOL(
-        CODECHAL_DECODE_CHK_STATUS_RETURN(m_debugInterface->Dump2ndLvlBatch(
-            &batchBuffer,
-            CODECHAL_NUM_MEDIA_STATES,
-            "_2ndLvlBatch_Pic_Cmd"));)
-
-    // Primitive level cmds should not be in BE phases
-    if (!(CodecHalDecodeScalabilityIsBEPhaseG12(m_scalabilityState) && MOS_VE_SUPPORTED(m_osInterface)))
-    {
-        batchBuffer.dwOffset = m_cencBuf->secondLvlBbBlock->GetOffset();
-        batchBuffer.iSize = VP9_CENC_PRIMITIVE_CMD_OFFSET_IN_DW * 4;
-        batchBuffer.bSecondLevel = true;
-#if (_DEBUG || _RELEASE_INTERNAL)
-        batchBuffer.iLastCurrent = batchBuffer.iSize;
-#endif  // (_DEBUG || _RELEASE_INTERNAL)
-
-        CODECHAL_DECODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferStartCmd(
-            cmdBuffer,
-            &batchBuffer));
-
-        CODECHAL_DEBUG_TOOL(
-            CODECHAL_DECODE_CHK_STATUS_RETURN(m_debugInterface->Dump2ndLvlBatch(
-                &batchBuffer,
-                CODECHAL_NUM_MEDIA_STATES,
-                "_2ndLvlBatch_Primitive_Cmd"));)
-    }
-
-    // Update GlobalCmdBufId
-    MHW_MI_STORE_DATA_PARAMS miStoreDataParams;
-    MOS_ZeroMemory(&miStoreDataParams, sizeof(miStoreDataParams));
-    miStoreDataParams.pOsResource = m_cencBuf->resTracker;
-    miStoreDataParams.dwValue     = m_cencBuf->trackerId;
-    CODECHAL_DECODE_VERBOSEMESSAGE("dwCmdBufId = %d", miStoreDataParams.dwValue);
-    CODECHAL_DECODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(
-        cmdBuffer,
-        &miStoreDataParams));
-    return MOS_STATUS_SUCCESS;
-}
-

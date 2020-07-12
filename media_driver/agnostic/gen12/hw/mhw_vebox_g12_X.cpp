@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2019, Intel Corporation
+* Copyright (c) 2015-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -1050,6 +1050,19 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxDiIecp(
 
     if (pVeboxDiIecpCmdParams->pOsResCurrInput)
     {
+     // For IPU Camera only
+    #if !EMUL
+        GMM_RESOURCE_FLAG         gmmFlags = {0};
+        gmmFlags = pVeboxDiIecpCmdParams->pOsResCurrInput->pGmmResInfo->GetResFlags();
+        if (gmmFlags.Gpu.CameraCapture)
+        {
+            pVeboxDiIecpCmdParams->CurrInputSurfCtrl.Value = pOsInterface->pfnCachePolicyGetMemoryObject(
+                MOS_MHW_GMM_RESOURCE_USAGE_CAMERA_CAPTURE,
+                pOsInterface->pfnGetGmmClientContext(pOsInterface)).DwordValue;
+            MHW_NORMALMESSAGE(" disable the CameraCapture input caches ");
+        }
+    #endif
+
         if (pVeboxDiIecpCmdParams->CurInputSurfMMCState != MOS_MEMCOMP_DISABLED)
         {
             mhw_vebox_g12_X::VEB_DI_IECP_COMMAND_SURFACE_CONTROL_BITS_CMD *pSurfCtrlBits;
@@ -1061,7 +1074,6 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxDiIecp(
                 pSurfCtrlBits->DW0.CompressionType = pSurfCtrlBits->MEMORY_COMPRESSION_TYPE_RENDER_COMPRESSION_ENABLE;
             }
         }
-
         MOS_ZeroMemory(&ResourceParams, sizeof(ResourceParams));
         ResourceParams.presResource    = pVeboxDiIecpCmdParams->pOsResCurrInput;
         ResourceParams.dwOffset        = pVeboxDiIecpCmdParams->dwCurrInputSurfOffset + pVeboxDiIecpCmdParams->CurrInputSurfCtrl.Value;
@@ -1282,7 +1294,7 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxGamutState(
     uint32_t        uiOffset;
     uint32_t        i;
     double          dInverseGamma       = 0;
-    double          dForwardGamma       = 0;
+    double          dForwardGamma       = 1.0;    // init as 1.0 as default to avoid divisor be 0
     MOS_STATUS      eStatus             = MOS_STATUS_SUCCESS;
     uint16_t        usGE_Values[256][8] = {0};
     bool            bEnableCCM = false;
@@ -1293,6 +1305,7 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxGamutState(
     mhw_vebox_g12_X::Gamut_Expansion_Gamma_Correction_CMD *pVeboxGEGammaCorrection, VeboxGEGammaCorrection;
 
     MHW_CHK_NULL(pVeboxGamutParams);
+    MHW_CHK_NULL(pVeboxIecpParams);
     MHW_CHK_NULL(m_veboxHeap);
 
     pVeboxHeap = m_veboxHeap;
@@ -1753,9 +1766,9 @@ finish:
 MOS_STATUS MhwVeboxInterfaceG12::AddVeboxDndiState(
     PMHW_VEBOX_DNDI_PARAMS pVeboxDndiParams)
 {
-    PMHW_VEBOX_HEAP pVeboxHeap;
-    uint32_t        uiOffset;
-    MOS_STATUS      eStatus = MOS_STATUS_SUCCESS;
+    PMHW_VEBOX_HEAP pVeboxHeap = nullptr;
+    uint32_t        uiOffset   = 0;
+    MOS_STATUS      eStatus    = MOS_STATUS_SUCCESS;
 
     mhw_vebox_g12_X::VEBOX_DNDI_STATE_CMD *pVeboxDndiState, mVeboxDndiState;
 
@@ -1942,7 +1955,23 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxDndiState(
     pVeboxDndiState->DW38.Fmd2VerticalDifferenceThreshold = 100;
     pVeboxDndiState->DW38.Fmd1VerticalDifferenceThreshold = 16;
 
-    pVeboxDndiState->DW45.SynthticFrame                   = pVeboxDndiParams->bSyntheticFrame;
+    pVeboxDndiState->DW45.SynthticFrame = pVeboxDndiParams->bSyntheticFrame;
+
+    // copy the DW0-DW33 SLIM_IPU_DN_PARAMS to VEBOX_DNDI_STATE, DW34-DW48 for DI according to DI DDI setting.
+    if (pVeboxDndiParams->bEnableSlimIPUDenoise)
+    {
+        uint32_t slimIpuDnCmdSize = MHW_VEBOX_SLIM_IPU_DN_CMD_SIZE_INUSE * sizeof(pVeboxDndiState->DW0);  //buffer size in use for SLIM IPU DN
+
+        if (nullptr == pVeboxDndiParams->pSystemMem || pVeboxDndiParams->MemSizeInBytes != sizeof(*pVeboxDndiState) || pVeboxDndiParams->MemSizeInBytes < slimIpuDnCmdSize)
+        {
+            MHW_ASSERTMESSAGE("SlimIPUDenoise size is invaild");
+            return MOS_STATUS_INVALID_PARAMETER;
+        }
+
+        MOS_SecureMemcpy(pVeboxDndiState, sizeof(*pVeboxDndiState), pVeboxDndiParams->pSystemMem, slimIpuDnCmdSize);  // only copy dw0 - dw33 for DN
+
+        pVeboxDndiState->DW3.ProgressiveDn = pVeboxDndiParams->bProgressiveDN;
+    }
 
 finish:
     return eStatus;
@@ -2600,17 +2629,43 @@ MOS_STATUS MhwVeboxInterfaceG12::AdjustBoundary(
         break;
     }
 
-    // Align width and height with max src renctange with consideration of
-    // these conditions:
-    // The minimum of width/height should equal to or larger than
-    // MHW_VEBOX_MIN_WIDTH/HEIGHT. The maximum of width/heigh should equal
-    // to or smaller than surface width/height
-    *pdwSurfaceHeight = MOS_ALIGN_CEIL(
-        MOS_MIN(pSurfaceParam->dwHeight, MOS_MAX((uint32_t)pSurfaceParam->rcMaxSrc.bottom, MHW_VEBOX_MIN_HEIGHT)),
-        wHeightAlignUnit);
-    *pdwSurfaceWidth = MOS_ALIGN_CEIL(
-        MOS_MIN(pSurfaceParam->dwWidth, MOS_MAX((uint32_t)pSurfaceParam->rcMaxSrc.right, MHW_VEBOX_MIN_WIDTH)),
-        wWidthAlignUnit);
+    //When Crop being used in vebox, source surface height/width is updated in VeboxAdjustBoundary(), and the rcMaxSrc is used for crop rectangle.
+    //But in dynamic Crop case, if the rcMaxSrc is larger than the rcSrc, the input pdwSurfaceHeight/pdwSurfaceWidth will be the input surface size.
+    //And if the target surface size is smaller than input surface, it may lead to pagefault issue . So in Vebox Crop case, we set the pdwSurfaceHeight/pdwSurfaceWidth
+    //with rcSrc to ensure Vebox input size is same with target Dstrec.
+    if (pSurfaceParam->bVEBOXCroppingUsed)
+    {
+        *pdwSurfaceHeight = MOS_ALIGN_CEIL(
+            MOS_MIN(pSurfaceParam->dwHeight, MOS_MAX((uint32_t)pSurfaceParam->rcSrc.bottom, MHW_VEBOX_MIN_HEIGHT)),
+            wHeightAlignUnit);
+        *pdwSurfaceWidth  = MOS_ALIGN_CEIL(
+            MOS_MIN(pSurfaceParam->dwWidth, MOS_MAX((uint32_t)pSurfaceParam->rcSrc.right, MHW_VEBOX_MIN_WIDTH)),
+            wWidthAlignUnit);
+        MHW_NORMALMESSAGE("bVEBOXCroppingUsed = true, pSurfaceParam->rcSrc.bottom: %d, pSurfaceParam->rcSrc.right: %d; pdwSurfaceHeight: %d, pdwSurfaceWidth: %d;",
+            (uint32_t)pSurfaceParam->rcSrc.bottom,
+            (uint32_t)pSurfaceParam->rcSrc.right,
+            *pdwSurfaceHeight,
+            *pdwSurfaceWidth);
+    }
+    else
+    {
+        // Align width and height with max src renctange with consideration of
+        // these conditions:
+        // The minimum of width/height should equal to or larger than
+        // MHW_VEBOX_MIN_WIDTH/HEIGHT. The maximum of width/heigh should equal
+        // to or smaller than surface width/height
+        *pdwSurfaceHeight = MOS_ALIGN_CEIL(
+            MOS_MIN(pSurfaceParam->dwHeight, MOS_MAX((uint32_t)pSurfaceParam->rcMaxSrc.bottom, MHW_VEBOX_MIN_HEIGHT)),
+            wHeightAlignUnit);
+        *pdwSurfaceWidth = MOS_ALIGN_CEIL(
+            MOS_MIN(pSurfaceParam->dwWidth, MOS_MAX((uint32_t)pSurfaceParam->rcMaxSrc.right, MHW_VEBOX_MIN_WIDTH)),
+            wWidthAlignUnit);
+        MHW_NORMALMESSAGE("bVEBOXCroppingUsed = false, pSurfaceParam->rcMaxSrc.bottom: %d, pSurfaceParam->rcMaxSrc.right: %d; pdwSurfaceHeight: %d, pdwSurfaceWidth: %d;",
+            (uint32_t)pSurfaceParam->rcMaxSrc.bottom,
+            (uint32_t)pSurfaceParam->rcMaxSrc.right,
+            *pdwSurfaceHeight,
+            *pdwSurfaceWidth);
+    }
 
 finish:
     return eStatus;

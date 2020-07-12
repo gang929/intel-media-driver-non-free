@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2016-2019, Intel Corporation
+* Copyright (c) 2016-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -29,6 +29,7 @@
 #include "vphal_renderer.h"         // for VpHal_RenderAllocateBB
 #include "vphal_render_common.h"    // for VPHAL_RENDER_CACHE_CNTL
 #include "vphal_render_ief.h"
+#include "renderhal_platform_interface.h"
 
 // Compositing surface binding table index
 #define VPHAL_COMP_BTINDEX_LAYER0          0
@@ -5494,22 +5495,36 @@ bool CompositeState::RenderBufferMediaWalker(
 
     if (pRenderingData->pTarget[1] == nullptr)
     {
-        pWalkerStatic->DW69.DestHorizontalBlockOrigin                  =
-             (uint16_t)pRenderingData->pTarget[0]->rcDst.left;
-        pWalkerStatic->DW69.DestVerticalBlockOrigin                    =
-             (uint16_t)pRenderingData->pTarget[0]->rcDst.top;
-
+        if (pRenderingData->bCmFcEnable && pRenderingData->iLayers > 0)
+        {
+            pWalkerStatic->DW69.DestHorizontalBlockOrigin               = 0;
+            pWalkerStatic->DW69.DestVerticalBlockOrigin                 = 0;
+        }
+        else
+        {
+            pWalkerStatic->DW69.DestHorizontalBlockOrigin               =
+                 (uint16_t)pRenderingData->pTarget[0]->rcDst.left;
+            pWalkerStatic->DW69.DestVerticalBlockOrigin                 =
+                 (uint16_t)pRenderingData->pTarget[0]->rcDst.top;
+        }
         AlignedRect   = pRenderingData->pTarget[0]->rcDst;
     }
     else
     {
         // Horizontal and Vertical base on non-rotated in case of dual output
-        pWalkerStatic->DW69.DestHorizontalBlockOrigin                   =
-            (uint16_t)pRenderingData->pTarget[1]->rcDst.left;
-        pWalkerStatic->DW69.DestVerticalBlockOrigin                     =
-             (uint16_t)pRenderingData->pTarget[1]->rcDst.top;
-
-         AlignedRect   = pRenderingData->pTarget[1]->rcDst;
+        if (pRenderingData->bCmFcEnable && pRenderingData->iLayers > 0)
+        {
+            pWalkerStatic->DW69.DestHorizontalBlockOrigin               = 0;
+            pWalkerStatic->DW69.DestVerticalBlockOrigin                 = 0;
+        }
+        else
+        {
+            pWalkerStatic->DW69.DestHorizontalBlockOrigin               =
+                (uint16_t)pRenderingData->pTarget[1]->rcDst.left;
+            pWalkerStatic->DW69.DestVerticalBlockOrigin                 =
+                 (uint16_t)pRenderingData->pTarget[1]->rcDst.top;
+        }
+        AlignedRect   = pRenderingData->pTarget[1]->rcDst;
     }
 
     ModifyMediaWalkerStaticData(pRenderingData);
@@ -5801,6 +5816,7 @@ MOS_STATUS CompositeState::RenderPhase(
     PMHW_GPGPU_WALKER_PARAMS        pComputeWalkerParams    = nullptr;
     bool                            bKernelEntryUpdate      = false;
     bool                            bColorfill              = false;
+    bool                            bEUFusedDispatchFlag    = false;
 
     VPHAL_RENDER_ASSERT(pCompParams);
     VPHAL_RENDER_ASSERT(m_pOsInterface);
@@ -6155,6 +6171,13 @@ MOS_STATUS CompositeState::RenderPhase(
         }
     }
 
+    // Set Fused EU Dispatch
+    if (m_FusedEuDispatch && pRenderHal->pRenderHalPltInterface != nullptr)
+    {
+        pRenderHal->pRenderHalPltInterface->SetFusedEUDispatch(true);
+        bEUFusedDispatchFlag = true;
+    }
+
     if (m_bFtrMediaWalker && (!m_bFtrComputeWalker))
     {
         pBatchBuffer  = nullptr;
@@ -6272,6 +6295,11 @@ MOS_STATUS CompositeState::RenderPhase(
 
 finish:
     // clean rendering data
+    if (bEUFusedDispatchFlag)
+    {
+        // Reset Fused EU Dispatch
+        pRenderHal->pRenderHalPltInterface->SetFusedEUDispatch(false);
+    }
     CleanRenderingData(&RenderingData);
     pRenderHal->bCmfcCoeffUpdate  = false;
     pRenderHal->pCmfcCoeffSurface = nullptr;
@@ -6678,6 +6706,7 @@ bool CompositeState::BuildFilter(
                 case Format_A8P8:
                 case Format_A8:
                 case Format_Y416:
+                case Format_Y410:
                     pFilter->bFillOutputAlphaWithConstant = false;
                     break;
 

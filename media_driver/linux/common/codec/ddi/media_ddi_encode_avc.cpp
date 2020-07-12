@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2019, Intel Corporation
+* Copyright (c) 2017-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -128,6 +128,7 @@ uint8_t DdiEncodeAvc::ConvertSliceStruct(uint32_t vaSliceStruct)
         return CODECHAL_SLICE_STRUCT_POW2ROWS;
     case VA_ENC_SLICE_STRUCTURE_ARBITRARY_MACROBLOCKS:
         return CODECHAL_SLICE_STRUCT_ARBITRARYMBSLICE;
+    case VA_ENC_SLICE_STRUCTURE_EQUAL_MULTI_ROWS:
     case VA_ENC_SLICE_STRUCTURE_EQUAL_ROWS:
         return CODECHAL_SLICE_STRUCT_ROWSLICE;
     default:
@@ -935,7 +936,7 @@ VAStatus DdiEncodeAvc::RenderPicture(
             break;
 
         case VAEncPackedHeaderDataBufferType:
-            vaStatus = ParsePackedHeaderData(data);
+            DDI_CHK_STATUS(ParsePackedHeaderData(data), VA_STATUS_ERROR_INVALID_BUFFER);
             break;
 
         case VAEncMiscParameterBufferType:
@@ -1466,6 +1467,7 @@ VAStatus DdiEncodeAvc::ParsePicParams(
     picParams->transform_8x8_mode_flag         = pic->pic_fields.bits.transform_8x8_mode_flag;
     picParams->pic_order_present_flag          = pic->pic_fields.bits.pic_order_present_flag;
     picParams->pic_scaling_matrix_present_flag = pic->pic_fields.bits.pic_scaling_matrix_present_flag;
+    picParams->bDisplayFormatSwizzle           = NeedDisplayFormatSwizzle(rtTbl->pCurrentRT);
     for (uint32_t i = 0; i < 12; i++)
     {
         picParams->pic_scaling_list_present_flag[i] = pic->pic_fields.bits.pic_scaling_matrix_present_flag;

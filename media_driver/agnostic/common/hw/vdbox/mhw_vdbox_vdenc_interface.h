@@ -128,13 +128,14 @@ struct MHW_VDBOX_VDENC_CMD2_STATE
     bool                                    bPartialFrameUpdateEnable = false;
     uint32_t                                roundInterValue = 0;
     uint32_t                                roundIntraValue = 0;
+    uint8_t                                 bStreaminRoiMode = 0;
 
     // VP9
     PCODEC_VP9_ENCODE_PIC_PARAMS            pVp9EncPicParams = nullptr;
     bool                                    bSegmentationEnabled = false;
     PMHW_VDBOX_VP9_SEGMENT_STATE            pVp9SegmentState = nullptr;
     PCODEC_VP9_ENCODE_SEQUENCE_PARAMS       pVp9EncSeqParams = nullptr;
-    bool                                    bPrevFrameSegEnabled;
+    bool                                    bPrevFrameSegEnabled = false;
     bool                                    bDynamicScalingEnabled = false;
     bool                                    temporalMVpEnable = false;
 

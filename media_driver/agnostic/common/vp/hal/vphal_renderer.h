@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2019, Intel Corporation
+* Copyright (c) 2009-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -301,6 +301,31 @@ public:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     virtual MOS_STATUS UpdateRenderGpuContext(MOS_GPU_CONTEXT renderGpuContext);
+
+    //!
+    //! \brief    set Render Gpu Context
+    //! \details  set Render Gpu Context based on lumakey and CCS status.
+    //! \param    [in] RenderParams
+    //!           VPHAL render parameter
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS SetRenderGpuContext(VPHAL_RENDER_PARAMS& RenderParams);
+
+    //!
+    //! \brief    Explicitly initialize the maxSrcRect member
+    //! \details  The maxSrcRect member keeps track of the maximum rectangle
+    //!           among a set of source surfaces.  There is a need to
+    //!           explicitly re-initialize this member in VphalState::Render
+    //!           prior to calling the main render function.  This is so that
+    //!           the maxSrcRect value for the last set of surfaces does not
+    //!           get re-used for the current set of surfaces.
+    //! \return   void
+    //!
+    void InitMaxSrcRect()
+    {
+        maxSrcRect = {0, 0, 0, 0};
+    }
 
 protected:
     //!

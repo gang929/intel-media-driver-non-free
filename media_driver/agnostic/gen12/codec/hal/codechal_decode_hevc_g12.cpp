@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2019, Intel Corporation
+* Copyright (c) 2017-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -163,7 +163,9 @@ MOS_STATUS CodechalDecodeHevcG12::AllocateResourcesVariableSizes ()
     {
         if (m_secureDecoder && m_secureDecoder->IsAuxDataInvalid(&m_destSurface.OsResource))
         {
-            CODECHAL_DECODE_CHK_STATUS_RETURN(m_secureDecoder->InitAuxSurface(&m_destSurface.OsResource, false));
+            // Not use CODECHAL_DECODE_CHK_STATUS_RETURN() here to avoid adding local variable
+            // Error can still be caught by CODECHAL_DECODE_CHK_STATUS_RETURN() in InitAuxSurface
+            eStatus = m_secureDecoder->InitAuxSurface(&m_destSurface.OsResource, false, true);
         }
         else
         {
@@ -189,12 +191,15 @@ MOS_STATUS CodechalDecodeHevcG12::AllocateResourceRefBefLoopFilter()
     }
 
     MOS_SURFACE surface;
+    MOS_ZeroMemory(&surface, sizeof(MOS_SURFACE));
+
     CODECHAL_DECODE_CHK_STATUS_MESSAGE_RETURN(AllocateSurface(
                                                   &surface,
                                                   m_destSurface.dwPitch,
                                                   m_destSurface.dwHeight,
                                                   "Reference before loop filter",
-                                                  m_destSurface.Format),
+                                                  m_destSurface.Format,
+                                                  m_destSurface.bCompressible),
         "Failed to allocate reference before loop filter for IBC.");
 
     m_resRefBeforeLoopFilter = surface.OsResource;
@@ -244,7 +249,7 @@ CodechalDecodeHevcG12::~CodechalDecodeHevcG12 ()
     }
     if (m_scalabilityState)
     {
-        CodecHalDecodeScalability_Destroy(m_scalabilityState);
+        CodecHalDecodeScalability_Destroy_G12(m_scalabilityState);
         MOS_FreeMemAndSetNull(m_scalabilityState);
     }
 
@@ -587,6 +592,8 @@ MOS_STATUS CodechalDecodeHevcG12::SetHucDmemParams (
     hucHevcS2LBss->RevId = m_hwInterface->GetPlatform().usRevId;
     hucHevcS2LBss->DummyRefIdxState = 
         MEDIA_IS_WA(m_waTable, WaDummyReference) && !m_osInterface->bSimIsActive;
+    hucHevcS2LBss->DummyVDControlState = MEDIA_IS_WA(m_waTable, Wa_14010222001);
+    hucHevcS2LBss->WaTileFlushScalability = MEDIA_IS_WA(m_waTable, Wa_2209620131);
 
     CODECHAL_DECODE_CHK_STATUS_RETURN(SetHucDmemS2LPictureBss(&hucHevcS2LBss->PictureBss));
     CODECHAL_DECODE_CHK_STATUS_RETURN(SetHucDmemS2LSliceBss(&hucHevcS2LBss->SliceBss[0]));
@@ -623,6 +630,7 @@ MOS_STATUS CodechalDecodeHevcG12 ::InitializeDecodeMode()
         initParams.u32PicWidthInPixel  = m_width;
         initParams.u32PicHeightInPixel = m_height;
         initParams.bIsTileEnabled      = m_hevcPicParams->tiles_enabled_flag;
+        initParams.bHasSubsetParams    = !!m_decodeParams.m_subsetParams;
         initParams.format              = m_decodeParams.m_destSurface->Format;
         initParams.usingSecureDecode   = m_secureDecoder ? m_secureDecoder->IsSecureDecodeEnabled() : false;
         // Only support SCC real tile mode. SCC virtual tile scalability mode is disabled here
@@ -1615,27 +1623,6 @@ MOS_STATUS CodechalDecodeHevcG12::SendPictureLongFormat()
         }
     }
 
-    if (m_shortFormatInUse &&
-        m_statusQueryReportingEnabled &&
-        (!CodecHalDecodeScalabilityIsScalableMode(m_scalabilityState) ||
-            CodecHalDecodeScalabilityIsFEPhase(m_scalabilityState)))
-    {
-        uint32_t statusBufferOffset = (m_decodeStatusBuf.m_currIndex * sizeof(CodechalDecodeStatus)) +
-                        m_decodeStatusBuf.m_storeDataOffset +
-                        sizeof(uint32_t) * 2;
-
-        // Check HuC_STATUS bit15, HW continue if bit15 > 0, otherwise send COND BB END cmd.
-        CODECHAL_DECODE_CHK_STATUS_RETURN(static_cast<CodechalHwInterfaceG12*>(m_hwInterface)->SendCondBbEndCmd(
-                &m_decodeStatusBuf.m_statusBuffer,
-                statusBufferOffset + m_decodeStatusBuf.m_hucErrorStatusMaskOffset,
-                0,
-                false,
-                false,
-                mhw_mi_g12_X::MI_CONDITIONAL_BATCH_BUFFER_END_CMD::COMPARE_OPERATION_MADGREATERTHANIDD,
-                cmdBufferInUse));
-    }
-
-
     if (CodecHalDecodeScalabilityIsScalableMode(m_scalabilityState))
     {
         CODECHAL_DECODE_CHK_STATUS_RETURN(CodecHalDecodeScalability_FEBESync_G12(
@@ -1646,6 +1633,20 @@ MOS_STATUS CodechalDecodeHevcG12::SendPictureLongFormat()
         {
             CODECHAL_DECODE_CHK_STATUS_RETURN(m_perfProfiler->AddPerfCollectStartCmd((void *)this, m_osInterface, m_miInterface, &scdryCmdBuffer));
         }
+    }
+
+    if (m_shortFormatInUse &&
+        m_statusQueryReportingEnabled &&
+        (!CodecHalDecodeScalabilityIsScalableMode(m_scalabilityState) ||
+            CodecHalDecodeScalabilityIsFEPhase(m_scalabilityState) ||
+            CodecHalDecodeScalabilityIsRealTileMode(m_scalabilityState)))
+    {
+        uint32_t statusBufferOffset = (m_decodeStatusBuf.m_currIndex * sizeof(CodechalDecodeStatus)) +
+                                      m_decodeStatusBuf.m_storeDataOffset +
+                                      sizeof(uint32_t) * 2;
+
+        // Check HuC_STATUS bit15, HW continue if bit15 > 0, otherwise send COND BB END cmd.
+        CODECHAL_DECODE_CHK_STATUS_RETURN(static_cast<CodechalHwInterfaceG12 *>(m_hwInterface)->SendCondBbEndCmd(&m_decodeStatusBuf.m_statusBuffer, statusBufferOffset + m_decodeStatusBuf.m_hucErrorStatusMaskOffset, 0, false, false, mhw_mi_g12_X::MI_CONDITIONAL_BATCH_BUFFER_END_CMD::COMPARE_OPERATION_MADGREATERTHANIDD, cmdBufferInUse));
     }
 
     if (CodecHalDecodeScalabilityIsBEPhaseG12(m_scalabilityState) || CodecHalDecodeScalabilityIsFirstRealTilePhase(m_scalabilityState))
@@ -1757,9 +1758,16 @@ MOS_STATUS CodechalDecodeHevcG12::AddPipeEpilog(
 
 #ifdef _DECODE_PROCESSING_SUPPORTED
             CODECHAL_DEBUG_TOOL(
-                if (m_downsampledSurfaces && m_sfcState && m_sfcState->m_sfcOutputSurface) {
-                    m_downsampledSurfaces[m_hevcPicParams->CurrPic.FrameIdx].OsResource = m_sfcState->m_sfcOutputSurface->OsResource;
-                    decodeStatusReport.m_currSfcOutputPicRes                            = &m_downsampledSurfaces[m_hevcPicParams->CurrPic.FrameIdx].OsResource;
+                if (m_sfcState && m_sfcState->m_sfcOutputSurface) {
+                    if(m_downsampledSurfaces)
+                    {
+                        m_downsampledSurfaces[m_hevcPicParams->CurrPic.FrameIdx].OsResource = m_sfcState->m_sfcOutputSurface->OsResource;
+                        decodeStatusReport.m_currSfcOutputPicRes                            = &m_downsampledSurfaces[m_hevcPicParams->CurrPic.FrameIdx].OsResource;
+                    }
+                    else
+                    {
+                        decodeStatusReport.m_currSfcOutputPicRes = &(m_sfcState->m_sfcOutputSurface->OsResource);
+                    }
                 })
 #endif
             CODECHAL_DEBUG_TOOL(
@@ -1947,6 +1955,16 @@ MOS_STATUS CodechalDecodeHevcG12::DecodePrimitiveLevel()
             m_scalabilityState,
             m_hevcPicParams,
             &hcpTileCodingParam));
+        //insert 2 dummy VD_CONTROL_STATE packets with data=0 before every HCP_TILE_CODING
+        if (MEDIA_IS_WA(m_waTable, Wa_14010222001))
+        {
+            MHW_MI_VD_CONTROL_STATE_PARAMS vdCtrlParam;
+            MOS_ZeroMemory(&vdCtrlParam, sizeof(MHW_MI_VD_CONTROL_STATE_PARAMS));
+            for (int i = 0; i < 2; i++)
+            {
+                CODECHAL_DECODE_CHK_STATUS_RETURN(static_cast<MhwMiInterfaceG12 *>(m_miInterface)->AddMiVdControlStateCmd(cmdBufferInUse, &vdCtrlParam));
+            }
+        }
         CODECHAL_DECODE_CHK_STATUS_RETURN(static_cast<MhwVdboxHcpInterfaceG12*>(m_hcpInterface)->AddHcpTileCodingCmd(
             cmdBufferInUse,
             &hcpTileCodingParam));
@@ -2079,12 +2097,7 @@ MOS_STATUS CodechalDecodeHevcG12::DecodePrimitiveLevel()
         submitCommand = CodecHalDecodeScalabilityIsToSubmitCmdBuffer_G12(m_scalabilityState);
     }
 
-    if (m_osInterface->osCpInterface->IsHMEnabled())
-    {
-        HalOcaInterface::DumpCpParam(primCmdBuffer, *m_osInterface->pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
-    }
-
-    HalOcaInterface::On1stLevelBBEnd(primCmdBuffer, *m_osInterface->pOsContext);
+    HalOcaInterface::On1stLevelBBEnd(primCmdBuffer, *m_osInterface);
 
     if (submitCommand || m_osInterface->phasedSubmission)
     {
@@ -2167,28 +2180,6 @@ MOS_STATUS CodechalDecodeHevcG12::DecodePrimitiveLevel()
     {
         CODECHAL_DECODE_CHK_STATUS_RETURN(CodecHalDecodeScalability_AdvanceRealTilePass(m_scalabilityState));
     }
-
-#ifdef LINUX 
- #ifdef _DECODE_PROCESSING_SUPPORTED
-    CODECHAL_DEBUG_TOOL(
-    if (m_sfcState->m_sfcOutputSurface)
-    {
-        MOS_SURFACE dstSurface;
-        MOS_ZeroMemory(&dstSurface, sizeof(dstSurface));
-        dstSurface.Format = Format_NV12;
-        dstSurface.OsResource = m_sfcState->m_sfcOutputSurface->OsResource;
-        CODECHAL_DECODE_CHK_STATUS_RETURN(CodecHalGetResourceInfo(
-                m_osInterface,
-                &dstSurface));
-
-        CODECHAL_DECODE_CHK_STATUS_RETURN(m_debugInterface->DumpYUVSurface(
-                &dstSurface,
-                CodechalDbgAttr::attrSfcOutputSurface,
-                "SfcDstSurf"));
-    }
-)
-#endif
-#endif
     return eStatus;
 }
 
@@ -2277,7 +2268,8 @@ MOS_STATUS CodechalDecodeHevcG12::AllocateStandard (
                 this,
                 m_scalabilityState,
                 m_hwInterface,
-                m_shortFormatInUse));
+                m_shortFormatInUse,
+                settings));
         }
         else
         {

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2019, Intel Corporation
+* Copyright (c) 2009-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -34,6 +34,20 @@
 #include "mos_os_virtualengine_scalability_specific_next.h"
 #include "mos_graphicsresource_specific_next.h"
 
+MOS_STATUS MosInterface::InitOsUtilities(DDI_DEVICE_CONTEXT ddiDeviceContext)
+{
+    // No MOS_OS_FUNCTION_ENTER since utilities not enabled
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS MosInterface::CloseOsUtilities()
+{
+    MOS_OS_FUNCTION_ENTER;
+
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS MosInterface::CreateOsDeviceContext(DDI_DEVICE_CONTEXT ddiDeviceContext, MOS_DEVICE_HANDLE *deviceContext)
 {
     MOS_OS_FUNCTION_ENTER;
@@ -44,9 +58,9 @@ MOS_STATUS MosInterface::CreateOsDeviceContext(DDI_DEVICE_CONTEXT ddiDeviceConte
     *deviceContext = MOS_New(OsContextSpecificNext);
 
     MOS_OS_CHK_NULL_RETURN(*deviceContext);
-   
+
     MOS_OS_CHK_STATUS_RETURN((*deviceContext)->Init((PMOS_CONTEXT)ddiDeviceContext));
-    
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -66,7 +80,9 @@ MOS_STATUS MosInterface::DestroyOsDeviceContext(MOS_DEVICE_HANDLE deviceContext)
 
 MOS_STATUS MosInterface::CreateOsStreamState(
     MOS_STREAM_HANDLE *streamState,
-    MOS_DEVICE_HANDLE  deviceContext)
+    MOS_DEVICE_HANDLE  deviceContext,
+    MOS_INTERFACE_HANDLE osInterface,
+    MOS_COMPONENT component)
 {
     MOS_OS_FUNCTION_ENTER;
 
@@ -319,7 +335,7 @@ MOS_STATUS MosInterface::DumpCommandBuffer(
     uint32_t dwBytesWritten   = 0;
     uint32_t dwNumberOfDwords = 0;
     uint32_t dwSizeToAllocate = 0;
-    char     sFileName[MOS_MAX_HLT_FILENAME_LEN];
+    char     sFileName[MOS_MAX_HLT_FILENAME_LEN] = {0};
     // Maximum length of engine name is 6
     char sEngName[6];
     size_t nSizeFileNamePrefix   = 0;
@@ -367,13 +383,7 @@ MOS_STATUS MosInterface::DumpCommandBuffer(
 
     if (streamState->dumpCommandBufferToFile)
     {
-        // Set the file name.
-        eStatus = MOS_LogFileNamePrefix(sFileName);
-        if (eStatus != MOS_STATUS_SUCCESS)
-        {
-            MOS_OS_NORMALMESSAGE("Failed to create log file prefix. Status = %d", eStatus);
-            return eStatus;
-        }
+        MosUtilities::MosSecureMemcpy(sFileName, MOS_MAX_HLT_FILENAME_LEN, streamState->sDirName, MOS_MAX_HLT_FILENAME_LEN);
 
         nSizeFileNamePrefix = strnlen(sFileName, sizeof(sFileName));
         MosUtilities::MosSecureStringPrint(
@@ -853,6 +863,12 @@ MOS_STATUS MosInterface::ConvertResourceFromDdi(
         case Media_Format_R8G8B8:
             resource->Format = Format_R8G8B8;
             break;
+        case Media_Format_RGBP:
+            resource->Format = Format_RGBP;
+            break;
+        case Media_Format_BGRP:
+            resource->Format = Format_BGRP;
+            break;
         case Media_Format_444P:
             resource->Format = Format_444P;
             break;
@@ -876,6 +892,7 @@ MOS_STATUS MosInterface::ConvertResourceFromDdi(
         case Media_Format_P010:
             resource->Format = Format_P010;
             break;
+        case Media_Format_P012:
         case Media_Format_P016:
             resource->Format = Format_P016;
             break;
@@ -1032,8 +1049,16 @@ MOS_STATUS MosInterface::DestroySpecificResourceInfo(OsSpecificRes resource)
 MOS_STATUS MosInterface::AllocateResource(
     MOS_STREAM_HANDLE        streamState,
     PMOS_ALLOC_GFXRES_PARAMS params,
-    MOS_RESOURCE_HANDLE     &resource)
+    MOS_RESOURCE_HANDLE      &resource
+#if MOS_MESSAGES_ENABLED
+    ,
+    const char              *functionName,
+    const char              *filename,
+    int32_t                 line
+#endif
+)
 {
+    MOS_STATUS estatus = MOS_STATUS_SUCCESS;
     MOS_OS_FUNCTION_ENTER;
 
     MOS_OS_CHK_NULL_RETURN(resource);
@@ -1048,29 +1073,44 @@ MOS_STATUS MosInterface::AllocateResource(
 
         GraphicsResourceNext::CreateParams createParams(params);
         auto eStatus = resource->pGfxResourceNext->Allocate(streamState->osDeviceContext, createParams);
-        if (eStatus != MOS_STATUS_SUCCESS)
-        {
-            MOS_OS_ASSERTMESSAGE("Allocate graphic resource failed");
-            return MOS_STATUS_INVALID_HANDLE;
-        }
-        
-        eStatus = resource->pGfxResourceNext->ConvertToMosResource(resource);
-        if (eStatus != MOS_STATUS_SUCCESS)
-        {
-            MOS_OS_ASSERTMESSAGE("Convert graphic resource failed");
-            return MOS_STATUS_INVALID_HANDLE;
-        }
+        MOS_OS_CHK_STATUS_MESSAGE_RETURN(eStatus, "Allocate graphic resource failed");
 
-        return eStatus;
+        eStatus = resource->pGfxResourceNext->ConvertToMosResource(resource);
+        MOS_OS_CHK_STATUS_MESSAGE_RETURN(eStatus, "Convert graphic resource failed");
+    }
+    else
+    {
+        estatus = GraphicsResourceSpecificNext::AllocateExternalResource(streamState, params, resource);
+        MOS_OS_CHK_STATUS_MESSAGE_RETURN(estatus, "Allocate external graphic resource failed");
     }
 
-    return GraphicsResourceSpecificNext::AllocateExternalResource(streamState, params, resource);
+    MOS_OS_CHK_NULL_RETURN(resource->pGmmResInfo);
+    MosUtilities::MosAtomicIncrement(&MosUtilities::m_mosMemAllocCounterGfx);
+
+    MOS_MEMNINJA_GFX_ALLOC_MESSAGE(
+        resource->pGmmResInfo,
+        params->pBufName,
+        streamState->component,
+        (uint32_t)resource->pGmmResInfo->GetSizeSurface(),
+        params->dwArraySize,
+        functionName,
+        filename,
+        line);
+
+    return MOS_STATUS_SUCCESS;
 }
 
 MOS_STATUS MosInterface::FreeResource(
     MOS_STREAM_HANDLE   streamState,
     MOS_RESOURCE_HANDLE resource,
-    uint32_t            flag)
+    uint32_t            flag
+#if MOS_MESSAGES_ENABLED
+    ,
+    const char          *functionName,
+    const char          *filename,
+    int32_t             line
+#endif  // MOS_MESSAGES_ENABLED
+)
 {
     MOS_OS_FUNCTION_ENTER;
 
@@ -1078,7 +1118,11 @@ MOS_STATUS MosInterface::FreeResource(
     MOS_OS_CHK_NULL_RETURN(streamState);
     MOS_OS_CHK_NULL_RETURN(streamState->osDeviceContext);
 
-    if (!resource->bConvertedFromDDIResource && resource->pGfxResourceNext)
+    bool osContextValid = streamState->osDeviceContext->GetOsContextValid();
+
+    bool byPassMod = !((!resource->bConvertedFromDDIResource) && (osContextValid == true) && (resource->pGfxResourceNext));
+
+    if (!byPassMod)
     {
         if (resource && resource->pGfxResourceNext)
         {
@@ -1091,10 +1135,31 @@ MOS_STATUS MosInterface::FreeResource(
         MOS_Delete(resource->pGfxResourceNext);
         resource->pGfxResourceNext = nullptr;
 
+        MosUtilities::MosAtomicDecrement(&MosUtilities::m_mosMemAllocCounterGfx);
+        MOS_MEMNINJA_GFX_FREE_MESSAGE(resource->pGmmResInfo, functionName, filename, line);
+        MOS_ZeroMemory(resource, sizeof(*resource));
+
         return MOS_STATUS_SUCCESS;
     }
 
-    return GraphicsResourceSpecificNext::FreeExternalResource(streamState, resource, flag);
+    MOS_STATUS status = GraphicsResourceSpecificNext::FreeExternalResource(streamState, resource, flag);
+
+    if (resource->pGmmResInfo != nullptr &&
+        streamState->perStreamParameters != nullptr)
+    {
+        PMOS_CONTEXT perStreamParameters = (PMOS_CONTEXT)streamState->perStreamParameters;
+        if (perStreamParameters && perStreamParameters->pGmmClientContext)
+        {
+            MosUtilities::m_mosMemAllocCounterGfx--;
+            MOS_MEMNINJA_GFX_FREE_MESSAGE(resource->pGmmResInfo, functionName, filename, line);
+
+            perStreamParameters->pGmmClientContext->DestroyResInfoObject(resource->pGmmResInfo);
+
+            resource->pGmmResInfo = nullptr;
+        }
+    }
+
+    return status;
 }
 
 MOS_STATUS MosInterface::GetResourceInfo(
@@ -1405,6 +1470,7 @@ MOS_STATUS MosInterface::LockSyncCallback(
 }
 
 MOS_STATUS MosInterface::TrimResidency(
+    MOS_DEVICE_HANDLE device,
     bool      periodicTrim,
     bool      restartPeriodicTrim,
     uint64_t &numBytesToTrim,
@@ -1418,11 +1484,14 @@ MOS_STATUS MosInterface::TrimResidency(
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS MosInterface::DecompResource(
-    MOS_STREAM_HANDLE   streamState,
-    MOS_RESOURCE_HANDLE resource)
+MOS_STATUS UpdateResidency(
+    MOS_DEVICE_HANDLE device,
+    OsSpecificRes     resInfo,
+    uint32_t          index)
 {
     MOS_OS_FUNCTION_ENTER;
+
+    // No residency to update
 
     return MOS_STATUS_SUCCESS;
 }
@@ -1484,6 +1553,13 @@ MOS_STATUS MosInterface::GetMemoryCompressionMode(
     MOS_OS_CHK_NULL_RETURN(gmmResourceInfo);
 
     flags = resource->pGmmResInfo->GetResFlags();
+
+    if (!flags.Gpu.MMC || !flags.Gpu.CCS)
+    {
+        resMmcMode = MOS_MEMCOMP_DISABLED;
+        return MOS_STATUS_SUCCESS;
+    }
+
     if (flags.Info.MediaCompressed || flags.Info.RenderCompressed)
     {
         resMmcMode = flags.Info.RenderCompressed ? MOS_MEMCOMP_RC : MOS_MEMCOMP_MC;
@@ -1503,6 +1579,20 @@ MOS_STATUS MosInterface::GetMemoryCompressionMode(
             resMmcMode = MOS_MEMCOMP_DISABLED;
             break;
         }
+    }
+
+    uint32_t          MmcFormat = 0;
+    GMM_RESOURCE_FORMAT gmmResFmt;
+    gmmResFmt = gmmResourceInfo->GetResourceFormat();
+    auto skuTable = GetSkuTable(streamState);
+    MOS_OS_CHK_NULL_RETURN(MosInterface::GetGmmClientContext(streamState));
+    MOS_OS_CHK_NULL_RETURN(skuTable);
+
+    if (resMmcMode == MOS_MEMCOMP_MC         &&
+       (!MEDIA_IS_SKU(skuTable, FtrFlatPhysCCS)))
+    {
+        MmcFormat = static_cast<uint32_t>(MosInterface::GetGmmClientContext(streamState)->GetMediaSurfaceStateCompressionFormat(gmmResFmt));
+        resMmcMode = (MmcFormat != 0) ? resMmcMode : MOS_MEMCOMP_DISABLED;
     }
 
     eStatus = MOS_STATUS_SUCCESS;
@@ -1595,15 +1685,18 @@ MOS_STATUS MosInterface::DoubleBufferCopyResource(
     MOS_OS_CHK_NULL_RETURN(inputResource);
     MOS_OS_CHK_NULL_RETURN(outputResource);
     MOS_OS_CHK_NULL_RETURN(streamState);
-    
-    auto osParameters = (PMOS_CONTEXT)streamState->perStreamParameters;
-    MOS_OS_CHK_NULL_RETURN(osParameters);
 
     if (inputResource && inputResource->bo && inputResource->pGmmResInfo &&
         outputResource && outputResource->bo && outputResource->pGmmResInfo)
     {
+        OsContextNext *osCtx = streamState->osDeviceContext;
+        MOS_OS_CHK_NULL_RETURN(osCtx);
+
+        MosDecompression *mosDecompression = osCtx->GetMosDecompression();
+        MOS_OS_CHK_NULL_RETURN(mosDecompression);
+
         // Double Buffer Copy can support any tile status surface with/without compression
-        osParameters->pfnMediaMemoryCopy(osParameters, inputResource, outputResource, outputCompressed);
+        mosDecompression->MediaMemoryCopy(inputResource, outputResource, outputCompressed);
     }
 
     return status;
@@ -1626,18 +1719,48 @@ MOS_STATUS MosInterface::MediaCopyResource2D(
     MOS_OS_CHK_NULL_RETURN(outputResource);
     MOS_OS_CHK_NULL_RETURN(streamState);
 
-    auto osParameters = (PMOS_CONTEXT)streamState->perStreamParameters;
-    MOS_OS_CHK_NULL_RETURN(osParameters);
-    
     if (inputResource && inputResource->bo && inputResource->pGmmResInfo &&
         outputResource && outputResource->bo && outputResource->pGmmResInfo)
     {
+        OsContextNext *osCtx = streamState->osDeviceContext;
+        MOS_OS_CHK_NULL_RETURN(osCtx);
+
+        MosDecompression *mosDecompression = osCtx->GetMosDecompression();
+        MOS_OS_CHK_NULL_RETURN(mosDecompression);
+
         // Double Buffer Copy can support any tile status surface with/without compression
-        osParameters->pfnMediaMemoryCopy2D(osParameters, inputResource, outputResource,
+        mosDecompression->MediaMemoryCopy2D(inputResource, outputResource,
             copyWidth, copyHeight, copyInputOffset, copyOutputOffset, outputCompressed);
     }
 
     return status;
+}
+
+MOS_STATUS MosInterface::DecompResource(
+    MOS_STREAM_HANDLE   streamState,
+    MOS_RESOURCE_HANDLE resource)
+{
+    MOS_OS_FUNCTION_ENTER;
+    MOS_STATUS status = MOS_STATUS_SUCCESS;
+
+    MOS_OS_CHK_NULL_RETURN(streamState);
+    MOS_OS_CHK_NULL_RETURN(resource);
+    MOS_OS_CHK_NULL_RETURN(resource->bo);
+    MOS_OS_CHK_NULL_RETURN(resource->pGmmResInfo);
+
+    MOS_LINUX_BO *bo = resource->bo;
+    if (resource->pGmmResInfo->IsMediaMemoryCompressed(0))
+    {
+        OsContextNext *osCtx = streamState->osDeviceContext;
+        MOS_OS_CHK_NULL_RETURN(osCtx);
+
+        MosDecompression *mosDecompression = osCtx->GetMosDecompression();
+        MOS_OS_CHK_NULL_RETURN(mosDecompression);
+
+        mosDecompression->MemoryDecompress(resource);
+    }
+
+    return MOS_STATUS_SUCCESS;
 }
 
 uint32_t MosInterface::GetGpuStatusTag(
@@ -1720,6 +1843,14 @@ GMM_CLIENT_CONTEXT *MosInterface::GetGmmClientContext(
     }
 
     return nullptr;
+}
+
+uint64_t MosInterface::GetAuxTableBaseAddr(
+    MOS_STREAM_HANDLE streamState)
+{
+    MOS_OS_FUNCTION_ENTER;
+
+    return 0;
 }
 
 MosCpInterface *MosInterface::GetCpInterface(MOS_STREAM_HANDLE streamState)
@@ -1904,3 +2035,231 @@ GpuContextSpecificNext *MosInterface::GetGpuContext(MOS_STREAM_HANDLE streamStat
     MOS_OS_ASSERTMESSAGE("GetGpuContext failed!");
     return nullptr;
 }
+
+void MosInterface::SetPerfTag(MOS_STREAM_HANDLE streamState, uint32_t perfTag)
+{
+    MOS_OS_FUNCTION_ENTER;
+
+    uint32_t     componentTag;
+
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(streamState);
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(streamState->perStreamParameters);
+
+    auto osParameters   = (PMOS_CONTEXT)streamState->perStreamParameters;
+    PERF_DATA *perfData = osParameters->pPerfData;
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(perfData);
+
+    switch (streamState->component)
+    {
+    case COMPONENT_VPreP:
+    case COMPONENT_VPCommon:
+        componentTag = PERFTAG_VPREP;
+        break;
+
+    case COMPONENT_LibVA:
+        componentTag = PERFTAG_LIBVA;
+        break;
+
+    case COMPONENT_CM:
+        componentTag = PERFTAG_CM;
+        break;
+
+    case COMPONENT_Decode:
+        componentTag = PERFTAG_DECODE;
+        break;
+
+    case COMPONENT_Encode:
+        componentTag = PERFTAG_ENCODE;
+        break;
+
+    default:
+        componentTag = 0xF000 & perfData->dmaBufID;
+        break;
+    }
+
+    perfData->dmaBufID = componentTag | (perfTag & 0x0fff);
+
+    return;
+}
+
+int32_t MosInterface::IsPerfTagSet(MOS_STREAM_HANDLE streamState)
+{
+    uint32_t                 componentTag   = 0;
+    int32_t                  ret            = false;
+
+    MOS_OS_FUNCTION_ENTER;
+
+    if (streamState == nullptr ||
+        streamState->perStreamParameters == nullptr)
+    {
+        MOS_OS_ASSERTMESSAGE("streamState or perStreamParameters invalid nullptr");
+        return false;
+    }
+
+    auto osParameters = (PMOS_CONTEXT)streamState->perStreamParameters;
+
+    PERF_DATA *perfData     = osParameters->pPerfData;
+    if (perfData == nullptr)
+    {
+        MOS_OS_ASSERTMESSAGE("perfData invalid nullptr");
+        return false;
+    }
+
+    componentTag = 0xF000 & perfData->dmaBufID;
+
+    switch (componentTag)
+    {
+    case PERFTAG_ENCODE:
+    case PERFTAG_DECODE:
+        ret = true;
+        break;
+
+    default:
+        ret = false;
+        break;
+    }
+
+    return ret;
+}
+
+void MosInterface::IncPerfFrameID(MOS_STREAM_HANDLE streamState)
+{
+    MOS_OS_FUNCTION_ENTER;
+
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(streamState);
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(streamState->perStreamParameters);
+
+    auto osParameters = (PMOS_CONTEXT)streamState->perStreamParameters;
+
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(osParameters->pPerfData);
+
+    osParameters->pPerfData->frameID++;
+
+    return;
+}
+
+uint32_t MosInterface::GetPerfTag(MOS_STREAM_HANDLE streamState)
+{
+    uint32_t perfTag;
+
+    MOS_OS_FUNCTION_ENTER;
+
+    if (streamState == nullptr ||
+        streamState->perStreamParameters == nullptr)
+    {
+        MOS_OS_ASSERTMESSAGE("streamState or perStreamParameters invalid nullptr");
+        return 0;
+    }
+
+    auto osParameters = (PMOS_CONTEXT)streamState->perStreamParameters;
+
+    perfTag = *(uint32_t *)(osParameters->pPerfData);
+    return perfTag;
+}
+
+void MosInterface::SetPerfHybridKernelID(
+    MOS_STREAM_HANDLE streamState,
+    uint32_t          kernelID)
+{
+    MOS_OS_FUNCTION_ENTER;
+
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(streamState);
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(streamState->perStreamParameters);
+
+    auto osParameters = (PMOS_CONTEXT)streamState->perStreamParameters;
+    PERF_DATA *perfData     = osParameters->pPerfData;
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(perfData);
+
+    perfData->dmaBufID = (perfData->dmaBufID & 0xF0FF) | ((kernelID << 8) & 0x0F00);
+
+    return;
+}
+
+void MosInterface::ResetPerfBufferID(
+    MOS_STREAM_HANDLE streamState)
+{
+    MOS_OS_FUNCTION_ENTER;
+
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(streamState);
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(streamState->perStreamParameters);
+
+    auto osParameters = (PMOS_CONTEXT)streamState->perStreamParameters;
+
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(osParameters->pPerfData);
+
+    osParameters->pPerfData->bufferID = 0;
+
+    return;
+}
+
+void MosInterface::IncPerfBufferID(
+    MOS_STREAM_HANDLE streamState)
+{
+    MOS_OS_FUNCTION_ENTER;
+
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(streamState);
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(streamState->perStreamParameters);
+
+    auto osParameters = (PMOS_CONTEXT)streamState->perStreamParameters;
+
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(osParameters->pPerfData);
+
+    osParameters->pPerfData->bufferID++;
+
+    return;
+}
+
+#if MOS_COMMAND_BUFFER_DUMP_SUPPORTED
+MOS_STATUS MosInterface::DumpCommandBufferInit(
+    MOS_STREAM_HANDLE streamState)
+{
+    char sFileName[MOS_MAX_HLT_FILENAME_LEN] = {0};
+    MOS_STATUS eStatus = MOS_STATUS_UNKNOWN;
+    MOS_USER_FEATURE_VALUE_DATA UserFeatureData = {0};
+    char *psFileNameAfterPrefix = nullptr;
+    size_t nSizeFileNamePrefix = 0;
+
+    MOS_OS_CHK_NULL_RETURN(streamState);
+
+    // Check if command buffer dump was enabled in user feature.
+    MOS_UserFeature_ReadValue_ID(
+        nullptr,
+        __MEDIA_USER_FEATURE_VALUE_DUMP_COMMAND_BUFFER_ENABLE_ID,
+        &UserFeatureData);
+    streamState->dumpCommandBuffer            = (UserFeatureData.i32Data != 0);
+    streamState->dumpCommandBufferToFile      = ((UserFeatureData.i32Data & 1) != 0);
+    streamState->dumpCommandBufferAsMessages  = ((UserFeatureData.i32Data & 2) != 0);
+
+    if (streamState->dumpCommandBufferToFile)
+    {
+        // Create output directory.
+        eStatus = MosUtilDebug::MosLogFileNamePrefix(streamState->sDirName);
+        if (eStatus != MOS_STATUS_SUCCESS)
+        {
+            MOS_OS_NORMALMESSAGE("Failed to create log file prefix. Status = %d", eStatus);
+            return eStatus;
+        }
+
+        memcpy(sFileName, streamState->sDirName, MOS_MAX_HLT_FILENAME_LEN);
+        nSizeFileNamePrefix = strnlen(sFileName, sizeof(sFileName));
+        MOS_SecureStringPrint(
+            sFileName + nSizeFileNamePrefix,
+            sizeof(sFileName) - nSizeFileNamePrefix,
+            sizeof(sFileName) - nSizeFileNamePrefix,
+            "%c%s",
+            MOS_DIR_SEPERATOR,
+            MOS_COMMAND_BUFFER_OUT_DIR);
+
+        eStatus = MosUtilities::MosCreateDirectory(sFileName);
+        if (eStatus != MOS_STATUS_SUCCESS)
+        {
+            MOS_OS_NORMALMESSAGE("Failed to create output directory. Status = %d", eStatus);
+            return eStatus;
+        }
+    }
+
+    eStatus = MOS_STATUS_SUCCESS;
+
+    return eStatus;
+}
+#endif  // MOS_COMMAND_BUFFER_DUMP_SUPPORTED

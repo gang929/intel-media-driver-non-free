@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2019, Intel Corporation
+* Copyright (c) 2009-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -75,6 +75,31 @@ protected:
 
 public:
     //!
+    //! \brief    Init Os Utilities
+    //! \details  Include Utilities, user settings key, mem ninja etc
+    //! \details  Must be first called MOS interface before CreateOsDeviceContext
+    //! \details  Caller: DDI only.
+    //!
+    //! \param    [in] ddiDeviceContext
+    //!           Pointer of device context in DDI to init Os Device Context
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS InitOsUtilities(DDI_DEVICE_CONTEXT ddiDeviceContext);
+
+    //!
+    //! \brief    Close Os Utilities
+    //! \details  Include Utilities, user settings key, mem ninja etc
+    //! \details  Must be last called MOS interface after DestroyOsDeviceContext
+    //! \details  Caller: DDI only.
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS CloseOsUtilities();
+
+    //!
     //! \brief    Create Os Device Context
     //! \details  Create the Os Device Context in device level.
     //! \details  Caller: DDI only.
@@ -105,7 +130,7 @@ public:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     static MOS_STATUS DestroyOsDeviceContext(MOS_DEVICE_HANDLE deviceContext);
-    
+
     //!
     //! \brief    Create Os Stream State
     //! \details  Create the Os Stream State in stream level.
@@ -117,13 +142,21 @@ public:
     //!           Handle of Os Stream State to create. If creation failed, it is INVALID_HANLE.
     //!           OsStreamState is a stream level state which stores the flags, info specific to OS specfic to that stream.
     //!           It is be binded with a valid OsDeviceContext to indicate the inclusion relationship between device and stream.
+    //! \param    [in] deviceContext
+    //!           Device context to init streamState
+    //! \param    [in] osInterface
+    //!           Os interface to store streamState
+    //! \param    [in] component
+    //!           Indicate which component the stream state to create belongs to
     //!
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
-    //!    
+    //!
     static MOS_STATUS CreateOsStreamState(
         MOS_STREAM_HANDLE *streamState,
-        MOS_DEVICE_HANDLE deviceContext);
+        MOS_DEVICE_HANDLE deviceContext,
+        MOS_INTERFACE_HANDLE osInterface,
+        MOS_COMPONENT component);
      
     //!
     //! \brief    Destroy Os Stream State
@@ -227,12 +260,25 @@ public:
     //!
     //! \brief    Get current gmmclientcontext
     //! \details  Get current gmmclientcontext
-    //! \param    PMOS_INTERFACE pOsInterface
-    //!           [in] OS Interface
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //!
     //! \return   GMM_CLIENT_CONTEXT
     //!           Current gmmclientcontext
     //!
     static GMM_CLIENT_CONTEXT *GetGmmClientContext(
+        MOS_STREAM_HANDLE streamState);
+
+    //!
+    //! \brief    Get AuxTable base address
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \return   uint64_t
+    //!           64bit base address value of AuxTable
+    //!
+    static uint64_t GetAuxTableBaseAddr(
         MOS_STREAM_HANDLE streamState);
 
     //!
@@ -308,6 +354,7 @@ public:
     //! \brief    Add Command
     //! \details  [Cmd Buffer Interface] Add gpu commands into cmd buffer
     //! \details  Caller: MHW only
+    //! \details  It is not device stated function and can be used in both APO MHW and NON-APO MOS.
     //! \details  This func is called when a stream (Hal instance) adds gpu cmds into cmd buffer.
     //! \details  Before getting a cmd buffer to program GPU cmds, a valid GPU context must be setted into the stream.
     //! \details  Calling sequence is like: SetGpuContext -> GetCommandBuffer -> AddCommand ...
@@ -655,6 +702,7 @@ public:
     //! \brief    Convert Resource From Ddi
     //! \details  [Resource Interface] Convert Resource structure From OS/API specific to MOS reource.
     //! \details  Caller: DDI only
+    //! \details  It is not device stated function and can be used in both APO DDI and NON-APO MOS.
     //! \details  MOS resoure is the structure inside MOS module. DDI specific resource depends on OS/API verison.
     //!           DDI call this to convert external resources (not created by hal) to Mos resources so that HAL & MHW can use them.
     //!
@@ -692,13 +740,14 @@ public:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     static MOS_STATUS CreateOsSpecificResourceInfo(OsSpecificRes resource, bool isInternal = false);
-    
+
     //!
     //! \brief    Destroy Os Specific Resource Info
     //! \details  [Resource Interface] Destroy OS/API specific resource structure.
     //! \details  Caller: DDI only
+    //! \details  It is not device stated function and can be used in both APO DDI and NON-APO MOS.
     //! \details  Os Specific resource info must be destroied if the resource is not used anymore.
-    //!           
+    //!
     //! \param    [in, out] resource
     //!           OS/API specific resource structure to initialize.
     //!
@@ -706,7 +755,7 @@ public:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     static MOS_STATUS DestroySpecificResourceInfo(OsSpecificRes resource);
-        
+
     //!
     //! \brief    Allocate Resource
     //! \details  [Resource Interface] Allocate a graphic resource.
@@ -726,9 +775,16 @@ public:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     static MOS_STATUS AllocateResource(
-        MOS_STREAM_HANDLE streamState,
-        PMOS_ALLOC_GFXRES_PARAMS params,    // user provided va
-        MOS_RESOURCE_HANDLE &resource);
+        MOS_STREAM_HANDLE           streamState,
+        PMOS_ALLOC_GFXRES_PARAMS    params,    // user provided va
+        MOS_RESOURCE_HANDLE         &resource
+#if MOS_MESSAGES_ENABLED
+        ,
+        const char                  *functionName,
+        const char                  *filename,
+        int32_t                     line
+#endif
+    );
 
     //!
     //! \brief    Free Resource
@@ -749,9 +805,16 @@ public:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     static MOS_STATUS FreeResource(
-        MOS_STREAM_HANDLE streamState,
-        MOS_RESOURCE_HANDLE resource,
-        uint32_t flag);
+        MOS_STREAM_HANDLE       streamState,
+        MOS_RESOURCE_HANDLE     resource,
+        uint32_t                flag
+#if MOS_MESSAGES_ENABLED
+        ,
+        const char              *functionName,
+        const char              *filename,
+        int32_t                 line
+#endif  // MOS_MESSAGES_ENABLED
+    );
 
     //!
     //! \brief    Get Resource Info
@@ -893,6 +956,7 @@ public:
     //! \brief    Skip Resource Sync
     //! \details  [Resource Interface] Skip the sync handling of the resource 
     //! \details  Caller: HAL only
+    //! \details  It is not device stated function and can be used in both APO HAL and NON-APO MOS.
     //! \details  Indicate the resource provided needn't to be synced. 
     //!           The resource skipping sync can be accessed by different cmd buffers on different GPU contexts at the same time.
     //! \details  RegisterResource and LockResource will not handling the sync of the resources between different GPU cotnexts.
@@ -1027,6 +1091,8 @@ public:
     //!
     //! \brief    Trim Residency
     //!
+    //! \param    [in] device
+    //!           MOS device handle
     //! \param    [in] periodicTrim
     //!           Indicate if the trim is periodic
     //! \param    [in] restartPeriodicTrim
@@ -1042,11 +1108,31 @@ public:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!        
     static MOS_STATUS TrimResidency(
+        MOS_DEVICE_HANDLE device,
         bool periodicTrim, 
         bool restartPeriodicTrim, 
         uint64_t &numBytesToTrim, 
         bool trimToMinimum,
         bool trimOnlyMediaResources);
+
+    //!
+    //! \brief    Update Residency
+    //!
+    //! \param    [in] device
+    //!           MOS device handle
+    //! \param    [in] resInfo
+    //!           Os specific resource info
+    //! \param    [in] index
+    //!           Resource index
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!  
+    static MOS_STATUS UpdateResidency(
+        MOS_DEVICE_HANDLE device,
+        OsSpecificRes     resInfo,
+        uint32_t          index);
+    
 
     // Memory compression interfaces
 
@@ -1478,6 +1564,83 @@ public:
 
 #endif // _DEBUG || _RELEASE_INTERNAL
 
+    //!
+    //! \brief    Sets the perf tag
+    //! \details  Sets the perf tag
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    uint32_t perfTag
+    //!           [in] Perf tag
+    //! \return   void
+    //!
+    static void SetPerfTag(
+        MOS_STREAM_HANDLE streamState,
+        uint32_t       perfTag);
+
+    //!
+    //! \brief    Gets the perf tag
+    //! \details  Gets the perf tag
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \return   uint32_t
+    //!           Return perf tag
+    //!
+    static uint32_t GetPerfTag(
+        MOS_STREAM_HANDLE streamState);
+
+    //!
+    //! \brief    Check if Perf Tag is already set
+    //! \details  Check if Perf Tag is already set
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \return   int32_t
+    //!
+    static int32_t IsPerfTagSet(
+        MOS_STREAM_HANDLE streamState);
+
+    //!
+    //! \brief    Increase performance data frame ID
+    //! \details  Increase performance data frame ID
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \return   void
+    //!
+    static void IncPerfFrameID(
+        MOS_STREAM_HANDLE streamState);
+
+    //!
+    //! \brief    Set Hybrid Kernel ID
+    //! \details  Set Hybrid Kernel ID
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    uint32_t kernelID
+    //!           [in] Hybrid Decoder kernel ID
+    //! \return   void
+    //!
+    static void SetPerfHybridKernelID(
+        MOS_STREAM_HANDLE streamState,
+        uint32_t          kernelID);
+
+    //!
+    //! \brief    Reset performance data buffer ID
+    //! \details  Reset performance data buffer ID
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \return   void
+    //!
+    static void ResetPerfBufferID(
+        MOS_STREAM_HANDLE streamState);
+
+    //!
+    //! \brief    Increase performance data buffer ID
+    //! \details  Increase performance data buffer ID
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \return   VOID
+    //!
+    static void IncPerfBufferID(
+        MOS_STREAM_HANDLE streamState);
+
 private:
 
     //!
@@ -1509,6 +1672,18 @@ private:
     //!           GPU Context instance got by GPU context handle, nullptr if get failed
     //!
     static GpuContextSpecificNext *GetGpuContext(MOS_STREAM_HANDLE streamState, GPU_CONTEXT_HANDLE handle);
+
+#if MOS_COMMAND_BUFFER_DUMP_SUPPORTED
+    //! \brief    Unified dump command buffer initialization
+    //! \details  check if dump command buffer was enabled and create the output directory
+    //! \param    [in/out] streamState
+    //!           Os stream state to init cmd buffer dump
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS DumpCommandBufferInit(
+        MOS_STREAM_HANDLE streamState);
+#endif  // MOS_COMMAND_BUFFER_DUMP_SUPPORTED
 };
 
 #endif  // __MOS_INTERFACE_H__

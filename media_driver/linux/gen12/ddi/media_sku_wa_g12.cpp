@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2019, Intel Corporation
+* Copyright (c) 2018-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -203,7 +203,7 @@ static bool InitTglMediaSku(struct GfxDeviceInfo *devInfo,
     MEDIA_WR_SKU(skuTable, Ftr10bitDecMemoryCompression, 0);
 
     MEDIA_WR_SKU(skuTable, FtrCCSNode, 1);
-
+    MEDIA_WR_SKU(skuTable, FtrRAMode, 1);
     MEDIA_WR_SKU(skuTable, FtrVpP010Output, 1);
     MEDIA_WR_SKU(skuTable, FtrVp10BitSupport, 1);
     MEDIA_WR_SKU(skuTable, FtrVp16BitSupport, 1);
@@ -224,8 +224,6 @@ static bool InitTglMediaSku(struct GfxDeviceInfo *devInfo,
 
     MEDIA_WR_SKU(skuTable, FtrTileY, 1);
 
-    bool enableCodecMMC = false;
-    bool enableVPMMC    = false;
     bool disableMMC     = false;
     MEDIA_WR_SKU(skuTable, FtrE2ECompression, 1);
     // Disable MMC for all components if set reg key
@@ -239,35 +237,14 @@ static bool InitTglMediaSku(struct GfxDeviceInfo *devInfo,
         disableMMC = true;
     }
 
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __VPHAL_ENABLE_MMC_ID,
-        &userFeatureData);
-    if (userFeatureData.bData)
-    {
-        enableVPMMC = true;
-    }
-
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_CODEC_MMC_ENABLE_ID,
-        &userFeatureData);
-    if (userFeatureData.bData)
-    {
-        enableCodecMMC = true;
-    }
-
     if (disableMMC)
     {
         MEDIA_WR_SKU(skuTable, FtrE2ECompression, 0);
-    }else
+    }
+
+    if (drvInfo->devRev == 0)
     {
-        if(!enableCodecMMC && !enableVPMMC)
-        {
-            MEDIA_WR_SKU(skuTable, FtrE2ECompression, 0);
-        }
+        MEDIA_WR_SKU(skuTable, FtrE2ECompression, 0);
     }
 
     MEDIA_WR_SKU(skuTable, FtrLinearCCS, 1);
@@ -311,6 +288,23 @@ static bool InitTglMediaWa(struct GfxDeviceInfo *devInfo,
     /*software wa to disable calculate the UV offset by gmmlib
       CPU blt call will add/remove padding on the platform*/
     MEDIA_WR_WA(waTable, WaDisableGmmLibOffsetInDeriveImage, 1);
+
+    /*software wa to fix some corner cases of HEVC/VP9 SFC and Scalability*/
+    MEDIA_WR_WA(waTable, Wa_14010222001, 1);
+
+    /*software wa to prevent error propagation for vertical intra refresh on H264 VDEnc*/
+    MEDIA_WR_WA(waTable, Wa_18011246551, 1);
+
+    MEDIA_WR_WA(waTable, WaDisableVeboxFor8K, 1);
+
+    if (drvInfo->devRev == 0)
+    {
+        /* Turn off MMC for codec, need to remove once turn it on */
+        MEDIA_WR_WA(waTable, WaDisableCodecMmc, 1);
+
+        /* Turn off MMC for VPP, need to remove once turn it on */
+        MEDIA_WR_WA(waTable, WaDisableVPMmc, 1);
+    }
 
     return true;
 }

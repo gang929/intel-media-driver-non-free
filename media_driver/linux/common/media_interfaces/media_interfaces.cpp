@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2019, Intel Corporation
+* Copyright (c) 2017-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -44,6 +44,7 @@
 #include "mhw_vdbox_hcp_interface.h"
 #include "mhw_vdbox_huc_interface.h"
 #include "mhw_vdbox_vdenc_interface.h"
+#include "mhw_blt.h"
 
 template class MediaInterfacesFactory<MhwInterfaces>;
 template class MediaInterfacesFactory<MmdDevice>;
@@ -198,6 +199,7 @@ void MhwInterfaces::Destroy()
     MOS_Delete(m_hcpInterface);
     MOS_Delete(m_hucInterface);
     MOS_Delete(m_vdencInterface);
+    MOS_Delete(m_bltInterface);
 }
 
 Codechal* CodechalDevice::CreateFactory(
@@ -213,7 +215,10 @@ Codechal* CodechalDevice::CreateFactory(
         CODECHAL_PUBLIC_ASSERTMESSAGE("Status check failed, CodecHal creation failed!"); \
         if (osInterface != nullptr && osInterface->bDeallocateOnExit) \
         {                                       \
-            osInterface->pfnDestroy(osInterface, false); \
+            if (osInterface->pfnDestroy != nullptr) \
+            {                                   \
+                osInterface->pfnDestroy(osInterface, false); \
+            }                                   \
             MOS_FreeMemory(osInterface);        \
         }                                       \
         MOS_Delete(mhwInterfaces);              \
@@ -229,7 +234,10 @@ Codechal* CodechalDevice::CreateFactory(
         CODECHAL_PUBLIC_ASSERTMESSAGE("nullptr check failed, CodecHal creation failed!"); \
         if (osInterface != nullptr && osInterface->bDeallocateOnExit) \
         {                                       \
-            osInterface->pfnDestroy(osInterface, false); \
+            if (osInterface->pfnDestroy != nullptr) \
+            {                                   \
+                osInterface->pfnDestroy(osInterface, false); \
+            }                                   \
             MOS_FreeMemory(osInterface);        \
         }                                       \
         MOS_Delete(mhwInterfaces);              \
@@ -257,9 +265,9 @@ Codechal* CodechalDevice::CreateFactory(
         FAIL_CHK_NULL(osInterface);
 
         MOS_COMPONENT component = CodecHalIsDecode(CodecFunction) ? COMPONENT_Decode : COMPONENT_Encode;
-        FAIL_CHK_STATUS(Mos_InitInterface(osInterface, osDriverContext, component));
 
         osInterface->bDeallocateOnExit = true;
+        FAIL_CHK_STATUS(Mos_InitInterface(osInterface, osDriverContext, component));
     }
     // pOsInterface provided - use OS interface functions provided by DDI (OS emulation)
     else
@@ -302,16 +310,16 @@ void* MmdDevice::CreateFactory(
 {
 #define MMD_FAILURE()                                       \
 {                                                           \
-    if (osInterface != nullptr)                             \
-    {                                                       \
-        osInterface->pfnDestroy(osInterface, false);        \
-        MOS_FreeMemory(osInterface);                        \
-    }                                                       \
     if (mhwInterfaces != nullptr)                           \
     {                                                       \
         mhwInterfaces->Destroy();                           \
     }                                                       \
     MOS_Delete(mhwInterfaces);                              \
+    if (osInterface != nullptr)                             \
+    {                                                       \
+        osInterface->pfnDestroy(osInterface, false);        \
+        MOS_FreeMemory(osInterface);                        \
+    }                                                       \
     MOS_Delete(device);                                     \
     return nullptr;                                         \
 }

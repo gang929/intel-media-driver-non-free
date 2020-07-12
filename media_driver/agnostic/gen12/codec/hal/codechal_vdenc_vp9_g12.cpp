@@ -537,6 +537,12 @@ MOS_STATUS CodechalVdencVp9StateG12::ExecuteDysSliceLevel()
     MOS_COMMAND_BUFFER cmdBuffer;
     CODECHAL_ENCODE_CHK_STATUS_RETURN(GetCommandBuffer(&cmdBuffer));
 
+    if (!m_singleTaskPhaseSupported)
+    {
+        PerfTagSetting perfTag;
+        CODECHAL_ENCODE_SET_PERFTAG_INFO(perfTag, CODECHAL_ENCODE_PERFTAG_CALL_PAK_ENGINE);
+    }
+
     MHW_BATCH_BUFFER secondLevelBatchBuffer;
     MOS_ZeroMemory(&secondLevelBatchBuffer, sizeof(secondLevelBatchBuffer));
     secondLevelBatchBuffer.dwOffset = 0;
@@ -595,7 +601,7 @@ MOS_STATUS CodechalVdencVp9StateG12::ExecuteDysSliceLevel()
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferEnd(&cmdBuffer, nullptr));
     }
 
-    std::string currPassName = "PAK_PASS" + std::to_string((int)m_currPass);
+    std::string currPassName = "PAK_PASS_DYS" + std::to_string((int)m_currPass);
     CODECHAL_DEBUG_TOOL(CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpCmdBuffer(
         &cmdBuffer,
         CODECHAL_NUM_MEDIA_STATES,
@@ -2687,6 +2693,13 @@ MOS_STATUS CodechalVdencVp9StateG12::ExecuteTileLevel()
     }
 
     std::string currPassName = "PAK_PASS" + std::to_string((int)m_currPass);
+    if ((m_dysRefFrameFlags != DYS_REF_NONE) && m_dysVdencMultiPassEnabled)
+    {
+        // Added extra symbol into log to avoid log's file overwrite on the next pass
+        // For DYS Mutlipass mode next pass should run with "m_currPass = 0" again
+        // See ExecutePictureLevel() function for all details
+        currPassName.append("_0");
+    }
     CODECHAL_DEBUG_TOOL(CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpCmdBuffer(
         &cmdBuffer,
         CODECHAL_NUM_MEDIA_STATES,
@@ -3175,7 +3188,7 @@ MOS_STATUS CodechalVdencVp9StateG12::SendPrologWithFrameTracking(
         MOS_ZeroMemory(&genericPrologParams, sizeof(genericPrologParams));
         genericPrologParams.pOsInterface = m_hwInterface->GetOsInterface();
         genericPrologParams.pvMiInterface = m_hwInterface->GetMiInterface();
-        genericPrologParams.bMmcEnabled = CodecHalMmcState::IsMmcEnabled();
+        genericPrologParams.bMmcEnabled = m_mmcState ? m_mmcState->IsMmcEnabled() : false;
         genericPrologParams.dwStoreDataValue = m_storeData - 1;
         CODECHAL_ENCODE_CHK_STATUS_RETURN(Mhw_SendGenericPrologCmd(commandBufferInUse, &genericPrologParams));
     }
@@ -3347,6 +3360,14 @@ MOS_STATUS CodechalVdencVp9StateG12::SetPictureStructs()
         }
         m_numPasses = (m_numPassesInOnePipe + 1) * m_numPipe - 1;
     }
+    // This is BRC DYS SinglePass case
+    // Actually, repak is disabled
+    if (m_vdencBrcEnabled && (m_dysRefFrameFlags != DYS_REF_NONE) && !m_dysVdencMultiPassEnabled)
+    {
+        m_dysBrc             = true;
+        m_numPassesInOnePipe = 1;
+        m_numPasses          = (m_numPassesInOnePipe + 1) * m_numPipe - 1;
+    }
 
 #ifdef _MMC_SUPPORTED
     //WA to clear CCS by VE resolve
@@ -3364,7 +3385,7 @@ MOS_STATUS CodechalVdencVp9StateG12::SetPictureStructs()
             clearccswa = true;
         }
 
-        if (clearccswa && CodecHalMmcState::IsMmcEnabled())
+        if (clearccswa && m_mmcState && m_mmcState->IsMmcEnabled())
         {
             m_osInterface->pfnDecompResource(m_osInterface, &m_reconSurface.OsResource);
             m_osInterface->pfnSetGpuContext(m_osInterface, m_renderContext);
@@ -3417,7 +3438,8 @@ MOS_STATUS CodechalVdencVp9StateG12::ExecutePictureLevel()
     // 1. Use PAK to down scale the reference picture (PASS 0)
     // 2. Run VDENC to stream out PakObjCmd (PASS 0)
     // 3. Run VDENC (with PAK only multi pass enabled) to stream in PakObjCmd from previous pass (PASS 0)
-    // 4. Repak (PASS 1)
+    // 4. Repak (PASS 1) - it is only for CQP mode
+    // 5. Extra note: Repak is disabled for BRC Dynamic scaling single pass mode
     if (m_dysRefFrameFlags != DYS_REF_NONE)
     {
         if (m_currPass == 0)
@@ -3727,6 +3749,11 @@ MOS_STATUS CodechalVdencVp9StateG12::ExecutePictureLevel()
     MOS_COMMAND_BUFFER cmdBuffer;
     CODECHAL_ENCODE_CHK_STATUS_RETURN(GetCommandBuffer(&cmdBuffer));
 
+    if (!m_singleTaskPhaseSupported)
+    {
+        CODECHAL_ENCODE_SET_PERFTAG_INFO(perfTag, CODECHAL_ENCODE_PERFTAG_CALL_PAK_ENGINE);
+    }
+
     // Non scalable mode header
     if ((!m_singleTaskPhaseSupported || m_firstTaskInPhase) && !m_scalableMode)
     {
@@ -3990,7 +4017,7 @@ MOS_STATUS CodechalVdencVp9StateG12::SetHcpPipeBufAddrParams(MHW_VDBOX_PIPE_BUF_
     pipeBufAddrParams.presCurMvTempBuffer = m_trackedBuf->GetMvTemporalBuffer(m_currMvTemporalBufferIndex);
     pipeBufAddrParams.bDynamicScalingEnable = (m_dysRefFrameFlags != DYS_REF_NONE) && !m_dysVdencMultiPassEnabled;
 
-    if (CodecHalMmcState::IsMmcEnabled() && m_reconSurface.bCompressible)
+    if (m_mmcState && m_mmcState->IsMmcEnabled() && m_reconSurface.bCompressible)
     {
         pipeBufAddrParams.PreDeblockSurfMmcState = MOS_MEMCOMP_HORIZONTAL;
         pipeBufAddrParams.PostDeblockSurfMmcState = pipeBufAddrParams.PreDeblockSurfMmcState;

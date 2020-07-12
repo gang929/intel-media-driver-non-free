@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, Intel Corporation
+* Copyright (c) 2019-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -97,7 +97,7 @@ public:
     //!
     //! \brief  Initialize the MOS Context
     //! \param  [in] pOsDriverContext
-    //!         ptr to DDI_DEVICE_CONTEXT created inside DDI 
+    //!         ptr to DDI_DEVICE_CONTEXT created inside DDI
     //! \return MOS_Success in pass case, MOS error status in fail cases
     //!
     MOS_STATUS Init(DDI_DEVICE_CONTEXT osDriverContext);
@@ -146,11 +146,6 @@ public:
     //! \return shm id
     //!
     void *GetShmPtr() { return m_shm; }
-
-    //!
-    //! \brief  Return the function ptr for memory decompression function
-    //!
-    void *GetpfnMemoryDecompaddr() { return (void *)m_memoryDecompress; }
 
     MOS_LINUX_CONTEXT *GetDrmContext() { return m_intelContext; }
 
@@ -261,11 +256,6 @@ private:
     struct PerfInfo     m_performanceInfo = {};
 
     //!
-    //! \brief  Performance specific information for debug purpose
-    //!
-    PERF_DATA           m_perfData = {};
-
-    //!
     //! \brief  switch for 64bit KMD relocation
     //!
     bool                m_use64BitRelocs = false;
@@ -331,45 +321,6 @@ private:
     //! \brief  Flag to indicate if hybrid decoder is running
     //!
     bool                m_hybridDecoderRunningFlag = false;
-
-    //!
-    //! \brief  the function ptr for memory decompression function
-    //!
-    void (* m_memoryDecompress)(
-        PMOS_CONTEXT                pOsContext,
-        PMOS_RESOURCE               pOsResource) = nullptr;
-
-    //!
-    //! \brief  the function ptr for surface copy function
-    //!
-    void  (* m_mediaMemCopy )(
-        PMOS_CONTEXT       pOsContext,
-        PMOS_RESOURCE      pInputResource,
-        PMOS_RESOURCE      pOutputResource,
-        bool               bOutputCompressed) = nullptr;
-
-    //!
-    //! \brief  the function ptr for Media Memory 2D copy function
-    //!
-    void (* m_mediaMemCopy2D)(
-        PMOS_CONTEXT       pOsContext,
-        PMOS_RESOURCE      pInputResource,
-        PMOS_RESOURCE      pOutputResource,
-        uint32_t           copyWidth,
-        uint32_t           copyHeight,
-        uint32_t           copyInputOffset,
-        uint32_t           copyOutputOffset,
-        bool               bOutputCompressed) = nullptr;
-
-    //!
-    //! \brief  ptr to ptr of memory decompression state
-    //!
-    void*               *m_mediaMemDecompState = nullptr;
-
-    //!
-    //! \brief  ptr to mos context(kept for memory decompression function, to be cleaned up)
-    //!
-    PMOS_CONTEXT        m_mosContext = nullptr;
 
     //!
     //! \brief  the function ptr for memory decompression function
