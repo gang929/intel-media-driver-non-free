@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017, Intel Corporation
+* Copyright (c) 2017-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -166,7 +166,8 @@ VAStatus MediaLibvaCapsG10::GetPlatformSpecificAttrib(VAProfile profile,
         {
             if(IsAvcProfile(profile))
             {
-                *value = VA_ENC_INTRA_REFRESH_ROLLING_COLUMN;
+                *value = VA_ENC_INTRA_REFRESH_ROLLING_COLUMN |
+                    VA_ENC_INTRA_REFRESH_ROLLING_ROW;
             }
             else
             {
@@ -208,6 +209,38 @@ VAStatus MediaLibvaCapsG10::GetPlatformSpecificAttrib(VAProfile profile,
             {
                 *value =0;
                 status = VA_STATUS_ERROR_INVALID_PARAMETER;
+            }
+            break;
+        }
+        case VAConfigAttribMaxPictureWidth:
+        {
+            if(profile == VAProfileJPEGBaseline)
+            {
+                *value = ENCODE_JPEG_MAX_PIC_WIDTH;
+            }
+            else if(IsHevcProfile(profile) || IsAvcProfile(profile) || IsVp8Profile(profile))
+            {
+                *value = CODEC_4K_MAX_PIC_WIDTH;
+            }
+            else
+            {
+                *value = CODEC_MAX_PIC_WIDTH;
+            }
+            break;
+        }
+        case VAConfigAttribMaxPictureHeight:
+        {
+            if(profile == VAProfileJPEGBaseline)
+            {
+                *value = ENCODE_JPEG_MAX_PIC_HEIGHT;
+            }
+            else if(IsHevcProfile(profile) || IsAvcProfile(profile) || IsVp8Profile(profile))
+            {
+                *value = CODEC_4K_MAX_PIC_HEIGHT;
+            }
+            else
+            {
+                *value = CODEC_MAX_PIC_HEIGHT;
             }
             break;
         }
@@ -334,7 +367,6 @@ VAStatus MediaLibvaCapsG10::CheckEncodeResolution(
         uint32_t width,
         uint32_t height)
 {
-    uint32_t maxWidth, maxHeight;
     switch (profile)
     {
         case VAProfileJPEGBaseline:
@@ -342,6 +374,16 @@ VAStatus MediaLibvaCapsG10::CheckEncodeResolution(
                     || width < m_encJpegMinWidth
                     || height > m_encJpegMaxHeight
                     || height < m_encJpegMinHeight)
+            {
+                return VA_STATUS_ERROR_RESOLUTION_NOT_SUPPORTED;
+            }
+            break;
+        case VAProfileMPEG2Simple:
+        case VAProfileMPEG2Main:
+            if( width > CODEC_MAX_PIC_WIDTH
+                    || width < m_encMinWidth
+                    || height > CODEC_MAX_PIC_HEIGHT
+                    || height < m_encMinHeight)
             {
                 return VA_STATUS_ERROR_RESOLUTION_NOT_SUPPORTED;
             }

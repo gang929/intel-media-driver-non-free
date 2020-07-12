@@ -39,6 +39,8 @@
 #include <stdio.h>
 #include "libdrm_macros.h"
 
+#define S_SUCCESS 0
+
 struct drm_clip_rect;
 struct mos_bufmgr;
 struct mos_linux_context;
@@ -124,11 +126,12 @@ struct mos_aub_annotation {
 #define BO_ALLOC_FOR_RENDER (1<<0)
 
 struct mos_linux_bo *mos_bo_alloc(struct mos_bufmgr *bufmgr, const char *name,
-                 unsigned long size, unsigned int alignment);
+                 unsigned long size, unsigned int alignment, int mem_type);
 struct mos_linux_bo *mos_bo_alloc_for_render(struct mos_bufmgr *bufmgr,
                         const char *name,
                         unsigned long size,
-                        unsigned int alignment);
+                        unsigned int alignment,
+                        int mem_type);
 struct mos_linux_bo *mos_bo_alloc_userptr(struct mos_bufmgr *bufmgr,
                     const char *name,
                     void *addr, uint32_t tiling_mode,
@@ -139,7 +142,8 @@ struct mos_linux_bo *mos_bo_alloc_tiled(struct mos_bufmgr *bufmgr,
                        int x, int y, int cpp,
                        uint32_t *tiling_mode,
                        unsigned long *pitch,
-                       unsigned long flags);
+                       unsigned long flags,
+                       int mem_type);
 void mos_bo_reference(struct mos_linux_bo *bo);
 void mos_bo_unreference(struct mos_linux_bo *bo);
 int mos_bo_map(struct mos_linux_bo *bo, int write_enable);
@@ -183,6 +187,7 @@ int mos_bo_busy(struct mos_linux_bo *bo);
 int mos_bo_madvise(struct mos_linux_bo *bo, int madv);
 int mos_bo_use_48b_address_range(struct mos_linux_bo *bo, uint32_t enable);
 void mos_bo_set_exec_object_async(struct mos_linux_bo *bo);
+void mos_bo_clear_exec_object_async(struct mos_linux_bo *bo);
 int mos_bo_set_softpin_offset(struct mos_linux_bo *bo, uint64_t offset);
 int mos_bo_set_softpin(struct mos_linux_bo *bo);
 
@@ -200,6 +205,7 @@ void mos_bufmgr_gem_enable_reuse(struct mos_bufmgr *bufmgr);
 void mos_bufmgr_gem_enable_fenced_relocs(struct mos_bufmgr *bufmgr);
 void mos_bufmgr_gem_set_vma_cache_size(struct mos_bufmgr *bufmgr,
                          int limit);
+int mos_bufmgr_gem_get_memory_info(struct mos_bufmgr *bufmgr, char *info, uint32_t length);
 int mos_gem_bo_map_unsynchronized(struct mos_linux_bo *bo);
 int mos_gem_bo_map_gtt(struct mos_linux_bo *bo);
 int mos_gem_bo_unmap_gtt(struct mos_linux_bo *bo);
@@ -241,7 +247,10 @@ void mos_gem_vm_destroy(struct mos_bufmgr *bufmgr, struct drm_i915_gem_vm_contro
 
 #define MAX_ENGINE_INSTANCE_NUM 8
 
-int mos_query_engines(int fd,
+int mos_query_engines_count(struct mos_bufmgr *bufmgr,
+                      unsigned int *nengine);
+
+int mos_query_engines(struct mos_bufmgr *bufmgr,
                       __u16 engine_class,
                       __u64 caps,
                       unsigned int *nengine,
@@ -354,7 +363,8 @@ mos_gem_bo_alloc_internal(struct mos_bufmgr *bufmgr,
                 unsigned long flags,
                 uint32_t tiling_mode,
                 unsigned long stride,
-                unsigned int alignment);
+                unsigned int alignment,
+                int mem_type);
 drm_export int
 mos_gem_bo_exec(struct mos_linux_bo *bo, int used,
               drm_clip_rect_t * cliprects, int num_cliprects, int DR4);
@@ -371,6 +381,7 @@ drm_export int mos_gem_bo_subdata(struct mos_linux_bo *bo, unsigned long offset,
              unsigned long size, const void *data);
 
 drm_export bool mos_gem_bo_is_softpin(struct mos_linux_bo *bo);
+drm_export bool mos_gem_bo_is_exec_object_async(struct mos_linux_bo *bo);
 #if defined(__cplusplus)
 }
 #endif

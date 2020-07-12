@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, Intel Corporation
+* Copyright (c) 2019-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -54,8 +54,7 @@ MOS_STATUS MediaVeboxDecompStateG12::RenderDecompCMD(PMOS_SURFACE surface)
     VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(m_mhwMiInterface);
     VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(pMmioRegisters = m_mhwMiInterface->GetMmioRegisters());
 
-    if (surface->CompressionMode                &&
-        surface->CompressionMode != MOS_MMC_MC  &&
+    if (surface->CompressionMode != MOS_MMC_MC  &&
         surface->CompressionMode != MOS_MMC_RC)
     {
         VPHAL_MEMORY_DECOMP_NORMALMESSAGE("Input surface is uncompressed, In_Place resolve is not needed");
@@ -142,12 +141,7 @@ MOS_STATUS MediaVeboxDecompStateG12::RenderDecompCMD(PMOS_SURFACE surface)
             &flushDwParams));
     }
 
-    if (m_osInterface->osCpInterface->IsHMEnabled())
-    {
-        HalOcaInterface::DumpCpParam(cmdBuffer, *pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
-    }
-
-    HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *pOsContext);
+    HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
 
     VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(m_mhwMiInterface->AddMiBatchBufferEnd(
         &cmdBuffer,
@@ -178,11 +172,7 @@ MOS_STATUS MediaVeboxDecompStateG12::IsVeboxDecompressionEnabled()
     MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
     UserFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
 
-#ifdef LINUX
-    UserFeatureData.bData = false; // disable VE Decompress on Linux
-#else
     UserFeatureData.bData = true;
-#endif
 
     MOS_USER_FEATURE_INVALID_KEY_ASSERT(MOS_UserFeature_ReadValue_ID(
         nullptr,

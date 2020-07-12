@@ -84,6 +84,9 @@ int32_t CreateCmDeviceFromVA(VADriverContextP vaDriverCtx,
     cmCtx->mosCtx.pPerfData       = (PERF_DATA *)MOS_AllocAndZeroMemory(sizeof(PERF_DATA));
     cmCtx->mosCtx.pGmmClientContext = mediaCtx->pGmmClientContext;
     cmCtx->mosCtx.m_osDeviceContext = mediaCtx->m_osDeviceContext;
+    cmCtx->mosCtx.m_apoMosEnabled   = mediaCtx->m_apoMosEnabled;
+    cmCtx->mosCtx.m_auxTableMgr     = mediaCtx->m_auxTableMgr;
+
     if(cmCtx->mosCtx.pPerfData == nullptr)
     {
         MOS_FreeMemAndSetNull(cmCtx); // free cm ctx

@@ -109,12 +109,12 @@ VAStatus DdiEncodeHevc::ContextInitialize(
     codecHalSettings->mode            = m_encodeCtx->wModeType;
     codecHalSettings->standard        = CODECHAL_HEVC;
 
-    if(m_encodeCtx->vaProfile==VAProfileHEVCMain)
+    if(m_encodeCtx->vaProfile==VAProfileHEVCMain || m_encodeCtx->vaProfile==VAProfileHEVCSccMain)
     {
        codecHalSettings->chromaFormat    = HCP_CHROMA_FORMAT_YUV420;
        codecHalSettings->lumaChromaDepth = CODECHAL_LUMA_CHROMA_DEPTH_8_BITS;
     }
-    else if(m_encodeCtx->vaProfile==VAProfileHEVCMain10)
+    else if(m_encodeCtx->vaProfile==VAProfileHEVCMain10 || m_encodeCtx->vaProfile==VAProfileHEVCSccMain10)
     {
        codecHalSettings->chromaFormat    = HCP_CHROMA_FORMAT_YUV420;
        codecHalSettings->lumaChromaDepth = CODECHAL_LUMA_CHROMA_DEPTH_10_BITS;
@@ -134,12 +134,12 @@ VAStatus DdiEncodeHevc::ContextInitialize(
         codecHalSettings->chromaFormat    = HCP_CHROMA_FORMAT_YUV422;
         codecHalSettings->lumaChromaDepth = CODECHAL_LUMA_CHROMA_DEPTH_12_BITS;
     }
-    else if (m_encodeCtx->vaProfile == VAProfileHEVCMain444)
+    else if (m_encodeCtx->vaProfile == VAProfileHEVCMain444 || m_encodeCtx->vaProfile==VAProfileHEVCSccMain444)
     {
         codecHalSettings->chromaFormat = HCP_CHROMA_FORMAT_YUV444;
         codecHalSettings->lumaChromaDepth = CODECHAL_LUMA_CHROMA_DEPTH_8_BITS;
     }
-    else if (m_encodeCtx->vaProfile == VAProfileHEVCMain444_10)
+    else if (m_encodeCtx->vaProfile == VAProfileHEVCMain444_10 || m_encodeCtx->vaProfile==VAProfileHEVCSccMain444_10)
     {
         codecHalSettings->chromaFormat = HCP_CHROMA_FORMAT_YUV444;
         codecHalSettings->lumaChromaDepth = CODECHAL_LUMA_CHROMA_DEPTH_10_BITS;
@@ -149,6 +149,7 @@ VAStatus DdiEncodeHevc::ContextInitialize(
         codecHalSettings->chromaFormat = HCP_CHROMA_FORMAT_YUV444;
         codecHalSettings->lumaChromaDepth = CODECHAL_LUMA_CHROMA_DEPTH_12_BITS;
     }
+    codecHalSettings->isSCCEnabled = IsSccProfile();
 
     VAStatus eStatus = VA_STATUS_SUCCESS;
 
@@ -487,6 +488,12 @@ VAStatus DdiEncodeHevc::ParseSeqParams(void *ptr)
     hevcSeqParams->bit_depth_luma_minus8                = seqParams->seq_fields.bits.bit_depth_luma_minus8;
     hevcSeqParams->bit_depth_chroma_minus8              = seqParams->seq_fields.bits.bit_depth_chroma_minus8;
 
+    if (m_codechalSettings->isSCCEnabled)
+    {
+        hevcSeqParams->palette_mode_enabled_flag = seqParams->scc_fields.bits.palette_mode_enabled_flag;
+        hevcSeqParams->motion_vector_resolution_control_idc = 0;
+    }
+
     return VA_STATUS_SUCCESS;
 }
 
@@ -506,9 +513,24 @@ VAStatus DdiEncodeHevc::ParsePicParams(
 
     PCODEC_HEVC_ENCODE_SEQUENCE_PARAMS hevcSeqParams = (PCODEC_HEVC_ENCODE_SEQUENCE_PARAMS)((uint8_t *)m_encodeCtx->pSeqParams);
 
+    DDI_MEDIA_SURFACE *surface;
     if(picParams->decoded_curr_pic.picture_id != VA_INVALID_SURFACE)
     {
-        DDI_CHK_RET(RegisterRTSurfaces(&(m_encodeCtx->RTtbl), DdiMedia_GetSurfaceFromVASurfaceID(mediaCtx, picParams->decoded_curr_pic.picture_id)), "RegisterRTSurfaces failed!");
+        surface = DdiMedia_GetSurfaceFromVASurfaceID(mediaCtx, picParams->decoded_curr_pic.picture_id);
+
+        if(m_encodeCtx->vaProfile == VAProfileHEVCMain444
+        || m_encodeCtx->vaProfile == VAProfileHEVCMain444_10
+        || m_encodeCtx->vaProfile == VAProfileHEVCMain444_12
+        || m_encodeCtx->vaProfile == VAProfileHEVCMain422_10
+        || m_encodeCtx->vaProfile == VAProfileHEVCMain422_12
+        || m_encodeCtx->vaProfile == VAProfileHEVCMain10
+        || m_encodeCtx->vaProfile == VAProfileHEVCSccMain10
+        || m_encodeCtx->vaProfile == VAProfileHEVCSccMain444
+        || m_encodeCtx->vaProfile == VAProfileHEVCSccMain444_10)
+        {
+            surface = DdiMedia_ReplaceSurfaceWithVariant(surface, m_encodeCtx->vaEntrypoint);
+        }
+        DDI_CHK_RET(RegisterRTSurfaces(&(m_encodeCtx->RTtbl),surface), "RegisterRTSurfaces failed!");
     }
 
     // Curr Recon Pic
@@ -646,6 +668,16 @@ VAStatus DdiEncodeHevc::ParsePicParams(
         }
     }
 
+    if (m_codechalSettings->isSCCEnabled)
+    {
+        // SCC
+        hevcPicParams->pps_curr_pic_ref_enabled_flag = picParams->scc_fields.bits.pps_curr_pic_ref_enabled_flag;
+        hevcPicParams->residual_adaptive_colour_transform_enabled_flag = 0;
+        hevcPicParams->pps_slice_act_qp_offsets_present_flag = 0;
+        // GEN12 HW only can support the initial palette size 0
+        hevcPicParams->PredictorPaletteSize = 0;
+    }
+
     DDI_MEDIA_BUFFER *buf = DdiMedia_GetBufferFromVABufferID(mediaCtx, picParams->coded_buf);
     if (nullptr == buf)
     {
@@ -753,7 +785,6 @@ VAStatus DdiEncodeHevc::ParseSlcParams(
             hevcSlcParams->chroma_offset[1][i][1]       = MOS_CLAMP_MIN_MAX(vaEncSlcParamsHEVC->chroma_offset_l1[i][1], minChromaOffset, maxChromaOffset);
             hevcSlcParams->delta_chroma_weight[1][i][1] = vaEncSlcParamsHEVC->delta_chroma_weight_l1[i][1];
         }
-
         for (uint32_t i = 0; i < numMaxRefFrame; i++)
         {
             if(i >  hevcSlcParams->num_ref_idx_l0_active_minus1)
@@ -1025,7 +1056,6 @@ VAStatus DdiEncodeHevc::ParseMiscParams(void *ptr)
         VAEncMiscParameterHRD *vaEncMiscParamHRD = (VAEncMiscParameterHRD *)miscParamBuf->data;
         seqParams->VBVBufferSizeInBit            = vaEncMiscParamHRD->buffer_size;
         seqParams->InitVBVBufferFullnessInBit    = vaEncMiscParamHRD->initial_buffer_fullness;
-        seqParams->RateControlMethod             = RATECONTROL_CBR;
         break;
     }
     case VAEncMiscParameterTypeFrameRate:
@@ -1174,13 +1204,18 @@ VAStatus DdiEncodeHevc::ParseMiscParams(void *ptr)
     case VAEncMiscParameterTypeROI:
     {
         VAEncMiscParameterBufferROI *vaEncMiscParamROI = (VAEncMiscParameterBufferROI *)miscParamBuf->data;
-        uint32_t                     maxROIsupported   = CODECHAL_ENCODE_HEVC_MAX_NUM_ROI;
         uint8_t                      blockSize         = (m_encodeCtx->bVdencActive) ? vdencRoiBlockSize : CODECHAL_MACROBLOCK_WIDTH;
 
          uint32_t frameWidth = (seqParams->wFrameWidthInMinCbMinus1 + 1) << (seqParams->log2_min_coding_block_size_minus3 + 3);
          uint32_t frameHeight = (seqParams->wFrameHeightInMinCbMinus1 + 1) << (seqParams->log2_min_coding_block_size_minus3 + 3);
          uint16_t rightBorder = (uint16_t)CODECHAL_GET_WIDTH_IN_BLOCKS(frameWidth, blockSize) - 1;
          uint16_t bottomBorder = (uint16_t)CODECHAL_GET_HEIGHT_IN_BLOCKS(frameHeight, blockSize) - 1;
+
+         if(vaEncMiscParamROI->num_roi > CODECHAL_ENCODE_HEVC_MAX_NUM_ROI)
+         {
+             DDI_ASSERTMESSAGE("The number of ROI rect is greater than %d", CODECHAL_ENCODE_HEVC_MAX_NUM_ROI);
+             return VA_STATUS_ERROR_INVALID_PARAMETER;
+         }
 
         if (vaEncMiscParamROI->num_roi)
         {
@@ -1206,18 +1241,7 @@ VAStatus DdiEncodeHevc::ParseMiscParams(void *ptr)
                     DDI_ASSERTMESSAGE("ROI Top > ROI Bottom.");
                     return VA_STATUS_ERROR_INVALID_PARAMETER;
                 }
-
-
-                if (m_encodeCtx->bVdencActive == false)
-                {
-                    // align to CTB edge (32 on Gen9) to avoid QP average issue
-                    pic_param_roi.Left   = MOS_ALIGN_FLOOR(pic_param_roi.Left, 32);
-                    pic_param_roi.Right  = MOS_ALIGN_CEIL(pic_param_roi.Right, 32);
-                    pic_param_roi.Top    = MOS_ALIGN_FLOOR(pic_param_roi.Top, 32);
-                    pic_param_roi.Bottom = MOS_ALIGN_CEIL(pic_param_roi.Bottom, 32);
-                }
-
-
+              
                 // Convert from pixel units to block size units
                 pic_param_roi.Left   /= blockSize;
                 pic_param_roi.Right  /= blockSize;
@@ -1230,12 +1254,13 @@ VAStatus DdiEncodeHevc::ParseMiscParams(void *ptr)
                  pic_param_roi.Top    = pic_param_roi.Top    > bottomBorder ? bottomBorder : pic_param_roi.Top;
                  pic_param_roi.Bottom = pic_param_roi.Bottom > bottomBorder ? bottomBorder : pic_param_roi.Bottom;
 
-                 // DDI defination for right and bottom parameters is inclusive whereas
-                 // the defination in BRC kernel input is exclusive. So adding 1 to right & bottom.
-                 pic_param_roi.Right += 1;
-                 pic_param_roi.Bottom += 1;
+                  // DDI defination for right and bottom parameters is inclusive whereas
+                  // the defination in BRC kernel input is exclusive. So adding 1 to right & bottom.
+                  pic_param_roi.Right += 1;
+                  pic_param_roi.Bottom += 1;
+
             }
-            picParams->NumROI = MOS_MIN(vaEncMiscParamROI->num_roi, maxROIsupported);
+            picParams->NumROI = vaEncMiscParamROI->num_roi;
         }
 #ifndef ANDROID
         // support DeltaQP based ROI by default
@@ -1341,6 +1366,13 @@ VAStatus DdiEncodeHevc::ParseMiscParams(void *ptr)
         picParams->bUseRawPicForRef                                = vaEncMiscParamPrivate->useRawPicForRef;
         break;
     }
+    case VAEncMiscParameterTypeMaxFrameSize:
+    {
+        VAEncMiscParameterBufferMaxFrameSize *vaEncData  = (VAEncMiscParameterBufferMaxFrameSize *)miscParamBuf->data;
+        seqParams->UserMaxIFrameSize = vaEncData->max_frame_size>>3; // convert to bytes
+        seqParams->UserMaxPBFrameSize = vaEncData->max_frame_size>>3; // convert to bytes
+        break;
+    }
     default:
         DDI_ASSERTMESSAGE("unsupported misc parameter type.");
         return VA_STATUS_ERROR_INVALID_PARAMETER;
@@ -1356,6 +1388,14 @@ uint8_t DdiEncodeHevc::CodechalPicTypeFromVaSlcType(uint8_t vaSliceType)
     case sliceTypeI:
         return I_TYPE;
     case sliceTypeP:
+        if (m_codechalSettings->isSCCEnabled)
+        {
+            PCODEC_HEVC_ENCODE_PICTURE_PARAMS hevcPicParams = (PCODEC_HEVC_ENCODE_PICTURE_PARAMS)((uint8_t *)m_encodeCtx->pPicParams);
+            if (hevcPicParams->CodingType == I_TYPE && hevcPicParams->pps_curr_pic_ref_enabled_flag)
+            {
+                return I_TYPE;
+            }
+        }
         return P_TYPE;
     case sliceTypeB:
         return B_TYPE;
@@ -1449,4 +1489,12 @@ uint32_t DdiEncodeHevc::getPictureParameterBufferSize()
 uint32_t DdiEncodeHevc::getQMatrixBufferSize()
 {
     return sizeof(VAQMatrixBufferHEVC);
+}
+
+bool DdiEncodeHevc::IsSccProfile()
+{
+    return (m_encodeCtx->vaProfile==VAProfileHEVCSccMain
+           || m_encodeCtx->vaProfile==VAProfileHEVCSccMain10
+           || m_encodeCtx->vaProfile==VAProfileHEVCSccMain444
+           || m_encodeCtx->vaProfile==VAProfileHEVCSccMain444_10);
 }

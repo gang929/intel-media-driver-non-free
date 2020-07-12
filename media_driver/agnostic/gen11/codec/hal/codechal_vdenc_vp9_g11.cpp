@@ -2817,7 +2817,7 @@ MOS_STATUS CodechalVdencVp9StateG11::SendPrologWithFrameTracking(
         MOS_ZeroMemory(&genericPrologParams, sizeof(genericPrologParams));
         genericPrologParams.pOsInterface = m_hwInterface->GetOsInterface();
         genericPrologParams.pvMiInterface = m_hwInterface->GetMiInterface();
-        genericPrologParams.bMmcEnabled = CodecHalMmcState::IsMmcEnabled();
+        genericPrologParams.bMmcEnabled = m_mmcState ? m_mmcState->IsMmcEnabled() : false;
         genericPrologParams.dwStoreDataValue = m_storeData - 1;
         CODECHAL_ENCODE_CHK_STATUS_RETURN(Mhw_SendGenericPrologCmd(commandBufferInUse, &genericPrologParams));
     }
@@ -4324,6 +4324,7 @@ MOS_STATUS CodechalVdencVp9StateG11::ExecutePictureLevel()
     // set HCP_PIPE_BUF_ADDR_STATE values
     PMHW_VDBOX_PIPE_BUF_ADDR_PARAMS pipeBufAddrParams = nullptr;
     pipeBufAddrParams = CreateHcpPipeBufAddrParams(pipeBufAddrParams);
+    CODECHAL_ENCODE_CHK_NULL_RETURN(pipeBufAddrParams);
     CODECHAL_ENCODE_CHK_STATUS_RETURN(SetHcpPipeBufAddrParams(*pipeBufAddrParams, refSurface, refSurfaceNonScaled, dsRefSurface4x, dsRefSurface8x));
     pipeBufAddrParams->pRawSurfParam = &surfaceParams[CODECHAL_HCP_SRC_SURFACE_ID];
     pipeBufAddrParams->pDecodedReconParam = &surfaceParams[CODECHAL_HCP_DECODED_SURFACE_ID];

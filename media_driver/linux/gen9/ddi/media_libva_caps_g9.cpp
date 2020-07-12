@@ -169,6 +169,10 @@ VAStatus MediaLibvaCapsG9::GetPlatformSpecificAttrib(VAProfile profile,
                 *value = VA_ENC_INTRA_REFRESH_ROLLING_COLUMN |
                     VA_ENC_INTRA_REFRESH_ROLLING_ROW;
             }
+            else if(entrypoint == VAEntrypointEncSlice && IsHevcProfile(profile))
+            {
+                *value = VA_ENC_INTRA_REFRESH_ROLLING_COLUMN;
+            }
             else
             {
                 *value = VA_ENC_INTRA_REFRESH_NONE;
@@ -222,6 +226,38 @@ VAStatus MediaLibvaCapsG9::GetPlatformSpecificAttrib(VAProfile profile,
             {
                 *value =0;
                 status = VA_STATUS_ERROR_INVALID_PARAMETER;
+            }
+            break;
+        }
+        case VAConfigAttribMaxPictureWidth:
+        {
+            if(profile == VAProfileJPEGBaseline)
+            {
+                *value = ENCODE_JPEG_MAX_PIC_WIDTH;
+            }
+            else if(IsHevcProfile(profile) || IsAvcProfile(profile) || IsVp8Profile(profile))
+            {
+                *value = CODEC_4K_MAX_PIC_WIDTH;
+            }
+            else
+            {
+                *value = CODEC_MAX_PIC_WIDTH;
+            }
+            break;
+        }
+        case VAConfigAttribMaxPictureHeight:
+        {
+            if(profile == VAProfileJPEGBaseline)
+            {
+                *value = ENCODE_JPEG_MAX_PIC_HEIGHT;
+            }
+            else if(IsHevcProfile(profile) || IsAvcProfile(profile) || IsVp8Profile(profile))
+            {
+                *value = CODEC_4K_MAX_PIC_HEIGHT;
+            }
+            else
+            {
+                *value = CODEC_MAX_PIC_HEIGHT;
             }
             break;
         }

@@ -50,6 +50,7 @@
 #define ENCODE_VDENC_HEVC_MIN_ROI_DELTA_QP_G10  -8
 #define ENCODE_VDENC_HEVC_MAX_ROI_DELTA_QP_G10  7        // Max delta QP for VDEnc ROI
 #define ENCODE_VDENC_HEVC_PADDING_DW_SIZE       8
+#define CODECHAL_ENCODE_HEVC_MAX_NUM_DIRTYRECT 16
 
 // HEVC DP
 #define ENCODE_DP_HEVC_NUM_MAX_VME_L0_REF_G9  3
@@ -723,12 +724,12 @@ typedef struct _CODEC_HEVC_ENCODE_PICTURE_PARAMS
     *
     *    Value entries are ROI[0] up to ROI[NumROI – 1], inclusively, if NumROI > 0. And it can be ignored otherwise.
     */
-    CODEC_ROI               ROI[16];
+    CODEC_ROI               ROI[CODECHAL_ENCODE_HEVC_MAX_NUM_ROI];
     /*! \brief Distinct delta QP values assigned to the ROI
     *
     *    Value entries are distinct and within [MinDeltaQp..MaxDeltaQp].
     */
-    int8_t                  ROIDistinctDeltaQp[8];
+    int8_t                  ROIDistinctDeltaQp[CODECHAL_ENCODE_HEVC_MAX_NUM_ROI];
     uint32_t                RollingIntraReferenceLocation[16];
     /*! \brief Dictates the value of delta QP for any ROI should be within [MinDeltaQp..MaxDeltaQp]
     *
@@ -827,6 +828,7 @@ typedef struct _CODEC_HEVC_ENCODE_PICTURE_PARAMS
     uint32_t                bScreenContent;
 
     uint16_t                LcuMaxBitsizeAllowedHigh16b;
+    uint32_t                TargetFrameSize;
 
     /*! \brief Picture parameter, Same as syntax element.
     *

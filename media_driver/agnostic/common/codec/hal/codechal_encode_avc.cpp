@@ -3106,7 +3106,7 @@ MOS_STATUS CodechalEncodeAvcEnc::BrcInitResetKernel()
 
     if (!m_singleTaskPhaseSupported || m_lastTaskInPhase)
     {
-        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
         m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_renderContextUsesNullHw);
         m_lastTaskInPhase = false;
     }
@@ -3939,7 +3939,7 @@ MOS_STATUS CodechalEncodeAvcEnc::MbEncKernel(bool mbEncIFrameDistInUse)
 
         if ((!m_singleTaskPhaseSupported || m_lastTaskInPhase))
         {
-            HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+            HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
             m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_renderContextUsesNullHw);
             m_lastTaskInPhase = false;
         }
@@ -4383,6 +4383,7 @@ MOS_STATUS CodechalEncodeAvcEnc::BrcFrameUpdateKernel()
     brcUpdateSurfaceParams.presMbStatBuffer = &m_resMbStatsBuffer;  //Starting from GEN9
 
     PMOS_SURFACE buffer4xMeMvData = m_hmeKernel ? m_hmeKernel->GetSurface(CodechalKernelHme::SurfaceId::me4xMvDataBuffer) : &m_4xMeMvDataBuffer;
+    CODECHAL_ENCODE_CHK_NULL_RETURN(buffer4xMeMvData);
     uint32_t dwMvBufferHeightBack = buffer4xMeMvData->dwHeight; // save 4x ME output MV buffer height
     if (bMvDataNeededByBRC) //starting from G95
     {
@@ -4503,7 +4504,7 @@ MOS_STATUS CodechalEncodeAvcEnc::BrcFrameUpdateKernel()
 
     if (!m_singleTaskPhaseSupported || m_lastTaskInPhase)
     {
-        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
         m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_renderContextUsesNullHw);
         m_lastTaskInPhase = false;
     }
@@ -4666,7 +4667,7 @@ MOS_STATUS CodechalEncodeAvcEnc::BrcCopyKernel()
 
     if (!m_singleTaskPhaseSupported || m_lastTaskInPhase)
     {
-        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
         m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_renderContextUsesNullHw);
         m_lastTaskInPhase = false;
     }
@@ -4841,7 +4842,7 @@ MOS_STATUS CodechalEncodeAvcEnc::BrcMbUpdateKernel()
 
     if (!m_singleTaskPhaseSupported || m_lastTaskInPhase)
     {
-        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
         m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_renderContextUsesNullHw);
         m_lastTaskInPhase = false;
     }
@@ -5097,7 +5098,7 @@ MOS_STATUS CodechalEncodeAvcEnc::WPKernel(bool useRefPicList1, uint32_t index)
 
     if ((!m_singleTaskPhaseSupported || m_lastTaskInPhase))
     {
-        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
         m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_renderContextUsesNullHw);
         m_lastTaskInPhase = false;
     }
@@ -5250,7 +5251,7 @@ MOS_STATUS CodechalEncodeAvcEnc::SFDKernel()
 
     if (!m_singleTaskPhaseSupported || m_lastTaskInPhase)
     {
-        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
         m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_renderContextUsesNullHw);
         m_lastTaskInPhase = false;
     }
@@ -6481,7 +6482,7 @@ MOS_STATUS CodechalEncodeAvcEnc::DumpEncodeKernelOutput()
                 CodechalDbgAttr::attrOutput,
                 "MvData",
                 meOutputParams.psMeMvBuffer->dwHeight *meOutputParams.psMeMvBuffer->dwPitch,
-                CodecHal_PictureIsBottomField(m_currOriginalPic) ? MOS_ALIGN_CEIL((m_downscaledWidthInMb4x * 32), 64) * (m_downscaledFrameFieldHeightInMb4x * 4) : 0,
+                m_hmeKernel ? m_hmeKernel->Get4xMeMvBottomFieldOffset() : (uint32_t)m_meMvBottomFieldOffset,
                 CODECHAL_MEDIA_STATE_4X_ME));
 
             if (meOutputParams.psMeDistortionBuffer)
@@ -6504,7 +6505,7 @@ MOS_STATUS CodechalEncodeAvcEnc::DumpEncodeKernelOutput()
                         CodechalDbgAttr::attrOutput,
                         "MvData",
                         meOutputParams.psMeMvBuffer->dwHeight *meOutputParams.psMeMvBuffer->dwPitch,
-                        CodecHal_PictureIsBottomField(m_currOriginalPic) ? MOS_ALIGN_CEIL((m_downscaledWidthInMb16x * 32), 64) * (m_downscaledFrameFieldHeightInMb16x * 4) : 0,
+                        m_hmeKernel ? m_hmeKernel->Get16xMeMvBottomFieldOffset() : (uint32_t)m_meMv16xBottomFieldOffset,
                         CODECHAL_MEDIA_STATE_16X_ME));
 
                 if (m_32xMeEnabled)
@@ -6516,7 +6517,7 @@ MOS_STATUS CodechalEncodeAvcEnc::DumpEncodeKernelOutput()
                             CodechalDbgAttr::attrOutput,
                             "MvData",
                             meOutputParams.psMeMvBuffer->dwHeight *meOutputParams.psMeMvBuffer->dwPitch,
-                            CodecHal_PictureIsBottomField(m_currOriginalPic) ? MOS_ALIGN_CEIL((m_downscaledWidthInMb32x * 32), 64) * (m_downscaledFrameFieldHeightInMb32x * 4) : 0,
+                            m_hmeKernel ? m_hmeKernel->Get32xMeMvBottomFieldOffset() : (uint32_t)m_meMv32xBottomFieldOffset,
                             CODECHAL_MEDIA_STATE_32X_ME));
                 }
             }
@@ -8144,7 +8145,7 @@ MOS_STATUS CodechalEncodeAvcEnc::GenericEncodeMeKernel(EncodeBrcBuffers* brcBuff
 
     if (!m_singleTaskPhaseSupported || m_lastTaskInPhase)
     {
-        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
         m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_renderContextUsesNullHw);
         m_lastTaskInPhase = false;
     }

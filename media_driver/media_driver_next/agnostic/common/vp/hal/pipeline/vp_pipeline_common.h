@@ -32,6 +32,11 @@
 #include "renderhal.h"
 #include "vphal.h"
 
+namespace vp
+{
+class VpPlatformInterface;
+}
+
 using VP_PIPELINE_PARAMS   = VPHAL_RENDER_PARAMS;
 using PVP_PIPELINE_PARAMS  = VPHAL_RENDER_PARAMS*;
 using PCVP_PIPELINE_PARAMS = const VPHAL_RENDER_PARAMS*;
@@ -57,7 +62,7 @@ struct VP_SURFACE
     RECT                        rcSrc;              //!< Source rectangle
     RECT                        rcDst;              //!< Destination rectangle
     RECT                        rcMaxSrc;           //!< Max source rectangle
-
+    bool                        bVEBOXCroppingUsed; //!<Vebox crop case need use rcSrc as vebox input.
     // Return true if no resource assigned to current vp surface.
     bool        IsEmpty();
     // Clean the vp surface to empty state. Only valid for false == isResourceOwner case.
@@ -79,6 +84,7 @@ struct _VP_MHWINTERFACE
     PMHW_SFC_INTERFACE          m_sfcInterface;
     VphalRenderer              *m_renderer;
     PMHW_MI_INTERFACE           m_mhwMiInterface;
+    vp::VpPlatformInterface    *m_vpPlatformInterface;
 
     // Render GPU context/node
     MOS_GPU_NODE                m_renderGpuNode;
@@ -101,6 +107,7 @@ struct _VP_EXECUTE_CAPS
             uint32_t bDN            : 1;   // Vebox DN needed;
             uint32_t bDI            : 1;   // Vebox DNDI enabled
             uint32_t bIECP          : 1;   // Vebox IECP needed;
+            uint32_t bBeCSC         : 1;   // Vebox back end CSC needed;
             uint32_t bLACE          : 1;   // Vebox LACE Needed;
             uint32_t bQueryVariance : 1;
             uint32_t bRefValid      : 1;   // Vebox Ref is Valid
@@ -117,7 +124,7 @@ struct _VP_EXECUTE_CAPS
             uint32_t bComposite : 1;
             uint32_t bBobDI     : 1;
             uint32_t bIScaling  : 1;
-            uint32_t reserved   : 14;  // Reserved
+            uint32_t reserved   : 13;  // Reserved
         };
     };
 };

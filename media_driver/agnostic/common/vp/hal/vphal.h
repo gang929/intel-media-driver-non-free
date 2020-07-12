@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2019, Intel Corporation
+* Copyright (c) 2009-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -203,6 +203,12 @@
 
 #define VPHAL_RENDER_CHK_NULL_NO_STATUS(_ptr)                                        \
     MOS_CHK_NULL_NO_STATUS(MOS_COMPONENT_VP, MOS_VP_SUBCOMP_RENDER, _ptr)
+//!
+//! \def VPHAL_RENDER_CHK_NULL_NO_STATUS_RETURN(_ptr)
+//!  MOS_ASSERTMESSAGE \a _ptr with MOS utility comp/subcomp info without returning a status
+//!
+#define VPHAL_RENDER_CHK_NULL_NO_STATUS_RETURN(_ptr)                                 \
+    MOS_CHK_NULL_NO_STATUS_RETURN(MOS_COMPONENT_VP, MOS_VP_SUBCOMP_RENDER, _ptr)
 
 //------------------------------------------------------------------------------
 // Macros specific to MOS_VP_SUBCOMP_DDI sub-comp
@@ -468,20 +474,55 @@ public:
     MOS_STATUS GetStatusReportEntryLength(
         uint32_t                         *puiLength);
 
-    MEDIA_FEATURE_TABLE*          GetSkuTable()
+    PLATFORM &GetPlatform()
+    {
+        return m_platform;
+    }
+
+    MEDIA_FEATURE_TABLE* GetSkuTable()
     {
         return m_skuTable;
-    };
+    }
 
-    PMOS_INTERFACE              GetOsInterface()
+    MEDIA_WA_TABLE* GetWaTable()
+    {
+        return m_waTable;
+    }
+
+    PMOS_INTERFACE GetOsInterface()
     {
         return m_osInterface;
-    };
+    }
 
-    VphalRenderer*             GetRenderer()
+    PRENDERHAL_INTERFACE GetRenderHal()
+    {
+        return m_renderHal;
+    }
+
+    PMHW_VEBOX_INTERFACE GetVeboxInterface()
+    {
+        return m_veboxInterface;
+    }
+
+    MhwCpInterface* GetCpInterface()
+    {
+        return m_cpInterface;
+    }
+
+    PMHW_SFC_INTERFACE GetSfcInterface()
+    {
+        return m_sfcInterface;
+    }
+
+    VphalRenderer* GetRenderer()
     {
         return m_renderer;
-    };
+    }
+
+    VPHAL_STATUS_TABLE& GetStatusTable()
+    {
+        return m_statusTable;
+    }
 
     void SetMhwVeboxInterface(MhwVeboxInterface* veboxInterface)
     {

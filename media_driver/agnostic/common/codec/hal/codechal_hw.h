@@ -969,7 +969,7 @@ public:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
-    MOS_STATUS GetVdencPictureSecondLevelCommandsSize(
+    virtual MOS_STATUS GetVdencPictureSecondLevelCommandsSize(
         uint32_t                    mode,
         uint32_t                   *commandsSize);
 
@@ -1530,6 +1530,8 @@ public:
     {
         return m_osInterface ? m_osInterface->bSimIsActive : false;
     }
+
+    virtual bool UsesRenderEngine(CODECHAL_FUNCTION codecFunction, uint32_t standard);
 
     //! \brief    default disable vdbox balancing by UMD
     bool bEnableVdboxBalancingbyUMD = false;

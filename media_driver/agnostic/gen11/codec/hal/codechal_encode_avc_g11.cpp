@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2011-2019, Intel Corporation
+* Copyright (c) 2011-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -4591,11 +4591,7 @@ MOS_STATUS CodechalEncodeAvcEncG11::MbEncKernel(bool mbEncIFrameDistInUse)
 
         if ((!m_singleTaskPhaseSupported || m_lastTaskInPhase))
         {
-            if (m_osInterface->osCpInterface->IsHMEnabled())
-            {
-                HalOcaInterface::DumpCpParam(cmdBuffer, *m_osInterface->pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
-            }
-            HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+            HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
             m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_renderContextUsesNullHw);
             m_lastTaskInPhase = false;
         }
@@ -4913,12 +4909,7 @@ MOS_STATUS CodechalEncodeAvcEncG11::ExecuteSliceLevel()
     {
         CODECHAL_ENCODE_CHK_STATUS_RETURN(SetAndPopulateVEHintParams(&cmdBuffer));
 
-        if (m_osInterface->osCpInterface->IsHMEnabled())
-        {
-            HalOcaInterface::DumpCpParam(cmdBuffer, *m_osInterface->pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
-        }
-
-        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, renderingFlags));
 
         CODECHAL_DEBUG_TOOL(
@@ -5323,7 +5314,7 @@ MOS_STATUS CodechalEncodeAvcEncG11::ExecuteKernelFunctions()
                 CodechalDbgAttr::attrOutput,
                 "MvData",
                 MeOutputParams.psMeMvBuffer->dwHeight *MeOutputParams.psMeMvBuffer->dwPitch,
-                CodecHal_PictureIsBottomField(m_currOriginalPic) ? MOS_ALIGN_CEIL((m_downscaledWidthInMb4x * 32), 64) * (m_downscaledFrameFieldHeightInMb4x * 4) : 0,
+                m_hmeKernel ? m_hmeKernel->Get4xMeMvBottomFieldOffset() : (uint32_t)m_meMvBottomFieldOffset,
                 CODECHAL_MEDIA_STATE_4X_ME));
 
             if (MeOutputParams.psMeDistortionBuffer)
@@ -5350,7 +5341,7 @@ MOS_STATUS CodechalEncodeAvcEncG11::ExecuteKernelFunctions()
                         CodechalDbgAttr::attrOutput,
                         "MvData",
                         MeOutputParams.psMeMvBuffer->dwHeight *MeOutputParams.psMeMvBuffer->dwPitch,
-                        CodecHal_PictureIsBottomField(m_currOriginalPic) ? MOS_ALIGN_CEIL((m_downscaledWidthInMb16x * 32), 64) * (m_downscaledFrameFieldHeightInMb16x * 4) : 0,
+                        m_hmeKernel ? m_hmeKernel->Get16xMeMvBottomFieldOffset() : (uint32_t)m_meMv16xBottomFieldOffset,
                         CODECHAL_MEDIA_STATE_16X_ME));
 
                 if (m_32xMeEnabled)
@@ -5366,7 +5357,7 @@ MOS_STATUS CodechalEncodeAvcEncG11::ExecuteKernelFunctions()
                             CodechalDbgAttr::attrOutput,
                             "MvData",
                             MeOutputParams.psMeMvBuffer->dwHeight *MeOutputParams.psMeMvBuffer->dwPitch,
-                            CodecHal_PictureIsBottomField(m_currOriginalPic) ? MOS_ALIGN_CEIL((m_downscaledWidthInMb32x * 32), 64) * (m_downscaledFrameFieldHeightInMb32x * 4) : 0,
+                            m_hmeKernel ? m_hmeKernel->Get32xMeMvBottomFieldOffset() : (uint32_t)m_meMv32xBottomFieldOffset,
                             CODECHAL_MEDIA_STATE_32X_ME));
                 }
             }

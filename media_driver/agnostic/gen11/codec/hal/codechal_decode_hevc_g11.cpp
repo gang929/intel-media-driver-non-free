@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2012-2018, Intel Corporation
+* Copyright (c) 2012-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -1631,21 +1631,11 @@ MOS_STATUS CodechalDecodeHevcG11::DecodePrimitiveLevel()
     {
         submitCommand = CodecHalDecodeScalabilityIsToSubmitCmdBuffer(m_scalabilityState);
 
-        if (m_osInterface->osCpInterface->IsHMEnabled())
-        {
-            HalOcaInterface::DumpCpParam(scdryCmdBuffer, *m_osInterface->pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
-        }
-
-        HalOcaInterface::On1stLevelBBEnd(scdryCmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(scdryCmdBuffer, *m_osInterface);
     }
     else
     {
-        if (m_osInterface->osCpInterface->IsHMEnabled())
-        {
-            HalOcaInterface::DumpCpParam(primCmdBuffer, *m_osInterface->pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
-        }
-
-        HalOcaInterface::On1stLevelBBEnd(primCmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(primCmdBuffer, *m_osInterface);
     }
     if (submitCommand || m_osInterface->phasedSubmission)
     {
@@ -1813,6 +1803,14 @@ MOS_STATUS CodechalDecodeHevcG11::AllocateStandard (
     m_picMhwParams.QmParams             = MOS_New(MHW_VDBOX_QM_PARAMS);
     m_picMhwParams.HevcPicState         = MOS_New(MHW_VDBOX_HEVC_PIC_STATE_G11);
     m_picMhwParams.HevcTileState        = MOS_New(MHW_VDBOX_HEVC_TILE_STATE);
+
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.PipeModeSelectParams);
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.SurfaceParams);
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.PipeBufAddrParams);
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.IndObjBaseAddrParams);
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.QmParams);
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.HevcPicState);
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.HevcTileState);
 
     MOS_ZeroMemory(m_picMhwParams.SurfaceParams, sizeof(MHW_VDBOX_SURFACE_PARAMS));
     MOS_ZeroMemory(m_picMhwParams.IndObjBaseAddrParams, sizeof(MHW_VDBOX_IND_OBJ_BASE_ADDR_PARAMS));

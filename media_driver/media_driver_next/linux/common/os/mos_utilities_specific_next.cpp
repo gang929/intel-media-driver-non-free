@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, Intel Corporation
+* Copyright (c) 2019-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -20,7 +20,7 @@
 * OTHER DEALINGS IN THE SOFTWARE.
 */
 //!
-//! \file        mos_utilities_specific.c
+//! \file        mos_utilities_specific.cpp
 //! \brief        This module implements the MOS wrapper functions for Linux/Android
 //!
 
@@ -40,11 +40,11 @@
 #include "codechal_user_settings_mgr_ext.h"
 #include "vphal_user_settings_mgr_ext.h"
 #endif // _MEDIA_RESERVED
-#include <sys/ipc.h>   // System V IPC
+#include <sys/ipc.h>  // System V IPC
 #include <sys/types.h>
 #include <sys/sem.h>
 #include <signal.h>
-#include <unistd.h>    // fork
+#include <unistd.h>  // fork
 
 const char *MosUtilitiesSpecificNext::m_szUserFeatureFile = USER_FEATURE_FILE;
 
@@ -66,7 +66,7 @@ double MosUtilities::MosGetTime()
 //!
 //! \brief Linux specific trace entry path and file description.
 //!
-const char *const MosUtilitiesSpecificNext::m_mosTracePath  = "/sys/kernel/debug/tracing/trace_marker";
+const char *const MosUtilitiesSpecificNext::m_mosTracePath  = "/sys/kernel/debug/tracing/trace_marker_raw";
 int32_t           MosUtilitiesSpecificNext::m_mosTraceFd    = -1;
 
 //!
@@ -1411,26 +1411,18 @@ MOS_STATUS MosUtilities::MosOsUtilitiesClose()
 }
 
 MOS_STATUS MosUtilities::MosUserFeatureOpenKey(
-    void       *UFKey,
+    void       *ufKey,
     const char *lpSubKey,
     uint32_t   ulOptions,
     uint32_t   samDesired,
     void       **phkResult)
 {
-    char           pcKeyName[MAX_USERFEATURE_LINE_LENGTH];
-    MOS_STATUS     iRet;
-    intptr_t       h_key = (intptr_t)UFKey;
-
-    if((h_key == 0) /*|| (lpSubKey == nullptr)*/ || (phkResult == nullptr))    //[SH]: subkey can be NULL???
-    {
-        return MOS_STATUS_INVALID_PARAMETER;
-    }
-    return MosUtilitiesSpecificNext::MosUserFeatureOpenKeyFile(UFKey, lpSubKey, ulOptions, samDesired, phkResult);
+    return MosUtilitiesSpecificNext::MosUserFeatureOpenKeyFile(ufKey, lpSubKey, ulOptions, samDesired, phkResult);
 }
 
-MOS_STATUS MosUtilities::MosUserFeatureCloseKey(void  *UFKey)
+MOS_STATUS MosUtilities::MosUserFeatureCloseKey(void  *ufKey)
 {
-    MOS_UNUSED(UFKey);
+    MOS_UNUSED(ufKey);
     //always return success, because we actually dong't have a key opened.
     return MOS_STATUS_SUCCESS;
 }
@@ -1444,16 +1436,6 @@ MOS_STATUS MosUtilities::MosUserFeatureGetValue(
     void       *pvData,
     uint32_t   *pcbData)
 {
-    char          pcKeyName[MAX_USERFEATURE_LINE_LENGTH];
-    MOS_STATUS    eStatus;
-
-    if(UFKey == nullptr)
-    {
-        return MOS_STATUS_INVALID_PARAMETER;
-    }
-
-    eStatus = MOS_STATUS_UNKNOWN;
-
     return MosUtilitiesSpecificNext::MosUserFeatureGetValueFile(UFKey, lpSubKey, lpValue, dwFlags, pdwType, pvData, pcbData);
 
 }
@@ -1478,6 +1460,15 @@ MOS_STATUS MosUtilities::MosUserFeatureSetValueEx(
     uint8_t         *lpData,
     uint32_t        cbData)
 {
+    if (dwType == UF_SZ || dwType == UF_MULTI_SZ)
+    {
+        if (lpData == nullptr || strlen((const char*)lpData) == 0)
+        {
+            MOS_OS_NORMALMESSAGE("NULL string, skip to report");
+            return MOS_STATUS_SUCCESS;
+        }
+    }
+
     return MosUtilitiesSpecificNext::MosUserFeatureSetValueExFile(UFKey, lpValueName, Reserved, dwType, lpData, cbData);
 }
 
@@ -1576,6 +1567,18 @@ int32_t MosUtilities::MosUserFeatureWaitForSingleObject(
     return (iRet != 0);
 }
 
+int32_t MosUtilities::MosUnregisterWaitEx(PTP_WAIT hWaitHandle)
+{
+    int32_t       iPid;
+    LARGE_INTEGER largeInteger;
+
+    largeInteger.QuadPart = (int64_t)hWaitHandle;
+
+    iPid = largeInteger.u.LowPart;
+    kill(iPid, SIGKILL);
+    return true;
+}
+
 #if (_DEBUG || _RELEASE_INTERNAL)
 MOS_STATUS MosUtilities::MosGetApoMosEnabledUserFeatureFile()
 {
@@ -1622,7 +1625,7 @@ MOS_STATUS MosUtilities::MosReadApoMosEnabledUserFeature(uint32_t &userfeatureVa
 
     if (eStatus != MOS_STATUS_SUCCESS)
     {
-        MOS_OS_ASSERTMESSAGE("Failed to open ApoMosEnable user feature key , error status %d.", eStatus);
+        MOS_OS_NORMALMESSAGE("Failed to open ApoMosEnable user feature key , error status %d.", eStatus);
         return eStatus;
     }
 
@@ -1665,18 +1668,6 @@ MOS_STATUS MosUtilities::MosReadApoMosEnabledUserFeature(uint32_t &userfeatureVa
 
     MosUserFeatureCloseKey(UFKey);  // Closes the key if not nullptr
     return eStatus;
-}
-
-int32_t MosUtilities::MosUnregisterWaitEx(PTP_WAIT hWaitHandle)
-{
-    int32_t iPid;
-    LARGE_INTEGER largeInteger;
-
-    largeInteger.QuadPart = (int64_t)hWaitHandle;
-
-    iPid = largeInteger.u.LowPart;
-    kill(iPid,SIGKILL);
-    return true;
 }
 
 MOS_STATUS MosUtilities::MosUserFeatureParsePath(
@@ -2059,51 +2050,40 @@ void MosUtilities::MosTraceSetupInfo(uint32_t DrvVer, uint32_t PlatFamily, uint3
     // not implemented
 }
 
-#define TRACE_EVENT_MAX_SIZE    4096
+#define TRACE_EVENT_MAX_SIZE    (1024)
+#define TRACE_EVENT_HEADER_SIZE (sizeof(uint32_t)*3)
 void MosUtilities::MosTraceEvent(
     uint16_t         usId,
     uint8_t          ucType,
-    void * const     pArg1,
+    const void       *pArg1,
     uint32_t         dwSize1,
-    void * const     pArg2,
+    const void       *pArg2,
     uint32_t         dwSize2)
 {
-    if (MosUtilitiesSpecificNext::m_mosTraceFd >= 0)
+    if (MosUtilitiesSpecificNext::m_mosTraceFd >= 0 &&
+        TRACE_EVENT_MAX_SIZE > dwSize1 + dwSize2 + TRACE_EVENT_HEADER_SIZE)
     {
-        char  *pTraceBuf = (char *)MOS_AllocAndZeroMemory(TRACE_EVENT_MAX_SIZE);
-        uint32_t   nLen = 0;
+        uint8_t  *pTraceBuf = (uint8_t *)MOS_AllocAndZeroMemory(TRACE_EVENT_MAX_SIZE);
 
         if (pTraceBuf)
         {
-            MosSecureStringPrint(pTraceBuf,
-                        TRACE_EVENT_MAX_SIZE,
-                        (TRACE_EVENT_MAX_SIZE-1),
-                        "IMTE|%d|%d", // magic number IMTE (IntelMediaTraceEvent)
-                        usId,
-                        ucType);
-            nLen = strlen(pTraceBuf);
-            if (pArg1)
-            {
-                // convert raw event data to string. native raw data will be supported
-                // from linux kernel 4.10, hopefully we can skip this convert in the future.
-                const static char n2c[] = "0123456789ABCDEF";
-                unsigned char *pData = (unsigned char *)pArg1;
+            // trace header
+            uint32_t *header = (uint32_t *)pTraceBuf;
+            uint32_t    nLen = TRACE_EVENT_HEADER_SIZE;
 
-                pTraceBuf[nLen++] = '|'; // prefix splite marker.
-                while(dwSize1-- > 0 && nLen < TRACE_EVENT_MAX_SIZE-2)
-                {
-                    pTraceBuf[nLen++] = n2c[(*pData) >> 4];
-                    pTraceBuf[nLen++] = n2c[(*pData++) & 0xf];
-                }
-                if (pArg2)
-                {
-                    pData = (unsigned char *)pArg2;
-                    while(dwSize2-- > 0 && nLen < TRACE_EVENT_MAX_SIZE-2)
-                    {
-                        pTraceBuf[nLen++] = n2c[(*pData) >> 4];
-                        pTraceBuf[nLen++] = n2c[(*pData++) & 0xf];
-                    }
-                }
+            header[0] = 0x494D5445; // IMTE (IntelMediaTraceEvent) as ftrace raw marker tag
+            header[1] = usId << 16 | (dwSize1 + dwSize2);
+            header[2] = ucType;
+
+            if (pArg1 && dwSize1 > 0)
+            {
+                memcpy(pTraceBuf+nLen, pArg1, dwSize1);
+                nLen += dwSize1;
+            }
+            if (pArg2 && dwSize2 > 0)
+            {
+                memcpy(pTraceBuf+nLen, pArg2, dwSize2);
+                nLen += dwSize2;
             }
             size_t writeSize = write(MosUtilitiesSpecificNext::m_mosTraceFd, pTraceBuf, nLen);
             MOS_FreeMemory(pTraceBuf);
@@ -2127,6 +2107,14 @@ void MosUtilities::MosTraceDataDump(
     const void *pBuf,
     uint32_t    dwSize)
 {
+}
+
+void MosUtilities::MosTraceDataDictionary(
+    const char* pcName,
+    const void* pBuf,
+    uint32_t    dwSize)
+{
+    // not implemented
 }
 
 MOS_STATUS MosUtilities::MosGfxInfoInit()

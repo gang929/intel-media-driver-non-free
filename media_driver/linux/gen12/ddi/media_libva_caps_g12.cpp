@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2019, Intel Corporation
+* Copyright (c) 2018-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -68,6 +68,7 @@ const VAImageFormat m_supportedImageformatsG12[] =
     {VA_FOURCC_444P,           VA_LSB_FIRST,   24, 0,0,0,0,0},
     {VA_FOURCC_IMC3,           VA_LSB_FIRST,   16, 0,0,0,0,0},
     {VA_FOURCC_P010,           VA_LSB_FIRST,   24, 0,0,0,0,0},
+    {VA_FOURCC_P012,           VA_LSB_FIRST,   24, 0,0,0,0,0},
     {VA_FOURCC_P016,           VA_LSB_FIRST,   24, 0,0,0,0,0},
     {VA_FOURCC_Y210,           VA_LSB_FIRST,   32, 0,0,0,0,0},
     {VA_FOURCC_Y216,           VA_LSB_FIRST,   32, 0,0,0,0,0},
@@ -178,6 +179,10 @@ CODECHAL_MODE MediaLibvaCapsG12::GetEncodeCodecMode(VAProfile profile, VAEntrypo
         case VAProfileHEVCMain422_12:
         case VAProfileHEVCMain444:
         case VAProfileHEVCMain444_10:
+        case VAProfileHEVCSccMain:
+        case VAProfileHEVCSccMain10:
+        case VAProfileHEVCSccMain444:
+        case VAProfileHEVCSccMain444_10:
             return CODECHAL_ENCODE_MODE_HEVC;
         default:
             DDI_ASSERTMESSAGE("Invalid Encode Mode");
@@ -217,6 +222,7 @@ CODECHAL_MODE MediaLibvaCapsG12::GetDecodeCodecMode(VAProfile profile)
         case VAProfileHEVCSccMain:
         case VAProfileHEVCSccMain10:
         case VAProfileHEVCSccMain444:
+        case VAProfileHEVCSccMain444_10:
             return CODECHAL_DECODE_MODE_HEVCVLD;
         case VAProfileVC1Simple:
         case VAProfileVC1Main:
@@ -260,6 +266,7 @@ std::string MediaLibvaCapsG12::GetDecodeCodecKey(VAProfile profile)
         case VAProfileHEVCSccMain:
         case VAProfileHEVCSccMain10:
         case VAProfileHEVCSccMain444:
+        case VAProfileHEVCSccMain444_10:
             return DECODE_ID_HEVC_G12;
         case VAProfileVC1Simple:
         case VAProfileVC1Main:
@@ -301,6 +308,10 @@ std::string MediaLibvaCapsG12::GetEncodeCodecKey(VAProfile profile, VAEntrypoint
         case VAProfileHEVCMain422_12:
         case VAProfileHEVCMain444:
         case VAProfileHEVCMain444_10:
+        case VAProfileHEVCSccMain:
+        case VAProfileHEVCSccMain10:
+        case VAProfileHEVCSccMain444:
+        case VAProfileHEVCSccMain444_10:
             if (IsEncFei(entrypoint, feiFunction))
                 return ENCODE_ID_HEVCFEI;
             else
@@ -353,9 +364,9 @@ VAStatus MediaLibvaCapsG12::GetPlatformSpecificAttrib(VAProfile profile,
         }
         case VAConfigAttribEncIntraRefresh:
         {
-            if(IsAvcProfile(profile) || IsHevcProfile(profile))
+            if(IsAvcProfile(profile) || (entrypoint == VAEntrypointEncSliceLP && IsHevcProfile(profile)))
             {
-                *value = VA_ENC_INTRA_REFRESH_ROLLING_COLUMN;
+                *value = VA_ENC_INTRA_REFRESH_ROLLING_COLUMN | VA_ENC_INTRA_REFRESH_ROLLING_ROW;
             }
             else
             {
@@ -389,7 +400,72 @@ VAStatus MediaLibvaCapsG12::GetPlatformSpecificAttrib(VAProfile profile,
         }
         case VAConfigAttribCustomRoundingControl:
         {
-            *value = 0;
+            *value = 1;
+            break;
+        }
+        case VAConfigAttribEncMaxSlices:
+        {
+            if (entrypoint == VAEntrypointEncSlice && IsHevcProfile(profile))
+            {
+                *value = CODECHAL_HEVC_MAX_NUM_SLICES_LVL_6;
+            }
+            else
+            {
+                *value =0;
+                status = VA_STATUS_ERROR_INVALID_PARAMETER;
+            }
+            break;
+        }
+        case VAConfigAttribMaxPictureWidth:
+        {
+            if(profile == VAProfileJPEGBaseline)
+            {
+                *value = ENCODE_JPEG_MAX_PIC_WIDTH;
+            }
+            else if(IsHevcProfile(profile) || (IsVp9Profile(profile)))
+            {
+                *value = CODEC_8K_MAX_PIC_WIDTH;
+            }
+            else if(IsAvcProfile(profile))
+            {
+                *value = CODEC_4K_MAX_PIC_WIDTH;
+            }
+            else
+            {
+                *value = CODEC_MAX_PIC_WIDTH;
+            }
+            break;
+        }
+        case VAConfigAttribMaxPictureHeight:
+        {
+            if(profile == VAProfileJPEGBaseline)
+            {
+                *value = ENCODE_JPEG_MAX_PIC_HEIGHT;
+            }
+            else if(IsHevcProfile(profile) || (IsVp9Profile(profile)))
+            {
+                *value = CODEC_8K_MAX_PIC_HEIGHT;
+            }
+            else if(IsAvcProfile(profile))
+            {
+                *value = CODEC_4K_MAX_PIC_HEIGHT;
+            }
+            else
+            {
+                *value = CODEC_MAX_PIC_HEIGHT;
+            }
+            break;
+        }
+        case VAConfigAttribQPBlockSize:
+        {
+            if(IsAvcProfile(profile))
+            {
+                *value = CODECHAL_MACROBLOCK_WIDTH;
+            }
+            else
+            {
+                status = VA_STATUS_ERROR_INVALID_PARAMETER;
+            }
             break;
         }
         default:
@@ -519,6 +595,69 @@ VAStatus MediaLibvaCapsG12::LoadHevcEncLpProfileEntrypoints()
         AddProfileEntry(VAProfileHEVCMain444_10, VAEntrypointEncSliceLP, attributeList,
                 configStartIdx, m_encConfigs.size() - configStartIdx);
     }
+    if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrIntelHEVCVLDMain8bit420SCC))
+    {
+        uint32_t configStartIdx = m_encConfigs.size();
+        AddEncConfig(VA_RC_CQP);
+        if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrEnableMediaKernels))
+        {
+            for (int32_t j = 3; j < rcModeSize; j++)
+            {
+                AddEncConfig(m_encRcMode[j]);
+                AddEncConfig(m_encRcMode[j] | VA_RC_PARALLEL);
+            }
+        }
+        AddProfileEntry(VAProfileHEVCSccMain, VAEntrypointEncSliceLP, attributeList,
+                configStartIdx, m_encConfigs.size() - configStartIdx);
+    }
+
+    if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrIntelHEVCVLDMain10bit420SCC))
+    {
+        uint32_t configStartIdx = m_encConfigs.size();
+        AddEncConfig(VA_RC_CQP);
+        if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrEnableMediaKernels))
+        {
+            for (int32_t j = 3; j < rcModeSize; j++)
+            {
+                AddEncConfig(m_encRcMode[j]);
+                AddEncConfig(m_encRcMode[j] | VA_RC_PARALLEL);
+            }
+        }
+        AddProfileEntry(VAProfileHEVCSccMain10, VAEntrypointEncSliceLP, attributeList,
+                configStartIdx, m_encConfigs.size() - configStartIdx);
+    }
+
+      if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrIntelHEVCVLDMain8bit444SCC))
+    {
+        uint32_t configStartIdx = m_encConfigs.size();
+        AddEncConfig(VA_RC_CQP);
+        if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrEnableMediaKernels))
+        {
+            for (int32_t j = 3; j < rcModeSize; j++)
+            {
+                AddEncConfig(m_encRcMode[j]);
+                AddEncConfig(m_encRcMode[j] | VA_RC_PARALLEL);
+            }
+        }
+        AddProfileEntry(VAProfileHEVCSccMain444, VAEntrypointEncSliceLP, attributeList,
+                configStartIdx, m_encConfigs.size() - configStartIdx);
+    }
+
+    if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrIntelHEVCVLDMain10bit444SCC))
+    {
+        uint32_t configStartIdx = m_encConfigs.size();
+        AddEncConfig(VA_RC_CQP);
+        if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrEnableMediaKernels))
+        {
+            for (int32_t j = 3; j < rcModeSize; j++)
+            {
+                AddEncConfig(m_encRcMode[j]);
+                AddEncConfig(m_encRcMode[j] | VA_RC_PARALLEL);
+            }
+        }
+        AddProfileEntry(VAProfileHEVCSccMain444_10, VAEntrypointEncSliceLP, attributeList,
+                configStartIdx, m_encConfigs.size() - configStartIdx);
+    }
 #endif
     return status;
 }
@@ -639,8 +778,6 @@ VAStatus MediaLibvaCapsG12::CheckEncodeResolution(
         uint32_t width,
         uint32_t height)
 {
-    uint32_t maxWidth, maxHeight;
-
     switch (profile)
     {
         case VAProfileJPEGBaseline:
@@ -652,6 +789,16 @@ VAStatus MediaLibvaCapsG12::CheckEncodeResolution(
                 return VA_STATUS_ERROR_RESOLUTION_NOT_SUPPORTED;
             }
             break;
+        case VAProfileMPEG2Simple:
+        case VAProfileMPEG2Main:
+            if( width > CODEC_MAX_PIC_WIDTH
+                    || width < m_encMinWidth
+                    || height > CODEC_MAX_PIC_HEIGHT
+                    || height < m_encMinHeight)
+            {
+                return VA_STATUS_ERROR_RESOLUTION_NOT_SUPPORTED;
+            }
+            break;
         case VAProfileHEVCMain:
         case VAProfileHEVCMain10:
         case VAProfileHEVCMain12:
@@ -659,10 +806,14 @@ VAStatus MediaLibvaCapsG12::CheckEncodeResolution(
         case VAProfileHEVCMain444_10:
         case VAProfileHEVCMain422_10:
         case VAProfileHEVCMain422_12:
+        case VAProfileHEVCSccMain:
+        case VAProfileHEVCSccMain10:
+        case VAProfileHEVCSccMain444:
+        case VAProfileHEVCSccMain444_10:
             if (width > m_maxHevcEncWidth
-                    || width < m_encMinWidth
+                    || width < (m_vdencActive ? m_hevcVDEncMinWidth : m_encMinWidth)
                     || height > m_maxHevcEncHeight
-                    || height < m_encMinHeight)
+                    || height < (m_vdencActive ? m_hevcVDEncMinHeight : m_encMinHeight))
             {
                 return VA_STATUS_ERROR_RESOLUTION_NOT_SUPPORTED;
             }
@@ -672,9 +823,9 @@ VAStatus MediaLibvaCapsG12::CheckEncodeResolution(
         case VAProfileVP9Profile2:
         case VAProfileVP9Profile3:
             if ((width > m_maxVp9EncWidth) ||
-                (width < m_encMinWidth) ||
+                (width < m_minVp9EncWidth) ||
                 (height > m_maxVp9EncHeight) ||
-                (height < m_encMinHeight) )
+                (height < m_minVp9EncHeight) )
             {
                 return VA_STATUS_ERROR_RESOLUTION_NOT_SUPPORTED;
             }
@@ -712,6 +863,10 @@ VAStatus MediaLibvaCapsG12::CheckDecodeResolution(
         case CODECHAL_DECODE_MODE_JPEG:
             maxWidth = m_decJpegMaxWidth;
             maxHeight = m_decJpegMaxHeight;
+            break;
+        case CODECHAL_DECODE_MODE_AVCVLD:
+            maxWidth = m_decAvcMaxWidth;
+            maxHeight = m_decAvcMaxHeight;
             break;
         case CODECHAL_DECODE_MODE_HEVCVLD:
             maxWidth = m_decHevcMax16kWidth;
@@ -828,12 +983,14 @@ VAStatus MediaLibvaCapsG12::QuerySurfaceAttributes(
             VA_SURFACE_ATTRIB_MEM_TYPE_USER_PTR |
             VA_SURFACE_ATTRIB_MEM_TYPE_KERNEL_DRM |
             VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME |
+            VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2 |
             VA_SURFACE_ATTRIB_MEM_TYPE_ANDROID_GRALLOC;
 #else
         attribs[i].value.value.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA |
             VA_SURFACE_ATTRIB_MEM_TYPE_USER_PTR |
             VA_SURFACE_ATTRIB_MEM_TYPE_KERNEL_DRM |
-            VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME;
+            VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME |
+            VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2;
 #endif
         i++;
 
@@ -858,12 +1015,24 @@ VAStatus MediaLibvaCapsG12::QuerySurfaceAttributes(
                 attribs[i].type = VASurfaceAttribPixelFormat;
                 attribs[i].value.type = VAGenericValueTypeInteger;
                 attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
+                attribs[i].value.value.i = VA_FOURCC_P012;
+                i++;
+
+                attribs[i].type = VASurfaceAttribPixelFormat;
+                attribs[i].value.type = VAGenericValueTypeInteger;
+                attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
                 attribs[i].value.value.i = VA_FOURCC_P016;
                 i++;
             }
         }
         else if(profile == VAProfileHEVCMain12)
         {
+            attribs[i].type = VASurfaceAttribPixelFormat;
+            attribs[i].value.type = VAGenericValueTypeInteger;
+            attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
+            attribs[i].value.value.i = VA_FOURCC_P012;
+            i++;
+
             attribs[i].type = VASurfaceAttribPixelFormat;
             attribs[i].value.type = VAGenericValueTypeInteger;
             attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
@@ -960,6 +1129,19 @@ VAStatus MediaLibvaCapsG12::QuerySurfaceAttributes(
             attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
             attribs[i].value.value.i = VA_FOURCC_Y410;
             i++;
+        } else if (profile == VAProfileHEVCSccMain444_10)
+        {
+            attribs[i].type = VASurfaceAttribPixelFormat;
+            attribs[i].value.type = VAGenericValueTypeInteger;
+            attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
+            attribs[i].value.value.i = VA_FOURCC_AYUV;
+            i++;
+
+            attribs[i].type = VASurfaceAttribPixelFormat;
+            attribs[i].value.type = VAGenericValueTypeInteger;
+            attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
+            attribs[i].value.value.i = VA_FOURCC_Y410;
+            i++;
         }
         else if (profile == VAProfileJPEGBaseline)
         {
@@ -988,10 +1170,15 @@ VAStatus MediaLibvaCapsG12::QuerySurfaceAttributes(
             maxWidth = m_decMpeg2MaxWidth;
             maxHeight = m_decMpeg2MaxHeight;
         }
+        else if(IsAvcProfile(profile))
+        {
+            maxWidth = m_decAvcMaxWidth;
+            maxHeight = m_decAvcMaxWidth;
+        }
         else if(IsHevcProfile(profile))
         {
-            maxWidth = m_decHevcMaxWidth;
-            maxHeight = m_decHevcMaxHeight;
+            maxWidth = m_decHevcMax16kWidth;
+            maxHeight = m_decHevcMax16kWidth;
         }
         else if(IsVc1Profile(profile))
         {
@@ -1002,6 +1189,11 @@ VAStatus MediaLibvaCapsG12::QuerySurfaceAttributes(
         {
             maxWidth = m_decJpegMaxWidth;
             maxHeight = m_decJpegMaxHeight;
+        }
+        else if(IsVp9Profile(profile))
+        {
+            maxWidth = m_decVp9Max16kWidth;
+            maxHeight = m_decVp9Max16kHeight;
         }
 
         attribs[i].type = VASurfaceAttribMaxWidth;
@@ -1031,12 +1223,24 @@ VAStatus MediaLibvaCapsG12::QuerySurfaceAttributes(
                 attribs[i].type          = VASurfaceAttribPixelFormat;
                 attribs[i].value.type    = VAGenericValueTypeInteger;
                 attribs[i].flags         = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
+                attribs[i].value.value.i = VA_FOURCC_P012;
+                i++;
+
+                attribs[i].type          = VASurfaceAttribPixelFormat;
+                attribs[i].value.type    = VAGenericValueTypeInteger;
+                attribs[i].flags         = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
                 attribs[i].value.value.i = VA_FOURCC_P016;
                 i++;
             }
         }
         else if(profile == VAProfileHEVCMain12)
         {
+            attribs[i].type = VASurfaceAttribPixelFormat;
+            attribs[i].value.type = VAGenericValueTypeInteger;
+            attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
+            attribs[i].value.value.i = VA_FOURCC_P012;
+            i++;
+
             attribs[i].type = VASurfaceAttribPixelFormat;
             attribs[i].value.type = VAGenericValueTypeInteger;
             attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
@@ -1184,7 +1388,15 @@ VAStatus MediaLibvaCapsG12::QuerySurfaceAttributes(
         attribs[i].value.type = VAGenericValueTypeInteger;
         attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE;
         attribs[i].value.value.i = m_encMinWidth;
-        if(profile == VAProfileJPEGBaseline)
+        if(IsHevcProfile(profile))
+        {
+            attribs[i].value.value.i = m_vdencActive ? m_hevcVDEncMinWidth : m_encMinWidth;
+        }
+        else if (IsVp9Profile(profile))
+        {
+            attribs[i].value.value.i = m_vdencActive ? m_minVp9EncWidth : m_encMinWidth;
+        }
+        else if (profile == VAProfileJPEGBaseline)
         {
             attribs[i].value.value.i = m_encJpegMinWidth;
         }
@@ -1194,7 +1406,15 @@ VAStatus MediaLibvaCapsG12::QuerySurfaceAttributes(
         attribs[i].value.type = VAGenericValueTypeInteger;
         attribs[i].flags = VA_SURFACE_ATTRIB_GETTABLE;
         attribs[i].value.value.i = m_encMinHeight;
-        if(profile == VAProfileJPEGBaseline)
+        if(IsHevcProfile(profile))
+        {
+            attribs[i].value.value.i = m_vdencActive ? m_hevcVDEncMinHeight : m_encMinHeight;
+        }
+        else if (IsVp9Profile(profile))
+        {
+            attribs[i].value.value.i = m_vdencActive ? m_minVp9EncHeight : m_encMinHeight;
+        }
+        else if (profile == VAProfileJPEGBaseline)
         {
             attribs[i].value.value.i = m_encJpegMinHeight;
         }
@@ -1245,35 +1465,13 @@ VAStatus MediaLibvaCapsG12::CreateEncAttributes(
     (*attribList)[attrib.type] = attrib.value;
 
     attrib.type = VAConfigAttribMaxPictureWidth;
-    attrib.value = CODEC_MAX_PIC_WIDTH;
-    if(profile == VAProfileJPEGBaseline)
-    {
-        attrib.value = ENCODE_JPEG_MAX_PIC_WIDTH;
-    }
-    if(IsHevcProfile(profile) || (IsVp9Profile(profile)))
-    {
-        attrib.value = CODEC_8K_MAX_PIC_WIDTH;
-    }
-    if(IsAvcProfile(profile))
-    {
-        attrib.value = CODEC_4K_MAX_PIC_WIDTH;
-    }
+    GetPlatformSpecificAttrib(profile, entrypoint,
+        VAConfigAttribMaxPictureWidth, &attrib.value);
     (*attribList)[attrib.type] = attrib.value;
 
     attrib.type = VAConfigAttribMaxPictureHeight;
-    attrib.value = CODEC_MAX_PIC_HEIGHT;
-    if(profile == VAProfileJPEGBaseline)
-    {
-        attrib.value = ENCODE_JPEG_MAX_PIC_HEIGHT;
-    }
-    if(IsHevcProfile(profile) || (IsVp9Profile(profile)))
-    {
-        attrib.value = CODEC_8K_MAX_PIC_HEIGHT;
-    }
-    if(IsAvcProfile(profile))
-    {
-        attrib.value = CODEC_4K_MAX_PIC_HEIGHT;
-    }
+    GetPlatformSpecificAttrib(profile, entrypoint,
+        VAConfigAttribMaxPictureWidth, &attrib.value);
     (*attribList)[attrib.type] = attrib.value;
 
     attrib.type = VAConfigAttribEncJPEG;
@@ -1334,7 +1532,10 @@ VAStatus MediaLibvaCapsG12::CreateEncAttributes(
 
         if (IsHevcProfile(profile))
         {
-            attrib.value |= VA_RC_ICQ | VA_RC_VCM | VA_RC_QVBR;
+            if (entrypoint != VAEntrypointEncSliceLP)
+                attrib.value |= VA_RC_ICQ;
+
+            attrib.value |= VA_RC_VCM | VA_RC_QVBR;
         }
         if (IsVp9Profile(profile))
         {
@@ -1378,6 +1579,10 @@ VAStatus MediaLibvaCapsG12::CreateEncAttributes(
     if (entrypoint == VAEntrypointEncSliceLP)
     {
         attrib.value = DDI_CODEC_VDENC_MAX_L0_REF_FRAMES | (DDI_CODEC_VDENC_MAX_L1_REF_FRAMES << DDI_CODEC_LEFT_SHIFT_FOR_REFLIST1);
+        if (IsHevcProfile(profile))
+        {
+            attrib.value = DDI_CODEC_VDENC_MAX_L0_REF_FRAMES_LDB | (DDI_CODEC_VDENC_MAX_L1_REF_FRAMES_LDB << DDI_CODEC_LEFT_SHIFT_FOR_REFLIST1);
+        }
     }
     else
     {
@@ -1429,8 +1634,15 @@ VAStatus MediaLibvaCapsG12::CreateEncAttributes(
     attrib.type = VAConfigAttribEncSliceStructure;
     if (entrypoint == VAEntrypointEncSliceLP)
     {
-        attrib.value = VA_ENC_SLICE_STRUCTURE_EQUAL_ROWS | VA_ENC_SLICE_STRUCTURE_MAX_SLICE_SIZE |
-                       VA_ENC_SLICE_STRUCTURE_ARBITRARY_ROWS;
+        if (IsHevcProfile(profile))
+        {
+            attrib.value = VA_ENC_SLICE_STRUCTURE_ARBITRARY_MACROBLOCKS | VA_ENC_SLICE_STRUCTURE_MAX_SLICE_SIZE;
+        }
+        else
+        {
+            attrib.value = VA_ENC_SLICE_STRUCTURE_EQUAL_ROWS | VA_ENC_SLICE_STRUCTURE_MAX_SLICE_SIZE |
+                       VA_ENC_SLICE_STRUCTURE_EQUAL_MULTI_ROWS;
+        }
     }
     else
     {
@@ -1521,11 +1733,26 @@ VAStatus MediaLibvaCapsG12::CreateEncAttributes(
     (*attribList)[attrib.type] = attrib.value;
 
     attrib.type = (VAConfigAttribType)VAConfigAttribEncDirtyRect;
-    attrib.value = 4;
+    if((entrypoint == VAEntrypointEncSliceLP) && IsHevcProfile(profile))
+    {
+        attrib.value = CODECHAL_ENCODE_HEVC_MAX_NUM_DIRTYRECT;
+    }
+    else
+    {
+        attrib.value = 4;
+    }
+
     (*attribList)[attrib.type] = attrib.value;
 
     attrib.type = VAConfigAttribEncParallelRateControl;
-    attrib.value = 1;
+    if(entrypoint == VAEntrypointEncSliceLP)
+    {
+        attrib.value = 0;
+    }
+    else
+    {
+        attrib.value = 1;
+    }
     (*attribList)[attrib.type] = attrib.value;
 
     if ((entrypoint == VAEntrypointFEI) && (IsAvcProfile(profile) || IsHevcProfile(profile)))
@@ -1563,7 +1790,7 @@ VAStatus MediaLibvaCapsG12::CreateEncAttributes(
             (VAConfigAttribType)VAConfigAttribCustomRoundingControl, &attrib.value);
     (*attribList)[attrib.type] = attrib.value;
 
-    if (IsAvcProfile(profile))
+    if (IsAvcProfile(profile) || IsHevcProfile(profile) )
     {
         attrib.type = (VAConfigAttribType)VAConfigAttribMaxFrameSize;
         VAConfigAttribValMaxFrameSize attribValMaxFrameSize;
@@ -1575,12 +1802,22 @@ VAStatus MediaLibvaCapsG12::CreateEncAttributes(
         (*attribList)[attrib.type] = attrib.value;
     }
 
-    if (IsAvcProfile(profile) && (entrypoint == VAEntrypointEncSliceLP))
+    if(entrypoint == VAEntrypointEncSliceLP)
     {
-        attrib.type = (VAConfigAttribType) VAConfigAttribPredictionDirection;
-        attrib.value = VA_PREDICTION_DIRECTION_PREVIOUS;
-        (*attribList)[attrib.type] = attrib.value;
+        if (IsAvcProfile(profile))
+        {
+            attrib.type = (VAConfigAttribType) VAConfigAttribPredictionDirection;
+            attrib.value = VA_PREDICTION_DIRECTION_PREVIOUS;
+            (*attribList)[attrib.type] = attrib.value;
+        }
+        else if (IsHevcProfile(profile))
+        {
+            attrib.type = (VAConfigAttribType) VAConfigAttribPredictionDirection;
+            attrib.value = VA_PREDICTION_DIRECTION_PREVIOUS | VA_PREDICTION_DIRECTION_FUTURE | VA_PREDICTION_DIRECTION_BI_NOT_EMPTY;
+            (*attribList)[attrib.type] = attrib.value;
+        }
     }
+
     return status;
 }
 
@@ -1603,26 +1840,102 @@ VAStatus MediaLibvaCapsG12::CreateDecAttributes(
     {
         // at present, latest libva have not support RGB24.
         attrib.value = VA_RT_FORMAT_YUV420 | VA_RT_FORMAT_YUV422 | VA_RT_FORMAT_YUV444 | VA_RT_FORMAT_YUV400 | VA_RT_FORMAT_YUV411 | VA_RT_FORMAT_RGB16 | VA_RT_FORMAT_RGB32;
-    } else if(profile == VAProfileHEVCMain10)
+    }
+    else if(profile == VAProfileHEVCMain)
     {
-        attrib.value = VA_RT_FORMAT_YUV420 | VA_RT_FORMAT_YUV420_10;
+        attrib.value = VA_RT_FORMAT_YUV420;
+    }
+    else if(profile == VAProfileHEVCMain10)
+    {
+        attrib.value = VA_RT_FORMAT_YUV420
+            | VA_RT_FORMAT_YUV420_10BPP;
+    }
+    else if(profile == VAProfileHEVCMain12)
+    {
+        attrib.value = VA_RT_FORMAT_YUV420
+            | VA_RT_FORMAT_YUV420_10BPP
+            | VA_RT_FORMAT_YUV420_12
+            | VA_RT_FORMAT_YUV400;
     }
     else if(profile == VAProfileHEVCMain422_10)
     {
-        attrib.value = VA_RT_FORMAT_YUV420 | VA_RT_FORMAT_YUV422 | VA_RT_FORMAT_YUV400 | VA_RT_FORMAT_YUV420_10 | VA_RT_FORMAT_YUV422_10;
+        attrib.value = VA_RT_FORMAT_YUV420
+            | VA_RT_FORMAT_YUV420_10BPP
+            | VA_RT_FORMAT_YUV422
+            | VA_RT_FORMAT_YUV422_10
+            | VA_RT_FORMAT_YUV400;
     }
-    else if (profile == VAProfileVP9Profile0
-          || profile == VAProfileVP9Profile2
-          || profile == VAProfileVP9Profile1
-          || profile == VAProfileVP9Profile3)
+    else if(profile == VAProfileHEVCMain422_12)
     {
         attrib.value = VA_RT_FORMAT_YUV420
-                      | VA_RT_FORMAT_YUV422
-                      | VA_RT_FORMAT_YUV444
-                      | VA_RT_FORMAT_YUV420_10
-                      | VA_RT_FORMAT_YUV444_10
-                      | VA_RT_FORMAT_RGB32
-                      | VA_RT_FORMAT_YUV420_10BPP;
+            | VA_RT_FORMAT_YUV420_10BPP
+            | VA_RT_FORMAT_YUV420_12
+            | VA_RT_FORMAT_YUV422
+            | VA_RT_FORMAT_YUV422_10
+            | VA_RT_FORMAT_YUV422_12
+            | VA_RT_FORMAT_YUV400;
+    }
+    else if(profile == VAProfileHEVCMain444 || profile == VAProfileHEVCSccMain444)
+    {
+        attrib.value = VA_RT_FORMAT_YUV420
+            | VA_RT_FORMAT_YUV422
+            | VA_RT_FORMAT_YUV444
+            | VA_RT_FORMAT_YUV400;
+    }
+    else if(profile == VAProfileHEVCMain444_10 || profile == VAProfileHEVCSccMain444_10)
+    {
+        attrib.value = VA_RT_FORMAT_YUV420
+            | VA_RT_FORMAT_YUV420_10BPP
+            | VA_RT_FORMAT_YUV422
+            | VA_RT_FORMAT_YUV422_10
+            | VA_RT_FORMAT_YUV444
+            | VA_RT_FORMAT_YUV444_10
+            | VA_RT_FORMAT_YUV400;
+    }
+    else if(profile == VAProfileHEVCMain444_12)
+    {
+        attrib.value = VA_RT_FORMAT_YUV420
+            | VA_RT_FORMAT_YUV420_10BPP
+            | VA_RT_FORMAT_YUV420_12
+            | VA_RT_FORMAT_YUV422
+            | VA_RT_FORMAT_YUV422_10
+            | VA_RT_FORMAT_YUV422_12
+            | VA_RT_FORMAT_YUV444
+            | VA_RT_FORMAT_YUV444_10
+            | VA_RT_FORMAT_YUV444_12
+            | VA_RT_FORMAT_YUV400;
+    }
+    else if(profile == VAProfileHEVCSccMain)
+    {
+        attrib.value = VA_RT_FORMAT_YUV420
+            | VA_RT_FORMAT_YUV400;
+    }
+    else if(profile == VAProfileHEVCSccMain10)
+    {
+        attrib.value = VA_RT_FORMAT_YUV420
+            | VA_RT_FORMAT_YUV420_10BPP
+            | VA_RT_FORMAT_YUV400;
+    }
+    else if (profile == VAProfileVP9Profile0)
+    {
+        attrib.value = VA_RT_FORMAT_YUV420;
+    }
+    else if (profile == VAProfileVP9Profile1)
+    {
+        attrib.value = VA_RT_FORMAT_YUV422
+            | VA_RT_FORMAT_YUV444;
+    }
+    else if (profile == VAProfileVP9Profile2)
+    {
+        attrib.value = VA_RT_FORMAT_YUV420_10BPP
+            | VA_RT_FORMAT_YUV420_12;
+    }
+    else if (profile == VAProfileVP9Profile3)
+    {
+        attrib.value = VA_RT_FORMAT_YUV422_10
+            | VA_RT_FORMAT_YUV444_10
+            | VA_RT_FORMAT_YUV422_12
+            | VA_RT_FORMAT_YUV444_12;
     }
     else
     {
@@ -1889,10 +2202,14 @@ VAStatus MediaLibvaCapsG12::LoadHevcDecProfileEntrypoints()
         LoadDecProfileEntrypoints(VAProfileHEVCSccMain10);
     }
 
-    if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrIntelHEVCVLDMain8bit444SCC)
-            || MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrIntelHEVCVLDMain10bit444SCC))
+    if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrIntelHEVCVLDMain8bit444SCC))
     {
         LoadDecProfileEntrypoints(VAProfileHEVCSccMain444);
+    }
+
+    if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrIntelHEVCVLDMain10bit444SCC))
+    {
+        LoadDecProfileEntrypoints(VAProfileHEVCSccMain444_10);
     }
 
 #endif
@@ -1912,7 +2229,8 @@ bool MediaLibvaCapsG12::IsHevcProfile(VAProfile profile)
             (profile == VAProfileHEVCMain444_12) ||
             (profile == VAProfileHEVCSccMain)    ||
             (profile == VAProfileHEVCSccMain10)  ||
-            (profile == VAProfileHEVCSccMain444)
+            (profile == VAProfileHEVCSccMain444) ||
+            (profile == VAProfileHEVCSccMain444_10)
            );
 }
 
@@ -1978,6 +2296,7 @@ GMM_RESOURCE_FORMAT MediaLibvaCapsG12::ConvertMediaFmtToGmmFmt(
         case Media_Format_B10G10R10A2: return GMM_FORMAT_B10G10R10A2_UNORM_TYPE;
         case Media_Format_R10G10B10X2: return GMM_FORMAT_R10G10B10A2_UNORM_TYPE;
         case Media_Format_B10G10R10X2: return GMM_FORMAT_B10G10R10A2_UNORM_TYPE;
+        case Media_Format_P012       : return GMM_FORMAT_P016_TYPE;
         case Media_Format_P016       : return GMM_FORMAT_P016_TYPE;
         case Media_Format_Y210       : return GMM_FORMAT_Y210_TYPE;
         case Media_Format_Y216       : return GMM_FORMAT_Y216_TYPE;

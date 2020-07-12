@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2019, Intel Corporation
+* Copyright (c) 2017-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -190,7 +190,7 @@ MOS_STATUS CodechalDecodeAvcG12::SetFrameStates()
     {
         if (m_secureDecoder && m_secureDecoder->IsAuxDataInvalid(&m_decodeParams.m_destSurface->OsResource))
         {
-            CODECHAL_DECODE_CHK_STATUS_RETURN(m_secureDecoder->InitAuxSurface(&m_decodeParams.m_destSurface->OsResource, false));
+            CODECHAL_DECODE_CHK_STATUS_RETURN(m_secureDecoder->InitAuxSurface(&m_decodeParams.m_destSurface->OsResource, false, true));
         }
         else
         {
@@ -360,7 +360,7 @@ MOS_STATUS CodechalDecodeAvcG12::DecodePrimitiveLevel()
                 }
             }
 
-            decodeStatusReport.m_secondField = CodecHal_PictureIsBottomField(m_avcPicParams->CurrPic);
+            decodeStatusReport.m_secondField = m_secondField;
             decodeStatusReport.m_frameType   = m_perfType;)
 
         CODECHAL_DECODE_CHK_STATUS_RETURN(EndStatusReport(decodeStatusReport, &cmdBuffer));
@@ -402,12 +402,7 @@ MOS_STATUS CodechalDecodeAvcG12::DecodePrimitiveLevel()
         CodecHalDecodeSinglePipeVE_PopulateHintParams(m_veState, &cmdBuffer, true);
     }
 
-    if (m_osInterface->osCpInterface->IsHMEnabled())
-    {
-        HalOcaInterface::DumpCpParam(cmdBuffer, *m_osInterface->pOsContext, m_osInterface->osCpInterface->GetOcaDumper());
-    }
-
-    HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+    HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
 
     CODECHAL_DECODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_videoContextUsesNullHw));
 
@@ -515,7 +510,7 @@ MOS_STATUS CodechalDecodeAvcG12::FormatAvcMonoPicture(PMOS_SURFACE surface)
         m_secureDecoder && m_osInterface->osCpInterface->IsHMEnabled())
     {
         CODECHAL_DECODE_VERBOSEMESSAGE("Initialize the UV aux data for %d submission", m_frameNum);
-        CODECHAL_DECODE_CHK_STATUS_RETURN(m_secureDecoder->InitAuxSurface(&surface->OsResource, true));
+        CODECHAL_DECODE_CHK_STATUS_RETURN(m_secureDecoder->InitAuxSurface(&surface->OsResource, true, true));
     }
 #endif
 

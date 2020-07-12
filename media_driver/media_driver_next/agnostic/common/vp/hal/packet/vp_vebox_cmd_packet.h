@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018, Intel Corporation
+* Copyright (c) 2018-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -379,12 +379,12 @@ public:
     //!           pointer to Generic prolog params struct to send to cmd buffer header
     //! \return   void
     //!
-    MOS_STATUS InitCmdBufferWithVeParams(
+    virtual MOS_STATUS InitCmdBufferWithVeParams(
         PRENDERHAL_INTERFACE                    pRenderHal,
         MOS_COMMAND_BUFFER                      &CmdBuffer,
         PRENDERHAL_GENERIC_PROLOG_PARAMS        pGenericPrologParams);
 
-    MOS_STATUS InitSfcStateParams();
+    virtual MOS_STATUS InitSfcStateParams();
 
     //!
     //! \brief    Setup Scaling Params for Vebox/SFC
@@ -394,7 +394,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    MOS_STATUS SetScalingParams(PSFC_SCALING_PARAMS scalingParams);
+    virtual MOS_STATUS SetScalingParams(PSFC_SCALING_PARAMS scalingParams);
 
     //!
     //! \brief    Setup CSC Params for Vebox/SFC
@@ -404,7 +404,37 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    MOS_STATUS SetSfcCSCParams(PSFC_CSC_PARAMS cscParams);
+    virtual MOS_STATUS SetSfcCSCParams(PSFC_CSC_PARAMS cscParams);
+
+    //!
+    //! \brief    Setup CSC Params for Vebox back end
+    //! \details  Setup surface CSC Params for Vebox
+    //! \param    [in] cscParams
+    //!           CSC Params
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS SetVeboxBeCSCParams(PVEBOX_CSC_PARAMS cscParams);
+
+    //!
+    //! \brief    Setup Vebox Output Alpha Value
+    //! \details  Setup Vebox Output Alpha Value
+    //! \param    [in] cscParams
+    //!           CSC Params
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS SetVeboxOutputAlphaParams(PVEBOX_CSC_PARAMS cscParams);
+
+    //!
+    //! \brief    Setup Vebox Chroma sub sampling
+    //! \details  Setup Vebox Chroma sub sampling
+    //! \param    [in] cscParams
+    //!           CSC Params
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS SetVeboxChromasitingParams(PVEBOX_CSC_PARAMS cscParams);
 
     //!
     //! \brief    Setup Roattion/Mirror Params for Vebox/SFC
@@ -414,7 +444,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    MOS_STATUS SetSfcRotMirParams(PSFC_ROT_MIR_PARAMS rotMirParams);
+    virtual MOS_STATUS SetSfcRotMirParams(PSFC_ROT_MIR_PARAMS rotMirParams);
 
     //!
     //! \brief    Setup DN Params for Vebox
@@ -424,7 +454,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    MOS_STATUS SetDnParams(PVEBOX_DN_PARAMS dnParams);
+    virtual MOS_STATUS SetDnParams(PVEBOX_DN_PARAMS dnParams);
 
     //!
     //! \brief    Get DN luma parameters
@@ -503,7 +533,7 @@ public:
         bool                        bAutoDetect,
         float                       fDnFactor) { return MOS_STATUS_SUCCESS; }
 
-    MOS_STATUS InitSTMMHistory();
+    virtual MOS_STATUS InitSTMMHistory();
 
     //!
     //! \brief    Vebox Populate VEBOX parameters
@@ -578,7 +608,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    MOS_STATUS GetStatisticsSurfaceOffsets(
+    virtual MOS_STATUS GetStatisticsSurfaceOffsets(
         int32_t*                            pStatSlice0Offset,
         int32_t*                            pStatSlice1Offset);
 
@@ -638,7 +668,7 @@ public:
     //! \details  enable or disable SFC output path
     //! \return   void
     //!
-    void SetSfcOutputPath(bool bSfcUsed) { m_IsSfcUsed = bSfcUsed; };
+    virtual void SetSfcOutputPath(bool bSfcUsed) { m_IsSfcUsed = bSfcUsed; };
 
     virtual SfcRenderBase* GetSfcRenderInstance() { return m_sfcRender; };
 
@@ -801,16 +831,16 @@ protected:
     //!           Pointer to Command Buffer
     //! \return   MOS_STATUS
     //!
-    MOS_STATUS SendVecsStatusTag(
+    virtual MOS_STATUS SendVecsStatusTag(
       PMHW_MI_INTERFACE                   pMhwMiInterface,
       PMOS_INTERFACE                      pOsInterface,
       PMOS_COMMAND_BUFFER                 pCmdBuffer);
 
-    MOS_STATUS InitVeboxSurfaceStateCmdParams(
+    virtual MOS_STATUS InitVeboxSurfaceStateCmdParams(
         PVPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS    pVpHalVeboxSurfaceStateCmdParams,
         PMHW_VEBOX_SURFACE_STATE_CMD_PARAMS      pMhwVeboxSurfaceStateCmdParams);
 
-    MOS_STATUS InitVeboxSurfaceParams(
+    virtual MOS_STATUS InitVeboxSurfaceParams(
         PVP_SURFACE                     pVpHalVeboxSurface,
         PMHW_VEBOX_SURFACE_PARAMS       pMhwVeboxSurface);
 
@@ -833,6 +863,14 @@ protected:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     virtual MOS_STATUS AddVeboxDndiState();
+
+    //!
+    //! \brief    Add vebox IECP state
+    //! \details  Add vebox IECP state
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS AddVeboxIECPState();
     //!
     //! \brief    Vebox set up vebox state heap
     //! \details  Setup Vebox indirect states: DNDI and etc
@@ -892,9 +930,9 @@ protected:
 
     VPHAL_CSPACE                m_CscOutputCspace = {};                            //!< Cspace of Output Frame
     VPHAL_CSPACE                m_CscInputCspace = {};                             //!< Cspace of Input frame
-    float                       m_fCscCoeff[9];                               //!< [3x3] Coeff matrix for CSC
-    float                       m_fCscInOffset[3];                            //!< [3x1] Input Offset matrix for CSC
-    float                       m_fCscOutOffset[3];                           //!< [3x1] Output Offset matrix for CSC
+    float                       m_fCscCoeff[9];                                    //!< [3x3] Coeff matrix for CSC
+    float                       m_fCscInOffset[3];                                 //!< [3x1] Input Offset matrix for CSC
+    float                       m_fCscOutOffset[3];                                //!< [3x1] Output Offset matrix for CSC
     SfcRenderBase               *m_sfcRender             = nullptr;
     VPHAL_SFC_RENDER_DATA       m_sfcRenderData          = {};
     bool                        m_IsSfcUsed              = false;

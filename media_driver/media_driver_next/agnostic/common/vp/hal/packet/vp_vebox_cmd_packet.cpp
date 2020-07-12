@@ -29,6 +29,7 @@
 #include "vp_utils.h"
 #include "mos_resource_defs.h"
 #include "hal_oca_interface.h"
+#include "vp_render_sfc_m12.h"
 
 namespace vp {
 
@@ -59,8 +60,10 @@ MOS_STATUS VpVeboxCmdPacket::SetupVeboxState(
     VP_RENDER_CHK_NULL_RETURN(m_hwInterface);
 
     pVeboxMode = &pVeboxStateCmdParams->VeboxMode;
-
     VP_RENDER_CHK_NULL_RETURN(pVeboxMode);
+
+    VpVeboxRenderData* pRenderData = GetLastExecRenderData();
+    VP_RENDER_ASSERT(pRenderData);
 
     MOS_ZeroMemory(pVeboxStateCmdParams, sizeof(*pVeboxStateCmdParams));
 
@@ -80,15 +83,8 @@ MOS_STATUS VpVeboxCmdPacket::SetupVeboxState(
 
     pVeboxStateCmdParams->bUseVeboxHeapKernelResource = UseKernelResource();
 
-    //SetupChromaSampling(&pVeboxStateCmdParams->ChromaSampling);
-
-    // Initialize VEBOX chroma sitting to bypass
-    pVeboxStateCmdParams->ChromaSampling.BypassChromaUpsampling = 1;
-    pVeboxStateCmdParams->ChromaSampling.ChromaUpsamplingCoSitedHorizontalOffset = 0;
-    pVeboxStateCmdParams->ChromaSampling.ChromaUpsamplingCoSitedVerticalOffset = 0;
-    pVeboxStateCmdParams->ChromaSampling.BypassChromaDownsampling = 1;
-    pVeboxStateCmdParams->ChromaSampling.ChromaDownsamplingCoSitedHorizontalOffset = 0;
-    pVeboxStateCmdParams->ChromaSampling.ChromaDownsamplingCoSitedVerticalOffset = 0;
+    //Set up Chroma Sampling
+    pVeboxStateCmdParams->ChromaSampling = pRenderData->GetChromaSubSamplingParams();
 
     // Permanent program limitation that should go in all the configurations of SKLGT which have 2 VEBOXes (i.e. GT3 & GT4)
     // VEBOX1 should be disabled whenever there is an VE-SFC workload.
@@ -417,6 +413,124 @@ MOS_STATUS VpVeboxCmdPacket::SetSfcCSCParams(PSFC_CSC_PARAMS cscParams)
         VP_RENDER_NORMALMESSAGE("CSC/IEF for Output is enabled in SFC, pls recheck the features enabling in SFC");
         return MOS_STATUS_INVALID_PARAMETER;
     }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacket::SetVeboxBeCSCParams(PVEBOX_CSC_PARAMS cscParams)
+{
+    VP_RENDER_CHK_NULL_RETURN(cscParams);
+
+    VpVeboxRenderData* pRenderData = GetLastExecRenderData();
+    VP_RENDER_ASSERT(pRenderData);
+
+    pRenderData->IECP.BeCSC.bBeCSCEnabled = cscParams->bCSCEnabled;
+
+    MHW_VEBOX_IECP_PARAMS& veboxIecpParams = pRenderData->GetIECPParams();
+
+    if (m_CscInputCspace  != cscParams->inputColorSpcase ||
+        m_CscOutputCspace != cscParams->outputColorSpcase)
+    {
+        VpHal_GetCscMatrix(
+            cscParams->inputColorSpcase,
+            cscParams->outputColorSpcase,
+            m_fCscCoeff,
+            m_fCscInOffset,
+            m_fCscOutOffset);
+
+        m_CscInputCspace = cscParams->inputColorSpcase;
+        m_CscOutputCspace = cscParams->outputColorSpcase;
+    }
+
+    if (m_PacketCaps.bVebox &&
+        m_PacketCaps.bBeCSC &&
+        cscParams->bCSCEnabled)
+    {
+        veboxIecpParams.bCSCEnable     = true;
+        veboxIecpParams.pfCscCoeff     = m_fCscCoeff;
+        veboxIecpParams.pfCscInOffset  = m_fCscInOffset;
+        veboxIecpParams.pfCscOutOffset = m_fCscOutOffset;
+    }
+
+    VP_RENDER_CHK_STATUS_RETURN(SetVeboxOutputAlphaParams(cscParams));
+    VP_RENDER_CHK_STATUS_RETURN(SetVeboxChromasitingParams(cscParams));
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacket::SetVeboxOutputAlphaParams(PVEBOX_CSC_PARAMS cscParams)
+{
+    VP_RENDER_CHK_NULL_RETURN(cscParams);
+
+    VpVeboxRenderData* pRenderData = GetLastExecRenderData();
+    VP_RENDER_ASSERT(pRenderData);
+
+    MHW_VEBOX_IECP_PARAMS& veboxIecpParams = pRenderData->GetIECPParams();
+
+    if (IS_ALPHA_FORMAT(cscParams->outputFormat))
+    {
+        veboxIecpParams.bAlphaEnable = true;
+    }
+    else
+    {
+        veboxIecpParams.bAlphaEnable = false;
+        return MOS_STATUS_SUCCESS;
+    }
+
+    MOS_FORMAT outFormat = cscParams->outputFormat;
+
+    if (cscParams->alphaParams != nullptr)
+    {
+        switch (cscParams->alphaParams->AlphaMode)
+        {
+        case VPHAL_ALPHA_FILL_MODE_NONE:
+            if (outFormat == Format_A8R8G8B8)
+            {
+                veboxIecpParams.wAlphaValue =
+                    (uint8_t)(0xff * cscParams->alphaParams->fAlpha);
+            }
+            else
+            {
+                veboxIecpParams.wAlphaValue = 0xff;
+            }
+            break;
+
+            // VEBOX does not support Background Color
+        case VPHAL_ALPHA_FILL_MODE_BACKGROUND:
+
+            // VPHAL_ALPHA_FILL_MODE_SOURCE_STREAM case is hit when the
+            // input does not have alpha
+            // So we set Opaque alpha channel.
+        case VPHAL_ALPHA_FILL_MODE_SOURCE_STREAM:
+        case VPHAL_ALPHA_FILL_MODE_OPAQUE:
+        default:
+            veboxIecpParams.wAlphaValue = 0xff;
+            break;
+        }
+    }
+    else
+    {
+        veboxIecpParams.wAlphaValue = 0xff;
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacket::SetVeboxChromasitingParams(PVEBOX_CSC_PARAMS cscParams)
+{
+    VP_RENDER_CHK_NULL_RETURN(cscParams);
+
+    VpVeboxRenderData* pRenderData = GetLastExecRenderData();
+    VP_RENDER_ASSERT(pRenderData);
+
+    MHW_VEBOX_CHROMA_SAMPLING& veboxChromaSamplingParams = pRenderData->GetChromaSubSamplingParams();
+
+    veboxChromaSamplingParams.BypassChromaDownsampling                  = cscParams->bypassCDS;
+    veboxChromaSamplingParams.BypassChromaUpsampling                    = cscParams->bypassCUS;
+    veboxChromaSamplingParams.ChromaDownsamplingCoSitedHorizontalOffset = cscParams->chromaDownSamplingHorizontalCoef;
+    veboxChromaSamplingParams.ChromaDownsamplingCoSitedVerticalOffset   = cscParams->chromaDownSamplingVerticalCoef;
+    veboxChromaSamplingParams.ChromaUpsamplingCoSitedHorizontalOffset   = cscParams->chromaUpSamplingHorizontalCoef;
+    veboxChromaSamplingParams.ChromaUpsamplingCoSitedVerticalOffset     = cscParams->chromaUpSamplingVerticalCoef;
 
     return MOS_STATUS_SUCCESS;
 }
@@ -789,6 +903,8 @@ MOS_STATUS VpVeboxCmdPacket::InitVeboxSurfaceParams(
     {
         pMhwVeboxSurface->rcMaxSrc           = pVpHalVeboxSurface->rcMaxSrc;
     }
+    pMhwVeboxSurface->rcSrc                  = pVpHalVeboxSurface->rcSrc;
+    pMhwVeboxSurface->bVEBOXCroppingUsed     = pVpHalVeboxSurface->bVEBOXCroppingUsed;
     pMhwVeboxSurface->pOsResource            = &pVpHalVeboxSurface->osSurface->OsResource;
     pMhwVeboxSurface->bIsCompressed          = pVpHalVeboxSurface->osSurface->bIsCompressed;
 
@@ -969,6 +1085,10 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
 
     HalOcaInterface::On1stLevelBBStart(*CmdBuffer, *pOsContext, pOsInterface->CurrentGpuContextHandle,
         *pMhwMiInterface, *pMmioRegisters);
+
+    char ocaMsg[] = "VP APG Vebox Packet";
+    HalOcaInterface::TraceMessage(*CmdBuffer, *pOsContext, ocaMsg, sizeof(ocaMsg));
+
     // Add vphal param to log.
     HalOcaInterface::DumpVphalParam(*CmdBuffer, *pOsContext, pRenderHal->pVphalOcaDumper);
 
@@ -1071,7 +1191,7 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
 
     VP_RENDER_CHK_STATUS_RETURN(pPerfProfiler->AddPerfCollectEndCmd((void*)pRenderHal, pOsInterface, pRenderHal->pMhwMiInterface, CmdBuffer));
 
-    HalOcaInterface::On1stLevelBBEnd(*CmdBuffer, *pOsContext);
+    HalOcaInterface::On1stLevelBBEnd(*CmdBuffer, *pOsInterface);
 
     if (pOsInterface->bNoParsingAssistanceInKmd)
     {
@@ -1204,7 +1324,7 @@ MOS_STATUS VpVeboxCmdPacket::Init()
 
     if (m_sfcRender == nullptr)
     {
-        m_sfcRender = MOS_New(SfcRenderBase,
+        m_sfcRender = MOS_New(SfcRenderM12,
             m_hwInterface->m_osInterface,
             m_hwInterface->m_sfcInterface,
             m_allocator);
@@ -1526,6 +1646,18 @@ MOS_STATUS VpVeboxCmdPacket::AddVeboxDndiState()
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS VpVeboxCmdPacket::AddVeboxIECPState()
+{
+    PMHW_VEBOX_INTERFACE             pVeboxInterface = m_hwInterface->m_veboxInterface;;
+    VpVeboxRenderData*              pRenderData      = GetLastExecRenderData();
+
+    if (pRenderData->IECP.IsIecpEnabled())
+    {
+        return pVeboxInterface->AddVeboxIecpState(&pRenderData->GetIECPParams());
+    }
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS VpVeboxCmdPacket::SetupIndirectStates()
 {
     PMHW_VEBOX_INTERFACE            pVeboxInterface = nullptr;
@@ -1542,25 +1674,11 @@ MOS_STATUS VpVeboxCmdPacket::SetupIndirectStates()
     //----------------------------------
     VP_RENDER_CHK_STATUS_RETURN(pVeboxInterface->AssignVeboxState());
 
-    // Place Holder: Add following code back when enabling IECP features.
-    //if (pRenderData->bIECP)
-    //{
-    //    MHW_VEBOX_IECP_PARAMS           VeboxIecpParams    = {};
-    //   /* Wait for Filter to set IECP Prarams to here.
-    //    VP_RENDER_CHK_STATUS_RETURN(SetIECPParams(
-    //                                pSrcSurface,
-    //                                pOutSurface,
-    //                                pRenderData,
-    //                                &VeboxIecpParams));
-    //    */
-    //    VP_RENDER_CHK_STATUS_RETURN(pVeboxInterface->AddVeboxIecpState(
-    //          &VeboxIecpParams));
-    //}
+    // Set IECP State
+    VP_RENDER_CHK_STATUS_RETURN(AddVeboxIECPState());
 
-    if (pRenderData->DN.bDnEnabled || pRenderData->DI.bDeinterlace || pRenderData->DI.bQueryVariance)
-    {
-        VP_RENDER_CHK_STATUS_RETURN(AddVeboxDndiState());
-    }
+    // Set DNDI State
+    VP_RENDER_CHK_STATUS_RETURN(AddVeboxDndiState());
 
     return MOS_STATUS_SUCCESS;
 }

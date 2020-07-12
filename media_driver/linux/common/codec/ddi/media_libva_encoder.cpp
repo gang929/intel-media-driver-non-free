@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2018, Intel Corporation
+* Copyright (c) 2009-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -291,6 +291,7 @@ VAStatus DdiEncode_CreateContext(
     mosCtx.pGmmClientContext     = mediaDrvCtx->pGmmClientContext;
 
     mosCtx.m_osDeviceContext     = mediaDrvCtx->m_osDeviceContext;
+    mosCtx.m_apoMosEnabled       = mediaDrvCtx->m_apoMosEnabled;
 
     if (nullptr == mosCtx.pPerfData)
     {
@@ -372,12 +373,12 @@ VAStatus DdiEncode_CreateContext(
         return vaStatus;
     }
 
-    encCtx->m_encode->m_codechalSettings->enableCodecMmc = false;
     MOS_STATUS eStatus = pCodecHal->Allocate(encCtx->m_encode->m_codechalSettings);
 
 #ifdef _MMC_SUPPORTED
     PMOS_INTERFACE osInterface = pCodecHal->GetOsInterface();
-    if (osInterface != nullptr &&
+    if (osInterface != nullptr                                                       &&
+        !osInterface->apoMosEnabled                                                  &&
         MEDIA_IS_SKU(osInterface->pfnGetSkuTable(osInterface), FtrMemoryCompression) &&
         !mediaDrvCtx->pMediaMemDecompState)
     {

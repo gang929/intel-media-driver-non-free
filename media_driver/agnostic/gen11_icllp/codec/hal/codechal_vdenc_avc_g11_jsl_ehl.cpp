@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018, Intel Corporation
+* Copyright (c) 2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,27 +19,29 @@
 * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 * OTHER DEALINGS IN THE SOFTWARE.
 */
-#include "vp_cmd_packet.h"
-#include "vp_utils.h"
-#include "vp_vebox_cmd_packet_g12.h"
-#include "vp_packet_factory_g12.h"
+//!
+//! \file     codechal_vdenc_avc_g11_jsl_ehl.h
+//! \brief    This file defines the base C++ class/interface for JSL and EHL
+//!           AVC VDENC encoding to be used across CODECHAL components.
+//!
 
-using namespace vp;
+#include "codechal_vdenc_avc_g11_jsl_ehl.h"
 
-PacketFactoryG12::PacketFactoryG12()
+MOS_STATUS CodechalVdencAvcStateG11JslEhl::Initialize(CodechalSetting* settings)
 {
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+    CODECHAL_ENCODE_FUNCTION_ENTER;
+
+    // common initilization
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(CodechalVdencAvcState::Initialize(settings));
+    m_cscDsState->DisableSfc(); // EHL and JSL don't support SFC
+
+    return eStatus;
 }
 
-PacketFactoryG12::~PacketFactoryG12()
+void CodechalVdencAvcStateG11JslEhl::MotionEstimationDisableCheck()
 {
-}
-
-VpCmdPacket *PacketFactoryG12::CreateVeboxPacket()
-{
-    return MOS_New(VpVeboxCmdPacketG12, m_pTask, m_pHwInterface, m_pAllocator, m_pMmc);
-}
-
-VpCmdPacket *PacketFactoryG12::CreateRenderPacket()
-{
-    return nullptr;
+    m_16xMeSupported = false;
+    m_32xMeSupported = false;
 }

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018, Intel Corporation
+* Copyright (c) 2018-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -135,14 +135,7 @@ MediaPerfProfiler::MediaPerfProfiler()
     {
         // m_mutex is destroyed after MemNinja report, this will cause fake memory leak,
         // the following 2 lines is to circumvent Memninja counter validation and log parser
-        if(g_apoMosEnabled)
-        {
-            MOS_AtomicDecrement(&MosUtilities::m_mosMemAllocCounter);
-        }
-        else
-        {
-            MOS_AtomicDecrement(&MosMemAllocCounter);
-        }
+        MOS_AtomicDecrement(&MosUtilities::m_mosMemAllocCounter);
         MOS_MEMNINJA_FREE_MESSAGE(m_mutex, __FUNCTION__, __FILE__, __LINE__);
     }
     else
@@ -241,10 +234,16 @@ MOS_STATUS MediaPerfProfiler::Initialize(void* context, MOS_INTERFACE *osInterfa
     // Read output file name
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
     userFeatureData.StringData.pStringData = m_outputFileName;
-    MOS_UserFeature_ReadValue_ID(
+    status = MOS_UserFeature_ReadValue_ID(
         NULL,
         __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_OUTPUT_FILE,
         &userFeatureData);
+
+    if (status != MOS_STATUS_SUCCESS)
+    {
+        MOS_UnlockMutex(m_mutex);
+        return status;
+    }
 
     if (userFeatureData.StringData.uSize == MOS_MAX_PATH_LENGTH + 1)
     {
@@ -495,12 +494,11 @@ MOS_STATUS MediaPerfProfiler::AddPerfCollectStartCmd(void* context,
                 m_registers[regIndex]));
         }
     }
-    
-    double beginCPUTimestamp = MOS_GetTime();
 
+    uint64_t beginCPUTimestamp = MOS_GetCurTime();
     uint32_t timeStamp[2];
     MOS_SecureMemcpy(timeStamp, 2*sizeof(uint32_t), &beginCPUTimestamp, 2*sizeof(uint32_t));
-    
+
     for (int i = 0; i < 2; i++)
     {
         CHK_STATUS_RETURN(StoreData(

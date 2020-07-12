@@ -1,4 +1,4 @@
-# Copyright (c) 2017, Intel Corporation
+# Copyright (c) 2017-2020, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -20,7 +20,7 @@
 
 cmake_minimum_required(VERSION 3.5)
 
-set(MEDIA_VERSION "20.1.1${MEDIA_VERSION_EXTRA}" CACHE STRING "" FORCE)
+set(MEDIA_VERSION "20.2.0${MEDIA_VERSION_EXTRA}" CACHE STRING "" FORCE)
 
 include(os_release_info.cmake)
 
@@ -127,6 +127,12 @@ endif()
 
 # Format Package Version and Build Type Strings for CPACK_PACKAGE_FILE_NAME
 string(TOLOWER "${BUILD_TYPE}.${CPACK_RPM_PACKAGE_ARCHITECTURE}" PACKAGE_TYPE)
+
+if (DEFINED CP_INCLUDED)
+if (${CP_INCLUDED} STREQUAL "1")
+set(CPACK_PACKAGE_NAME "intel-cp-media")
+endif()
+endif()
 
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${DISTRO_INFO}-${PACKAGE_TYPE}")
 

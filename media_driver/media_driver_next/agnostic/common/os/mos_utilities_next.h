@@ -1126,7 +1126,7 @@ public:
     //!
     //! \brief    Opens the specified user feature key
     //! \details  Opens the specified user feature key
-    //! \param    [in] UFKey
+    //! \param    [in] ufKey
     //!           A handle to an open user feature key.
     //! \param    [in] lpSubKey
     //!           The name of the user feature subkey to be opened.
@@ -1142,7 +1142,7 @@ public:
     //!           in mos_utilitiesNext.h.
     //!
     static MOS_STATUS MosUserFeatureOpenKey(
-        void              *UFKey,
+        void              *ufKey,
         const char        *lpSubKey,
         uint32_t          ulOptions,
         uint32_t          samDesired,
@@ -1151,7 +1151,7 @@ public:
     //!
     //! \brief    Closes a handle to the specified user feature key
     //! \details  Closes a handle to the specified user feature key
-    //! \param    [in] UFKey
+    //! \param    [in] ufKey
     //!           A handle to an open user feature key.
     //! \return   MOS_STATUS
     //!           If the function succeeds, the return value is MOS_STATUS_SUCCESS.
@@ -1159,7 +1159,7 @@ public:
     //!           in mos_utilitiesNext.h.
     //!
     static MOS_STATUS MosUserFeatureCloseKey(
-        void               *UFKey);
+        void               *ufKey);
 
     //!
     //! \brief    Retrieves the type and data for the specified user feature value
@@ -1755,9 +1755,9 @@ public:
     static void MosTraceEvent(
         uint16_t         usId,
         uint8_t          ucType,
-        void * const     pArg1,
+        const void       *pArg1,
         uint32_t         dwSize1,
-        void * const     pArg2,
+        const void       *pArg2,
         uint32_t         dwSize2);
 
     //!
@@ -1787,6 +1787,22 @@ public:
         const char *pcName,
         uint32_t    flags,
         const void *pBuf,
+        uint32_t    dwSize);
+
+    //!
+    //! \brief    MOS log data dictionary item
+    //! \details  Dictionary is name:value pair
+    //! \param    [in] name
+    //!           Indicates item name
+    //! \param    [in] pBuf
+    //!           Indicates value address
+    //! \param    [in] size
+    //!           Indicates value size
+    //! \return   void
+    //!
+    static void MosTraceDataDictionary(
+        const char* pcName,
+        const void* pBuf,
         uint32_t    dwSize);
 
     //!

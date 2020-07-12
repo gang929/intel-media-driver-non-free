@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2011-2019, Intel Corporation
+* Copyright (c) 2011-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -769,6 +769,11 @@ MOS_STATUS VphalRenderer::RenderPass(
                     RenderPassData.bCompNeeded = true;
                     VPHAL_RENDER_ASSERTMESSAGE("Critical: enter fast color fill");
                 }
+                if (RenderPassData.b2CSCNeeded)
+                {
+                    // Second CSC in render, set input of render with output of vebox.
+                    pRenderParams->pSrc[uiIndex_in] = RenderPassData.pOutSurface;
+                }
                 if (RenderPassData.bCompNeeded &&
                     (uiIndex_in == pRenderParams->uSrcCount-1 || // compatible with N:1 case, only render at the last input.
                      pRenderParams->uSrcCount == 0))             // fast color fill
@@ -1236,7 +1241,8 @@ MOS_STATUS VphalRenderer::UpdateRenderGpuContext(MOS_GPU_CONTEXT currentGpuConte
     PVPHAL_VEBOX_STATE      pVeboxState = nullptr;
     int                     i           = 0;
 
-    if (m_pOsInterface->osCpInterface->IsCpEnabled() &&
+    if (MEDIA_IS_SKU(m_pSkuTable, FtrRAMode) &&
+        m_pOsInterface->osCpInterface->IsCpEnabled() &&
         (m_pOsInterface->osCpInterface->IsHMEnabled() || m_pOsInterface->osCpInterface->IsSMEnabled()))
     {
         if (currentGpuContext == MOS_GPU_CONTEXT_COMPUTE ||
@@ -1297,6 +1303,32 @@ finish:
     VPHAL_RENDER_NORMALMESSAGE("gpucontext switch from %d to %d", currentGpuContext, renderGpuContext);
     return eStatus;
 }
+
+MOS_STATUS VphalRenderer::SetRenderGpuContext(VPHAL_RENDER_PARAMS& RenderParams)
+{
+    if (MEDIA_IS_SKU(m_pSkuTable, FtrCCSNode))
+    {
+        MOS_GPU_CONTEXT currentGpuContext = m_pOsInterface->pfnGetGpuContext(m_pOsInterface);
+        bool            bLumaKeyEnabled   = false;
+        for (uint32_t uiSources = 0; uiSources < RenderParams.uSrcCount; uiSources++)
+        {
+            VPHAL_SURFACE* pSrc = (VPHAL_SURFACE*)RenderParams.pSrc[uiSources];
+            bLumaKeyEnabled = (pSrc && pSrc->pLumaKeyParams) ? true : false;
+            if (bLumaKeyEnabled)
+            {
+                break;
+            }
+        }
+        if (bLumaKeyEnabled)
+        {
+            currentGpuContext = MOS_GPU_CONTEXT_RENDER;
+        }
+        UpdateRenderGpuContext(currentGpuContext);
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
     //!
 //! \brief    Release intermediate surfaces
 //! \details  Release intermediate surfaces created for main render function

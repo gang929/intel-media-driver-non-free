@@ -3103,7 +3103,6 @@ CodechalVdencAvcState::CodechalVdencAvcState(
     MOS_ZeroMemory(&m_vdencStatsBuffer, sizeof(MOS_RESOURCE));
     MOS_ZeroMemory(&m_pakStatsBufferFull, sizeof(MOS_RESOURCE));
     MOS_ZeroMemory(&m_vdencTlbMmioBuffer, sizeof(MOS_RESOURCE));
-    MOS_ZeroMemory(&m_resLaDataBuffer, sizeof(MOS_RESOURCE));
 }
 
 CodechalVdencAvcState::~CodechalVdencAvcState()
@@ -3361,7 +3360,7 @@ MOS_STATUS CodechalVdencAvcState::Initialize(CodechalSetting *settings)
     CODECHAL_ENCODE_CHK_STATUS_RETURN(Initialize());
 
     // common function for all codecs needed
-    if (m_cscDsState && CodecHalUsesRenderEngine(m_codecFunction, m_standard))
+    if (m_cscDsState && m_hwInterface->UsesRenderEngine(m_codecFunction, m_standard))
     {
         if (m_hmeSupported)
         {
@@ -4093,6 +4092,28 @@ MOS_STATUS CodechalVdencAvcState::SetSequenceStructs()
         seqParams->FramesPer100Sec);
 
     m_lookaheadDepth = seqParams->LookaheadDepth;
+    if (m_lookaheadDepth > 0)
+    {
+        uint64_t targetBitRate = (uint64_t)seqParams->TargetBitRate;
+        if ((seqParams->FramesPer100Sec < 100) || ((targetBitRate * 100) < seqParams->FramesPer100Sec))
+        {
+            CODECHAL_ENCODE_ASSERTMESSAGE("Invalid FrameRate or TargetBitRate in lookahead pass!");
+            return MOS_STATUS_INVALID_PARAMETER;
+        }
+        m_averageFrameSize = (uint32_t)(targetBitRate * 100 / seqParams->FramesPer100Sec);
+
+        if (seqParams->VBVBufferSizeInBit < seqParams->InitVBVBufferFullnessInBit)
+        {
+            CODECHAL_ENCODE_ASSERTMESSAGE("VBVBufferSizeInBit is less than InitVBVBufferFullnessInBit\n");
+            eStatus = MOS_STATUS_INVALID_PARAMETER;
+            return eStatus;
+        }
+
+        if (m_targetBufferFulness == 0)
+        {
+            m_targetBufferFulness = seqParams->VBVBufferSizeInBit - seqParams->InitVBVBufferFullnessInBit;
+        }
+    }
 
     return eStatus;
 }
@@ -4205,6 +4226,15 @@ MOS_STATUS CodechalVdencAvcState::SetPictureStructs()
     }
     else
         m_avcPicParam->ForceSkip.Enable  = 0;
+
+    if ((m_lookaheadDepth > 0) && (m_prevTargetFrameSize > 0))
+    {
+        int64_t targetBufferFulness = (int64_t)m_targetBufferFulness;
+        targetBufferFulness += (int64_t)(m_prevTargetFrameSize << 3) - (int64_t)m_averageFrameSize;
+        m_targetBufferFulness = targetBufferFulness < 0 ?
+            0 : (targetBufferFulness > 0xFFFFFFFF ? 0xFFFFFFFF : (uint32_t)targetBufferFulness);
+    }
+    m_prevTargetFrameSize = m_avcPicParam->TargetFrameSize;
 
     return eStatus;
 }
@@ -4523,7 +4553,7 @@ MOS_STATUS CodechalVdencAvcState::SFDKernel()
 
     if (!m_singleTaskPhaseSupported || m_lastTaskInPhase)
     {
-        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
         m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, m_renderContextUsesNullHw);
         m_lastTaskInPhase = false;
     }
@@ -4847,7 +4877,7 @@ MOS_STATUS CodechalVdencAvcState::HuCBrcInitReset()
     if (!m_singleTaskPhaseSupported)
     {
         bool renderingFlags = m_videoContextUsesNullHw;
-        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, renderingFlags));
     }
 
@@ -4988,15 +5018,6 @@ MOS_STATUS CodechalVdencAvcState::HuCBrcUpdate()
     virtualAddrParams.regionParams[0].isWritable = true;
     virtualAddrParams.regionParams[6].presRegion = &m_batchBufferForVdencImgStat[0].OsResource;
     virtualAddrParams.regionParams[6].isWritable = true;
-    if (m_lookaheadDepth > 0)
-    {
-        virtualAddrParams.regionParams[11].presRegion = &m_resLaDataBuffer;
-        virtualAddrParams.regionParams[11].isWritable = true;
-        if (m_osInterface->pfnEnableResourceSyncDynamic)
-        {
-            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnEnableResourceSyncDynamic(&m_resLaDataBuffer));
-        }
-    }
     // region 15 always in clear
     virtualAddrParams.regionParams[15].presRegion = &m_resVdencBrcDbgBuffer;
 
@@ -5057,7 +5078,7 @@ MOS_STATUS CodechalVdencAvcState::HuCBrcUpdate()
     if (!m_singleTaskPhaseSupported)
     {
         bool renderingFlags = m_videoContextUsesNullHw;
-        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface->pOsContext);
+        HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, renderingFlags));
     }
 
@@ -5308,6 +5329,17 @@ MOS_STATUS CodechalVdencAvcState::InitializePicture(const EncoderParams &params)
                 m_avcSeqParam,
                 m_avcPicParam,
                 &m_avcSliceParams[i]));
+        }
+
+        if (m_avcPicParam->NumROI || m_avcPicParam->NumDirtyROI || m_encodeParams.bMbQpDataEnabled)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpBuffer(
+                &(m_resVdencStreamInBuffer[m_currRecycledBufIdx]),
+                CodechalDbgAttr::attrStreamIn,
+                m_encodeParams.bMbQpDataEnabled ? "_MBQP" : "_ROI",
+                m_picWidthInMb * m_picHeightInMb * CODECHAL_CACHELINE_SIZE,
+                0,
+                CODECHAL_NUM_MEDIA_STATES))
         })
 
     // Set min/max QP values in AVC State based on frame type if atleast one of them is non-zero
@@ -5392,11 +5424,6 @@ MOS_STATUS CodechalVdencAvcState::InitializePicture(const EncoderParams &params)
 
     m_resVdencStatsBuffer     = &(m_vdencStatsBuffer);
     m_resPakStatsBuffer       = &(m_pakStatsBuffer);
-
-    if (m_encodeParams.bLaDataEnabled)
-    {
-        m_resLaDataBuffer = *(m_encodeParams.psLaDataBuffer);
-    }
 
     return eStatus;
 }
@@ -5516,7 +5543,7 @@ MOS_STATUS CodechalVdencAvcState::ExecuteKernelFunctions()
             CodechalDbgAttr::attrOutput,
             "MvData",
             meOutputParams.psMeMvBuffer->dwHeight * meOutputParams.psMeMvBuffer->dwPitch,
-            CodecHal_PictureIsBottomField(m_currOriginalPic) ? MOS_ALIGN_CEIL((m_downscaledWidthInMb16x * 32), 64) * (m_downscaledFrameFieldHeightInMb16x * 4) : 0,
+            m_hmeKernel ? m_hmeKernel->Get16xMeMvBottomFieldOffset() : (uint32_t)m_meMv16xBottomFieldOffset,
             CODECHAL_MEDIA_STATE_16X_ME));
 
         meOutputParams.pResVdenStreamInBuffer = &(m_resVdencStreamInBuffer[m_currRecycledBufIdx]);
@@ -7698,21 +7725,6 @@ MOS_STATUS CodechalVdencAvcState::DumpHucBrcUpdate(bool isInput)
                 m_currPass,
                 hucRegionDumpUpdate));
         }
-
-        //  Lookahead data buffer dump
-        if (m_lookaheadDepth > 0)
-        {
-            uint32_t laDataBufferSize = m_numLaDataEntry * sizeof(CodechalEncodeLaData);
-            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-                &m_resLaDataBuffer,
-                0,
-                laDataBufferSize,
-                11,
-                "_LaData",
-                isInput,
-                m_currPass,
-                hucRegionDumpUpdate));
-        }
     }
     else
     {
@@ -7747,21 +7759,6 @@ MOS_STATUS CodechalVdencAvcState::DumpHucBrcUpdate(bool isInput)
             isInput,
             m_currPass,
             hucRegionDumpUpdate));
-
-        //  Lookahead data buffer dump
-        if (m_lookaheadDepth > 0)
-        {
-            uint32_t laDataBufferSize = m_numLaDataEntry * 32;
-            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucRegion(
-                &m_resLaDataBuffer,
-                0,
-                laDataBufferSize,
-                11,
-                "_LaData",
-                isInput,
-                m_currPass,
-                hucRegionDumpUpdate));
-        }
     }
 
     return MOS_STATUS_SUCCESS;

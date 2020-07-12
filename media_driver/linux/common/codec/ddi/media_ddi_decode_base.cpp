@@ -1020,8 +1020,13 @@ VAStatus DdiMediaDecode::CreateBuffer(
             va = m_ddiDecodeCtx->pCpDdiInterface->CreateBuffer(type, buf, size, numElements);
             if (va  == VA_STATUS_ERROR_UNSUPPORTED_BUFFERTYPE)
             {
-                MOS_FreeMemory(buf);
-                return va;
+                DDI_ASSERTMESSAGE("DDI:Decode CreateBuffer unsuppoted buffer type.");
+                buf->pData      = (uint8_t*)MOS_AllocAndZeroMemory(size * numElements);
+                buf->format     = Media_Format_CPU;
+                if(buf->pData != NULL)
+                {
+                    va = VA_STATUS_SUCCESS;
+                }
             }
             break;
     }
@@ -1120,11 +1125,19 @@ VAStatus DdiMediaDecode::CreateCodecHal(
         mosCtx,
         standardInfo,
         m_codechalSettings);
+
+    if (nullptr == codecHal)
+    {
+        DDI_ASSERTMESSAGE("Failure in CodecHal create.\n");
+        vaStatus = VA_STATUS_ERROR_ALLOCATION_FAILED;
+        return vaStatus;
+    }
+
 #ifdef _APOGEIOS_SUPPORTED
     if (codecHal->IsApogeiosEnabled())
     {
         DecodePipelineAdapter *decoder = dynamic_cast<DecodePipelineAdapter *>(codecHal);
-        if (nullptr == codecHal || nullptr == decoder)
+        if (nullptr == decoder)
         {
             DDI_ASSERTMESSAGE("Failure in CodecHal create.\n");
             vaStatus = VA_STATUS_ERROR_ALLOCATION_FAILED;
@@ -1135,7 +1148,7 @@ VAStatus DdiMediaDecode::CreateCodecHal(
 #endif
     {
         CodechalDecode *decoder = dynamic_cast<CodechalDecode *>(codecHal);
-        if (nullptr == codecHal || nullptr == decoder)
+        if (nullptr == decoder)
         {
             DDI_ASSERTMESSAGE("Failure in CodecHal create.\n");
             vaStatus = VA_STATUS_ERROR_ALLOCATION_FAILED;
@@ -1145,8 +1158,13 @@ VAStatus DdiMediaDecode::CreateCodecHal(
 
     m_ddiDecodeCtx->pCodecHal = codecHal;
 
-    m_codechalSettings->enableCodecMmc = false;
     m_codechalSettings->sfcInUseHinted = true;
+
+    if (m_ddiDecodeAttr && m_ddiDecodeAttr->uiEncryptionType)
+    {
+        m_codechalSettings->secureMode = true;
+    }
+
     if (codecHal->Allocate(m_codechalSettings) != MOS_STATUS_SUCCESS)
     {
         DDI_ASSERTMESSAGE("Failure in decode allocate.\n");
@@ -1163,7 +1181,8 @@ VAStatus DdiMediaDecode::CreateCodecHal(
     }
 
 #ifdef _MMC_SUPPORTED
-    if (MEDIA_IS_SKU(osInterface->pfnGetSkuTable(osInterface), FtrMemoryCompression) &&
+    if (!osInterface->apoMosEnabled                                                  &&
+        MEDIA_IS_SKU(osInterface->pfnGetSkuTable(osInterface), FtrMemoryCompression) &&
         !mediaCtx->pMediaMemDecompState)
     {
         mediaCtx->pMediaMemDecompState =
