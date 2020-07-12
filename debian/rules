@@ -12,9 +12,6 @@ override_dh_auto_configure:
 		-DENABLE_NONFREE_KERNELS=ON \
 		-DBUILD_CMRTLIB=OFF
 
-overrid_dh_missing:
-	dh_missing --fail-missing
-
 override_dh_auto_test:
 ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	# Requires Broadwell or newer, so check for SSE 4.2 support at least.
