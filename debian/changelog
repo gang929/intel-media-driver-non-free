@@ -1,3 +1,10 @@
+intel-media-driver-non-free (20.2.0+ds1-1) unstable; urgency=medium
+
+  * New upstream release
+  * debian/control: Bump debhelper compat to 13
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Sun, 12 Jul 2020 11:03:36 +0200
+
 intel-media-driver-non-free (20.1.1+ds1-1) unstable; urgency=medium
 
   * New upstream release
