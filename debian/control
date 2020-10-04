@@ -10,7 +10,7 @@ Build-Depends:
  cmake,
  libigdgmm-dev (>= 19.2.3),
  libpciaccess-dev,
- libva-dev (>= 2.6),
+ libva-dev (>= 2.8),
  libx11-dev,
  pkg-config,
 Standards-Version: 4.5.0
