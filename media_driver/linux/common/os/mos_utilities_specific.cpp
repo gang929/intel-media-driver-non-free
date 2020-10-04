@@ -2174,14 +2174,16 @@ MOS_STATUS MOS_UserFeatureOpenKey(
     const char *lpSubKey,
     uint32_t   ulOptions,
     uint32_t   samDesired,
-    void       **phkResult)
+    void       **phkResult,
+    MOS_USER_FEATURE_KEY_PATH_INFO *ufInfo)
 {
     return MosUtilities::MosUserFeatureOpenKey(
         ufKey,
         lpSubKey,
         ulOptions,
         samDesired,
-        phkResult);
+        phkResult,
+        ufInfo);
 }
 
 MOS_STATUS MOS_UserFeatureCloseKey(void  *UFKey)
@@ -2817,7 +2819,6 @@ void MOS_TraceSetupInfo(uint32_t DrvVer, uint32_t PlatFamily, uint32_t RenderFam
     // not implemented
 }
 
-#define TRACE_EVENT_MAX_SIZE    4096
 void MOS_TraceEvent(
     uint16_t         usId,
     uint8_t          ucType,
