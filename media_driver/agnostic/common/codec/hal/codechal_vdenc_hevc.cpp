@@ -1498,7 +1498,7 @@ void CodechalVdencHevcState::SetVdencPipeBufAddrParams(
         m_hevcSliceParams->slice_temporal_mvp_enable_flag = 0;
     }
 
-    if (m_lowDelay && m_hevcSliceParams->num_ref_idx_l0_active_minus1 == 0
+    if (!m_hevcPicParams->pps_curr_pic_ref_enabled_flag && m_lowDelay && m_hevcSliceParams->num_ref_idx_l0_active_minus1 == 0
         && m_currGopIFramePOC != -1 && m_hevcSliceParams->slice_temporal_mvp_enable_flag != 0)
     {
         auto idx = m_picIdx[m_hevcSliceParams->RefPicList[0][0].FrameIdx].ucPicIdx;
@@ -3016,6 +3016,17 @@ MOS_STATUS CodechalVdencHevcState::GetStatusReport(
             // Currently only 0x00 and 0x01 are valid. Report invalid (0xFF) for other values.
             encodeStatus->lookaheadStatus.cqmHint = 0xFF;
         }
+
+        // ensure CQM hint never exceed the number of PPS
+        if (encodeStatus->lookaheadStatus.cqmHint <= 2)
+        {
+            encodeStatus->lookaheadStatus.cqmHint = 0;
+        }
+        else if (encodeStatus->lookaheadStatus.cqmHint <= 4)
+        {
+            encodeStatus->lookaheadStatus.cqmHint = 1;
+        }
+
         encodeStatus->lookaheadStatus.miniGopSize = encodeStatus->lookaheadStatus.pyramidDeltaQP == 0 ? 1 : 4;
     }
     else

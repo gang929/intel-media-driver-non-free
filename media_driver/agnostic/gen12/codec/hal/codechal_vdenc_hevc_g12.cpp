@@ -555,6 +555,24 @@ MOS_STATUS CodechalVdencHevcStateG12::PlatformCapabilityCheck()
         CODECHAL_ENCODE_CHK_STATUS_MESSAGE_RETURN(eStatus, "DSS is not supported when frame resolution less than 320p");
     }
 
+    if (m_hevcSeqParams->ParallelBRC)
+    {
+        eStatus = MOS_STATUS_INVALID_PARAMETER;
+        CODECHAL_ENCODE_CHK_STATUS_MESSAGE_RETURN(eStatus, "Parallel BRC is not supported on VDENC");
+    }
+
+    if (m_hevcSeqParams->bit_depth_luma_minus8 >= 4 || m_hevcSeqParams->bit_depth_chroma_minus8 >= 4)
+    {
+        eStatus = MOS_STATUS_INVALID_PARAMETER;
+        CODECHAL_ENCODE_CHK_STATUS_MESSAGE_RETURN(eStatus, "12bit encoding is not supported on VDENC");
+    }
+
+    if (m_hevcSeqParams->chroma_format_idc == 2)
+    {
+        eStatus = MOS_STATUS_INVALID_PARAMETER;
+        CODECHAL_ENCODE_CHK_STATUS_MESSAGE_RETURN(eStatus, "422 recon format encoding is not supported on HEVC VDENC");
+    }
+
     // TU configuration for RDOQ
     if (m_hevcRdoqEnabled)
     {
@@ -994,22 +1012,6 @@ MOS_STATUS CodechalVdencHevcStateG12::AllocatePakResources()
         &m_vdencModeTimerBuffer),
         "Failed to create VDEncMode Timer Buffer");
 
-    if (m_osInterface->osCpInterface->IsCpEnabled() && m_hwInterface->GetCpInterface()->IsHwCounterIncrement(m_osInterface) && m_enableTileReplay)
-    {
-        uint32_t maxTileRow = MOS_ROUNDUP_DIVIDE(m_frameHeight, CODECHAL_HEVC_MIN_TILE_SIZE);
-        uint32_t maxTileColumn = MOS_ROUNDUP_DIVIDE(m_frameWidth, CODECHAL_HEVC_MIN_TILE_SIZE);
-
-        allocParamsForBufferLinear.dwBytes = maxTileRow*maxTileColumn*(sizeof(HwCounter));
-        allocParamsForBufferLinear.pBufName = "HWCounter";
-        allocParamsForBufferLinear.bIsPersistent = true;
-        CODECHAL_ENCODE_CHK_STATUS_MESSAGE_RETURN(m_osInterface->pfnAllocateResource(
-            m_osInterface,
-            &allocParamsForBufferLinear,
-            &m_resHwCountTileReplay),
-            "Failed to create tile base HW counter buffer");
-        allocParamsForBufferLinear.bIsPersistent = false;
-    }
-
     uint32_t frameWidthInCus = CODECHAL_GET_WIDTH_IN_BLOCKS(m_frameWidth, CODECHAL_HEVC_MIN_CU_SIZE);
     uint32_t frameHeightInCus = CODECHAL_GET_WIDTH_IN_BLOCKS(m_frameHeight, CODECHAL_HEVC_MIN_CU_SIZE);
     uint32_t frameWidthInLcus = CODECHAL_GET_WIDTH_IN_BLOCKS(m_frameWidth, CODECHAL_HEVC_MAX_LCU_SIZE_G10);
@@ -1275,7 +1277,7 @@ MOS_STATUS CodechalVdencHevcStateG12::FreePakResources()
     m_osInterface->pfnFreeResource(m_osInterface, &m_resHcpScalabilitySyncBuffer.sResource);
     m_osInterface->pfnFreeResource(m_osInterface, &m_vdencSAORowStoreBuffer);
     m_osInterface->pfnFreeResource(m_osInterface, &m_resPakcuLevelStreamoutData.sResource);
-    if (m_osInterface->osCpInterface->IsCpEnabled() && m_hwInterface->GetCpInterface()->IsHwCounterIncrement(m_osInterface) && m_enableTileReplay)
+    if (!Mos_ResourceIsNull(&m_resHwCountTileReplay))
     {
         m_osInterface->pfnFreeResource(m_osInterface, &m_resHwCountTileReplay);
     }
@@ -1899,6 +1901,12 @@ MOS_STATUS CodechalVdencHevcStateG12::GetStatusReport(
         //update tile info with HW counter
         if (m_osInterface->osCpInterface->IsCpEnabled() && m_hwInterface->GetCpInterface()->IsHwCounterIncrement(m_osInterface) && m_enableTileReplay)
         {
+            if (Mos_ResourceIsNull(&m_resHwCountTileReplay))
+            {
+                CODECHAL_ENCODE_ASSERTMESSAGE("m_resHwCountTileReplay is not allocated");
+                return MOS_STATUS_NULL_POINTER;
+            }
+
             MOS_LOCK_PARAMS LockFlagsNoOverWrite;
             MOS_ZeroMemory(&LockFlagsNoOverWrite, sizeof(MOS_LOCK_PARAMS));
             LockFlagsNoOverWrite.WriteOnly = 1;
@@ -2420,7 +2428,7 @@ MOS_STATUS CodechalVdencHevcStateG12::ExecutePictureLevel()
         CODECHAL_ENCODE_CHK_STATUS_RETURN(SetRoundingValues());
     }
 
-    if (m_hevcPicParams->bUsedAsRef || (m_brcEnabled && !m_hevcSeqParams->ParallelBRC))
+    if (m_hevcPicParams->bUsedAsRef || m_brcEnabled)
     {
         if (m_currRefSync == nullptr)
         {
@@ -3006,6 +3014,29 @@ MOS_STATUS CodechalVdencHevcStateG12::EncTileLevel()
                 {
                     CODECHAL_ENCODE_CHK_NULL_RETURN(m_hwInterface->GetCpInterface());
 
+                    // Lazy allocation
+                    if (Mos_ResourceIsNull(&m_resHwCountTileReplay))
+                    {
+                        MOS_ALLOC_GFXRES_PARAMS allocParamsForBufferLinear;
+                        MOS_ZeroMemory(&allocParamsForBufferLinear, sizeof(MOS_ALLOC_GFXRES_PARAMS));
+                        allocParamsForBufferLinear.Type = MOS_GFXRES_BUFFER;
+                        allocParamsForBufferLinear.TileType = MOS_TILE_LINEAR;
+                        allocParamsForBufferLinear.Format = Format_Buffer;
+
+                        uint32_t maxTileRow = MOS_ROUNDUP_DIVIDE(m_frameHeight, CODECHAL_HEVC_MIN_TILE_SIZE);
+                        uint32_t maxTileColumn = MOS_ROUNDUP_DIVIDE(m_frameWidth, CODECHAL_HEVC_MIN_TILE_SIZE);
+
+                        allocParamsForBufferLinear.dwBytes = maxTileRow*maxTileColumn*(sizeof(HwCounter));
+                        allocParamsForBufferLinear.pBufName = "HWCounter";
+                        allocParamsForBufferLinear.bIsPersistent = true;
+                        CODECHAL_ENCODE_CHK_STATUS_MESSAGE_RETURN(m_osInterface->pfnAllocateResource(
+                            m_osInterface,
+                            &allocParamsForBufferLinear,
+                            &m_resHwCountTileReplay),
+                            "Failed to create tile base HW counter buffer");
+                        allocParamsForBufferLinear.bIsPersistent = false;
+                    }
+
                     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hwInterface->GetCpInterface()->ReadEncodeCounterFromHW(
                         m_osInterface,
                         &tileBatchBuf,
@@ -3348,12 +3379,6 @@ MOS_STATUS CodechalVdencHevcStateG12::EncTileLevel()
 
         m_currPakSliceIdx = (m_currPakSliceIdx + 1) % CODECHAL_HEVC_NUM_PAK_SLICE_BATCH_BUFFERS;
 
-        if (m_hevcSeqParams->ParallelBRC)
-        {
-            m_vdencBrcBuffers.uiCurrBrcPakStasIdxForWrite =
-                (m_vdencBrcBuffers.uiCurrBrcPakStasIdxForWrite + 1) % CODECHAL_ENCODE_RECYCLED_BUFFER_NUM;
-        }
-
         m_newPpsHeader = 0;
         m_newSeqHeader = 0;
         m_frameNum++;
@@ -3477,6 +3502,29 @@ MOS_STATUS CodechalVdencHevcStateG12::EncWithTileRowLevelBRC()
                 if (m_osInterface->osCpInterface->IsCpEnabled() && m_hwInterface->GetCpInterface()->IsHwCounterIncrement(m_osInterface) && m_enableTileReplay)
                 {
                     CODECHAL_ENCODE_CHK_NULL_RETURN(m_hwInterface->GetCpInterface());
+
+                    // Lazy allocation
+                    if (Mos_ResourceIsNull(&m_resHwCountTileReplay))
+                    {
+                        MOS_ALLOC_GFXRES_PARAMS allocParamsForBufferLinear;
+                        MOS_ZeroMemory(&allocParamsForBufferLinear, sizeof(MOS_ALLOC_GFXRES_PARAMS));
+                        allocParamsForBufferLinear.Type = MOS_GFXRES_BUFFER;
+                        allocParamsForBufferLinear.TileType = MOS_TILE_LINEAR;
+                        allocParamsForBufferLinear.Format = Format_Buffer;
+
+                        uint32_t maxTileRow = MOS_ROUNDUP_DIVIDE(m_frameHeight, CODECHAL_HEVC_MIN_TILE_SIZE);
+                        uint32_t maxTileColumn = MOS_ROUNDUP_DIVIDE(m_frameWidth, CODECHAL_HEVC_MIN_TILE_SIZE);
+
+                        allocParamsForBufferLinear.dwBytes = maxTileRow*maxTileColumn*(sizeof(HwCounter));
+                        allocParamsForBufferLinear.pBufName = "HWCounter";
+                        allocParamsForBufferLinear.bIsPersistent = true;
+                        CODECHAL_ENCODE_CHK_STATUS_MESSAGE_RETURN(m_osInterface->pfnAllocateResource(
+                            m_osInterface,
+                            &allocParamsForBufferLinear,
+                            &m_resHwCountTileReplay),
+                            "Failed to create tile base HW counter buffer");
+                        allocParamsForBufferLinear.bIsPersistent = false;
+                    }
 
                     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hwInterface->GetCpInterface()->ReadEncodeCounterFromHW(
                         m_osInterface,
@@ -3844,12 +3892,6 @@ MOS_STATUS CodechalVdencHevcStateG12::EncWithTileRowLevelBRC()
         }
 
         m_currPakSliceIdx = (m_currPakSliceIdx + 1) % CODECHAL_HEVC_NUM_PAK_SLICE_BATCH_BUFFERS;
-
-        if (m_hevcSeqParams->ParallelBRC)
-        {
-            m_vdencBrcBuffers.uiCurrBrcPakStasIdxForWrite =
-                (m_vdencBrcBuffers.uiCurrBrcPakStasIdxForWrite + 1) % CODECHAL_ENCODE_RECYCLED_BUFFER_NUM;
-        }
 
         m_newPpsHeader = 0;
         m_newSeqHeader = 0;
@@ -4663,10 +4705,27 @@ MOS_STATUS CodechalVdencHevcStateG12::SetConstDataHuCBrcUpdate()
 
     if (m_lookaheadDepth > 0)
     {
-        hucConstData->UPD_TR_TargetSize_U32 = m_hevcPicParams->TargetFrameSize << 3;//byte to bit
         hucConstData->UPD_LA_TargetFulness_U32 = m_targetBufferFulness;
-        hucConstData->UPD_deltaQP = m_hevcPicParams->QpModulationStrength;  // For P/B Pyramid
+
+        uint8_t QpStrength = (uint8_t)(m_hevcPicParams->QpModulationStrength + (m_hevcPicParams->QpModulationStrength >> 1));
+        if (!m_initDeltaQP)
+        {
+            hucConstData->UPD_deltaQP = (m_prevQpModulationStrength + QpStrength + 1) >> 1;
+        }
+        else
+        {
+            hucConstData->UPD_deltaQP = QpStrength;
+
+            if (IsLastPass())
+            {
+                m_initDeltaQP = false;
+            }
+        }
+
+        m_prevQpModulationStrength = hucConstData->UPD_deltaQP;
     }
+
+    hucConstData->UPD_TR_TargetSize_U32 = m_hevcPicParams->TargetFrameSize << 3;// byte to bit
 
     m_osInterface->pfnUnlockResource(m_osInterface, &m_vdencBrcConstDataBuffer[m_currRecycledBufIdx]);
 

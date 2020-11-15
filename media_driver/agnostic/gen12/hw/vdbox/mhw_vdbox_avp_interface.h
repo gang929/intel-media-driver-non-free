@@ -260,6 +260,9 @@ enum MhwVdboxAvpInternalBufferType
     lrTileColVBuf,
     frameStatusErrBuf,
     dbdStreamoutBuf,
+    fgTileColBuf,
+    fgSampleTmpBuf,
+    lrTileColAlignBuf,
     tileSzStreamOutBuf,
     tileStatStreamOutBuf,
     cuStreamoutBuf,
@@ -269,7 +272,7 @@ enum MhwVdboxAvpInternalBufferType
 };
 
 //AVP internal buffer size table [buffer_index][bitdepthIdc][IsSb128x128]
-static const int8_t CodecAv1BufferSize[avpInternalBufMax][2][2] =
+static const uint8_t CodecAv1BufferSize[avpInternalBufMax][2][2] =
 {
     { 2 ,   8   ,   2   ,   8 }, //segmentIdBuf,
     { 4 ,   16  ,   4   ,    16 }, //mvTemporalBuf,
@@ -306,9 +309,12 @@ static const int8_t CodecAv1BufferSize[avpInternalBufMax][2][2] =
     { 5 ,   9   ,   6   ,    12 }, //lrTileColVBuf,
     { 0 ,   0   ,   0   ,    0 }, //frameStatusErrBuf,
     { 0 ,   0   ,   0   ,    0 }, //dbdStreamoutBuf,
+    { 2 ,   4   ,   3   ,    5 }, //fgTileColBuf
+    { 96,   96  ,   192 ,    192 },//fgSampleTmpBuf
+    { 4,    8   ,   5   ,    10 }, //lrTileColAlignBuf
 };
 
-static const int8_t CodecAv1BufferSizeExt[avpInternalBufMax][2][2] =
+static const uint8_t CodecAv1BufferSizeExt[avpInternalBufMax][2][2] =
 {
     { 0 ,    0    ,    0    ,    0 }, //segmentIdBuf,
     { 0 ,    0    ,    0    ,    0 }, //mvTemporalBuf,
@@ -345,6 +351,9 @@ static const int8_t CodecAv1BufferSizeExt[avpInternalBufMax][2][2] =
     { 1 ,    1    ,    1    ,    1 }, //lrTileColVBuf,
     { 0 ,    0    ,    0    ,    0 }, //frameStatusErrBuf,
     { 0 ,    0    ,    0    ,    0 }, //dbdStreamoutBuf,
+    { 1 ,    1    ,    1    ,    1 }, //fgTileColBuf,
+    { 0 ,    0    ,    0    ,    0 }, //fgSampleTmpBuf,
+    { 1 ,    1    ,    1    ,    1 }, //lrTileColAlignBuf,
 };
 
 //!
@@ -361,6 +370,7 @@ struct MmioRegistersAvp
     uint32_t                   avpAv1ImageStatusMaskRegOffset                = 0;
     uint32_t                   avpAv1ImageStatusControlRegOffset             = 0;
     uint32_t                   avpAv1QpStatusCountRegOffset                  = 0;
+    uint32_t                   avpAv1DecErrorStatusAddrRegOffset             = 0;
 };
 
 //!  MHW Vdbox Avp interface
@@ -388,6 +398,8 @@ protected:
     MHW_VDBOX_ROWSTORE_CACHE    m_dfluRowstoreCache = {};         //! Deblocker Filter Line U Buffe (DFLU)
     MHW_VDBOX_ROWSTORE_CACHE    m_dflvRowstoreCache = {};         //! Deblocker Filter Line V Buffe (DFLV)
     MHW_VDBOX_ROWSTORE_CACHE    m_cdefRowstoreCache = {};         //! CDEF Filter Line Buffer (CDEF)
+
+    std::shared_ptr<void> m_avpItfNew = nullptr;
 
     //!
     //! \brief    Constructor

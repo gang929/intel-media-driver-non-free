@@ -1542,6 +1542,7 @@ public:
     uint32_t                        m_vdencBrcNumOfSliceOffset = 0;       //!< Vdenc bitrate control number of slice offset
     bool                            m_waReadVDEncOverflowStatus = false;  //!< Read vdenc overflow status used flag
     bool                            m_vdencBrcImgStatAllocated = false;   //!< Vdenc bitrate control image state allocated flag
+    uint32_t                        m_vdencMvTemporalBufferSize = 0;      //!< Vdenc temporal MV buffer size
 
     // VDEnc dynamic slice control params
     uint32_t                       m_vdencFlushDelayCount = 0;   //!< Vdenc flush delay count
@@ -1789,6 +1790,19 @@ public:
     //!         MOS_STATUS_SUCCESS if success, else fail reason
     //!
     MOS_STATUS GetStatusReport(void *status, uint16_t numStatus) override;
+
+    //!
+    //! \brief  Get Status Report for the common codec part
+    //! \param  [out] encodeStatus
+    //!         Encoder status
+    //! \param  [out] encodeStatusReport
+    //!         Encoder status report
+    //! \return MOS_STATUS
+    //!         MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS GetStatusReportCommon(
+        EncodeStatus* encodeStatus,
+        EncodeStatusReport* encodeStatusReport);
 
     //!
     //! \brief  Read counter value for encode.

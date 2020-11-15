@@ -77,8 +77,6 @@ VAStatus DdiDecodeAV1::ParseTileParams(
         tileParams->m_badBSBufferChopping       = 0;                             // app doesn't have this
         tileParams->m_tileRow                   = pTileCtrl->tile_row;
         tileParams->m_tileColumn                = pTileCtrl->tile_column;
-        tileParams->m_startTileIdx              = pTileCtrl->tg_start;
-        tileParams->m_endTileIdx                = pTileCtrl->tg_end;
 
         tileParams->m_anchorFrameIdx.FrameIdx   = pTileCtrl->anchor_frame_idx;
         tileParams->m_tile_idx_in_tile_list     = pTileCtrl->tile_idx_in_tile_list;
@@ -94,6 +92,12 @@ VAStatus DdiDecodeAV1::ParseTileParams(
     return VA_STATUS_SUCCESS;
 }
 
+static uint32_t CalcAv1TileLog2(uint32_t blockSize, uint32_t target)
+{
+    uint32_t k;
+    for (k = 0; (blockSize << k) < target; k++) {}
+    return k;
+}
 
 /**
  * @brief AV1 Picture paramter parser
@@ -159,7 +163,6 @@ VAStatus DdiDecodeAV1::ParsePicParams(
     picAV1Params->m_seqInfoFlags.m_fields.m_colorRange               = picParam->seq_info_fields.fields.color_range;
     picAV1Params->m_seqInfoFlags.m_fields.m_subsamplingX             = picParam->seq_info_fields.fields.subsampling_x;
     picAV1Params->m_seqInfoFlags.m_fields.m_subsamplingY             = picParam->seq_info_fields.fields.subsampling_y;
-    picAV1Params->m_seqInfoFlags.m_fields.m_chromaSamplePosition     = picParam->seq_info_fields.fields.chroma_sample_position;
     picAV1Params->m_seqInfoFlags.m_fields.m_filmGrainParamsPresent   = picParam->seq_info_fields.fields.film_grain_params_present;
     picAV1Params->m_seqInfoFlags.m_fields.m_reservedSeqInfoBits      = 0;
 
@@ -337,12 +340,6 @@ VAStatus DdiDecodeAV1::ParsePicParams(
 
     //Frame level lossless flag is set to true when all segments are lossless
     picAV1Params->m_losslessMode = allLossless;
-    picAV1Params->m_tileCols     = picParam->tile_cols;
-    MOS_SecureMemcpy(picAV1Params->m_widthInSbsMinus1, 63 * sizeof(uint16_t),
-                     picParam->width_in_sbs_minus_1,   63 * sizeof(uint16_t));
-    picAV1Params->m_tileRows     = picParam->tile_rows;
-    MOS_SecureMemcpy(picAV1Params->m_heightInSbsMinus1, 63 * sizeof(uint16_t),
-                     picParam->height_in_sbs_minus_1,   63 * sizeof(uint16_t));
 
     picAV1Params->m_tileCountMinus1 = picParam->tile_count_minus_1;
     picAV1Params->m_contextUpdateTileId = picParam->context_update_tile_id;
@@ -396,6 +393,9 @@ VAStatus DdiDecodeAV1::ParsePicParams(
     // calculate down scaled width
     if (picAV1Params->m_picInfoFlags.m_fields.m_useSuperres &&
         (picAV1Params->m_superresScaleDenominator != av1ScaleNumerator)) {
+        if (picAV1Params->m_superresScaleDenominator == 0) {
+            return VA_STATUS_ERROR_INVALID_PARAMETER;
+        }
         uint32_t dsWidth = ((picParam->frame_width_minus1 + 1 ) *
                             av1ScaleNumerator + picAV1Params->m_superresScaleDenominator / 2) /
             picAV1Params->m_superresScaleDenominator;
@@ -407,9 +407,44 @@ VAStatus DdiDecodeAV1::ParsePicParams(
 
     picAV1Params->m_frameHeightMinus1 = picParam->frame_height_minus1;
 
+    picAV1Params->m_tileCols     = picParam->tile_cols;
+    picAV1Params->m_tileRows     = picParam->tile_rows;
+
+    if (picParam->pic_info_fields.bits.uniform_tile_spacing_flag)
+    {
+        const uint32_t maxMibSizeLog2   = 5;
+        const uint32_t minMibSizeLog2   = 4;
+        const uint32_t miSizeLog2       = 2;
+        int32_t mibSizeLog2 = picParam->seq_info_fields.fields.use_128x128_superblock ? maxMibSizeLog2 : minMibSizeLog2;
+        int32_t miCols = MOS_ALIGN_CEIL(MOS_ALIGN_CEIL(picAV1Params->m_frameWidthMinus1 + 1, 8) >> miSizeLog2, 1 << mibSizeLog2);
+        int32_t miRows = MOS_ALIGN_CEIL(MOS_ALIGN_CEIL(picAV1Params->m_frameHeightMinus1 + 1, 8) >> miSizeLog2, 1 << mibSizeLog2);
+        int32_t sbCols = miCols >> mibSizeLog2;
+        int32_t sbRows = miRows >> mibSizeLog2;
+
+        for (auto i = 0; i < picParam->tile_cols - 1; i++)
+        {
+            uint32_t tileColsLog2 = CalcAv1TileLog2(1, picParam->tile_cols);
+            uint32_t sizeSb = MOS_ALIGN_CEIL(sbCols, 1 << tileColsLog2);
+            sizeSb >>= tileColsLog2;
+            picParam->width_in_sbs_minus_1[i] = sizeSb - 1;
+        }
+
+        for (auto i = 0; i < picParam->tile_rows - 1; i++)
+        {
+            uint32_t tileRowsLog2 = CalcAv1TileLog2(1, picParam->tile_rows);
+            uint32_t sizeSb = MOS_ALIGN_CEIL(sbRows, 1 << tileRowsLog2);
+            sizeSb >>= tileRowsLog2;
+            picParam->height_in_sbs_minus_1[i] = sizeSb - 1;
+        }
+    }
+
+    MOS_SecureMemcpy(picAV1Params->m_widthInSbsMinus1, 63 * sizeof(uint16_t),
+                     picParam->width_in_sbs_minus_1,   63 * sizeof(uint16_t));
+    MOS_SecureMemcpy(picAV1Params->m_heightInSbsMinus1, 63 * sizeof(uint16_t),
+                     picParam->height_in_sbs_minus_1,   63 * sizeof(uint16_t));
+
     return VA_STATUS_SUCCESS;
 }
-
 
 VAStatus DdiDecodeAV1::SetDecodeParams()
 {
@@ -419,25 +454,26 @@ VAStatus DdiDecodeAV1::SetDecodeParams()
     if (m_decProcessingType == VA_DEC_PROCESSING)
     {
         auto procParams =
-            (PCODECHAL_DECODE_PROCESSING_PARAMS)m_ddiDecodeCtx->DecodeParams.m_procParams;
-        procParams->pInputSurface = (&m_ddiDecodeCtx->DecodeParams)->m_destSurface;
+            (DecodeProcessingParams *)m_ddiDecodeCtx->DecodeParams.m_procParams;
+        procParams->m_inputSurface = (&m_ddiDecodeCtx->DecodeParams)->m_destSurface;
         // codechal_decode_sfc.c expects Input Width/Height information.
-        procParams->pInputSurface->dwWidth    = procParams->pInputSurface->OsResource.iWidth;
-        procParams->pInputSurface->dwHeight = procParams->pInputSurface->OsResource.iHeight;
-        procParams->pInputSurface->dwPitch    = procParams->pInputSurface->OsResource.iPitch;
-        procParams->pInputSurface->Format    = procParams->pInputSurface->OsResource.Format;
+        procParams->m_inputSurface->dwWidth  = procParams->m_inputSurface->OsResource.iWidth;
+        procParams->m_inputSurface->dwHeight = procParams->m_inputSurface->OsResource.iHeight;
+        procParams->m_inputSurface->dwPitch  = procParams->m_inputSurface->OsResource.iPitch;
+        procParams->m_inputSurface->Format   = procParams->m_inputSurface->OsResource.Format;
     }
 #endif
     CodecAv1PicParams *Av1PicParams = static_cast<CodecAv1PicParams *>(m_ddiDecodeCtx->DecodeParams.m_picParams);
     bool bFilmGrainEnabled = Av1PicParams->m_filmGrainParams.m_filmGrainInfoFlags.m_fields.m_applyGrain;
     if (bFilmGrainEnabled)
     {
-        MOS_ZeroMemory(&m_ddiDecodeCtx->DecodeParams.m_codecProcParams, sizeof(CodecProcessingParams));
-        m_ddiDecodeCtx->DecodeParams.m_codecProcParams.m_inputSurface  = (&m_ddiDecodeCtx->DecodeParams)->m_destSurface;
+        FilmGrainProcParams &filmGrainProcParams = m_ddiDecodeCtx->DecodeParams.m_filmGrainProcParams;
+        MOS_ZeroMemory(&filmGrainProcParams, sizeof(FilmGrainProcParams));
+        filmGrainProcParams.m_inputSurface  = (&m_ddiDecodeCtx->DecodeParams)->m_destSurface;
         MOS_FORMAT expectedFormat = GetFormat();
         outputSurface.Format   = expectedFormat;
         DdiMedia_MediaSurfaceToMosResource(filmGrainOutSurface, &(outputSurface.OsResource));
-        m_ddiDecodeCtx->DecodeParams.m_codecProcParams.m_outputSurface = &outputSurface;
+        filmGrainProcParams.m_outputSurface = &outputSurface;
     }
 
     return VA_STATUS_SUCCESS;

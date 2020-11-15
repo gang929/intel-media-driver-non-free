@@ -130,6 +130,10 @@ struct _SFC_SCALING_PARAMS
     SFC_COLORFILL_PARAMS            sfcColorfillParams;                         // Colorfill Params
 
     VPHAL_SCALING_MODE              sfcScalingMode;                             // Bilinear, Nearest, AVS and future extension (configured by AVS coefficients)
+    //Interlaced scaling parameters
+    uint32_t                        interlacedScalingType;
+    VPHAL_SAMPLE_TYPE               srcSampleType;
+    VPHAL_SAMPLE_TYPE               dstSampleType;
 };
 
 struct _SFC_CSC_PARAMS
@@ -173,12 +177,24 @@ struct _VEBOX_STE_PARAMS
     uint32_t                        dwSTEFactor;
 };
 
+struct _VEBOX_DI_PARAMS
+{
+    bool                            bDiEnabled;                                 // DI Enabled
+    VPHAL_SAMPLE_TYPE               sampleTypeInput;
+    bool                            b60fpsDi;
+    VPHAL_DI_MODE                   diMode;                                     //!< DeInterlacing mode
+    bool                            enableFMD;                                  //!< FMD
+    bool                            bSCDEnabled;                                //!< Scene change detection
+    bool                            bHDContent;
+};
+
 struct _VEBOX_ACE_PARAMS
 {
     bool                            bEnableACE;                                 // ACE Enabled
     bool                            bAceLevelChanged;
     uint32_t                        dwAceLevel;
     uint32_t                        dwAceStrength;
+    bool                            bAceHistogramEnabled;
 };
 
 struct _VEBOX_TCC_PARAMS
@@ -229,13 +245,22 @@ struct _VEBOX_CSC_PARAMS
     uint32_t                        chromaDownSamplingHorizontalCoef;            // Chroma DownSampling Horizontal Coeff
 };
 
-
 struct _VEBOX_UPDATE_PARAMS
 {
     bool                            bSecureCopyVeboxState;
     bool                            bDnEnabled;
     bool                            bAutoDetect;
     VPHAL_NOISELEVEL                NoiseLevel;
+};
+
+struct _VEBOX_HDR_PARAMS
+{
+    uint32_t                        uiMaxDisplayLum;       //!< Maximum Display Luminance
+    uint32_t                        uiMaxContentLevelLum;  //!< Maximum Content Level Luminance
+    VPHAL_HDR_MODE                  hdrMode;
+    VPHAL_CSPACE                    srcColorSpace;
+    VPHAL_CSPACE                    dstColorSpace;
+    MOS_FORMAT                      dstFormat;
 };
 
 using SFC_SCALING_PARAMS    = _SFC_SCALING_PARAMS;
@@ -248,6 +273,8 @@ using VEBOX_DN_PARAMS       = _VEBOX_DN_PARAMS;
 using PVEBOX_DN_PARAMS      = VEBOX_DN_PARAMS *;
 using VEBOX_STE_PARAMS      = _VEBOX_STE_PARAMS;
 using PVEBOX_STE_PARAMS     = VEBOX_STE_PARAMS *;
+using VEBOX_DI_PARAMS       = _VEBOX_DI_PARAMS;
+using PVEBOX_DI_PARAMS      = VEBOX_DI_PARAMS *;
 using VEBOX_ACE_PARAMS      = _VEBOX_ACE_PARAMS;
 using PVEBOX_ACE_PARAMS     = VEBOX_ACE_PARAMS *;
 using VEBOX_TCC_PARAMS      = _VEBOX_TCC_PARAMS;
@@ -260,6 +287,8 @@ using VEBOX_CSC_PARAMS      = _VEBOX_CSC_PARAMS;
 using PVEBOX_CSC_PARAMS     = VEBOX_CSC_PARAMS *;
 using VEBOX_UPDATE_PARAMS      = _VEBOX_UPDATE_PARAMS;
 using PVEBOX_UPDATE_PARAMS     = VEBOX_UPDATE_PARAMS *;
+using VEBOX_HDR_PARAMS      = _VEBOX_HDR_PARAMS;
+using PVEBOX_HDR_PARAMS     = VEBOX_HDR_PARAMS *;
 
 class SwFilterPipe;
 class HwFilter;

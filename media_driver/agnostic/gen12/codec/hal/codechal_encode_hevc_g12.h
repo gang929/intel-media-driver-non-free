@@ -1134,7 +1134,7 @@ public:
     uint32_t m_maxWavefrontsforTU1 = 2;
     uint32_t m_maxWavefrontsforTU4 = 2;
     static const uint32_t m_loadBalanceSize = (256 * 16);               //!< Load balance size used for load balance array.
-    uint32_t m_alignReconFactor = 1;
+    double m_alignReconFactor = 1.0;
     uint32_t m_threadMapSize = (256 * 16);                              //!< Thread map surface size will be updated depending on various gen
 
     static const uint8_t m_meMethod[NUM_TARGET_USAGE_MODES];             //!< ME method
@@ -1769,66 +1769,6 @@ public:
     MOS_STATUS GenerateSkipFrameMbCodeSurface(SkipFrameInfo &skipframeInfo);
 
     //!
-    //! \brief    Convert from Y210 to Y210V format
-    //!
-    //! \param    [in]  source
-    //!           Source surface
-    //! \param    [out]  target
-    //!           Destination surface
-    //!
-    //! \return   MOS_STATUS
-    //!           MOS_STATUS_SUCCESS if success, else fail reason
-    //!
-    MOS_STATUS ConvertY210ToY210V(
-        PMOS_SURFACE source,
-        PMOS_SURFACE target);
-
-    //!
-    //! \brief    Convert from P010 to P010V format
-    //!
-    //! \param    [in]  source
-    //!           Source surface
-    //! \param    [out]  target
-    //!           Destination surface
-    //!
-    //! \return   MOS_STATUS
-    //!           MOS_STATUS_SUCCESS if success, else fail reason
-    //!
-    MOS_STATUS ConvertP010ToP010V(
-        PMOS_SURFACE source,
-        PMOS_SURFACE target);
-
-    //!
-    //! \brief    Convert from YUY2 to YUY2V format
-    //!
-    //! \param    [in]  source
-    //!           Source surface
-    //! \param    [out]  target
-    //!           Destination surface
-    //!
-    //! \return   MOS_STATUS
-    //!           MOS_STATUS_SUCCESS if success, else fail reason
-    //!
-    MOS_STATUS ConvertYUY2ToYUY2V(
-        PMOS_SURFACE source,
-        PMOS_SURFACE target);
-
-    //!
-    //! \brief    Downscale input by 2X
-    //!
-    //! \param    [in]  source
-    //!           Source surface
-    //! \param    [out]  target
-    //!           Destination surface
-    //!
-    //! \return   MOS_STATUS
-    //!           MOS_STATUS_SUCCESS if success, else fail reason
-    //!
-    MOS_STATUS DownScaling2X(
-        PMOS_SURFACE source,
-        PMOS_SURFACE target);
-
-    //!
     //! \brief    Load cost table
     //!
     //! \param    [in]  sliceType
@@ -2087,12 +2027,20 @@ public:
     MOS_STATUS HucPakIntegrate(
         PMOS_COMMAND_BUFFER cmdBuffer);
 
+    //!
+    //! \brief    Resize buffers due to resoluton change.
+    //! \details  Resize buffers due to resoluton change.
+    //!
+    //! \return   void
+    //!
+    virtual void ResizeOnResChange() override;
+
     MOS_STATUS InitMmcState() override;
 
     MOS_STATUS UpdateCmdBufAttribute(
         PMOS_COMMAND_BUFFER cmdBuffer,
         bool                renderEngineInUse) override;
-        
+
     //!
     //! \brief    Configue stitch data buffer as Huc Pak Integration input
     //!
@@ -2103,8 +2051,8 @@ public:
 
     MOS_STATUS AddMediaVfeCmd(
         PMOS_COMMAND_BUFFER cmdBuffer,
-        SendKernelCmdsParams *params) override;    
-    
+        SendKernelCmdsParams *params) override;
+
     //!
     //! \brief    allocate resources with sizes varying from frame to frame
     //! \return   MOS_STATUS

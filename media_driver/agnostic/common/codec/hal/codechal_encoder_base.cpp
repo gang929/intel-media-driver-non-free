@@ -960,7 +960,7 @@ MOS_STATUS CodechalEncoderState::Initialize(
 
     if (m_standard == CODECHAL_AVC)
     {
-        if (CodecHalUsesVideoEngine(m_codecFunction))
+        if (CodecHalUsesVideoEngine(m_codecFunction) && !(MEDIA_IS_WA(m_waTable, WaForceAllocateLML3)))
         {
             m_inlineEncodeStatusUpdate = m_osInterface->bInlineCodecStatusUpdate ? true: false;
         }
@@ -1366,45 +1366,6 @@ MOS_STATUS CodechalEncoderState::AllocateResources()
         rowstoreParams.dwPicWidth   = m_frameWidth;
         rowstoreParams.bMbaff       = false;
         m_hwInterface->SetRowstoreCachingOffsets(&rowstoreParams);
-    }
-
-    if (m_osInterface->osCpInterface->IsCpEnabled() && m_hwInterface->GetCpInterface()->IsHwCounterIncrement(m_osInterface) && m_skipFrameBasedHWCounterRead == false)
-    {
-        // eStatus query reporting
-        m_encodeStatusBuf.dwReportSize           = MOS_ALIGN_CEIL(sizeof(EncodeStatus), MHW_CACHELINE_SIZE);
-        uint32_t size                            = sizeof(HwCounter) * CODECHAL_ENCODE_STATUS_NUM + sizeof(HwCounter);
-        allocParamsForBufferLinear.dwBytes       = size;
-        allocParamsForBufferLinear.pBufName      = "HWCounterQueryBuffer";
-        allocParamsForBufferLinear.bIsPersistent = true;                    // keeping status buffer persistent since its used in all command buffers
-
-        eStatus = (MOS_STATUS)m_osInterface->pfnAllocateResource(
-            m_osInterface,
-            &allocParamsForBufferLinear,
-            &m_resHwCount);
-
-        if (eStatus != MOS_STATUS_SUCCESS)
-        {
-            CODECHAL_ENCODE_ASSERTMESSAGE("Failed to allocate Encode eStatus Buffer.");
-            return eStatus;
-        }
-
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(
-            m_osInterface->pfnSkipResourceSync(
-                &m_resHwCount));
-
-        uint8_t *dataHwCount = (uint8_t *)m_osInterface->pfnLockResource(
-            m_osInterface,
-            &(m_resHwCount),
-            &lockFlagsNoOverWrite);
-
-        if (!dataHwCount)
-        {
-            CODECHAL_ENCODE_ASSERTMESSAGE("Failed to Local Resource for MbEnc Adv Count Query Buffer.");
-            return eStatus;
-        }
-
-        MOS_ZeroMemory(dataHwCount, size);
-        m_dataHwCount = (uint32_t*)dataHwCount;
     }
 
     // eStatus query reporting
@@ -3065,6 +3026,57 @@ MOS_STATUS CodechalEncoderState::StartStatusReport(
 
             CODECHAL_ENCODE_CHK_NULL_RETURN(m_hwInterface->GetCpInterface());
 
+            // Lazy allocation
+            if (Mos_ResourceIsNull(&m_resHwCount))
+            {
+                MOS_ALLOC_GFXRES_PARAMS allocParamsForBufferLinear;
+                MOS_ZeroMemory(&allocParamsForBufferLinear, sizeof(MOS_ALLOC_GFXRES_PARAMS));
+                allocParamsForBufferLinear.Type     = MOS_GFXRES_BUFFER;
+                allocParamsForBufferLinear.TileType = MOS_TILE_LINEAR;
+                allocParamsForBufferLinear.Format   = Format_Buffer;
+
+                MOS_LOCK_PARAMS lockFlagsNoOverWrite;;
+                MOS_ZeroMemory(&lockFlagsNoOverWrite, sizeof(MOS_LOCK_PARAMS));
+                lockFlagsNoOverWrite.WriteOnly = 1;
+                lockFlagsNoOverWrite.NoOverWrite = 1;
+
+                // eStatus query reporting
+                m_encodeStatusBuf.dwReportSize           = MOS_ALIGN_CEIL(sizeof(EncodeStatus), MHW_CACHELINE_SIZE);
+                uint32_t size                            = sizeof(HwCounter) * CODECHAL_ENCODE_STATUS_NUM + sizeof(HwCounter);
+                allocParamsForBufferLinear.dwBytes       = size;
+                allocParamsForBufferLinear.pBufName      = "HWCounterQueryBuffer";
+                allocParamsForBufferLinear.bIsPersistent = true;                    // keeping status buffer persistent since its used in all command buffers
+
+                eStatus = (MOS_STATUS)m_osInterface->pfnAllocateResource(
+                    m_osInterface,
+                    &allocParamsForBufferLinear,
+                    &m_resHwCount);
+
+                if (eStatus != MOS_STATUS_SUCCESS)
+                {
+                    CODECHAL_ENCODE_ASSERTMESSAGE("Failed to allocate Encode eStatus Buffer.");
+                    return eStatus;
+                }
+
+                CODECHAL_ENCODE_CHK_STATUS_RETURN(
+                    m_osInterface->pfnSkipResourceSync(
+                        &m_resHwCount));
+
+                uint8_t *dataHwCount = (uint8_t *)m_osInterface->pfnLockResource(
+                    m_osInterface,
+                    &(m_resHwCount),
+                    &lockFlagsNoOverWrite);
+
+                if (!dataHwCount)
+                {
+                    CODECHAL_ENCODE_ASSERTMESSAGE("Failed to Local Resource for MbEnc Adv Count Query Buffer.");
+                    return eStatus;
+                }
+
+                MOS_ZeroMemory(dataHwCount, size);
+                m_dataHwCount = (uint32_t*)dataHwCount;
+            }
+
             CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hwInterface->GetCpInterface()->ReadEncodeCounterFromHW(
                 m_osInterface,
                 cmdBuffer,
@@ -3074,6 +3086,7 @@ MOS_STATUS CodechalEncoderState::StartStatusReport(
     }
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_perfProfiler->AddPerfCollectStartCmd((void*)this, m_osInterface, m_miInterface, cmdBuffer));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(NullHW::StartPredicate(m_miInterface, cmdBuffer));
 
     return eStatus;
 }
@@ -3091,6 +3104,7 @@ MOS_STATUS CodechalEncoderState::EndStatusReport(
     CODECHAL_ENCODE_FUNCTION_ENTER;
 
     CODECHAL_ENCODE_CHK_NULL_RETURN(cmdBuffer);
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(NullHW::StopPredicate(m_miInterface, cmdBuffer));
 
     // Update the tag in GPU Sync eStatus buffer (H/W Tag) to match the current S/W tag if applicable
     if (m_frameTrackingEnabled && m_osInterface->bTagResourceSync)
@@ -3695,6 +3709,12 @@ MOS_STATUS CodechalEncoderState::ReadCounterValue(uint16_t index, EncodeStatusRe
         }
         else
         {
+            if (Mos_ResourceIsNull(&m_resHwCount))
+            {
+                CODECHAL_ENCODE_ASSERTMESSAGE("m_resHwCount is not allocated");
+                return MOS_STATUS_NULL_POINTER;
+            }
+
             //Report HW counter by command output resource
             address2Counter = (uint64_t *)(((char *)(m_dataHwCount)) + (index * sizeof(HwCounter)));
         }
@@ -3822,8 +3842,6 @@ MOS_STATUS CodechalEncoderState::GetStatusReport(
             index * encodeStatusBuf->dwReportSize);
         EncodeStatusReport* encodeStatusReport = &encodeStatus->encodeStatusReport;
         PCODEC_REF_LIST refList = encodeStatusReport->pCurrRefList;
-        PMHW_VDBOX_IMAGE_STATUS_CONTROL imgStatusCtrl = &encodeStatus->ImageStatusCtrl;
-        PMHW_VDBOX_PAK_NUM_OF_SLICES numSlices = &encodeStatus->NumSlices;
         uint32_t localCount = encodeStatus->dwStoredData - globalHWStoredData;
 
         if (localCount == 0 || localCount > globalCount)
@@ -3909,71 +3927,30 @@ MOS_STATUS CodechalEncoderState::GetStatusReport(
                      encodeStatusReport->bitstreamSize = CODECHAL_VP9_MB_CODE_SIZE * sizeof(uint32_t) * size;
                 }
             }
-            // The huffman tables sent by application were incorrect (used only for JPEG encoding)
-            else if(m_standard == CODECHAL_JPEG && imgStatusCtrl->MissingHuffmanCode == 1)
-            {
-                CODECHAL_ENCODE_ASSERTMESSAGE("Error: JPEG standard encoding: missing huffman code");
-                encodeStatusReport->CodecStatus = CODECHAL_STATUS_ERROR;
-            }
             else
             {
                 if (m_codecGetStatusReportDefined)
                 {
                     // Call corresponding CODEC's status report function if existing
                     eStatus = GetStatusReport(encodeStatus, encodeStatusReport);
+                }
+                else
+                {
+                    eStatus = GetStatusReportCommon(encodeStatus, encodeStatusReport);
+                }
+
+                if (MOS_STATUS_SUCCESS != eStatus)
+                {
+                    return eStatus;
+                }
+
+                if (m_osInterface->osCpInterface->IsCpEnabled() && m_skipFrameBasedHWCounterRead == false)
+                {
+                    eStatus = ReadCounterValue(index, encodeStatusReport);
                     if (MOS_STATUS_SUCCESS != eStatus)
                     {
                         return eStatus;
                     }
-
-                    if (m_osInterface->osCpInterface->IsCpEnabled() && m_skipFrameBasedHWCounterRead == false)
-                    {
-                        eStatus = ReadCounterValue(index, encodeStatusReport);
-                        if (MOS_STATUS_SUCCESS != eStatus)
-                        {
-                            return eStatus;
-                        }
-                    }
-                }
-                else
-                {
-                    encodeStatusReport->CodecStatus = CODECHAL_STATUS_SUCCESSFUL;
-                    encodeStatusReport->bitstreamSize =
-                        encodeStatus->dwMFCBitstreamByteCountPerFrame + encodeStatus->dwHeaderBytesInserted;
-
-                    // dwHeaderBytesInserted is for WAAVCSWHeaderInsertion
-                    // and is 0 otherwise
-                    encodeStatusReport->QpY = encodeStatus->BrcQPReport.DW0.QPPrimeY;
-                    encodeStatusReport->SuggestedQpYDelta =
-                        encodeStatus->ImageStatusCtrl.CumulativeSliceDeltaQP;
-                    encodeStatusReport->NumberPasses = (uint8_t)(encodeStatus->ImageStatusCtrl.TotalNumPass + 1);
-                    encodeStatusReport->SceneChangeDetected =
-                        (encodeStatus->dwSceneChangedFlag & CODECHAL_ENCODE_SCENE_CHANGE_DETECTED_MASK) ? 1 : 0;
-
-                    CODECHAL_ENCODE_CHK_NULL_RETURN(m_skuTable);
-
-                    if (m_osInterface->osCpInterface->IsCpEnabled() && m_skipFrameBasedHWCounterRead == false)
-                    {
-                        eStatus = ReadCounterValue(index, encodeStatusReport);
-                        if (MOS_STATUS_SUCCESS != eStatus)
-                        {
-                            return eStatus;
-                        }
-                    }
-
-                    if (m_picWidthInMb != 0 && m_frameFieldHeightInMb != 0)
-                    {
-                        encodeStatusReport->AverageQp = (unsigned char)(((uint32_t)encodeStatus->QpStatusCount.cumulativeQP)
-                            / (m_picWidthInMb * m_frameFieldHeightInMb));
-                    }
-                    encodeStatusReport->PanicMode = encodeStatus->ImageStatusCtrl.Panic;
-
-                    // If Num slices is greater than spec limit set NumSlicesNonCompliant to 1 and report error
-                    if (numSlices->NumberOfSlices > m_maxNumSlicesAllowed)
-                    {
-                        encodeStatusReport->NumSlicesNonCompliant = 1;
-                    }
-                    encodeStatusReport->NumberSlices = numSlices->NumberOfSlices;
                 }
 
                 if (encodeStatusReport->bitstreamSize > m_bitstreamUpperBound)
@@ -4061,6 +4038,9 @@ MOS_STATUS CodechalEncoderState::GetStatusReport(
                             CodechalDbgAttr::attrStatusReport,
                             "EncodeStatusReport_Buffer"));
 
+                        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_statusReportDebugInterface->DumpEncodeStatusReport(
+                            (uint8_t*)encodeStatusReport));
+
                         CODECHAL_ENCODE_CHK_STATUS_RETURN(DumpFrameStatsBuffer(m_statusReportDebugInterface));
 
                         if (m_vdencEnabled)
@@ -4137,11 +4117,53 @@ MOS_STATUS CodechalEncoderState::GetStatusReport(
             encodeStatusReport->CodecStatus = CODECHAL_STATUS_INCOMPLETE;
         }
         codecStatus[i] = *encodeStatusReport;
+
+        NullHW::StatusReport((uint32_t &)codecStatus[i].CodecStatus,
+                                        codecStatus[i].bitstreamSize);
     }
 
     encodeStatusBuf->wFirstIndex =
         (encodeStatusBuf->wFirstIndex + reportsGenerated) % CODECHAL_ENCODE_STATUS_NUM;
     CODECHAL_ENCODE_VERBOSEMESSAGE("wFirstIndex now becomes %d.", encodeStatusBuf->wFirstIndex);
+
+    return eStatus;
+}
+
+MOS_STATUS CodechalEncoderState::GetStatusReportCommon(
+    EncodeStatus* encodeStatus,
+    EncodeStatusReport* encodeStatusReport)
+{
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+    encodeStatusReport->CodecStatus = CODECHAL_STATUS_SUCCESSFUL;
+    encodeStatusReport->bitstreamSize =
+        encodeStatus->dwMFCBitstreamByteCountPerFrame + encodeStatus->dwHeaderBytesInserted;
+
+    // dwHeaderBytesInserted is for WAAVCSWHeaderInsertion
+    // and is 0 otherwise
+    encodeStatusReport->QpY = encodeStatus->BrcQPReport.DW0.QPPrimeY;
+    encodeStatusReport->SuggestedQpYDelta =
+        encodeStatus->ImageStatusCtrl.CumulativeSliceDeltaQP;
+    encodeStatusReport->NumberPasses = (uint8_t)(encodeStatus->ImageStatusCtrl.TotalNumPass + 1);
+    encodeStatusReport->SceneChangeDetected =
+        (encodeStatus->dwSceneChangedFlag & CODECHAL_ENCODE_SCENE_CHANGE_DETECTED_MASK) ? 1 : 0;
+
+    CODECHAL_ENCODE_CHK_NULL_RETURN(m_skuTable);
+
+    if (m_picWidthInMb != 0 && m_frameFieldHeightInMb != 0)
+    {
+        encodeStatusReport->AverageQp = (unsigned char)(((uint32_t)encodeStatus->QpStatusCount.cumulativeQP)
+            / (m_picWidthInMb * m_frameFieldHeightInMb));
+    }
+    encodeStatusReport->PanicMode = encodeStatus->ImageStatusCtrl.Panic;
+
+    // If Num slices is greater than spec limit set NumSlicesNonCompliant to 1 and report error
+    PMHW_VDBOX_PAK_NUM_OF_SLICES numSlices = &encodeStatus->NumSlices;
+    if (numSlices->NumberOfSlices > m_maxNumSlicesAllowed)
+    {
+        encodeStatusReport->NumSlicesNonCompliant = 1;
+    }
+    encodeStatusReport->NumberSlices = numSlices->NumberOfSlices;
 
     return eStatus;
 }

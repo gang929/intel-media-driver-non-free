@@ -35,7 +35,7 @@ struct Av1FeatureIDs : public FeatureIDs
 {
     enum av1FeatureIDs
     {
-        av1SwFilmGrain = CONSTRUCTFEATUREID(FEATURE_COMPONENT_DECODE, reserve0, 0),
+        av1SwFilmGrain = CONSTRUCTFEATUREID(FEATURE_COMPONENT_DECODE, FEATURE_SUBCOMPONENT_AV1, 0),
     };
 };
 }

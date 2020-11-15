@@ -246,6 +246,9 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
     }
 
     VP_PUBLIC_CHK_STATUS_RETURN(CreateSwFilterPipe(m_pvpParams, swFilterPipe));
+    VP_PUBLIC_CHK_NULL_RETURN(swFilterPipe);
+
+    VP_PUBLIC_CHK_STATUS_RETURN(m_resourceManager->StartProcessNewFrame(*swFilterPipe));
 
     pPacketPipe = m_pPacketPipeFactory->CreatePacketPipe();
     VP_PUBLIC_CHK_NULL(pPacketPipe);
@@ -372,7 +375,7 @@ MOS_STATUS VpPipeline::CreateFeatureManager()
     m_featureManager = MOS_New(VpFeatureManagerNext, *m_vpInterface);
     VP_PUBLIC_CHK_NULL_RETURN(m_featureManager);
 
-    VP_PUBLIC_CHK_STATUS_RETURN(((VpFeatureManagerNext *)m_featureManager)->Initialize());
+    VP_PUBLIC_CHK_STATUS_RETURN(((VpFeatureManagerNext *)m_featureManager)->Init(nullptr));
 
     return MOS_STATUS_SUCCESS;
 }

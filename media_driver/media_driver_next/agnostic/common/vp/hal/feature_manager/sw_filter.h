@@ -54,6 +54,7 @@ enum FeatureType
     FeatureTypeDn               = 0x400,
     FeatureTypeDnOnVebox,
     FeatureTypeDi               = 0x500,
+    FeatureTypeDiOnVebox,
     FeatureTypeSte              = 0x600,
     FeatureTypeSteOnVebox,
     FeatureTypeAce              = 0x700,
@@ -66,6 +67,8 @@ enum FeatureType
     FeatureTypeProcampOnRender,
     FeatureTypeCgc              = 0xB00,
     FeatureTypeCgcOnVebox,
+    FeatureTypeHdr              = 0xC00,
+    FeatureTypeHdrOnVebox,
     // ...
     NumOfFeatureType
 };
@@ -73,9 +76,11 @@ enum FeatureType
 enum SurfaceType
 {
     SurfaceTypeInvalid = 0,
-    SurfaceTypeDNRef,
+    SurfaceTypeVeboxInput,
+    SurfaceTypeVeboxPreviousInput,
     SurfaceTypeDNOutput,
-    SurfaceTypeVeboxoutput,
+    SurfaceTypeVeboxCurrentOutput,
+    SurfaceTypeVeboxPreviousOutput,
     SurfaceTypeScalar,
     SurfaceTypeSTMMIn,
     SurfaceTypeSTMMOut,
@@ -88,12 +93,14 @@ enum SurfaceType
     SurfaceTypeStatistics,
     SurfaceTypeSkinScore,
     SurfaceType3dLut,
-    SurfaceType1dLut,
+    SurfaceType1dLutHDR,
     SurfaceTypeAlphaOrVignette,
     SurfaceTypeVeboxStateHeap_Drv,
     SurfaceTypeVeboxStateHeap_Knr,
     NumberOfSurfaceType
 };
+
+typedef std::map<SurfaceType, VP_SURFACE*> VP_SURFACE_GROUP;
 
 #define FEATURE_TYPE_MASK   0xffffff00
 
@@ -137,6 +144,7 @@ public:
     virtual MOS_STATUS Clean()
     {
         MOS_ZeroMemory(&m_EngineCaps, sizeof(m_EngineCaps));
+        m_noNeedUpdate = false;
         return MOS_STATUS_SUCCESS;
     }
     virtual FeatureType GetFeatureType()
@@ -144,7 +152,7 @@ public:
         return m_type;
     }
     virtual MOS_STATUS Configure(VP_PIPELINE_PARAMS &params, bool bInputSurf, int surfIndex) = 0;
-    virtual MOS_STATUS Configure(PVP_SURFACE surfInput, VP_EXECUTE_CAPS caps)
+    virtual MOS_STATUS Configure(PVP_SURFACE surfInput, PVP_SURFACE surfOutput, VP_EXECUTE_CAPS caps)
     {
         return MOS_STATUS_UNIMPLEMENTED;
     }
@@ -161,7 +169,7 @@ public:
     virtual SwFilter *Clone() = 0;
     virtual bool operator == (class SwFilter&) = 0;
     virtual MOS_STATUS Update(VP_SURFACE *inputSurf, VP_SURFACE *outputSurf) = 0;
-    MOS_STATUS SetFeatureType(FeatureType type);
+    virtual MOS_STATUS SetFeatureType(FeatureType type);
     SwFilter* CreateSwFilter(FeatureType type);
     void DestroySwFilter(SwFilter* p);
 
@@ -185,12 +193,20 @@ public:
         return m_EngineCaps;
     }
 
+    // The child class need to implement SetResourceAssignmentHint only when any feature
+    // parameters will affect the resource assignment.
+    virtual MOS_STATUS SetResourceAssignmentHint(RESOURCE_ASSIGNMENT_HINT &hint)
+    {
+        return MOS_STATUS_SUCCESS;
+    }
+
 protected:
     VpInterface &m_vpInterface;
     FeatureType m_type = FeatureTypeInvalid;
     // SwFilterSet current swFilter belongs to.
     SwFilterSet *m_location = nullptr;
     VP_EngineEntry  m_EngineCaps = {};
+    bool m_noNeedUpdate = false;
 };
 
 struct FeatureParamCsc : public FeatureParam
@@ -211,12 +227,13 @@ public:
     virtual ~SwFilterCsc();
     virtual MOS_STATUS Clean();
     virtual MOS_STATUS Configure(VP_PIPELINE_PARAMS &params, bool isInputSurf, int surfIndex);
-    virtual MOS_STATUS Configure(PVP_SURFACE surfInput, VP_EXECUTE_CAPS caps);
+    virtual MOS_STATUS Configure(PVP_SURFACE surfInput, PVP_SURFACE surfOutput, VP_EXECUTE_CAPS caps);
     virtual MOS_STATUS Configure(VEBOX_SFC_PARAMS &params);
     virtual FeatureParamCsc &GetSwFilterParams();
     virtual SwFilter *Clone();
     virtual bool operator == (SwFilter& swFilter);
     virtual MOS_STATUS Update(VP_SURFACE *inputSurf, VP_SURFACE *outputSurf);
+    virtual MOS_STATUS SetFeatureType(FeatureType type);
 
 private:
     FeatureParamCsc m_Params = {};
@@ -241,6 +258,9 @@ struct FeatureParamScaling : public FeatureParam
     PVPHAL_COLORFILL_PARAMS     pColorFillParams;               //!< ColorFill - BG only
     PVPHAL_ALPHA_PARAMS         pCompAlpha;                     //!< Alpha for composited surfaces
     VPHAL_CSPACE                colorSpaceOutput;
+    VPHAL_ISCALING_TYPE         interlacedScalingType;
+    VPHAL_SAMPLE_TYPE           srcSampleType;
+    VPHAL_SAMPLE_TYPE           dstSampleType;
     FeatureParamScaling        *next;                           //!< pointe to new/next generated scaling params
 };
 
@@ -307,6 +327,38 @@ public:
 
 private:
     FeatureParamDenoise m_Params = {};
+};
+
+struct FeatureParamDeinterlace : public FeatureParam
+{
+    VPHAL_SAMPLE_TYPE       sampleTypeInput;
+    bool                    bHDContent;
+    VPHAL_DI_MODE           DIMode;             //!< DeInterlacing mode
+    bool                    bEnableFMD;         //!< FMD
+    bool                    b60fpsDi;           //!< Used in frame Recon - if 30fps (one call per sample pair)
+    bool                    bSCDEnable;         //!< Scene change detection
+};
+
+class SwFilterDeinterlace : public SwFilter
+{
+public:
+    SwFilterDeinterlace(VpInterface& vpInterface);
+    virtual ~SwFilterDeinterlace();
+    virtual MOS_STATUS Clean();
+    virtual MOS_STATUS Configure(VP_PIPELINE_PARAMS& params, bool isInputSurf, int surfIndex);
+    virtual FeatureParamDeinterlace& GetSwFilterParams();
+    virtual SwFilter* Clone();
+    virtual bool operator == (SwFilter& swFilter);
+    virtual MOS_STATUS Update(VP_SURFACE* inputSurf, VP_SURFACE* outputSurf);
+    virtual MOS_STATUS SetResourceAssignmentHint(RESOURCE_ASSIGNMENT_HINT &hint)
+    {
+        hint.bDi = 1;
+        hint.b60fpsDi = m_Params.b60fpsDi;
+        return MOS_STATUS_SUCCESS;
+    }
+
+private:
+    FeatureParamDeinterlace m_Params = {};
 };
 
 struct FeatureParamSte : public FeatureParam
@@ -381,6 +433,31 @@ public:
 
 private:
     FeatureParamProcamp m_Params = {};
+};
+
+struct FeatureParamHdr : public FeatureParam
+{
+    uint32_t        uiMaxDisplayLum;       //!< Maximum Display Luminance
+    uint32_t        uiMaxContentLevelLum;  //!< Maximum Content Level Luminance
+    VPHAL_HDR_MODE  hdrMode;
+    VPHAL_CSPACE    srcColorSpace;
+    VPHAL_CSPACE    dstColorSpace;
+};
+
+class SwFilterHdr : public SwFilter
+{
+public:
+    SwFilterHdr(VpInterface &vpInterface);
+    virtual ~SwFilterHdr();
+    virtual MOS_STATUS       Clean();
+    virtual MOS_STATUS       Configure(VP_PIPELINE_PARAMS &params, bool isInputSurf, int surfIndex);
+    virtual FeatureParamHdr &GetSwFilterParams();
+    virtual SwFilter *       Clone();
+    virtual bool             operator==(SwFilter &swFilter);
+    virtual MOS_STATUS       Update(VP_SURFACE *inputSurf, VP_SURFACE *outputSurf);
+
+private:
+    FeatureParamHdr m_Params = {};
 };
 
 class SwFilterSet

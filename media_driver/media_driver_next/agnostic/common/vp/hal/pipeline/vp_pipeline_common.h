@@ -107,7 +107,8 @@ struct _VP_EXECUTE_CAPS
             uint32_t bRender        : 1;   // Render Only needed;
             // Vebox Features
             uint32_t bDN            : 1;   // Vebox DN needed;
-            uint32_t bDI            : 1;   // Vebox DNDI enabled
+            uint32_t bDI            : 1;   // Vebox DI enabled
+            uint32_t bDiProcess2ndField : 1;   // Vebox DI enabled
             uint32_t bIECP          : 1;   // Vebox IECP needed;
             uint32_t bSTE           : 1;   // Vebox STE needed;
             uint32_t bACE           : 1;   // Vebox ACE needed;
@@ -121,6 +122,7 @@ struct _VP_EXECUTE_CAPS
             uint32_t bSTD           : 1;   // Vebox LACE STD Needed;
             uint32_t bDnKernelUpdate: 1;
             uint32_t bVeboxSecureCopy : 1;
+            uint32_t bHDR3DLUT      : 1;  // Vebox 3DLUT needed;
 
             // SFC features
             uint32_t bSfcCsc        : 1;   // Sfc Csc enabled
@@ -129,10 +131,8 @@ struct _VP_EXECUTE_CAPS
             uint32_t bSfcIef        : 1;   // Sfc Details Needed;
 
             // Render Features
-            uint32_t bComposite : 1;
-            uint32_t bBobDI     : 1;
-            uint32_t bIScaling  : 1;
-            uint32_t reserved   : 7;  // Reserved
+            uint32_t bComposite     : 1;
+            uint32_t reserved       : 7;   // Reserved
         };
     };
 };
@@ -153,7 +153,8 @@ typedef struct _VP_EngineEntry
             uint32_t DisableVeboxSFCMode : 1;
             uint32_t FurtherProcessNeeded : 1;
             uint32_t CompositionNeeded : 1;
-            uint32_t reserve : 19;
+            uint32_t bypassVeboxFeatures : 1;
+            uint32_t reserve : 18;
         };
         uint32_t value;
     };
@@ -172,6 +173,19 @@ typedef enum _VP_COMP_BYPASS_MODE
     VP_COMP_BYPASS_ENABLED  = 0x1
 } VP_COMP_BYPASS_MODE, * PVP_COMP_BYPASS_MODE;
 
+// RESOURCE_ASSIGNMENT_HINT are feature parameters which will affect resource assignment.
+// For caps existing in VP_EXECUTE_CAPS, they should not be added to RESOURCE_ASSIGNMENT_HINT.
+union RESOURCE_ASSIGNMENT_HINT
+{
+    struct
+    {
+        // Hint for DI
+        uint32_t    bDi                 : 1;
+        uint32_t    b60fpsDi            : 1;
+    };
+    uint32_t value;
+};
+
 using VP_MHWINTERFACE  = _VP_MHWINTERFACE;
 using PVP_MHWINTERFACE = VP_MHWINTERFACE * ;
 using VP_EXECUTE_CAPS  = _VP_EXECUTE_CAPS;
@@ -181,7 +195,7 @@ using PVP_SURFACE      = VP_SURFACE*;
 inline bool IsVeboxFeatureInuse(VP_EXECUTE_CAPS &caps)
 {
     return (caps.bVebox && (!caps.bSFC || caps.bDN || caps.bDI || caps.bIECP || caps.bSTE ||
-            caps.bACE || caps.bTCC || caps.bBeCSC || caps.bQueryVariance || caps.bLACE || caps.bSTD));
+            caps.bACE || caps.bTCC || caps.bBeCSC || caps.bQueryVariance || caps.bLACE || caps.bSTD || caps.bHDR3DLUT));
 }
 
 #endif
