@@ -1323,7 +1323,7 @@ MOS_STATUS CodechalDecodeHevc::SetFrameStates ()
 
 #ifdef _DECODE_PROCESSING_SUPPORTED
     // Check if SFC can be supported
-    CODECHAL_DECODE_CHK_STATUS_RETURN(m_sfcState->CheckAndInitialize((CODECHAL_DECODE_PROCESSING_PARAMS *)m_decodeParams.m_procParams, m_hevcPicParams));
+    CODECHAL_DECODE_CHK_STATUS_RETURN(m_sfcState->CheckAndInitialize((DecodeProcessingParams *)m_decodeParams.m_procParams, m_hevcPicParams));
 #endif
     CODECHAL_DEBUG_TOOL(
         if (!m_incompletePicture && !IsFirstExecuteCall()) {
@@ -2658,6 +2658,14 @@ MOS_STATUS CodechalDecodeHevc::AllocateStandard (
     m_picMhwParams.QmParams             = MOS_New(MHW_VDBOX_QM_PARAMS);
     m_picMhwParams.HevcPicState         = MOS_New(MHW_VDBOX_HEVC_PIC_STATE);
     m_picMhwParams.HevcTileState        = MOS_New(MHW_VDBOX_HEVC_TILE_STATE);
+
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.PipeModeSelectParams);
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.SurfaceParams);
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.PipeBufAddrParams);
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.IndObjBaseAddrParams);
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.QmParams);
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.HevcPicState);
+    CODECHAL_DECODE_CHK_NULL_RETURN(m_picMhwParams.HevcTileState);
 
     MOS_ZeroMemory(m_picMhwParams.SurfaceParams, sizeof(MHW_VDBOX_SURFACE_PARAMS));
     MOS_ZeroMemory(m_picMhwParams.IndObjBaseAddrParams, sizeof(MHW_VDBOX_IND_OBJ_BASE_ADDR_PARAMS));

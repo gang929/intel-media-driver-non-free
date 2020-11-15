@@ -41,6 +41,7 @@
 #endif
 #endif
 
+#include "null_hardware.h"
 extern PerfUtility *g_perfutility;
 
 #define PERF_DECODE "DECODE"
@@ -544,7 +545,8 @@ private:
 #endif // MOS_COMMAND_RESINFO_DUMP_SUPPORTED
 
 class OsContextNext;
-typedef void *     OS_PER_STREAM_PARAMETERS;
+typedef void *      OS_PER_STREAM_PARAMETERS;
+typedef void *      EXTRA_PARAMS;
 typedef OsContextNext OsDeviceContext;
 typedef _MOS_GPUCTX_CREATOPTIONS GpuContextCreateOption;
 struct _MOS_INTERFACE;
@@ -568,6 +570,7 @@ struct MosStreamState
     bool ctxBasedScheduling = false;  //!< Indicate if context based scheduling is enabled in this stream
     bool multiNodeScaling = false;    //!< Flag to indicate if multi-node scaling is enabled for virtual engine (only active when ctxBasedScheduling is true)
 
+    int32_t ctxPriority = 0;
     bool softReset = false;  //!< trigger soft reset
 
     MosCpInterface *osCpInterface = nullptr; //!< CP interface
@@ -1264,6 +1267,29 @@ typedef struct _MOS_INTERFACE
         PMOS_INTERFACE              pOsInterface);
 
     //!
+    //! \brief    Get Gpu Priority
+    //! \param    [in] pOsInterface
+    //!           pointer to the current gpu context.
+    //! \param    [out] pPriority
+    //!           pointer to the priority get from gpu context.
+    //!
+    void (*pfnGetGpuPriority)(
+        PMOS_INTERFACE              pOsInterface,
+        int32_t                     *pPriority);
+
+    //!
+    //! \brief    Set Gpu Priority
+    //!
+    //! \param    [in] pOsInterface
+    //!           pointer to the current gpu context
+    //! \param    [in] priority
+    //!           pointer to the priority set to gpu context
+    //!
+    void (*pfnSetGpuPriority)(
+        PMOS_INTERFACE              pOsInterface,
+        int32_t                     priority);
+
+    //!
     //! \brief  Set slice count to shared memory and KMD
     //! \param  [in] pOsInterface
     //!         pointer to the requested slice count for current context
@@ -1333,14 +1359,16 @@ typedef struct _MOS_INTERFACE
     int32_t                         bSupportMediaSoloVirtualEngine;               //!< Flag to indicate if MediaSolo uses VE solution in cmdbuffer submission.
 #endif // MOS_MEDIASOLO_SUPPORTED
     bool                            VEEnable;
+    bool                            bCanEnableSecureRt;
 #if (_DEBUG || _RELEASE_INTERNAL)
     MOS_FORCE_VEBOX                 eForceVebox;                                  //!< Force select Vebox
     int32_t                         bHcpDecScalabilityMode;                       //!< enable scalability decode {mode: default, user force, false}
     int32_t                         bEnableDbgOvrdInVE;                           //!< It is for all scalable engines: used together with KMD VE for UMD to specify an engine directly
-    int32_t                         bVeboxScalabilityMode;                        //!< Enable scalability vebox
     int32_t                         bSoftReset;                                   //!< trigger soft reset
 #endif // (_DEBUG || _RELEASE_INTERNAL)
     bool streamStateIniter = false;
+
+    int32_t                         bVeboxScalabilityMode;                        //!< Enable scalability vebox
 
     //!< os interface extension
     void                            *pOsExt;
@@ -1496,8 +1524,9 @@ MOS_STATUS Mos_CheckVirtualEngineSupported(
 
 struct ContextRequirement
 {
-    bool IsEnc = false;
-    bool IsPak = false;
+    bool IsEnc               = false;
+    bool IsPak               = false;
+    bool IsContextSwitchBack = false;
 };
 
 #endif  // __MOS_OS_H__

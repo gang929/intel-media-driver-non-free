@@ -107,9 +107,9 @@ VAStatus DdiMediaDecode::ParseProcessingBuffer(
             MOS_SecureMemcpy(m_procBuf, sizeof(VAProcPipelineParameterBuffer), procBuf, sizeof(VAProcPipelineParameterBuffer));
         }
         auto decProcessingParams =
-            (PCODECHAL_DECODE_PROCESSING_PARAMS)m_ddiDecodeCtx->DecodeParams.m_procParams;
+            (DecodeProcessingParams *)m_ddiDecodeCtx->DecodeParams.m_procParams;
 
-        auto decProcessingSurface = decProcessingParams->pOutputSurface;
+        auto decProcessingSurface = decProcessingParams->m_outputSurface;
 
         memset(decProcessingSurface, 0, sizeof(MOS_SURFACE));
 
@@ -126,43 +126,43 @@ VAStatus DdiMediaDecode::ParseProcessingBuffer(
         decProcessingSurface->TileType = decProcessingSurface->OsResource.TileType;
         decProcessingSurface->Format   = decProcessingSurface->OsResource.Format;
 
-        decProcessingParams->rcInputSurfaceRegion.X      = procBuf->surface_region->x;
-        decProcessingParams->rcInputSurfaceRegion.Y      = procBuf->surface_region->y;
-        decProcessingParams->rcInputSurfaceRegion.Width  = procBuf->surface_region->width;
-        decProcessingParams->rcInputSurfaceRegion.Height = procBuf->surface_region->height;
+        decProcessingParams->m_inputSurfaceRegion.m_x      = procBuf->surface_region->x;
+        decProcessingParams->m_inputSurfaceRegion.m_y      = procBuf->surface_region->y;
+        decProcessingParams->m_inputSurfaceRegion.m_width  = procBuf->surface_region->width;
+        decProcessingParams->m_inputSurfaceRegion.m_height = procBuf->surface_region->height;
 
-        decProcessingParams->pOutputSurface               = decProcessingSurface;
-        decProcessingParams->rcOutputSurfaceRegion.X      = procBuf->output_region->x;
-        decProcessingParams->rcOutputSurfaceRegion.Y      = procBuf->output_region->y;
-        decProcessingParams->rcOutputSurfaceRegion.Width  = procBuf->output_region->width;
-        decProcessingParams->rcOutputSurfaceRegion.Height = procBuf->output_region->height;
+        decProcessingParams->m_outputSurface                = decProcessingSurface;
+        decProcessingParams->m_outputSurfaceRegion.m_x      = procBuf->output_region->x;
+        decProcessingParams->m_outputSurfaceRegion.m_y      = procBuf->output_region->y;
+        decProcessingParams->m_outputSurfaceRegion.m_width  = procBuf->output_region->width;
+        decProcessingParams->m_outputSurfaceRegion.m_height = procBuf->output_region->height;
 
         // Chroma siting
         // Set the vertical chroma siting info
         uint32_t chromaSitingFlags;
         chromaSitingFlags                       = procBuf->input_color_properties.chroma_sample_location & 0x3;
-        decProcessingParams->uiChromaSitingType = CODECHAL_CHROMA_SITING_NONE;
-        decProcessingParams->uiRotationState    = 0;
-        decProcessingParams->uiBlendState       = 0;
-        decProcessingParams->uiMirrorState      = 0;
+        decProcessingParams->m_chromaSitingType = CODECHAL_CHROMA_SITING_NONE;
+        decProcessingParams->m_rotationState    = 0;
+        decProcessingParams->m_blendState       = 0;
+        decProcessingParams->m_mirrorState      = 0;
 
         switch (chromaSitingFlags)
         {
         case VA_CHROMA_SITING_VERTICAL_TOP:
-            decProcessingParams->uiChromaSitingType = CODECHAL_CHROMA_SITING_VERT_TOP;
+            decProcessingParams->m_chromaSitingType = CODECHAL_CHROMA_SITING_VERT_TOP;
             break;
         case VA_CHROMA_SITING_VERTICAL_CENTER:
-            decProcessingParams->uiChromaSitingType = CODECHAL_CHROMA_SITING_VERT_CENTER;
+            decProcessingParams->m_chromaSitingType = CODECHAL_CHROMA_SITING_VERT_CENTER;
             break;
         case VA_CHROMA_SITING_VERTICAL_BOTTOM:
-            decProcessingParams->uiChromaSitingType = CODECHAL_CHROMA_SITING_VERT_BOTTOM;
+            decProcessingParams->m_chromaSitingType = CODECHAL_CHROMA_SITING_VERT_BOTTOM;
             break;
         default:
-            decProcessingParams->uiChromaSitingType = CODECHAL_CHROMA_SITING_NONE;
+            decProcessingParams->m_chromaSitingType = CODECHAL_CHROMA_SITING_NONE;
             break;
         }
 
-        if (decProcessingParams->uiChromaSitingType != CODECHAL_CHROMA_SITING_NONE)
+        if (decProcessingParams->m_chromaSitingType != CODECHAL_CHROMA_SITING_NONE)
         {
             // Set the horizontal chroma siting info
             chromaSitingFlags = procBuf->input_color_properties.chroma_sample_location & 0xc;
@@ -170,13 +170,13 @@ VAStatus DdiMediaDecode::ParseProcessingBuffer(
             switch (chromaSitingFlags)
             {
             case VA_CHROMA_SITING_HORIZONTAL_LEFT:
-                decProcessingParams->uiChromaSitingType |= CODECHAL_CHROMA_SITING_HORZ_LEFT;
+                decProcessingParams->m_chromaSitingType |= CODECHAL_CHROMA_SITING_HORZ_LEFT;
                 break;
             case VA_CHROMA_SITING_HORIZONTAL_CENTER:
-                decProcessingParams->uiChromaSitingType |= CODECHAL_CHROMA_SITING_HORZ_CENTER;
+                decProcessingParams->m_chromaSitingType |= CODECHAL_CHROMA_SITING_HORZ_CENTER;
                 break;
             default:
-                decProcessingParams->uiChromaSitingType = CODECHAL_CHROMA_SITING_NONE;
+                decProcessingParams->m_chromaSitingType = CODECHAL_CHROMA_SITING_NONE;
                 break;
             }
         }
@@ -345,7 +345,7 @@ void DdiMediaDecode::DestroyContext(VADriverContextP ctx)
 
     if (codecHal != nullptr)
     {
-        if (codecHal->GetOsInterface() && !codecHal->GetOsInterface()->apoMosEnabled)
+        if (codecHal->GetOsInterface() && codecHal->GetOsInterface()->pOsContext)
         {
             MOS_FreeMemory(codecHal->GetOsInterface()->pOsContext->pPerfData);
             codecHal->GetOsInterface()->pOsContext->pPerfData = nullptr;
@@ -402,9 +402,9 @@ void DdiMediaDecode::DestroyContext(VADriverContextP ctx)
     if (m_ddiDecodeCtx->DecodeParams.m_procParams != nullptr)
     {
         auto procParams =
-            (PCODECHAL_DECODE_PROCESSING_PARAMS)m_ddiDecodeCtx->DecodeParams.m_procParams;
-        MOS_FreeMemory(procParams->pOutputSurface);
-        procParams->pOutputSurface = nullptr;
+            (DecodeProcessingParams *)m_ddiDecodeCtx->DecodeParams.m_procParams;
+        MOS_FreeMemory(procParams->m_outputSurface);
+        procParams->m_outputSurface = nullptr;
 
         MOS_FreeMemory(m_ddiDecodeCtx->DecodeParams.m_procParams);
         m_ddiDecodeCtx->DecodeParams.m_procParams = nullptr;
@@ -678,48 +678,54 @@ VAStatus DdiMediaDecode::ExtraDownScaling(
     PDDI_MEDIA_CONTEXT mediaCtx = DdiMedia_GetMediaContext(ctx);
     DDI_CHK_NULL(mediaCtx, "nullptr ctx", VA_STATUS_ERROR_INVALID_CONTEXT);
     DDI_CHK_NULL(m_ddiDecodeCtx, "nullptr ctx", VA_STATUS_ERROR_INVALID_CONTEXT);
+
+    bool isDecodeDownScalingSupported = false;
     if (m_ddiDecodeCtx->pCodecHal->IsApogeiosEnabled())
     {
-        return MOS_STATUS_SUCCESS; //Add APO logic here.
+        DecodePipelineAdapter *decoder = dynamic_cast<DecodePipelineAdapter *>(m_ddiDecodeCtx->pCodecHal);
+        DDI_CHK_NULL(decoder, "nullptr decoder", VA_STATUS_ERROR_INVALID_PARAMETER);
+        isDecodeDownScalingSupported = decoder->IsDownSamplingSupported();
     }
     else
     {
         CodechalDecode *decoder = dynamic_cast<CodechalDecode *>(m_ddiDecodeCtx->pCodecHal);
         DDI_CHK_NULL(decoder, "nullptr decoder", VA_STATUS_ERROR_INVALID_PARAMETER);
-        if(m_ddiDecodeCtx->DecodeParams.m_procParams &&
-            !decoder->IsVdSfcSupported())
+        isDecodeDownScalingSupported = decoder->IsVdSfcSupported();
+    }
+
+    if(m_ddiDecodeCtx->DecodeParams.m_procParams != nullptr &&
+       !isDecodeDownScalingSupported)
+    {
+        //check vp context
+        VAContextID vpCtxID = VA_INVALID_ID;
+        if (mediaCtx->pVpCtxHeap != nullptr && mediaCtx->pVpCtxHeap->pHeapBase != nullptr)
         {
-            //check vp context
-            VAContextID vpCtxID = VA_INVALID_ID;
-            if (mediaCtx->pVpCtxHeap != nullptr && mediaCtx->pVpCtxHeap->pHeapBase != nullptr)
-            {
-                //Get VP Context from heap.
-                vpCtxID = (VAContextID)(0 + DDI_MEDIA_VACONTEXTID_OFFSET_VP);
-            }
-            else
-            {
-                //Create VP Context.
-                vaStatus = DdiVp_CreateContext(ctx, 0, 0, 0, 0, 0, 0, &vpCtxID);
-                DDI_CHK_RET(vaStatus, "Create VP Context failed.");
-            }
-
-            uint32_t        ctxType;
-            PDDI_VP_CONTEXT pVpCtx = (PDDI_VP_CONTEXT)DdiMedia_GetContextFromContextID(ctx, vpCtxID, &ctxType);
-            DDI_CHK_NULL(pVpCtx, "nullptr pVpCtx", VA_STATUS_ERROR_INVALID_CONTEXT);
-
-            //Set parameters
-            VAProcPipelineParameterBuffer* pInputPipelineParam = m_procBuf;
-            DDI_CHK_NULL(pInputPipelineParam, "nullptr pInputPipelineParam", VA_STATUS_ERROR_ALLOCATION_FAILED);
-
-            vaStatus = DdiVp_BeginPicture(ctx, vpCtxID, pInputPipelineParam->additional_outputs[0]);
-            DDI_CHK_RET(vaStatus, "VP BeginPicture failed");
-
-            vaStatus = DdiVp_SetProcPipelineParams(ctx, pVpCtx, pInputPipelineParam);
-            DDI_CHK_RET(vaStatus, "VP SetProcPipelineParams failed.");
-
-            vaStatus = DdiVp_EndPicture(ctx, vpCtxID);
-            DDI_CHK_RET(vaStatus, "VP EndPicture failed.");
+            //Get VP Context from heap.
+            vpCtxID = (VAContextID)(0 + DDI_MEDIA_VACONTEXTID_OFFSET_VP);
         }
+        else
+        {
+            //Create VP Context.
+            vaStatus = DdiVp_CreateContext(ctx, 0, 0, 0, 0, 0, 0, &vpCtxID);
+            DDI_CHK_RET(vaStatus, "Create VP Context failed.");
+        }
+
+        uint32_t        ctxType;
+        PDDI_VP_CONTEXT pVpCtx = (PDDI_VP_CONTEXT)DdiMedia_GetContextFromContextID(ctx, vpCtxID, &ctxType);
+        DDI_CHK_NULL(pVpCtx, "nullptr pVpCtx", VA_STATUS_ERROR_INVALID_CONTEXT);
+
+        //Set parameters
+        VAProcPipelineParameterBuffer* pInputPipelineParam = m_procBuf;
+        DDI_CHK_NULL(pInputPipelineParam, "nullptr pInputPipelineParam", VA_STATUS_ERROR_ALLOCATION_FAILED);
+
+        vaStatus = DdiVp_BeginPicture(ctx, vpCtxID, pInputPipelineParam->additional_outputs[0]);
+        DDI_CHK_RET(vaStatus, "VP BeginPicture failed");
+
+        vaStatus = DdiVp_SetProcPipelineParams(ctx, pVpCtx, pInputPipelineParam);
+        DDI_CHK_RET(vaStatus, "VP SetProcPipelineParams failed.");
+
+        vaStatus = DdiVp_EndPicture(ctx, vpCtxID);
+        DDI_CHK_RET(vaStatus, "VP EndPicture failed.");
     }
 #endif
     return MOS_STATUS_SUCCESS;

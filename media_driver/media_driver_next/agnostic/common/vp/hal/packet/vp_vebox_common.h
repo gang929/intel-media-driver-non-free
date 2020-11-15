@@ -96,6 +96,14 @@ enum GFX_MEDIA_VEBOX_DI_OUTPUT_MODE
     MEDIA_VEBOX_DI_OUTPUT_CURRENT = 2
 };
 
+enum MEDIASTATE_GCC_BASIC_MODE_SELECTION
+{
+    MEDIASTATE_GCC_DEFAULT = 0,
+    MEDIASTATE_GCC_SCALING_FACTOR,
+    MEDIASTATE_GCC_SINGLE_AXIS_GAMMA_CORRECTION,
+    MEDIASTATE_GCC_SCALING_FACTOR_WITH_FIXED_LUMA
+};
+
 class VP_VEBOX_RENDER_DATA
 {
   public:
@@ -280,6 +288,11 @@ public:
         return m_chromaSampling;
     }
 
+    virtual MHW_VEBOX_GAMUT_PARAMS &GetGamutParams()
+    {
+        return m_veboxGamutParams;
+    }
+
     bool IsDiEnabled()
     {
         return DI.bDeinterlace || DI.bQueryVariance;
@@ -306,6 +319,26 @@ public:
         uint32_t value = 0;
     } DI;
 
+    union
+    {
+        struct
+        {
+            uint32_t bEnable3Dlut           : 1;    // 3Dlut HDR enabled;
+            uint32_t VE3DlutLength          : 30;
+        };
+    } VE3DLUT;
+
+    union
+    {
+        struct
+        {
+            bool           bHdr3DLut;             //!< Enable 3DLut to process HDR
+            bool           bUseVEHdrSfc;          //!< Use SFC to perform CSC/Scaling for HDR content
+            uint32_t       uiMaxDisplayLum;       //!< Maximum Display Luminance
+            uint32_t       uiMaxContentLevelLum;  //!< Maximum Content Level Luminance
+            VPHAL_HDR_MODE hdrMode;
+        };
+    } HDR3DLUT;
     struct
     {
         union
@@ -340,7 +373,7 @@ public:
             struct
             {
                 uint32_t bAceEnabled            : 1;    // ACE enabled;
-                uint32_t bQueryAceHistogram     : 1;    // Chroma Dn Enabled
+                uint32_t bAceHistogramEnabled   : 1;    // ACE histogram enabled, should be set to 1 when bAceEnabled == 1;
             };
             uint32_t value = 0;
         } ACE;
@@ -383,6 +416,7 @@ protected:
     MHW_VEBOX_DNDI_PARAMS   m_veboxDNDIParams = {};
     MHW_VEBOX_IECP_PARAMS   m_veboxIecpParams = {};
     MHW_VEBOX_CHROMA_SAMPLING m_chromaSampling = {};
+    MHW_VEBOX_GAMUT_PARAMS  m_veboxGamutParams = {};
 };
 
 using PVpVeboxRenderData = VpVeboxRenderData*;

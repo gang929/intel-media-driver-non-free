@@ -1309,10 +1309,6 @@ void CodechalVdencAvcStateG12::SetMfxAvcImgStateParams(MHW_VDBOX_AVC_IMG_PARAMS&
     }
     paramsG12->oneOnOneMapping = m_oneOnOneMapping;
     paramsG12->bStreamInMbQpEnabled = m_encodeParams.bMbQpDataEnabled;
-
-    if (!MEDIA_IS_WA(m_waTable, WaEnableOnlyASteppingFeatures)) {
-        paramsG12->tuSettingsRevision = 1;
-    }
 }
 
 PMHW_VDBOX_STATE_CMDSIZE_PARAMS CodechalVdencAvcStateG12::CreateMhwVdboxStateCmdsizeParams()
@@ -1435,7 +1431,7 @@ MOS_STATUS CodechalVdencAvcStateG12::UpdateCmdBufAttribute(
 
     // should not be there. Will remove it in the next change
     CODECHAL_ENCODE_FUNCTION_ENTER;
-    if (MOS_VE_SUPPORTED(m_osInterface))
+    if (MOS_VE_SUPPORTED(m_osInterface) && cmdBuffer->Attributes.pAttriVe)
     {
         PMOS_CMD_BUF_ATTRI_VE attriExt =
             (PMOS_CMD_BUF_ATTRI_VE)(cmdBuffer->Attributes.pAttriVe);

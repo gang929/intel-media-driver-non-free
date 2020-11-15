@@ -35,7 +35,7 @@ using namespace vp;
 
 namespace vp
 {
-MOS_FORMAT GetSfcInputFormat(VP_EXECUTE_CAPS &executeCaps, MOS_FORMAT inputFormat);
+MOS_FORMAT GetSfcInputFormat(VP_EXECUTE_CAPS &executeCaps, MOS_FORMAT inputFormat, VPHAL_CSPACE colorSpaceOutput);
 };
 
 VpScalingFilter::VpScalingFilter(
@@ -382,7 +382,9 @@ MOS_STATUS VpScalingFilter::CalculateEngineParams()
             &dwSurfaceWidth,
             &dwSurfaceHeight));
 
-        m_scalingParams.formatInput             = GetSfcInputFormat(m_executeCaps, m_scalingParams.formatInput);
+        m_scalingParams.formatInput             = GetSfcInputFormat(m_executeCaps,
+                                                                    m_scalingParams.formatInput, 
+                                                                    m_scalingParams.colorSpaceOutput);
         m_sfcScalingParams->inputFrameFormat    = m_scalingParams.formatInput;
         m_sfcScalingParams->dwInputFrameHeight  = dwSurfaceHeight;
         m_sfcScalingParams->dwInputFrameWidth   = dwSurfaceWidth;
@@ -419,13 +421,21 @@ MOS_STATUS VpScalingFilter::CalculateEngineParams()
         // Size of the Output Region over the Render Target
         wOutputRegionHeight = MOS_ALIGN_CEIL(
             MOS_MIN((uint32_t)(m_scalingParams.rcDstInput.bottom - m_scalingParams.rcDstInput.top), m_scalingParams.dwHeightOutput),
-            wInputHeightAlignUnit);
+            wOutputHeightAlignUnit);
         wOutputRegionWidth = MOS_ALIGN_CEIL(
             MOS_MIN((uint32_t)(m_scalingParams.rcDstInput.right - m_scalingParams.rcDstInput.left), m_scalingParams.dwWidthOutput),
-            wInputWidthAlignUnit);
+            wOutputWidthAlignUnit);
 
         fScaleX = (float)wOutputRegionWidth / (float)m_sfcScalingParams->dwSourceRegionWidth;
         fScaleY = (float)wOutputRegionHeight / (float)m_sfcScalingParams->dwSourceRegionHeight;
+
+        if (m_bVdbox)
+        {
+            // In VD-to-SFC modes, source region must be programmed to same value as Input Frame Resolution.
+            // SourceRegion should be updated after fScale being calculated, or scaling ratio may be incorrect.
+            m_sfcScalingParams->dwSourceRegionHeight    = m_sfcScalingParams->dwInputFrameHeight;
+            m_sfcScalingParams->dwSourceRegionWidth     = m_sfcScalingParams->dwInputFrameWidth;
+        }
 
         // Size of the Scaled Region over the Render Target
         m_sfcScalingParams->dwScaledRegionHeight           = MOS_ALIGN_CEIL(MOS_UF_ROUND(fScaleY * m_sfcScalingParams->dwSourceRegionHeight), wOutputHeightAlignUnit);
@@ -455,6 +465,10 @@ MOS_STATUS VpScalingFilter::CalculateEngineParams()
         m_sfcScalingParams->fAVSYScalingRatio = (float)m_sfcScalingParams->dwScaledRegionHeight / (float)m_sfcScalingParams->dwSourceRegionHeight;
 
         m_sfcScalingParams->sfcScalingMode = m_scalingParams.scalingMode;
+
+        m_sfcScalingParams->interlacedScalingType = m_scalingParams.interlacedScalingType;
+        m_sfcScalingParams->srcSampleType         = m_scalingParams.srcSampleType;
+        m_sfcScalingParams->dstSampleType         = m_scalingParams.dstSampleType;
 
         VP_RENDER_CHK_STATUS_RETURN(SetColorFillParams());
     }

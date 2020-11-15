@@ -2112,6 +2112,8 @@ public:
     static const uint32_t       m_brcConstantSurfaceHeight = 35;       //!< BRC constant surface height
     static const uint32_t       m_brcHistoryBufSize = 2304;            //!< BRC history buffer size
     static const uint32_t       m_bframeMeBidirectionalWeight = 32;    //!< B frame bidirection weight
+    uint32_t                    m_prevQpModulationStrength = 0;
+    bool                        m_initDeltaQP = true;
 
     // HuC tables.
     // These Values are diff for each Gen
@@ -2131,7 +2133,6 @@ public:
     static constexpr int32_t     m_negMultPB = -50;
     static constexpr int32_t     m_posMultVBR = 100;
     static constexpr int32_t     m_negMultVBR = -50;
-    static constexpr uint32_t    m_vdboxHucHevcLaAnalysisKernelDescriptor = 17;  //!< Huc lookahead analysis kernel descriptor
 
     static const double          m_devThreshIFPNEG[m_numDevThreshlds / 2];
     static const double          m_devThreshIFPPOS[m_numDevThreshlds / 2];

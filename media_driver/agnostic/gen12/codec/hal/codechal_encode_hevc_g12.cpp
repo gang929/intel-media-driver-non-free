@@ -296,302 +296,6 @@ MOS_STATUS CodechalEncHevcStateG12::SetPictureStructs()
     return eStatus;
 }
 
-MOS_STATUS CodechalEncHevcStateG12::ConvertY210ToY210V(
-    PMOS_SURFACE source,
-    PMOS_SURFACE target)
-{
-    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
-
-    CODECHAL_ENCODE_CHK_NULL_RETURN(source);
-    CODECHAL_ENCODE_CHK_NULL_RETURN(target);
-
-    if (m_oriFrameWidth > target->dwWidth || m_oriFrameHeight > target->dwHeight ||
-        m_oriFrameWidth > source->dwWidth || m_oriFrameHeight > source->dwHeight)
-    {
-        return MOS_STATUS_INVALID_PARAMETER;
-    }
-
-    MOS_LOCK_PARAMS lockRead, lockWrite;
-    MOS_ZeroMemory(&lockRead, sizeof(lockRead));
-    MOS_ZeroMemory(&lockWrite, sizeof(lockWrite));
-
-    lockRead.ReadOnly   = 1;
-    lockWrite.WriteOnly = 1;
-
-    uint16_t *srcData = (uint16_t *)m_osInterface->pfnLockResource(
-        m_osInterface,
-        &source->OsResource,
-        &lockRead);
-
-    if (srcData == nullptr)
-    {
-        return MOS_STATUS_NULL_POINTER;
-    }
-
-    uint8_t *dstData = (uint8_t *)m_osInterface->pfnLockResource(
-        m_osInterface,
-        &target->OsResource,
-        &lockWrite);
-
-    if (dstData == nullptr)
-    {
-        // release the lock on srcData acquired above before returning here
-        m_osInterface->pfnUnlockResource(m_osInterface, &source->OsResource);
-        return MOS_STATUS_NULL_POINTER;
-    }
-
-    uint32_t highBits = MOS_ALIGN_CEIL(target->dwWidth, 32);
-    uint32_t srcPitch = source->dwPitch / sizeof(srcData[0]);
-    uint32_t dstPitch = target->dwPitch / sizeof(dstData[0]);
-
-    //Y
-    for (uint32_t h = 0; h < m_oriFrameHeight; h++)
-    {
-        for (uint32_t w = 0; w < m_oriFrameWidth; w++)
-        {
-            uint16_t d = srcData[w * 2 + h * srcPitch];
-
-            dstData[w + h * dstPitch + 0]        = (uint8_t)(d >> 8);
-            dstData[w + h * dstPitch + highBits] = (uint8_t)(d >> 6) & 3;
-        }
-    }
-
-    uint32_t uvOffset = target->dwPitch * target->dwHeight;
-
-    //UV
-    for (uint32_t h = 0; h < m_oriFrameHeight; h++)
-    {
-        for (uint32_t w = 0; w < m_oriFrameWidth; w++)
-        {
-            uint16_t d = srcData[w * 2 + 1 + h * srcPitch];
-
-            dstData[uvOffset + w + h * dstPitch + 0]        = (uint8_t)(d >> 8);
-            dstData[uvOffset + w + h * dstPitch + highBits] = (uint8_t)(d >> 6) & 3;
-        }
-    }
-
-    return eStatus;
-}
-
-MOS_STATUS CodechalEncHevcStateG12::ConvertP010ToP010V(
-    PMOS_SURFACE source,
-    PMOS_SURFACE target)
-{
-    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
-
-    CODECHAL_ENCODE_CHK_NULL_RETURN(source);
-    CODECHAL_ENCODE_CHK_NULL_RETURN(target);
-
-    if (m_oriFrameWidth > target->dwWidth || m_oriFrameHeight > target->dwHeight ||
-        m_oriFrameWidth > source->dwWidth || m_oriFrameHeight > source->dwHeight)
-    {
-        return MOS_STATUS_INVALID_PARAMETER;
-    }
-
-    MOS_LOCK_PARAMS lockRead, lockWrite;
-    MOS_ZeroMemory(&lockRead, sizeof(lockRead));
-    MOS_ZeroMemory(&lockWrite, sizeof(lockWrite));
-    lockRead.ReadOnly   = 1;
-    lockWrite.WriteOnly = 1;
-
-    uint16_t *srcData = (uint16_t *)m_osInterface->pfnLockResource(m_osInterface,
-        &source->OsResource,
-        &lockRead);
-    if (srcData == nullptr)
-    {
-        return MOS_STATUS_NULL_POINTER;
-    }
-
-    uint8_t *dstData = (uint8_t *)m_osInterface->pfnLockResource(m_osInterface, &target->OsResource, &lockWrite);
-    if (dstData == nullptr)
-    {
-        // release the lock on srcData acquired above before returning here
-        m_osInterface->pfnUnlockResource(m_osInterface, &source->OsResource);
-        return MOS_STATUS_NULL_POINTER;
-    }
-
-    uint32_t highBits = MOS_ALIGN_CEIL(target->dwWidth, 32);
-    uint32_t srcPitch = source->dwPitch / sizeof(srcData[0]);
-    uint32_t dstPitch = target->dwPitch / sizeof(dstData[0]);
-
-    //Y
-    for (uint32_t h = 0; h < m_oriFrameHeight; h++)
-    {
-        for (uint32_t w = 0; w < m_oriFrameWidth; w++)
-        {
-            uint16_t d = srcData[w + h * srcPitch];
-
-            dstData[w + h * dstPitch + 0]        = (uint8_t)(d >> 8);
-            dstData[w + h * dstPitch + highBits] = (uint8_t)(d >> 6) & 3;
-        }
-    }
-
-    uint32_t dstUvOffset = target->dwPitch * target->dwHeight;
-    uint32_t srcUvOffset = srcPitch * source->dwHeight;
-
-    //UV
-    for (uint32_t h = 0; h < m_oriFrameHeight / 2; h++)
-    {
-        for (uint32_t w = 0; w < m_oriFrameWidth; w++)
-        {
-            uint16_t d = srcData[srcUvOffset + w + h * srcPitch];
-
-            dstData[dstUvOffset + w + h * dstPitch + 0]        = (uint8_t)(d >> 8);
-            dstData[dstUvOffset + w + h * dstPitch + highBits] = (uint8_t)(d >> 6) & 3;
-        }
-    }
-
-    return eStatus;
-}
-
-MOS_STATUS CodechalEncHevcStateG12::ConvertYUY2ToYUY2V(
-    PMOS_SURFACE source,
-    PMOS_SURFACE target)
-{
-    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
-
-    CODECHAL_ENCODE_CHK_NULL_RETURN(source);
-    CODECHAL_ENCODE_CHK_NULL_RETURN(target);
-
-    if (m_oriFrameWidth > target->dwWidth || m_oriFrameHeight > target->dwHeight ||
-        m_oriFrameWidth > source->dwWidth || m_oriFrameHeight > source->dwHeight)
-    {
-        return MOS_STATUS_INVALID_PARAMETER;
-    }
-
-    MOS_LOCK_PARAMS lockRead, lockWrite;
-    MOS_ZeroMemory(&lockRead, sizeof(lockRead));
-    MOS_ZeroMemory(&lockWrite, sizeof(lockWrite));
-
-    lockRead.ReadOnly   = 1;
-    lockWrite.WriteOnly = 1;
-
-    uint8_t *srcData = (uint8_t *)m_osInterface->pfnLockResource(m_osInterface, &source->OsResource, &lockRead);
-    if (srcData == nullptr)
-    {
-        return MOS_STATUS_NULL_POINTER;
-    }
-
-    uint8_t *dstData = (uint8_t *)m_osInterface->pfnLockResource(m_osInterface, &target->OsResource, &lockWrite);
-    if (dstData == nullptr)
-    {
-        // release the lock on srcData acquired above before returning here
-        m_osInterface->pfnUnlockResource(m_osInterface, &source->OsResource);
-        return MOS_STATUS_NULL_POINTER;
-    }
-
-    //Y
-    for (uint32_t h = 0; h < m_oriFrameHeight; h++)
-    {
-        for (uint32_t w = 0; w < m_oriFrameWidth; w++)
-        {
-            uint8_t d = srcData[w * 2 + h * source->dwPitch];
-
-            dstData[w + h * target->dwPitch] = d;
-        }
-    }
-
-    uint32_t uvOffset = target->dwPitch * target->dwHeight;
-
-    //UV
-    for (uint32_t h = 0; h < m_oriFrameHeight; h++)
-    {
-        for (uint32_t w = 0; w < m_oriFrameWidth; w++)
-        {
-            uint8_t d = srcData[w * 2 + 1 + h * source->dwPitch];
-
-            dstData[uvOffset + w + h * target->dwPitch] = d;
-        }
-    }
-
-    return eStatus;
-}
-
-MOS_STATUS CodechalEncHevcStateG12::DownScaling2X(
-    PMOS_SURFACE source,
-    PMOS_SURFACE target)
-{
-    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
-
-    CODECHAL_ENCODE_CHK_NULL_RETURN(source);
-    CODECHAL_ENCODE_CHK_NULL_RETURN(target);
-
-    if ((source->Format != Format_NV12 && source->Format != Format_YUY2V && source->Format != Format_Y216V) ||
-        (target->Format != Format_NV12 && target->Format != Format_YUY2V))
-    {
-        return MOS_STATUS_INVALID_PARAMETER;
-    }
-
-    MOS_LOCK_PARAMS lockRead, lockWrite;
-    MOS_ZeroMemory(&lockRead, sizeof(lockRead));
-    MOS_ZeroMemory(&lockWrite, sizeof(lockWrite));
-
-    lockRead.ReadOnly   = 1;
-    lockWrite.WriteOnly = 1;
-
-    uint8_t *srcData = (uint8_t *)m_osInterface->pfnLockResource(m_osInterface, &source->OsResource, &lockRead);
-    if (srcData == nullptr)
-    {
-        return MOS_STATUS_NULL_POINTER;
-    }
-
-    uint8_t *dstData = (uint8_t *)m_osInterface->pfnLockResource(m_osInterface, &target->OsResource, &lockWrite);
-    if (dstData == nullptr)
-    {
-        // release the lock on srcData acquired above before returning here
-        m_osInterface->pfnUnlockResource(m_osInterface, &source->OsResource);
-        return MOS_STATUS_NULL_POINTER;
-    }
-
-    //Y
-    for (uint32_t h = 0, h2 = 0; h < m_oriFrameHeight; h += 2, h2++)
-    {
-        for (uint32_t w = 0, w2 = 0; w < m_oriFrameWidth; w += 2, w2++)
-        {
-            int16_t sum =
-                (int16_t)srcData[(h + 0) * source->dwPitch + w + 0] +
-                (int16_t)srcData[(h + 0) * source->dwPitch + w + 1] +
-                (int16_t)srcData[(h + 1) * source->dwPitch + w + 0] +
-                (int16_t)srcData[(h + 1) * source->dwPitch + w + 1];
-
-            sum                                = sum >> 2;
-            dstData[h2 * target->dwPitch + w2] = (uint8_t)sum;
-        }
-    }
-
-    srcData = srcData + source->dwHeight * source->dwPitch;
-    dstData = dstData + target->dwHeight * target->dwPitch;
-
-    uint32_t uvHeightRatio = (source->Format == Format_NV12) ? 2 : 1;
-
-    //UV
-    for (uint32_t h = 0, h2 = 0; h < m_oriFrameHeight / uvHeightRatio; h += 2, h2++)
-    {
-        for (uint32_t w = 0, w2 = 0; w < m_oriFrameWidth; w += 4, w2 += 2)
-        {
-            // U
-            int16_t sum =
-                (int16_t)srcData[(h + 0) * source->dwPitch + w + 0] +
-                (int16_t)srcData[(h + 0) * source->dwPitch + w + 2] +
-                (int16_t)srcData[(h + 1) * source->dwPitch + w + 0] +
-                (int16_t)srcData[(h + 1) * source->dwPitch + w + 2];
-            sum                                    = sum >> 2;
-            dstData[h2 * target->dwPitch + w2 + 0] = (uint8_t)sum;
-
-            // V
-            sum =
-                (int16_t)srcData[(h + 0) * source->dwPitch + w + 1] +
-                (int16_t)srcData[(h + 0) * source->dwPitch + w + 3] +
-                (int16_t)srcData[(h + 1) * source->dwPitch + w + 1] +
-                (int16_t)srcData[(h + 1) * source->dwPitch + w + 3];
-            sum                                    = sum >> 2;
-            dstData[h2 * target->dwPitch + w2 + 1] = (uint8_t)sum;
-        }
-    }
-
-    return eStatus;
-}
-
 MOS_STATUS CodechalEncHevcStateG12::SetKernelParams(
     EncOperation      encOperation,
     MHW_KERNEL_PARAM *kernelParams,
@@ -854,10 +558,11 @@ MOS_STATUS CodechalEncHevcStateG12::AllocateEncResources()
             height = m_heightAlignedMaxLcu;
         }
 
+        uint32_t aligned_height = (uint32_t) (height * m_alignReconFactor);
         CODECHAL_ENCODE_CHK_STATUS_RETURN(AllocateSurface(
             &m_currPicWithReconBoundaryPix,
             width,
-            height * m_alignReconFactor,
+            aligned_height,
             "Current Picture Y with Reconstructed Boundary Pixels surface"));
     }
 
@@ -9685,6 +9390,16 @@ MOS_STATUS CodechalEncHevcStateG12::SendPrologWithFrameTracking(
     return eStatus;
 }
 
+void CodechalEncHevcStateG12::ResizeOnResChange()
+{
+    CODECHAL_ENCODE_FUNCTION_ENTER;
+
+    CodechalEncoderState::ResizeOnResChange();
+
+    // need to re-allocate surfaces according to resolution
+    m_swScoreboardState->ReleaseResources();
+}
+
 MOS_STATUS CodechalEncHevcStateG12::InitMmcState()
 {
     CODECHAL_ENCODE_FUNCTION_ENTER;
@@ -10582,15 +10297,8 @@ void CodechalEncHevcStateG12::ResizeBufferOffset()
 {
     CODECHAL_ENCODE_FUNCTION_ENTER;
 
-    //Re-calculate aligned frame width/height + aligned Max LCU width/height when resolution reset occurs
-    uint32_t frameWidth    = m_picWidthInMb * CODECHAL_MACROBLOCK_WIDTH;
-    uint32_t frameHeight   = m_picHeightInMb * CODECHAL_MACROBLOCK_HEIGHT;
-
-    uint32_t widthAlignedMaxLcu  = MOS_ALIGN_CEIL(frameWidth, MAX_LCU_SIZE);
-    uint32_t heightAlignedMaxLcu = MOS_ALIGN_CEIL(frameHeight, MAX_LCU_SIZE);
-
-    uint32_t               size     = 0;
-    const uint32_t         numLcu64 = widthAlignedMaxLcu * heightAlignedMaxLcu / 64 / 64;
+    uint32_t size = 0;
+    uint32_t numLcu64 = m_widthAlignedMaxLcu * m_heightAlignedMaxLcu / 64 / 64;
     MBENC_COMBINED_BUFFER2 fixedBuf;
 
     //Re-Calculate m_encBCombinedBuffer2 Size and Offsets

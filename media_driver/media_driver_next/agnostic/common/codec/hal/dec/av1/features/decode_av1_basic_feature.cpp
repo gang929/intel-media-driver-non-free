@@ -115,10 +115,10 @@ namespace decode
             m_av1PicParams->m_outputFrameWidthInTilesMinus1 == 0xffff &&
             m_av1PicParams->m_outputFrameHeightInTilesMinus1 == 0xffff)
         {
-            m_av1PicParams->m_outputFrameWidthInTilesMinus1  = (uint16_t)(m_destSurface.dwWidth / (m_av1PicParams->m_widthInSbsMinus1[0] + 1)) 
-                                                                >> (m_av1PicParams->m_seqInfoFlags.m_fields.m_use128x128Superblock ? 7 : 6);
-            m_av1PicParams->m_outputFrameHeightInTilesMinus1 = (uint16_t)(m_destSurface.dwHeight / (m_av1PicParams->m_heightInSbsMinus1[0] + 1))
-                                                                >> (m_av1PicParams->m_seqInfoFlags.m_fields.m_use128x128Superblock ? 7 : 6);
+            m_av1PicParams->m_outputFrameWidthInTilesMinus1  = (uint16_t)((m_destSurface.dwWidth / (m_av1PicParams->m_widthInSbsMinus1[0] + 1)) 
+                                                                >> (m_av1PicParams->m_seqInfoFlags.m_fields.m_use128x128Superblock ? 7 : 6)) - 1;
+            m_av1PicParams->m_outputFrameHeightInTilesMinus1 = (uint16_t)((m_destSurface.dwHeight / (m_av1PicParams->m_heightInSbsMinus1[0] + 1))
+                                                                >> (m_av1PicParams->m_seqInfoFlags.m_fields.m_use128x128Superblock ? 7 : 6)) - 1;
         }
 
         m_av1TileParams = static_cast<CodecAv1TileParams*>(decodeParams->m_sliceParams);
@@ -169,10 +169,11 @@ namespace decode
 
         if (m_filmGrainEnabled)
         {
-            m_filmGrainProcParams = (CodecProcessingParams *)&decodeParams->m_codecProcParams;
+            m_filmGrainProcParams = (FilmGrainProcParams *)&decodeParams->m_filmGrainProcParams;
             if (m_filmGrainProcParams->m_inputSurface == nullptr)
             {
-                DECODE_CHK_STATUS(m_internalTarget.ActiveCurSurf(m_av1PicParams->m_currPic.FrameIdx, &m_destSurface, resourceOutputPicture));
+                DECODE_CHK_STATUS(m_internalTarget.ActiveCurSurf(
+                    m_av1PicParams->m_currPic.FrameIdx, &m_destSurface, IsMmcEnabled(), resourceOutputPicture));
                 m_filmGrainProcParams->m_inputSurface = m_internalTarget.GetCurSurf();
             }
             else
