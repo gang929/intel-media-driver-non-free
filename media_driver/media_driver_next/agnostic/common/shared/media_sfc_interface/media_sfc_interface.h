@@ -55,6 +55,27 @@ struct VEBOX_SFC_PARAMS
     } output;
 };
 
+struct SCALABILITY_PARAMS
+{
+    int32_t             numPipe     = 1;                //!< Number of pipes for scalability
+    int32_t             curPipe     = 0;                //!< Current pipe index
+    // Scalability parameters for HCP-to-SFC mode
+    uint32_t            engineMode  = 0;                //!< 0 - single, 1 - left most column, 2 - right most column, 3 - middle column
+    uint32_t            tileType    = 0;                //!< Real tile = 0, virtual tile = 1
+    uint32_t            srcStartX   = 0;                //!< Source surface column horizontal start position in pixel
+    uint32_t            srcEndX     = 0;                //!< Source surface column horizontal end position in pixel
+    uint32_t            dstStartX   = 0;                //!< Output surface column horizontal start position in pixel
+    uint32_t            dstEndX     = 0;                //!< Output surface column horizontal end position in pixel
+};
+
+struct FIELD_PARAMS
+{
+    bool isFieldToInterleaved   = false;                //!< true if input being field frame and output being interlaved frame.
+    bool isBottomField          = false;                //!< true if input frame being bottom field. Valid only when true == isFieldToInterleaved.
+    bool isBottomFirst          = false;                //!< true if output frame being interlaved frame with bottom first.
+                                                        //!< Valid only when true == isFieldToInterleaved.
+};
+
 struct VIDEO_PARAMS
 {
     CODECHAL_STANDARD   codecStandard;
@@ -81,8 +102,11 @@ struct VIDEO_PARAMS
             uint32_t                        tileRows;
         } av1;
     };
-    uint32_t            numPipe = 1;
-    uint32_t            curPipe = 0;
+
+    FIELD_PARAMS fieldParams = {};
+
+    // scalability parameters
+    SCALABILITY_PARAMS scalabilityParams = {};
 };
 
 struct VDBOX_SFC_PARAMS
@@ -104,6 +128,7 @@ struct VDBOX_SFC_PARAMS
     struct
     {
         PMOS_SURFACE                surface;
+        PMOS_BUFFER                 histogramBuf;       //!< Histogram output buffer
         MEDIA_CSPACE                colorSpace;         //!< Color Space
         uint32_t                    chromaSiting;       //!< ChromaSiting
         RECT                        rcDst;              //!< rectangle on output surface after scaling.

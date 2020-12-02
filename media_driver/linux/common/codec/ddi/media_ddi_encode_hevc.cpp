@@ -1109,6 +1109,9 @@ VAStatus DdiEncodeHevc::ParseMiscParams(void *ptr)
         {
             picParams->BRCMaxQp  = (vaEncMiscParamRC->max_qp == 0) ? 51 : (uint8_t)CodecHal_Clip3(1, 51, (int8_t)vaEncMiscParamRC->max_qp);
             picParams->BRCMinQp = (vaEncMiscParamRC->min_qp == 0) ? 1 : (uint8_t)CodecHal_Clip3(1, picParams->BRCMaxQp, (int8_t)vaEncMiscParamRC->min_qp);
+#if VA_CHECK_VERSION(1, 10, 0)
+            picParams->TargetFrameSize = vaEncMiscParamRC->target_frame_size;
+#endif
         }
         else
         {
@@ -1362,7 +1365,7 @@ VAStatus DdiEncodeHevc::ParseMiscParams(void *ptr)
     {
         VAEncMiscParameterMaxSliceSize *vaEncMiscParamMaxSliceSize = (VAEncMiscParameterMaxSliceSize *)miscParamBuf->data;
         m_encodeCtx->EnableSliceLevelRateCtrl                      = true;
-        seqParams->SliceSizeControl                                = true;
+        seqParams->SliceSizeControl                                = (vaEncMiscParamMaxSliceSize->max_slice_size > 0) ? true : false;;
         picParams->MaxSliceSizeInBytes                             = vaEncMiscParamMaxSliceSize->max_slice_size;
         break;
     }

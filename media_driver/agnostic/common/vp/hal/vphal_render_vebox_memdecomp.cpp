@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, Intel Corporation
+* Copyright (c) 2019-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -210,6 +210,22 @@ MOS_STATUS MediaVeboxDecompState::MediaMemoryCopy(
     VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(GetResourceInfo(&targetSurface));
     VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(GetResourceInfo(&sourceSurface));
 
+#if (_DEBUG || _RELEASE_INTERNAL)
+    {
+        // Read user feature key to force outputCompressed
+        MOS_USER_FEATURE_VALUE_DATA userFeatureData;
+        MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+        MOS_USER_FEATURE_INVALID_KEY_ASSERT(MOS_UserFeature_ReadValue_ID(
+            nullptr,
+            __VPHAL_VEBOX_FORCE_VP_MEMCOPY_OUTPUTCOMPRESSED_ID,
+            &userFeatureData,
+            m_osInterface ? m_osInterface->pOsContext : nullptr));
+
+        outputCompressed = userFeatureData.bData ? true : false;
+
+    }
+#endif
+
     if (!outputCompressed && targetSurface.CompressionMode != MOS_MMC_DISABLED)
     {
         targetSurface.CompressionMode = MOS_MMC_RC;
@@ -305,6 +321,7 @@ MOS_STATUS MediaVeboxDecompState::MediaMemoryCopy2D(
     uint32_t      copyHeight,
     uint32_t      copyInputOffset,
     uint32_t      copyOutputOffset,
+    uint32_t      bpp,
     bool          outputCompressed)
 {
     MOS_STATUS                          eStatus = MOS_STATUS_SUCCESS;
@@ -334,6 +351,21 @@ MOS_STATUS MediaVeboxDecompState::MediaMemoryCopy2D(
     VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(GetResourceInfo(&targetSurface));
     VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(GetResourceInfo(&sourceSurface));
 
+#if (_DEBUG || _RELEASE_INTERNAL)
+    {
+        // Read user feature key to Force outputCompressed
+        MOS_USER_FEATURE_VALUE_DATA userFeatureData;
+        MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+        MOS_USER_FEATURE_INVALID_KEY_ASSERT(MOS_UserFeature_ReadValue_ID(
+            nullptr,
+            __VPHAL_VEBOX_FORCE_VP_MEMCOPY_OUTPUTCOMPRESSED_ID,
+            &userFeatureData,
+            m_osInterface ? m_osInterface->pOsContext : nullptr));
+
+        outputCompressed = userFeatureData.bData ? true : false;
+    }
+#endif
+
     if (!outputCompressed && targetSurface.CompressionMode != MOS_MMC_DISABLED)
     {
         targetSurface.CompressionMode = MOS_MMC_RC;
@@ -341,16 +373,44 @@ MOS_STATUS MediaVeboxDecompState::MediaMemoryCopy2D(
 
     //Get context before proceeding
     auto gpuContext = m_osInterface->CurrentGpuContextOrdinal;
+    uint32_t pixelInByte = 1;
 
-    targetSurface.Format = Format_Y8;
-    sourceSurface.Format = Format_Y8;
+    switch (bpp)
+    {
+    case 8:
+        targetSurface.Format = Format_Y8;
+        sourceSurface.Format = Format_Y8;
+        pixelInByte = 1;
+        break;
+    case 16:
+        targetSurface.Format = Format_Y16U;
+        sourceSurface.Format = Format_Y16U;
+        pixelInByte = 2;
+        break;
+    case 32:
+        targetSurface.Format = Format_AYUV;
+        sourceSurface.Format = Format_AYUV;
+        pixelInByte = 4;
+        break;
+    case 64:
+        targetSurface.Format = Format_Y416;
+        sourceSurface.Format = Format_Y416;
+        pixelInByte = 8;
+        break;
+    default:
+        targetSurface.Format = Format_Y8;
+        sourceSurface.Format = Format_Y8;
+        pixelInByte = 1;
+        break;
+    }
+
 
     sourceSurface.dwOffset = copyInputOffset;
     targetSurface.dwOffset = copyOutputOffset;
 
-    sourceSurface.dwWidth  = copyWidth;
+    sourceSurface.dwWidth  = copyWidth / pixelInByte;
     sourceSurface.dwHeight = copyHeight;
-    targetSurface.dwWidth  = copyWidth;
+    targetSurface.dwWidth  = copyWidth / pixelInByte;
     targetSurface.dwHeight = copyHeight;
 
     // Sync for Vebox write
@@ -629,8 +689,10 @@ MOS_STATUS MediaVeboxDecompState::SetupVeboxSurfaceState(
 
     mhwVeboxSurfaceStateCmdParams->SurfInput.bActive    = mhwVeboxSurfaceStateCmdParams->SurfOutput.bActive    = true;
     mhwVeboxSurfaceStateCmdParams->SurfInput.dwBitDepth = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwBitDepth = inputSurface->dwDepth;
-    mhwVeboxSurfaceStateCmdParams->SurfInput.dwHeight   = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwHeight   = inputSurface->dwHeight;
-    mhwVeboxSurfaceStateCmdParams->SurfInput.dwWidth    = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwWidth    = inputSurface->dwWidth;
+    mhwVeboxSurfaceStateCmdParams->SurfInput.dwHeight   = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwHeight   =
+        MOS_MIN(inputSurface->dwHeight, ((outputSurface!= nullptr) ? outputSurface->dwHeight : inputSurface->dwHeight));
+    mhwVeboxSurfaceStateCmdParams->SurfInput.dwWidth    = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwWidth    =
+        MOS_MIN(inputSurface->dwWidth, ((outputSurface != nullptr) ? outputSurface->dwWidth : inputSurface->dwWidth));
     mhwVeboxSurfaceStateCmdParams->SurfInput.Format     = mhwVeboxSurfaceStateCmdParams->SurfOutput.Format     = inputSurface->Format;
 
     MOS_SURFACE inputDetails, outputDetails;
@@ -704,20 +766,20 @@ MOS_STATUS MediaVeboxDecompState::SetupVeboxSurfaceState(
     }
 
     mhwVeboxSurfaceStateCmdParams->SurfInput.rcMaxSrc.left   = mhwVeboxSurfaceStateCmdParams->SurfOutput.rcMaxSrc.left   = 0;
-    mhwVeboxSurfaceStateCmdParams->SurfInput.rcMaxSrc.right  = mhwVeboxSurfaceStateCmdParams->SurfOutput.rcMaxSrc.right  = (long)inputSurface->dwWidth;
+    mhwVeboxSurfaceStateCmdParams->SurfInput.rcMaxSrc.right  = mhwVeboxSurfaceStateCmdParams->SurfOutput.rcMaxSrc.right  = (long)(mhwVeboxSurfaceStateCmdParams->SurfInput.dwWidth);
     mhwVeboxSurfaceStateCmdParams->SurfInput.rcMaxSrc.top    = mhwVeboxSurfaceStateCmdParams->SurfOutput.rcMaxSrc.top    = 0;
-    mhwVeboxSurfaceStateCmdParams->SurfInput.rcMaxSrc.bottom = mhwVeboxSurfaceStateCmdParams->SurfOutput.rcMaxSrc.bottom = (long)inputSurface->dwHeight;
+    mhwVeboxSurfaceStateCmdParams->SurfInput.rcMaxSrc.bottom = mhwVeboxSurfaceStateCmdParams->SurfOutput.rcMaxSrc.bottom = (long)(mhwVeboxSurfaceStateCmdParams->SurfInput.dwHeight);
     mhwVeboxSurfaceStateCmdParams->bOutputValid = true;
 
     // if output surface is null, then Inplace resolve happens
     if (!outputSurface)
     {
-        mhwVeboxSurfaceStateCmdParams->SurfInput.TileType    = mhwVeboxSurfaceStateCmdParams->SurfOutput.TileType    = inputSurface->TileType;
-        mhwVeboxSurfaceStateCmdParams->SurfInput.TileModeGMM = mhwVeboxSurfaceStateCmdParams->SurfOutput.TileModeGMM = inputSurface->TileModeGMM;
-        mhwVeboxSurfaceStateCmdParams->SurfInput.bGMMTileEnabled = mhwVeboxSurfaceStateCmdParams->SurfOutput.bGMMTileEnabled = inputSurface->bGMMTileEnabled;
-        mhwVeboxSurfaceStateCmdParams->SurfOutput.dwPitch    = mhwVeboxSurfaceStateCmdParams->SurfInput.dwPitch      = inputSurface->dwPitch;
-        mhwVeboxSurfaceStateCmdParams->SurfInput.pOsResource = mhwVeboxSurfaceStateCmdParams->SurfOutput.pOsResource = &(inputSurface->OsResource);
-        mhwVeboxSurfaceStateCmdParams->SurfInput.dwYoffset   = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwYoffset   = inputSurface->YPlaneOffset.iYOffset;
+        mhwVeboxSurfaceStateCmdParams->SurfInput.TileType        = mhwVeboxSurfaceStateCmdParams->SurfOutput.TileType            = inputSurface->TileType;
+        mhwVeboxSurfaceStateCmdParams->SurfInput.TileModeGMM     = mhwVeboxSurfaceStateCmdParams->SurfOutput.TileModeGMM         = inputSurface->TileModeGMM;
+        mhwVeboxSurfaceStateCmdParams->SurfInput.bGMMTileEnabled = mhwVeboxSurfaceStateCmdParams->SurfOutput.bGMMTileEnabled     = inputSurface->bGMMTileEnabled;
+        mhwVeboxSurfaceStateCmdParams->SurfOutput.dwPitch        = mhwVeboxSurfaceStateCmdParams->SurfInput.dwPitch              = inputSurface->dwPitch;
+        mhwVeboxSurfaceStateCmdParams->SurfInput.pOsResource     = mhwVeboxSurfaceStateCmdParams->SurfOutput.pOsResource         = &(inputSurface->OsResource);
+        mhwVeboxSurfaceStateCmdParams->SurfInput.dwYoffset       = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwYoffset           = inputSurface->YPlaneOffset.iYOffset;
 
         mhwVeboxSurfaceStateCmdParams->SurfInput.dwCompressionFormat = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwCompressionFormat =
             inputSurface->CompressionFormat;
@@ -864,7 +926,8 @@ bool MediaVeboxDecompState::IsFormatSupported(PMOS_SURFACE surface)
         surface->Format != Format_A8B8G8R8    &&
         surface->Format != Format_X8R8G8B8    &&
         surface->Format != Format_X8B8G8R8    &&
-        surface->Format != Format_P8)
+        surface->Format != Format_P8          &&
+        surface->Format != Format_Y16U)
     {
         VPHAL_MEMORY_DECOMP_NORMALMESSAGE("Unsupported Source Format '0x%08x' for VEBOX Decompression.", surface->Format);
         goto finish;

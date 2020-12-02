@@ -36,6 +36,7 @@
 #include "codechal_setting.h"
 #include "decode_basic_feature.h"
 #include "mos_solo_generic.h"
+#include "decode_sfc_histogram_postsubpipeline.h"
 
 namespace decode {
 
@@ -82,6 +83,12 @@ MOS_STATUS DecodePipeline::CreatePreSubPipeLines(DecodeSubPipelineManager &subPi
 MOS_STATUS DecodePipeline::CreatePostSubPipeLines(DecodeSubPipelineManager &subPipelineManager)
 {
     DECODE_FUNC_CALL();
+
+#ifdef _DECODE_PROCESSING_SUPPORTED
+    auto sfcHistogramPostSubPipeline = MOS_New(DecodeSfcHistogramSubPipeline, this, m_task, m_numVdbox);
+    DECODE_CHK_NULL(sfcHistogramPostSubPipeline);
+    DECODE_CHK_STATUS(m_postSubPipeline->Register(*sfcHistogramPostSubPipeline));
+#endif
 
     return MOS_STATUS_SUCCESS;
 }
@@ -333,10 +340,12 @@ MOS_STATUS DecodePipeline::DumpDownSamplingParams(DecodeDownSamplingFeature &dow
         return MOS_STATUS_SUCCESS;
     }
 
-    if(downSamplingParams.m_inputSurface == nullptr)
+    if(!downSamplingParams.IsEnabled())
     {
         return MOS_STATUS_SUCCESS;
     }
+
+    DECODE_CHK_NULL(downSamplingParams.m_inputSurface);
 
     std::ostringstream oss;
     oss.setf(std::ios::showbase | std::ios::uppercase);

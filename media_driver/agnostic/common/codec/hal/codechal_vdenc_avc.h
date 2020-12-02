@@ -320,22 +320,22 @@ public:
     //!
     virtual ~CodechalVdencAvcState();
 
-    virtual MOS_STATUS Initialize( CodechalSetting * settings);
+    virtual MOS_STATUS Initialize( CodechalSetting * settings) override;
 
-    virtual MOS_STATUS InitializePicture(const EncoderParams& params);
+    virtual MOS_STATUS InitializePicture(const EncoderParams& params) override;
 
-    virtual MOS_STATUS ExecuteKernelFunctions();
+    virtual MOS_STATUS ExecuteKernelFunctions() override;
 
     virtual MOS_STATUS SendPrologWithFrameTracking(
         PMOS_COMMAND_BUFFER         cmdBuffer,
         bool                        frameTracking,
-        MHW_MI_MMIOREGISTERS       *mmioRegister = nullptr);
+        MHW_MI_MMIOREGISTERS       *mmioRegister = nullptr) override;
 
-    virtual MOS_STATUS ExecutePictureLevel();
+    virtual MOS_STATUS ExecutePictureLevel() override;
 
-    virtual MOS_STATUS ExecuteSliceLevel();
+    virtual MOS_STATUS ExecuteSliceLevel() override;
 
-    virtual MOS_STATUS UserFeatureKeyReport();
+    virtual MOS_STATUS UserFeatureKeyReport() override;
 
     //!
     //! \brief    Add VDENC_WALKER_STATE commands to command buffer
@@ -555,8 +555,25 @@ public:
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
     virtual MOS_STATUS SetupROIStreamIn(
+        PCODEC_AVC_ENCODE_PIC_PARAMS   picParams,
+        PCODEC_AVC_ENCODE_SLICE_PARAMS slcParams,
+        PMOS_RESOURCE                  vdencStreamIn);
+
+    //!
+    //! \brief    Set VDENC BRC ROI buffer
+    //!
+    //! \param    [in] picParams
+    //!           Pointer to CODEC_AVC_ENCODE_PIC_PARAMS.
+    //! \param    [in] brcRoiBuffer
+    //!           BRC ROI Resource.
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS SetupBrcROIBuffer(
         PCODEC_AVC_ENCODE_PIC_PARAMS picParams,
-        PMOS_RESOURCE                vdencStreamIn);
+        PMOS_RESOURCE                brcRoiBuffer);
+
     //!
     //! \brief    Set VDENC ForceSkip StreamIn Surface state
     //!
@@ -746,7 +763,7 @@ protected:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success
     //!
-    virtual MOS_STATUS Initialize();
+    virtual MOS_STATUS Initialize() override;
 
     //!
     //! \brief    Allocate VDENC necessary resources.
@@ -754,7 +771,7 @@ protected:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success
     //!
-    virtual MOS_STATUS AllocateResources();
+    virtual MOS_STATUS AllocateResources() override;
 
     //!
     //! \brief    Set Sequence Structures.
@@ -762,7 +779,7 @@ protected:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
-    virtual MOS_STATUS SetSequenceStructs();
+    virtual MOS_STATUS SetSequenceStructs() override;
 
     //!
     //! \brief    Set Picture Structures
@@ -770,7 +787,7 @@ protected:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
-    virtual MOS_STATUS SetPictureStructs();
+    virtual MOS_STATUS SetPictureStructs() override;
 
     //!
     //! \brief    Set slice Structs
@@ -778,7 +795,7 @@ protected:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
-    virtual MOS_STATUS SetSliceStructs();
+    virtual MOS_STATUS SetSliceStructs() override;
 
     //!
     //! \brief    Initialize Encode ME kernel state
@@ -786,7 +803,7 @@ protected:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success
     //!
-    virtual MOS_STATUS InitKernelStateMe();
+    virtual MOS_STATUS InitKernelStateMe() override;
 
     //!
     //! \brief    Set Encode ME kernel Curbe data.
@@ -797,7 +814,7 @@ protected:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success
     //!
-    virtual MOS_STATUS SetCurbeMe( MeCurbeParams* params);
+    virtual MOS_STATUS SetCurbeMe( MeCurbeParams* params) override;
 
     //!
     //! \brief    Set Encode ME kernel Surfaces
@@ -812,7 +829,7 @@ protected:
     //!
     virtual MOS_STATUS SendMeSurfaces(
         PMOS_COMMAND_BUFFER cmdBuffer,
-        MeSurfaceParams*    params);
+        MeSurfaceParams*    params) override;
 
     //!
     //! \brief    Set MFX_PIPE_BUF_ADDR_STATE parameter
@@ -827,7 +844,7 @@ protected:
     //!
     virtual MOS_STATUS SetMfxPipeBufAddrStateParams(
         CODECHAL_ENCODE_AVC_GENERIC_PICTURE_LEVEL_PARAMS genericParam,
-        MHW_VDBOX_PIPE_BUF_ADDR_PARAMS& param);
+        MHW_VDBOX_PIPE_BUF_ADDR_PARAMS& param) override;
 
     //!
     //! \brief    Set MHW_VDBOX_VDENC_CQPT_STATE parameter
@@ -848,7 +865,7 @@ protected:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success
     //!
-    virtual void SetMfxAvcImgStateParams(MHW_VDBOX_AVC_IMG_PARAMS& param);
+    virtual void SetMfxAvcImgStateParams(MHW_VDBOX_AVC_IMG_PARAMS& param) override;
 
     //!
     //! \brief    Calculate Vdenc Commands Size
@@ -883,6 +900,23 @@ protected:
 
     virtual MOS_STATUS FillHucConstData(uint8_t *data);
 
+    //!
+    //! \brief    Prepare HW MetaData buffer
+    //! \details  Prepare HW MetaData buffer.
+    //! \param    [in] presMetadataBuffer
+    //!               Pointer to allocated HW MetaData buffer
+    //!           [in] presSliceSizeStreamoutBuffer
+    //!               Pointer to m_pakSliceSizeStreamoutBuffer
+    //!           [in] cmdBuffer
+    //!               Pointer to primary cmd buffer
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS PrepareHWMetaData(
+        PMOS_RESOURCE       presMetadataBuffer,
+        PMOS_RESOURCE       presSliceSizeStreamoutBuffer,
+        PMOS_COMMAND_BUFFER cmdBuffer) override;
+
 protected:
     bool                                        m_vdencSinglePassEnable = false;   //!< Enable VDEnc single pass
 
@@ -911,6 +945,7 @@ protected:
     bool     m_brcInit;                       //!< BRC init enable flag.
     bool     m_brcReset;                      //!< BRC reset enable flag.
     bool     m_mbBrcEnabled;                  //!< MBBrc enable flag.
+    bool     m_nonNativeBrcRoiSupported;      //!< Non native ROI in BRC mode enable flag.
     bool     m_mbBrcUserFeatureKeyControl;    //!< MBBRC user feature control enable flag.
     double   m_dBrcTargetSize;                //!< BRC target size.
     uint32_t m_trellis;                       //!< Trellis Number.
@@ -938,6 +973,7 @@ protected:
     MOS_RESOURCE m_resVdencBrcImageStatesReadBuffer[CODECHAL_ENCODE_RECYCLED_BUFFER_NUM];                               //!< Read-only VDENC+PAK IMG STATE buffer.
     MOS_RESOURCE m_resVdencBrcConstDataBuffer;                                                                          //!< BRC Const Data Buffer.
     MOS_RESOURCE m_resVdencBrcHistoryBuffer;                                                                            //!< BRC History Buffer.
+    MOS_RESOURCE m_resVdencBrcRoiBuffer[CODECHAL_ENCODE_RECYCLED_BUFFER_NUM];                                           //!< BRC ROI Buffer.
     MOS_RESOURCE m_resVdencBrcDbgBuffer;                                                                                //!< BRC Debug Buffer.
 
     // Static frame detection
@@ -979,7 +1015,8 @@ protected:
     static const uint32_t m_vdboxHucVdencBrcInitKernelDescriptor = 4;                                     //!< Huc Vdenc Brc init kernel descriptor
     static const uint32_t m_vdboxHucVdencBrcUpdateKernelDescriptor = 5;                                   //!< Huc Vdenc Brc update kernel descriptor
 
-    static constexpr uint8_t m_maxNumRoi       = 16;  //!< VDEnc maximum number of ROI supported
+    static constexpr uint8_t m_maxNumRoi       = 16;  //!< VDEnc maximum number of ROI supported (including non-ROI zone0)
+    static constexpr uint8_t m_maxNumBrcRoi    = 8;   //!< VDEnc maximum number of BRC ROI supported (including non-ROI zone0)
     static constexpr uint8_t m_maxNumNativeRoi = 3;   //!< Number of native ROI supported by VDEnc HW
 
 protected:
@@ -1070,18 +1107,21 @@ protected:
     virtual MOS_STATUS DumpEncodeImgStats(
         PMOS_COMMAND_BUFFER        cmdbuffer);
 
-    virtual MOS_STATUS DumpSeqParFile();
-    virtual MOS_STATUS DumpFrameParFile();
+    virtual MOS_STATUS DumpSeqParFile() override;
+    virtual MOS_STATUS DumpFrameParFile() override;
 
     virtual MOS_STATUS PopulateHmeParam(
         bool    is16xMeEnabled,
         bool    is32xMeEnabled,
         uint8_t meMethod,
-        void    *cmd);
+        void    *cmd) override;
 
     virtual MOS_STATUS PopulateEncParam(
         uint8_t meMethod,
-        void    *cmd) { return MOS_STATUS_SUCCESS; }
+        void    *cmd) override
+    {
+        return MOS_STATUS_SUCCESS;
+    }
 #endif
 };
 
@@ -1419,8 +1459,16 @@ MOS_STATUS CodechalVdencAvcState::SetDmemHuCBrcUpdateImpl(CODECHAL_VDENC_AVC_BRC
 
     // HMECost enabled by default in CModel V11738+
     hucVDEncBrcDmem->UPD_HMECostEnable_U8 = 1;
-
-    if (avcPicParams->NumDirtyROI)
+    if (avcPicParams->NumROI)
+    {
+        hucVDEncBrcDmem->UPD_RoiQpViaForceQp_U8 = avcPicParams->bNativeROI ? 0 : 1;
+        for (uint8_t i = 0; i < m_avcPicParam->NumROI; i++)
+        {
+            hucVDEncBrcDmem->UPD_ROIQpDelta_I8[i + 1] = (int8_t)CodecHal_Clip3(
+                ENCODE_VDENC_AVC_MIN_ROI_DELTA_QP_G9, ENCODE_VDENC_AVC_MAX_ROI_DELTA_QP_G9, m_avcPicParam->ROIDistinctDeltaQp[i]);
+        }
+    }
+    else if (avcPicParams->NumDirtyROI)
     {
         hucVDEncBrcDmem->UPD_StaticRegionPct_U16 = (uint16_t)m_vdencStaticRegionPct;
         if (m_mbBrcEnabled)

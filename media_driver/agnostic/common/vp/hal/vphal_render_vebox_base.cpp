@@ -1247,6 +1247,8 @@ MOS_STATUS VPHAL_VEBOX_STATE::VeboxFlushUpdateStateCmdBuffer()
     VPHAL_RENDER_CHK_STATUS(pRenderHal->pfnInitCommandBuffer(pRenderHal, &CmdBuffer, nullptr));
     VPHAL_RENDER_CHK_STATUS(pPerfProfiler->AddPerfCollectStartCmd((void*)pRenderHal, pOsInterface, pRenderHal->pMhwMiInterface, &CmdBuffer));
 
+    VPHAL_RENDER_CHK_STATUS(NullHW::StartPredicate(pRenderHal->pMhwMiInterface, &CmdBuffer));
+
     VPHAL_RENDER_CHK_STATUS(pRenderHal->pfnSendSyncTag(pRenderHal, &CmdBuffer));
 
     VPHAL_RENDER_CHK_STATUS(pMhwRender->EnablePreemption(&CmdBuffer));
@@ -1349,6 +1351,8 @@ MOS_STATUS VPHAL_VEBOX_STATE::VeboxFlushUpdateStateCmdBuffer()
             VPHAL_RENDER_CHK_STATUS(pMhwMiInterface->AddMediaStateFlush(&CmdBuffer, nullptr, &FlushParam));
         }
     }
+
+    VPHAL_RENDER_CHK_STATUS(NullHW::StopPredicate(pRenderHal->pMhwMiInterface, &CmdBuffer));
 
     VPHAL_RENDER_CHK_STATUS(pPerfProfiler->AddPerfCollectEndCmd((void*)pRenderHal, pOsInterface, pRenderHal->pMhwMiInterface, &CmdBuffer));
 
@@ -1852,7 +1856,8 @@ MOS_STATUS VPHAL_VEBOX_STATE::VeboxIsCmdParamsValid(
         VPHAL_RENDER_CHK_NULL_RETURN(VeboxSurfaceStateCmdParams.pSurfInput);
         VPHAL_RENDER_CHK_NULL_RETURN(VeboxSurfaceStateCmdParams.pSurfDNOutput);
 
-        if (VeboxSurfaceStateCmdParams.pSurfInput->dwPitch != VeboxSurfaceStateCmdParams.pSurfDNOutput->dwPitch)
+        if ((VeboxSurfaceStateCmdParams.pSurfInput->TileModeGMM == VeboxSurfaceStateCmdParams.pSurfDNOutput->TileModeGMM) &&
+            (VeboxSurfaceStateCmdParams.pSurfInput->dwPitch != VeboxSurfaceStateCmdParams.pSurfDNOutput->dwPitch))
         {
             return MOS_STATUS_INVALID_PARAMETER;
         }
@@ -1933,6 +1938,8 @@ MOS_STATUS VPHAL_VEBOX_STATE::VeboxRenderVeboxCmd(
     VPHAL_RENDER_CHK_STATUS(pRenderHal->pfnInitCommandBuffer(pRenderHal, &CmdBuffer, pGenericPrologParams));
 
     VPHAL_RENDER_CHK_STATUS(pPerfProfiler->AddPerfCollectStartCmd((void*)pRenderHal, pOsInterface, pRenderHal->pMhwMiInterface, &CmdBuffer));
+
+    VPHAL_RENDER_CHK_STATUS(NullHW::StartPredicate(pRenderHal->pMhwMiInterface, &CmdBuffer));
 
     bDiVarianceEnable = pRenderData->bDeinterlace || IsQueryVarianceEnabled();
 
@@ -2094,6 +2101,8 @@ MOS_STATUS VPHAL_VEBOX_STATE::VeboxRenderVeboxCmd(
             &CmdBuffer,
             &FlushDwParams));
     }
+
+    VPHAL_RENDER_CHK_STATUS(NullHW::StopPredicate(pRenderHal->pMhwMiInterface, &CmdBuffer));
 
     VPHAL_RENDER_CHK_STATUS(pPerfProfiler->AddPerfCollectEndCmd((void*)pRenderHal, pOsInterface, pRenderHal->pMhwMiInterface, &CmdBuffer));
 
@@ -4415,6 +4424,7 @@ MOS_STATUS VpHal_RndrRenderVebox(
             pInSurface = &pVeboxState->SfcTempSurface;
             pInSurface->rcMaxSrc = pInSurface->rcSrc;
             pInSurface->rcDst    = rcTempIn;
+            pInSurface->ScalingMode = pRenderPassData->pSrcSurface->ScalingMode;
 
             // recover the orignal rcDst for the second loop
             pcRenderParams->pTarget[0]->rcDst    = rcTemp;

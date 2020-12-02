@@ -110,6 +110,8 @@ protected:
         PVPHAL_SURFACE pSrcSurface,
         PVPHAL_SURFACE pRTSurface);
 
+    virtual bool IsVeboxSupported(PVP_PIPELINE_PARAMS params);
+
     virtual bool IsSfcOutputFeasible(PVP_PIPELINE_PARAMS params);
 
     virtual bool IsOutputFormatSupported(
@@ -152,6 +154,7 @@ protected:
     }
 
     virtual bool IsDiFormatSupported(MOS_FORMAT format);
+    virtual bool IsVeboxSurfaceHeightAligned(VPHAL_SURFACE &surf);
 
 protected:
     PVP_MHWINTERFACE        m_hwInterface       = nullptr;

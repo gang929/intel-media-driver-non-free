@@ -331,9 +331,9 @@ public:
     virtual ~VpResourceManager();
     MOS_STATUS StartProcessNewFrame(SwFilterPipe &pipe);
     MOS_STATUS AssignExecuteResource(VP_EXECUTE_CAPS& caps, VP_SURFACE *inputSurface, VP_SURFACE *outputSurface, VP_SURFACE *pastSurface, VP_SURFACE *futureSurface,
-        RESOURCE_ASSIGNMENT_HINT resHint, VP_SURFACE_GROUP &surfGroup);
+        RESOURCE_ASSIGNMENT_HINT resHint, VP_SURFACE_SETTING &surfSetting);
     virtual MOS_STATUS AssignVeboxResource(VP_EXECUTE_CAPS& caps, VP_SURFACE *inputSurface, VP_SURFACE *outputSurface, VP_SURFACE *pastSurface, VP_SURFACE *futureSurface,
-        RESOURCE_ASSIGNMENT_HINT resHint, VP_SURFACE_GROUP &surfGroup);
+        RESOURCE_ASSIGNMENT_HINT resHint, VP_SURFACE_SETTING &surfSetting);
     bool IsSameSamples()
     {
         return m_sameSamples;
@@ -344,11 +344,22 @@ public:
         return m_currentFrameIds.pastFrameAvailable || m_currentFrameIds.futureFrameAvailable;
     }
 
+    bool IsPastHistogramValid()
+    {
+        return m_isPastHistogramValid;
+    }
+
+    void GetImageResolutionOfPastHistogram(uint32_t &width, uint32_t &height)
+    {
+        width = m_imageWidthOfPastHistogram;
+        height = m_imageHeightOfPastHistogram;
+    }
+
 protected:
     VP_SURFACE* GetVeboxOutputSurface(VP_EXECUTE_CAPS& caps, VP_SURFACE *outputSurface);
     MOS_STATUS InitVeboxSpatialAttributesConfiguration();
     MOS_STATUS AllocateVeboxResource(VP_EXECUTE_CAPS& caps, VP_SURFACE *inputSurface, VP_SURFACE *outputSurface);
-    MOS_STATUS AssignSurface(VEBOX_SURFACE_ID &surfaceId, SurfaceType surfaceType, VP_SURFACE *inputSurface, VP_SURFACE *outputSurface, VP_SURFACE *pastRefSurface, VP_SURFACE *futureRefSurface, VP_SURFACE_GROUP &surfGroup);
+    MOS_STATUS AssignSurface(VP_EXECUTE_CAPS caps, VEBOX_SURFACE_ID &surfaceId, SurfaceType surfaceType, VP_SURFACE *inputSurface, VP_SURFACE *outputSurface, VP_SURFACE *pastRefSurface, VP_SURFACE *futureRefSurface, VP_SURFACE_GROUP &surfGroup);
     bool VeboxOutputNeeded(VP_EXECUTE_CAPS& caps);
     bool VeboxDenoiseOutputNeeded(VP_EXECUTE_CAPS& caps);
     // In some case, STMM should not be destroyed but not be used by current workload to maintain data,
@@ -428,6 +439,7 @@ protected:
     uint32_t    m_currentDnOutput                        = 0;
     uint32_t    m_currentStmmIndex                       = 0;
     uint32_t    m_veboxOutputCount                       = 2;             //!< PE on: 4 used. PE off: 2 used
+    bool        m_pastDnOutputValid                      = false;         //!< true if vebox DN output of previous frame valid.
     VP_FRAME_IDS m_currentFrameIds                       = {};
     VP_FRAME_IDS m_pastFrameIds                          = {};
     bool         m_firstFrame                            = true;
@@ -435,6 +447,13 @@ protected:
     bool         m_outOfBound                            = false;
     RECT         m_maxSrcRect                            = {};
     VEBOX_SURFACE_CONFIG_MAP m_veboxSurfaceConfigMap;
+    bool        m_isHistogramReallocated                 = false;
+    bool        m_isCurrentHistogramInuse                = false;
+    bool        m_isPastHistogramValid                   = false;
+    uint32_t    m_imageWidthOfPastHistogram              = 0;
+    uint32_t    m_imageHeightOfPastHistogram             = 0;
+    uint32_t    m_imageWidthOfCurrentHistogram           = 0;
+    uint32_t    m_imageHeightOfCurrentHistogram          = 0;
 };
 }
 #endif // _VP_RESOURCE_MANAGER_H__

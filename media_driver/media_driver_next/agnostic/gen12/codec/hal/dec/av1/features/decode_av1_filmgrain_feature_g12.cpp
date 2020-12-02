@@ -902,11 +902,6 @@ MOS_STATUS Av1DecodeFilmGrainG12::Init(void *settings)
         m_kernelStates[i] = MHW_KERNEL_STATE();
     }
 
-    m_bitDepthIndicator = m_basicFeature->m_av1DepthIndicator;
-
-    DECODE_CHK_STATUS(InitializeKernelState());
-    DECODE_CHK_STATUS(AllocateFixedSizeSurfaces());
-
     return MOS_STATUS_SUCCESS;
 }
 
@@ -919,21 +914,31 @@ MOS_STATUS Av1DecodeFilmGrainG12::Update(void *params)
     m_picParams = static_cast<CodecAv1PicParams *>(decodeParams->m_picParams);
     DECODE_CHK_NULL(m_picParams);
 
-    m_av1TileParams = static_cast<CodecAv1TileParams *>(decodeParams->m_sliceParams);
-    DECODE_CHK_NULL(m_av1TileParams);
+    m_bitDepthIndicator = m_basicFeature->m_av1DepthIndicator;
 
-    m_segmentParams = &m_picParams->m_av1SegData;
-    DECODE_CHK_NULL(m_segmentParams);
+    if (!m_resourceAllocated)
+    {
+        DECODE_CHK_STATUS(InitializeKernelState());
+        DECODE_CHK_STATUS(AllocateFixedSizeSurfaces());
+        m_resourceAllocated = true;
+    }
 
-    DECODE_CHK_STATUS(SetFrameStates(m_picParams));
-
-    bool applyY  = (m_picParams->m_filmGrainParams.m_numYPoints > 0) ? 1 : 0;  // params->num_y_points > 0 ? 1 : 0;
+    bool applyY  = (m_picParams->m_filmGrainParams.m_numYPoints > 0) ? 1 : 0;
     bool applyCb = (m_picParams->m_filmGrainParams.m_numCbPoints > 0 || m_picParams->m_filmGrainParams.m_filmGrainInfoFlags.m_fields.m_chromaScalingFromLuma) ? 1 : 0;
     bool applyCr = (m_picParams->m_filmGrainParams.m_numCrPoints > 0 || m_picParams->m_filmGrainParams.m_filmGrainInfoFlags.m_fields.m_chromaScalingFromLuma) ? 1 : 0;
-    
     m_filmGrainEnabled = m_picParams->m_filmGrainParams.m_filmGrainInfoFlags.m_fields.m_applyGrain && (applyY | applyCb | applyCr);
 
-    DECODE_CHK_STATUS(AllocateVariableSizeSurfaces());
+    if (m_picParams->m_filmGrainParams.m_filmGrainInfoFlags.m_fields.m_applyGrain)
+    {
+        m_av1TileParams = static_cast<CodecAv1TileParams*>(decodeParams->m_sliceParams);
+        DECODE_CHK_NULL(m_av1TileParams);
+
+        m_segmentParams = &m_picParams->m_av1SegData;
+        DECODE_CHK_NULL(m_segmentParams);
+
+        DECODE_CHK_STATUS(SetFrameStates(m_picParams));
+        DECODE_CHK_STATUS(AllocateVariableSizeSurfaces());
+    }
 
     return MOS_STATUS_SUCCESS;
 }
@@ -1262,14 +1267,16 @@ MOS_STATUS Av1DecodeFilmGrainG12::AllocateVariableSizeSurfaces()
         m_coordinatesRandomValuesSurface = m_allocator->AllocateBuffer(
             allocSize,
             "FilmGrainGRVCoordinateSurface",
-            resourceInternalReadWriteCache);
+            resourceInternalReadWriteCache,
+            true,
+            0);
         DECODE_CHK_NULL(m_coordinatesRandomValuesSurface);
     }
     else
     {
         DECODE_CHK_STATUS(m_allocator->Resize(
             m_coordinatesRandomValuesSurface,
-            allocSize/*avpBufSizeParam.m_bufferSize*/));
+            allocSize, false, true));
     }
     m_coordinateSurfaceSize = allocSize;
 
