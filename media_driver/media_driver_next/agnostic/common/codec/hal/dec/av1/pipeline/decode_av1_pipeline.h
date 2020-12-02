@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, Intel Corporation
+* Copyright (c) 2019-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -111,23 +111,10 @@ protected:
     //!
     virtual MOS_STATUS CreateFeatureManager() override;
 
-#if 0
-#if USE_CODECHAL_DEBUG_TOOL
-    //! \brief    Dump the quantization matrix parameters
-    //!
-    //! \param    [in] matrixData
-    //!           Pointer to CODECHAL_HEVC_IQ_MATRIX_PARAMS
-    //!
-    //! \return   MOS_STATUS
-    //!           MOS_STATUS_SUCCESS if success, else fail reason
-    //!
-    //MOS_STATUS DumpIQParams(PCODECHAL_HEVC_IQ_MATRIX_PARAMS matrixData);
-#endif
-#endif
 protected:
     HucCopyPkt    *m_cdfCopyPkt       = nullptr;          //!< Update default cdf buffer with huc stream out packet
     Av1DecodeMode  m_decodeMode       = baseDecodeMode;   //!< Decode mode
-    uint8_t        m_passNum          = 1;                //!< Decode pass number
+    uint16_t       m_passNum          = 1;                //!< Decode pass number
     bool           m_isFirstTileInFrm = true;             //!< First tile in the first frame
     bool           m_forceTileBasedDecoding = false;      //!< Force tile based decoding
 };

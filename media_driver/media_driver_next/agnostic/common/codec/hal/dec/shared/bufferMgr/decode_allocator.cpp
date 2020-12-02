@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018, Intel Corporation
+* Copyright (c) 2018-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -281,17 +281,29 @@ MOS_STATUS DecodeAllocator::UnLock(PMHW_BATCH_BUFFER batchBuffer, bool resetBuff
     return Mhw_UnlockBb(m_osInterface, batchBuffer, resetBuffer);
 }
 
-MOS_STATUS DecodeAllocator::Resize(MOS_BUFFER* &buffer, const uint32_t sizeNew, bool force)
+MOS_STATUS DecodeAllocator::Resize(MOS_BUFFER* &buffer, const uint32_t sizeNew, bool force, bool clearData)
 {
     DECODE_CHK_NULL(buffer);
 
     if (sizeNew == buffer->size)
     {
+        if (clearData)
+        {
+            if(m_allocator->OsFillResource(&buffer->OsResource, buffer->size, 0) != MOS_STATUS_SUCCESS)
+            {
+                DECODE_ASSERTMESSAGE("Failed to clear buffer data");
+            }
+        }
         return MOS_STATUS_SUCCESS;
     }
 
     if (force || (sizeNew > buffer->size))
     {
+        if(clearData)
+        {
+            buffer->initOnAllocate = true;
+            buffer->initValue      = 0;
+        }
         MOS_BUFFER* bufferNew = AllocateBuffer(
             sizeNew, buffer->name, ConvertGmmResourceUsage(buffer->OsResource.pGmmResInfo->GetCachePolicyUsage()),
             buffer->initOnAllocate, buffer->initValue, buffer->bPersistent);
@@ -510,6 +522,17 @@ MOS_STATUS DecodeAllocator::UpdateResoreceUsageType(
     DECODE_CHK_NULL(m_allocator);
 
     return (m_allocator->UpdateResourceUsageType(osResource, static_cast<MOS_HW_RESOURCE_DEF>(resUsageType)));
+}
+
+MOS_STATUS DecodeAllocator::RegisterResource(PMOS_RESOURCE osResource)
+{
+    DECODE_CHK_NULL(osResource);
+
+    return(m_osInterface->pfnRegisterResource(
+            m_osInterface,
+            osResource,
+            false,
+            false));
 }
 
 ResourceUsage DecodeAllocator::ConvertGmmResourceUsage(const GMM_RESOURCE_USAGE_TYPE gmmResUsage)

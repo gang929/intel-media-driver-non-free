@@ -658,6 +658,8 @@ MOS_STATUS CodechalDecodeHevcG12 ::InitializeDecodeMode()
             m_isSeparateTileDecoding = false;
         }
 
+        m_isVirtualTile = CodecHalDecodeScalabilityIsVirtualTileMode(m_scalabilityState);
+
 #if (_DEBUG || _RELEASE_INTERNAL)
         if (m_isRealTile)
         {
@@ -1139,31 +1141,15 @@ void CodechalDecodeHevcG12::CalcRequestedSpace(
         }
         else
         {
-            requestedSize = m_commandBufferSizeNeeded +
-                            (m_standardDecodeSizeNeeded * (m_decodeParams.m_numSlices + 1 + m_hevcPicParams->num_tile_rows_minus1));
+            //Since G12, HCP primitive level buffers are in separate allocated 2nd level batch buffer. So only have state level size here
+            requestedSize = m_commandBufferSizeNeeded;
+            //Patch list is still submit with primitive level buffers, so requestedPatchListSize still need to contain the primitive level size.
             requestedPatchListSize = m_commandPatchListSizeNeeded +
                                      (m_standardDecodePatchListSizeNeeded * (m_decodeParams.m_numSlices + 1 + m_hevcPicParams->num_tile_rows_minus1));
             additionalSizeNeeded = COMMAND_BUFFER_RESERVED_SPACE;
         }
         requestedSize *= m_scalabilityState->u8RtPhaseNum;
         requestedPatchListSize *= m_scalabilityState->u8RtPhaseNum;
-    }
-    else if (CodecHalDecodeNeedsTileDecoding(m_hevcPicParams, m_hevcSccPicParams))
-    {
-        if (m_cencBuf)
-        {
-            requestedSize = m_commandBufferSizeNeeded;
-            requestedPatchListSize = m_commandPatchListSizeNeeded;
-            additionalSizeNeeded = 0;
-        }
-        else
-        {
-            requestedSize = m_commandBufferSizeNeeded +
-                            m_standardDecodeSizeNeeded * (m_decodeParams.m_numSlices + (1 + m_hevcPicParams->num_tile_rows_minus1) * (1 + m_hevcPicParams->num_tile_columns_minus1));
-            requestedPatchListSize = m_commandPatchListSizeNeeded +
-                                     m_standardDecodePatchListSizeNeeded * (m_decodeParams.m_numSlices + (1 + m_hevcPicParams->num_tile_rows_minus1) * (1 + m_hevcPicParams->num_tile_columns_minus1));
-            additionalSizeNeeded = COMMAND_BUFFER_RESERVED_SPACE;
-        }
     }
     else
     {
@@ -1175,11 +1161,23 @@ void CodechalDecodeHevcG12::CalcRequestedSpace(
         }
         else
         {
-            requestedSize = m_commandBufferSizeNeeded +
-                (m_standardDecodeSizeNeeded * (m_decodeParams.m_numSlices + 1));
-            requestedPatchListSize = m_commandPatchListSizeNeeded +
-                (m_standardDecodePatchListSizeNeeded * (m_decodeParams.m_numSlices + 1));
-            additionalSizeNeeded = COMMAND_BUFFER_RESERVED_SPACE;
+            if (m_isVirtualTile)
+            {
+                //For virtual tile, FrontEnd and BackEnd B0 shares one cmd buffer, cmd buffer size need to double.
+                requestedSize = 2 * m_commandBufferSizeNeeded;
+                requestedPatchListSize = 2 * m_commandPatchListSizeNeeded +
+                    (m_standardDecodePatchListSizeNeeded * (m_decodeParams.m_numSlices + 1));
+                additionalSizeNeeded = COMMAND_BUFFER_RESERVED_SPACE;
+            }
+            else
+            {
+                //Since G12, HCP primitive level buffers are in separate allocated 2nd level batch buffer. So only have state level size here.
+                requestedSize = m_commandBufferSizeNeeded;
+                //Patch list is still submit with primitive level buffers, so requestedPatchListSize still need to contain the primitive level size.
+                requestedPatchListSize = m_commandPatchListSizeNeeded +
+                    (m_standardDecodePatchListSizeNeeded * (m_decodeParams.m_numSlices + 1));
+                additionalSizeNeeded = COMMAND_BUFFER_RESERVED_SPACE;
+            }
         }
     }
 }
@@ -1540,7 +1538,6 @@ MOS_STATUS CodechalDecodeHevcG12::SendPictureLongFormat()
     PMOS_COMMAND_BUFFER cmdBufferInUse = &primCmdBuffer;
     MOS_COMMAND_BUFFER  scdryCmdBuffer;
     auto                mmioRegisters = m_hwInterface->GetMfxInterface()->GetMmioRegisters(m_vdboxIndex);
-    HalOcaInterface::On1stLevelBBStart(primCmdBuffer, *m_osInterface->pOsContext, m_osInterface->CurrentGpuContextHandle, *m_miInterface, *mmioRegisters);
 
     if (CodecHalDecodeScalabilityIsScalableMode(m_scalabilityState) && MOS_VE_SUPPORTED(m_osInterface))
     {
@@ -1567,6 +1564,12 @@ MOS_STATUS CodechalDecodeHevcG12::SendPictureLongFormat()
             //send prolog at the start of a secondary cmd buffer
             CODECHAL_DECODE_CHK_STATUS_RETURN(SendPrologWithFrameTracking(cmdBufferInUse, false));
         }
+
+        HalOcaInterface::On1stLevelBBStart(scdryCmdBuffer, *m_osInterface->pOsContext, m_osInterface->CurrentGpuContextHandle, *m_miInterface, *mmioRegisters);
+    }
+    else
+    {
+        HalOcaInterface::On1stLevelBBStart(primCmdBuffer, *m_osInterface->pOsContext, m_osInterface->CurrentGpuContextHandle, *m_miInterface, *mmioRegisters);
     }
 
     CODECHAL_DECODE_CHK_STATUS_RETURN(InitPicLongFormatMhwParams());
@@ -2096,9 +2099,12 @@ MOS_STATUS CodechalDecodeHevcG12::DecodePrimitiveLevel()
     if (MOS_VE_SUPPORTED(m_osInterface) && CodecHalDecodeScalabilityIsScalableMode(m_scalabilityState))
     {
         submitCommand = CodecHalDecodeScalabilityIsToSubmitCmdBuffer_G12(m_scalabilityState);
+        HalOcaInterface::On1stLevelBBEnd(scdryCmdBuffer, *m_osInterface);
     }
-
-    HalOcaInterface::On1stLevelBBEnd(primCmdBuffer, *m_osInterface);
+    else
+    {
+        HalOcaInterface::On1stLevelBBEnd(primCmdBuffer, *m_osInterface);
+    }
 
     if (submitCommand)
     {
@@ -2342,7 +2348,7 @@ CodechalDecodeHevcG12::CodechalDecodeHevcG12(
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
     MOS_UserFeature_ReadValue_ID(
         nullptr,
-        __MEDIA_USER_FEATURE_VALUE_HEVC_DECODE_HISTOGRAM_DEBUG_ID_G12,
+        __MEDIA_USER_FEATURE_VALUE_DECODE_HISTOGRAM_DEBUG_ID,
         &userFeatureData,
         m_osInterface->pOsContext);
     m_histogramDebug = userFeatureData.u32Data ? true : false;

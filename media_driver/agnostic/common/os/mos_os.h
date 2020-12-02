@@ -377,7 +377,7 @@ typedef struct _MOS_COMMAND_BUFFER
     MOS_VDBOX_NODE_IND  iVdboxNodeIndex;            //!< Which VDBOX buffer is binded to
     MOS_VEBOX_NODE_IND  iVeboxNodeIndex;            //!< Which VEBOX buffer is binded to
     int32_t             iSubmissionType;
-
+    bool                is1stLvlBB;                    //!< indicate it's a first level BB or not
     MOS_COMMAND_BUFFER_ATTRIBUTES Attributes;       //!< Attributes for the command buffer to be provided to KMD at submission
 } MOS_COMMAND_BUFFER;
 
@@ -1008,13 +1008,8 @@ typedef struct _MOS_INTERFACE
         uint32_t              copyHeight,
         uint32_t              copyInputOffset,
         uint32_t              copyOutputOffset,
+        uint32_t              bpp,
         bool                  bOutputCompressed);
-
-    MOS_STATUS(*pfnMediaCopy) (
-        PMOS_INTERFACE        pOsInterface,
-        PMOS_RESOURCE         pInputOsResource,
-        PMOS_RESOURCE         pOutputOsResource,
-        uint32_t              preferMethod);
 
     MOS_STATUS (* pfnFillResource) (
         PMOS_INTERFACE              pOsInterface,

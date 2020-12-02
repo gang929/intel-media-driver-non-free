@@ -503,16 +503,8 @@ struct DDI_MEDIA_CONTEXT
         uint32_t           copyHeight,
         uint32_t           copyInputOffset,
         uint32_t           copyOutputOffset,
+        uint32_t           bpp,
         bool               bOutputCompressed);
-
-    //!
-    //! \brief  the function ptr for Media copy function
-    //!
-    MOS_STATUS (* pfnMediaCopy)(
-        PMOS_CONTEXT       pMosCtx,
-        PMOS_RESOURCE      pInputResource,
-        PMOS_RESOURCE      pOutputResource,
-        uint32_t           copyMode);
 
     //!
     //! \brief  the function ptr for Media Tile Convert function

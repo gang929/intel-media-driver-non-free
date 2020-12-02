@@ -55,7 +55,7 @@ void* CodechalAllocator::GetResourcePointer(uint16_t resourceID, Match level)
 }
 
 void* CodechalAllocator::Allocate1DBuffer(uint64_t resourceTag, uint32_t size,
-    const char* bufName, bool zeroOnAllocation)
+                                          const char* bufName, bool zeroOnAllocation, uint32_t dwMemType)
 {
     MOS_RESOURCE* resource = MOS_New(MOS_RESOURCE);
     MOS_ZeroMemory(resource, sizeof(MOS_RESOURCE));
@@ -67,6 +67,7 @@ void* CodechalAllocator::Allocate1DBuffer(uint64_t resourceTag, uint32_t size,
     allocParams.TileType = MOS_TILE_LINEAR;
     allocParams.dwBytes = size;
     allocParams.pBufName = bufName;
+    allocParams.dwMemType = dwMemType;
 
     if (MOS_STATUS_SUCCESS != m_osInterface->pfnAllocateResource(
         m_osInterface, &allocParams, resource))
@@ -90,7 +91,7 @@ void* CodechalAllocator::Allocate1DBuffer(uint64_t resourceTag, uint32_t size,
 
 void* CodechalAllocator::Allocate2DBuffer(
     uint64_t resourceTag, uint32_t width, uint32_t height, MOS_FORMAT format,
-    MOS_TILE_TYPE tile, const char* bufName, bool zeroOnAllocation)
+    MOS_TILE_TYPE tile, const char* bufName, bool zeroOnAllocation, uint32_t dwMemType)
 {
     MOS_SURFACE* surface = MOS_New(MOS_SURFACE);
     MOS_ZeroMemory(surface, sizeof(MOS_SURFACE));
@@ -103,6 +104,7 @@ void* CodechalAllocator::Allocate2DBuffer(
     allocParams.dwWidth = width;
     allocParams.dwHeight = height;
     allocParams.pBufName = bufName;
+    allocParams.dwMemType = dwMemType;
 
     if (MOS_STATUS_SUCCESS != m_osInterface->pfnAllocateResource(
         m_osInterface, &allocParams, &surface->OsResource))

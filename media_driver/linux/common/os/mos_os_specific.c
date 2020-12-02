@@ -236,7 +236,7 @@ int32_t Linux_GetCommandBuffer(
     pCmdBuffer->iCmdIndex   = -1;
     pCmdBuffer->iVdboxNodeIndex = MOS_VDBOX_NODE_INVALID;
     pCmdBuffer->iVeboxNodeIndex = MOS_VEBOX_NODE_INVALID;
-
+    pCmdBuffer->is1stLvlBB = true;
     MOS_ZeroMemory(pCmdBuffer->pCmdBase, cmd_bo->size);
     pCmdBuffer->iSubmissionType = SUBMISSION_TYPE_SINGLE_PIPE;
     MOS_ZeroMemory(&pCmdBuffer->Attributes, sizeof(pCmdBuffer->Attributes));
@@ -293,6 +293,7 @@ void Linux_ReturnCommandBuffer(
     pOsGpuContext->pCB->pCmdPtr    = pCmdBuffer->pCmdPtr;
     pOsGpuContext->pCB->iVdboxNodeIndex = pCmdBuffer->iVdboxNodeIndex;
     pOsGpuContext->pCB->iVeboxNodeIndex = pCmdBuffer->iVeboxNodeIndex;
+    pOsGpuContext->pCB->is1stLvlBB = pCmdBuffer->is1stLvlBB;
 
 finish:
     return;
@@ -3304,6 +3305,7 @@ MOS_STATUS Mos_Specific_MediaCopyResource2D(
     uint32_t              copyHeight,
     uint32_t              copyInputOffset,
     uint32_t              copyOutputOffset,
+    uint32_t              bpp,
     bool                  bOutputCompressed)
 {
     MOS_STATUS              eStatus = MOS_STATUS_UNKNOWN;
@@ -3318,7 +3320,7 @@ MOS_STATUS Mos_Specific_MediaCopyResource2D(
     if (osInterface->apoMosEnabled)
     {
         return MosInterface::MediaCopyResource2D(osInterface->osStreamState, inputOsResource, outputOsResource,
-            copyWidth, copyHeight, copyInputOffset, copyOutputOffset, bOutputCompressed);
+            copyWidth, copyHeight, copyInputOffset, copyOutputOffset, bpp, bOutputCompressed);
     }
 
     pContext = osInterface->pOsContext;
@@ -3327,48 +3329,12 @@ MOS_STATUS Mos_Specific_MediaCopyResource2D(
         outputOsResource && outputOsResource->bo && outputOsResource->pGmmResInfo)
     {
         // Double Buffer Copy can support any tile status surface with/without compression
-        pContext->pfnMediaMemoryCopy2D(pContext, inputOsResource, outputOsResource, copyWidth, copyHeight, copyInputOffset, copyOutputOffset, bOutputCompressed);
+        pContext->pfnMediaMemoryCopy2D(pContext, inputOsResource, outputOsResource, copyWidth, copyHeight, copyInputOffset, copyOutputOffset, bpp, bOutputCompressed);
     }
 
     eStatus = MOS_STATUS_SUCCESS;
 
 finish:
-    return eStatus;
-}
-
-//!
-//! \brief    copy resource to another Buffer
-//! \details  copy resource to another
-//! \param    PMOS_INTERFACE pOsInterface
-//!           [in] pointer to OS Interface structure
-//! \param    PMOS_RESOURCE inputOsResource
-//!           [in] Input Resource object
-//! \param    PMOS_RESOURCE outputOsResource
-//!           [out] output Resource object
-//! \param    [in] preferMethod
-//!            indicate which copy mode is prefered.
-//! \return   MOS_STATUS
-//!           MOS_STATUS_SUCCESS if successful
-//!
-MOS_STATUS Mos_Specific_MediaCopy(
-    PMOS_INTERFACE        osInterface,
-    PMOS_RESOURCE         inputOsResource,
-    PMOS_RESOURCE         outputOsResource,
-    uint32_t              preferMethod)
-{
-    MOS_STATUS              eStatus = MOS_STATUS_UNIMPLEMENTED;
-
-    //---------------------------------------
-    MOS_OS_CHK_NULL_RETURN(osInterface);
-    MOS_OS_CHK_NULL_RETURN(inputOsResource);
-    MOS_OS_CHK_NULL_RETURN(outputOsResource);
-    //---------------------------------------
-
-    if (osInterface->apoMosEnabled)
-    {
-        return MosInterface::MediaCopy(osInterface->osStreamState, inputOsResource, outputOsResource, preferMethod);
-    }
-
     return eStatus;
 }
 
@@ -4287,15 +4253,25 @@ MOS_STATUS Mos_Specific_SubmitCommandBuffer(
                     boOffset + pCurrentPatch->AllocationOffset;
         }
 
-        // This call will patch the command buffer with the offsets of the indirect state region of the command buffer
-        ret = mos_bo_emit_reloc2(
-                          cmd_bo,                                                              // Command buffer
-                          pCurrentPatch->PatchOffset,                                          // Offset in the command buffer
-                          alloc_bo,                                                            // Allocation object for which the patch will be made.
-                          pCurrentPatch->AllocationOffset,                                     // Offset to the indirect state
-                          I915_GEM_DOMAIN_RENDER,                                              // Read domain
-                          (pCurrentPatch->uiWriteOperation) ? I915_GEM_DOMAIN_RENDER : 0x0,   // Write domain
-                          boOffset);
+        if(mos_gem_bo_is_softpin(alloc_bo))
+        {
+            if (alloc_bo != cmd_bo)
+            {
+                ret = mos_bo_add_softpin_target(cmd_bo, alloc_bo, pCurrentPatch->uiWriteOperation);
+            }
+        }
+        else
+        {
+            // This call will patch the command buffer with the offsets of the indirect state region of the command buffer
+            ret = mos_bo_emit_reloc2(
+                        cmd_bo,                                                              // Command buffer
+                        pCurrentPatch->PatchOffset,                                          // Offset in the command buffer
+                        alloc_bo,                                                            // Allocation object for which the patch will be made.
+                        pCurrentPatch->AllocationOffset,                                     // Offset to the indirect state
+                        I915_GEM_DOMAIN_RENDER,                                              // Read domain
+                        (pCurrentPatch->uiWriteOperation) ? I915_GEM_DOMAIN_RENDER : 0x0,   // Write domain
+                        boOffset);
+        }
 
         if (ret != 0)
         {
@@ -6098,7 +6074,7 @@ MOS_STATUS Mos_Specific_SkipResourceSync(
     MOS_OS_CHK_NULL(pOsResource);
     //---------------------------------------
 
-    mos_bo_set_exec_object_async(pOsResource->bo);
+    mos_bo_set_object_async(pOsResource->bo);
 
 finish:
     return eStatus;
@@ -7181,6 +7157,18 @@ static MOS_STATUS Mos_Specific_InitInterface_Ve(
         {
             //user's value to enable scalability
             osInterface->bVeboxScalabilityMode = MOS_SCALABILITY_ENABLE_MODE_USER_FORCE;
+            osInterface->bEnableDbgOvrdInVE    = true;
+
+            if (osInterface->eForceVebox == MOS_FORCE_VEBOX_NONE)
+            {
+                osInterface->eForceVebox = MOS_FORCE_VEBOX_1_2;
+            }
+        }
+        else if ((!osInterface->bVeboxScalabilityMode)
+            && (eStatusUserFeature == MOS_STATUS_SUCCESS))
+        {
+            osInterface->bEnableDbgOvrdInVE = true;
+            osInterface->eForceVebox        = MOS_FORCE_VEBOX_NONE;
         }
 #endif
     }
@@ -7209,6 +7197,8 @@ MOS_STATUS Mos_Specific_InitInterface(
     uint32_t                        dwResetCount = 0;
     int32_t                         ret = 0;
     bool                            modularizedGpuCtxEnabled = false;
+    char *pMediaWatchdog = nullptr;
+    long int watchdog = 0;
 
     MOS_OS_FUNCTION_ENTER;
 
@@ -7368,7 +7358,6 @@ MOS_STATUS Mos_Specific_InitInterface(
     pOsInterface->pfnDecompResource                         = Mos_Specific_DecompResource;
     pOsInterface->pfnDoubleBufferCopyResource               = Mos_Specific_DoubleBufferCopyResource;
     pOsInterface->pfnMediaCopyResource2D                    = Mos_Specific_MediaCopyResource2D;
-    pOsInterface->pfnMediaCopy                              = Mos_Specific_MediaCopy;
     pOsInterface->pfnUpdateResourceUsageType                = Mos_Specific_UpdateResourceUsageType;
     pOsInterface->pfnRegisterResource                       = Mos_Specific_RegisterResource;
     pOsInterface->pfnResetResourceAllocationIndex           = Mos_Specific_ResetResourceAllocationIndex;
@@ -7485,6 +7474,17 @@ MOS_STATUS Mos_Specific_InitInterface(
     // disable it on Linux
     pOsInterface->bMediaReset         = false;
     pOsInterface->umdMediaResetEnable = false;
+
+    pMediaWatchdog = getenv("INTEL_MEDIA_RESET_WATCHDOG");
+    if (pMediaWatchdog != nullptr)
+    {
+        watchdog = strtol(pMediaWatchdog, nullptr, 0);
+        if (watchdog == 1)
+        {
+            pOsInterface->bMediaReset         = true;
+            pOsInterface->umdMediaResetEnable = true;
+        }
+    }
 
     // initialize MOS_CP interface
     pOsInterface->osCpInterface = Create_MosCpInterface(pOsInterface);

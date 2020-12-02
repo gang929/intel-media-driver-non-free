@@ -33,6 +33,7 @@
 #include "mos_os_virtualengine_singlepipe_specific_next.h"
 #include "mos_os_virtualengine_scalability_specific_next.h"
 #include "mos_graphicsresource_specific_next.h"
+#include "mos_bufmgr_priv.h"
 
 #if (_DEBUG || _RELEASE_INTERNAL)
 #include <stdlib.h>   //for simulate random OS API failure
@@ -259,6 +260,18 @@ MOS_STATUS MosInterface::CreateOsStreamState(
     {
         //user's value to enable scalability
         (*streamState)->veboxScalabilityMode = MOS_SCALABILITY_ENABLE_MODE_USER_FORCE;
+        (*streamState)->enableDbgOvrdInVirtualEngine = true;
+
+        if ((*streamState)->eForceVebox == MOS_FORCE_VEBOX_NONE)
+        {
+            (*streamState)->eForceVebox = MOS_FORCE_VEBOX_1_2;
+        }
+    }
+    else if ((!(*streamState)->veboxScalabilityMode)
+        && (eStatusUserFeature == MOS_STATUS_SUCCESS))
+    {
+        (*streamState)->enableDbgOvrdInVirtualEngine = true;
+        (*streamState)->eForceVebox        = MOS_FORCE_VEBOX_NONE;
     }
 
 #endif
@@ -1195,6 +1208,32 @@ uint8_t MosInterface::GetCachePolicyL1Config(
 {
     MOS_OS_FUNCTION_ENTER;
     return 0;
+}
+
+MOS_STATUS MosInterface::GetReservedFromResouce(MOS_RESOURCE_HANDLE resource, uint32_t &val)
+{
+    return MOS_STATUS_UNIMPLEMENTED;
+}
+
+MOS_STATUS MosInterface::GetReservedFromStream(MOS_STREAM_HANDLE stream, uint32_t &val)
+{
+    return MOS_STATUS_UNIMPLEMENTED;
+}
+
+MOS_STATUS MosInterface::GetReservedFromDevice(MOS_DEVICE_HANDLE device, uint32_t &val)
+{
+    MOS_OS_CHK_NULL_RETURN(device);
+    OsContextSpecificNext *osDevice = dynamic_cast<OsContextSpecificNext*>(device);
+    MOS_OS_CHK_NULL_RETURN(osDevice);
+    if (osDevice->GetBufMgr()->get_reserved)
+    {
+        val = *(osDevice->GetBufMgr()->get_reserved);
+        return MOS_STATUS_SUCCESS;
+    }
+    else
+    {
+        return MOS_STATUS_UNIMPLEMENTED;
+    }
 }
 
 MOS_STATUS MosInterface::ConvertResourceFromDdi(
@@ -2162,6 +2201,7 @@ MOS_STATUS MosInterface::MediaCopyResource2D(
     uint32_t            copyHeight,
     uint32_t            copyInputOffset,
     uint32_t            copyOutputOffset,
+    uint32_t            bpp,
     bool                outputCompressed)
 {
     MOS_OS_FUNCTION_ENTER;
@@ -2182,7 +2222,7 @@ MOS_STATUS MosInterface::MediaCopyResource2D(
 
         // Double Buffer Copy can support any tile status surface with/without compression
         mosDecompression->MediaMemoryCopy2D(inputResource, outputResource,
-            copyWidth, copyHeight, copyInputOffset, copyOutputOffset, outputCompressed);
+            copyWidth, copyHeight, copyInputOffset, copyOutputOffset, bpp, outputCompressed);
     }
 
     return status;
@@ -2213,35 +2253,6 @@ MOS_STATUS MosInterface::DecompResource(
     }
 
     return MOS_STATUS_SUCCESS;
-}
-
-MOS_STATUS MosInterface::MediaCopy(
-    MOS_STREAM_HANDLE   streamState,
-    MOS_RESOURCE_HANDLE inputResource,
-    MOS_RESOURCE_HANDLE outputResource,
-    uint32_t            preferMethod)
-{
-    MOS_OS_FUNCTION_ENTER;
-
-    MOS_STATUS status = MOS_STATUS_UNKNOWN;
-    MOS_OS_CHK_NULL_RETURN(inputResource);
-    MOS_OS_CHK_NULL_RETURN(outputResource);
-    MOS_OS_CHK_NULL_RETURN(streamState);
-
-    if (inputResource && inputResource->bo && inputResource->pGmmResInfo &&
-        outputResource && outputResource->bo && outputResource->pGmmResInfo)
-    {
-        OsContextNext *osCtx = streamState->osDeviceContext;
-        MOS_OS_CHK_NULL_RETURN(osCtx);
-
-        MosMediaCopy *mosMediaCopy = osCtx->GetMosMediaCopy();
-        MOS_OS_CHK_NULL_RETURN(mosMediaCopy);
-
-        // Double Buffer Copy can support any tile status surface with/without compression
-        MOS_OS_CHK_STATUS_RETURN(mosMediaCopy->MediaCopy(inputResource, outputResource, (MCPY_METHOD)preferMethod));
-    }
-
-    return status;
 }
 
 uint32_t MosInterface::GetGpuStatusTag(

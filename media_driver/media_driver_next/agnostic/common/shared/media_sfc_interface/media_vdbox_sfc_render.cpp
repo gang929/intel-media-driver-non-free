@@ -128,6 +128,17 @@ MOS_STATUS MediaVdboxSfcRender::SetScalingParams(VDBOX_SFC_PARAMS &sfcParam, VP_
     scalingParams.pColorFillParams          = nullptr;
     scalingParams.pCompAlpha                = nullptr;
     scalingParams.colorSpaceOutput          = sfcParam.output.colorSpace;
+    scalingParams.interlacedScalingType     = sfcParam.videoParams.fieldParams.isFieldToInterleaved ? ISCALING_FIELD_TO_INTERLEAVED : ISCALING_NONE;
+    if (sfcParam.videoParams.fieldParams.isFieldToInterleaved)
+    {
+        scalingParams.srcSampleType         = sfcParam.videoParams.fieldParams.isBottomField ? SAMPLE_SINGLE_BOTTOM_FIELD : SAMPLE_SINGLE_TOP_FIELD;
+        scalingParams.dstSampleType         = sfcParam.videoParams.fieldParams.isBottomFirst ? SAMPLE_INTERLEAVED_ODD_FIRST_BOTTOM_FIELD : SAMPLE_INTERLEAVED_EVEN_FIRST_TOP_FIELD;
+    }
+    else
+    {
+        scalingParams.srcSampleType         = SAMPLE_PROGRESSIVE;
+        scalingParams.dstSampleType         = SAMPLE_PROGRESSIVE;
+    }
 
     m_scalingFilter->Init(sfcParam.videoParams.codecStandard, sfcParam.videoParams.jpeg.jpegChromaType);
     m_scalingFilter->SetExecuteEngineCaps(scalingParams, vpExecuteCaps);
@@ -154,6 +165,11 @@ MOS_STATUS MediaVdboxSfcRender::SetRotMirParams(VDBOX_SFC_PARAMS &sfcParam, VP_E
     return m_sfcRender->SetRotMirParams(m_rotMirFilter->GetSfcParams());
 }
 
+MOS_STATUS MediaVdboxSfcRender::SetHistogramParams(VDBOX_SFC_PARAMS& sfcParam)
+{
+    return m_sfcRender->SetHistogramBuf(sfcParam.output.histogramBuf);
+}
+
 MOS_STATUS MediaVdboxSfcRender::AddSfcStates(MOS_COMMAND_BUFFER *cmdBuffer, VDBOX_SFC_PARAMS &sfcParam)
 {
     VP_PUBLIC_CHK_NULL_RETURN(m_sfcRender);
@@ -170,6 +186,7 @@ MOS_STATUS MediaVdboxSfcRender::AddSfcStates(MOS_COMMAND_BUFFER *cmdBuffer, VDBO
     VP_PUBLIC_CHK_STATUS_RETURN(SetCSCParams(sfcParam, vpExecuteCaps));
     VP_PUBLIC_CHK_STATUS_RETURN(SetScalingParams(sfcParam, vpExecuteCaps));
     VP_PUBLIC_CHK_STATUS_RETURN(SetRotMirParams(sfcParam, vpExecuteCaps));
+    VP_PUBLIC_CHK_STATUS_RETURN(SetHistogramParams(sfcParam));
 
     RECT        rcOutput        = {0, 0, (int32_t)sfcParam.output.surface->dwWidth, (int32_t)sfcParam.output.surface->dwHeight};
     // The value of plane offset are different between vp and codec. updatePlaneOffset need be set to true when create vp surface

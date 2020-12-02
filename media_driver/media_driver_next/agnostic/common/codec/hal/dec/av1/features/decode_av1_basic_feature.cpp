@@ -80,13 +80,6 @@ namespace decode
             }
         }
 
-        if (codecSettings->lumaChromaDepth & CODECHAL_LUMA_CHROMA_DEPTH_8_BITS)
-            m_av1DepthIndicator = 0;
-        if (codecSettings->lumaChromaDepth & CODECHAL_LUMA_CHROMA_DEPTH_10_BITS)
-            m_av1DepthIndicator = 1;
-        if (codecSettings->lumaChromaDepth & CODECHAL_LUMA_CHROMA_DEPTH_12_BITS)
-            m_av1DepthIndicator = 2;
-
         DECODE_CHK_STATUS(m_refFrames.Init(this, *m_allocator));
         DECODE_CHK_STATUS(m_tempBuffers.Init(*m_hwInterface, *m_allocator, *this, CODEC_NUM_REF_AV1_TEMP_BUFFERS));
         DECODE_CHK_STATUS(m_tileCoding.Init(this, codecSettings));
@@ -107,6 +100,10 @@ namespace decode
         m_av1PicParams  = static_cast<CodecAv1PicParams*>(decodeParams->m_picParams);
         DECODE_CHK_NULL(m_av1PicParams);
 
+        if (m_av1PicParams->m_bitDepthIdx == 0) m_av1DepthIndicator = 0;
+        if (m_av1PicParams->m_bitDepthIdx == 1) m_av1DepthIndicator = 1;
+        if (m_av1PicParams->m_bitDepthIdx == 2) m_av1DepthIndicator = 2;
+
         m_pictureCodingType = m_av1PicParams->m_picInfoFlags.m_fields.m_frameType ? P_TYPE : I_TYPE;
 
         // Derive Large Scale Tile output frame width/height
@@ -119,6 +116,12 @@ namespace decode
                                                                 >> (m_av1PicParams->m_seqInfoFlags.m_fields.m_use128x128Superblock ? 7 : 6)) - 1;
             m_av1PicParams->m_outputFrameHeightInTilesMinus1 = (uint16_t)((m_destSurface.dwHeight / (m_av1PicParams->m_heightInSbsMinus1[0] + 1))
                                                                 >> (m_av1PicParams->m_seqInfoFlags.m_fields.m_use128x128Superblock ? 7 : 6)) - 1;
+        }
+
+        if (m_av1PicParams->m_picInfoFlags.m_fields.m_largeScaleTile && m_av1PicParams->m_anchorFrameInsertion)
+        {
+            DECODE_CHK_STATUS(m_refFrames.InsertAnchorFrame(*m_av1PicParams));
+            return MOS_STATUS_SUCCESS;
         }
 
         m_av1TileParams = static_cast<CodecAv1TileParams*>(decodeParams->m_sliceParams);
@@ -149,7 +152,7 @@ namespace decode
     MOS_STATUS Av1BasicFeature::SetPictureStructs(CodechalDecodeParams *decodeParams)
     {
         DECODE_FUNC_CALL();
-
+        m_curRenderPic                  = m_av1PicParams->m_currPic;
         m_width                         = MOS_MAX(m_width, (uint32_t)m_av1PicParams->m_frameWidthMinus1 + 1);
         m_height                        = MOS_MAX(m_height, (uint32_t)m_av1PicParams->m_frameHeightMinus1 + 1);
         m_frameWidthAlignedMinBlk       = MOS_ALIGN_CEIL(m_av1PicParams->m_frameWidthMinus1 + 1, av1MinBlockWidth);

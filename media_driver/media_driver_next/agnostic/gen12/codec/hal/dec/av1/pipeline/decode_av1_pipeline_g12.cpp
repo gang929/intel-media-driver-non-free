@@ -133,13 +133,25 @@ namespace decode
                 m_statusReport->Init(&inputParameters);
             }
         }
-     
+
         return MOS_STATUS_SUCCESS;
     }
 
     MOS_STATUS Av1PipelineG12::Execute()
     {
         DECODE_FUNC_CALL();
+
+        if (m_pipeMode == decodePipeModeBegin)
+        {
+            return MOS_STATUS_SUCCESS;
+        }
+
+        auto basicFeature = dynamic_cast<Av1BasicFeature *>(m_featureManager->GetFeature(FeatureIDs::basicFeature));
+        DECODE_CHK_NULL(basicFeature);
+        if (basicFeature->m_av1PicParams->m_anchorFrameInsertion)
+        {
+            return MOS_STATUS_SUCCESS;
+        }
 
         if (m_pipeMode == decodePipeModeProcess)
         {
@@ -242,8 +254,8 @@ namespace decode
         m_fgGenNoiseSubPipeline = MOS_New(FilmGrainPreSubPipeline, this, m_task, m_numVdbox);
         DECODE_CHK_NULL(m_fgGenNoiseSubPipeline);
         DECODE_CHK_STATUS(m_preSubPipeline->Register(*m_fgGenNoiseSubPipeline));
-        DECODE_CHK_STATUS(m_fgGenNoiseSubPipeline->Init(*codecSettings));  
-        
+        DECODE_CHK_STATUS(m_fgGenNoiseSubPipeline->Init(*codecSettings));
+
         //post subpipeline for apply noise
         m_fgAppNoiseSubPipeline = MOS_New(FilmGrainPostSubPipeline, this, m_task, m_numVdbox);
         DECODE_CHK_NULL(m_fgAppNoiseSubPipeline);

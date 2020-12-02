@@ -276,8 +276,8 @@ MOS_STATUS VpVeboxCmdPacket::SetSfcMmcParams()
 
 VP_SURFACE *VpVeboxCmdPacket::GetSurface(SurfaceType type)
 {
-    auto it = m_surfacesGroup.find(type);
-    VP_SURFACE *surf = (m_surfacesGroup.end() != it) ? it->second : nullptr;
+    auto it = m_surfSetting.surfGroup.find(type);
+    VP_SURFACE *surf = (m_surfSetting.surfGroup.end() != it) ? it->second : nullptr;
     if (SurfaceTypeVeboxCurrentOutput == type && nullptr == surf && !m_IsSfcUsed)
     {
         // Vebox output case.
@@ -1222,6 +1222,8 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
 
     VP_RENDER_CHK_STATUS_RETURN(pPerfProfiler->AddPerfCollectStartCmd((void*)pRenderHal, pOsInterface, pRenderHal->pMhwMiInterface, CmdBuffer));
 
+    VP_RENDER_CHK_STATUS_RETURN(NullHW::StartPredicate(pRenderHal->pMhwMiInterface, CmdBuffer));
+
     bDiVarianceEnable = m_PacketCaps.bDI;
 
     SetupSurfaceStates(
@@ -1318,6 +1320,8 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
                                       CmdBuffer,
                                       &FlushDwParams));
     }
+
+    VP_RENDER_CHK_STATUS_RETURN(NullHW::StopPredicate(pRenderHal->pMhwMiInterface, CmdBuffer));
 
     VP_RENDER_CHK_STATUS_RETURN(pPerfProfiler->AddPerfCollectEndCmd((void*)pRenderHal, pOsInterface, pRenderHal->pMhwMiInterface, CmdBuffer));
 
@@ -1502,7 +1506,7 @@ MOS_STATUS VpVeboxCmdPacket::Init()
     }
 
     MOS_ZeroMemory(&m_veboxPacketSurface, sizeof(VEBOX_PACKET_SURFACE_PARAMS));
-    m_surfacesGroup.clear();
+    m_surfSetting.Clean();
 
     return eStatus;
 }
@@ -1511,7 +1515,7 @@ MOS_STATUS VpVeboxCmdPacket::PacketInit(
     VP_SURFACE                          *inputSurface,
     VP_SURFACE                          *outputSurface,
     VP_SURFACE                          *previousSurface,
-    std::map<SurfaceType, VP_SURFACE*>  &internalSurfaces,
+    VP_SURFACE_SETTING                  &surfSetting,
     VP_EXECUTE_CAPS                     packetCaps)
 {
     VP_FUNC_CALL();
@@ -1543,7 +1547,7 @@ MOS_STATUS VpVeboxCmdPacket::PacketInit(
     VP_PUBLIC_CHK_STATUS_RETURN(m_allocator->CopyVpSurface(*m_renderTarget ,*outputSurface));
 
     // Init packet surface params.
-    m_surfacesGroup = internalSurfaces;
+    m_surfSetting                                   = surfSetting;
     m_veboxPacketSurface.pCurrInput                 = GetSurface(SurfaceTypeVeboxInput);
     m_veboxPacketSurface.pStatisticsOutput          = GetSurface(SurfaceTypeStatistics);
     m_veboxPacketSurface.pCurrOutput                = GetSurface(SurfaceTypeVeboxCurrentOutput);
@@ -1877,7 +1881,8 @@ MOS_STATUS VpVeboxCmdPacket::IsCmdParamsValid(
 
     if (m_PacketCaps.bDN && !m_PacketCaps.bDI && !m_PacketCaps.bQueryVariance && !m_PacketCaps.bIECP)
     {
-        if (VeboxSurfaceStateCmdParams.pSurfInput->osSurface->dwPitch != VeboxSurfaceStateCmdParams.pSurfDNOutput->osSurface->dwPitch)
+        if ((VeboxSurfaceStateCmdParams.pSurfInput->osSurface->TileModeGMM == VeboxSurfaceStateCmdParams.pSurfDNOutput->osSurface->TileModeGMM) &&
+            (VeboxSurfaceStateCmdParams.pSurfInput->osSurface->dwPitch != VeboxSurfaceStateCmdParams.pSurfDNOutput->osSurface->dwPitch))
         {
             return MOS_STATUS_INVALID_PARAMETER;
         }
@@ -2155,6 +2160,12 @@ MOS_STATUS VpVeboxCmdPacket::VeboxSetPerfTagPaFormat()
                         break;
                     case Format_RGB32:
                         *pPerfTag = VPHAL_PA_DN_RGB32CP;
+                        break;
+                    case Format_A8R8G8B8:
+                    case Format_A8B8G8R8:
+                    case Format_R10G10B10A2:
+                    case Format_B10G10R10A2:
+                        *pPerfTag = VPHAL_PA_RGB32CP;
                         break;
                     case Format_P010:
                     case Format_P016:

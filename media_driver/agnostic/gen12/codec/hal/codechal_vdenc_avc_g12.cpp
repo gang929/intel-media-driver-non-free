@@ -451,7 +451,10 @@ struct BrcUpdateDmem
     uint32_t     UPD_LA_TargetSize_U32;     // target frame size in lookahead BRC (if EnableLookAhead == 1) or TCBRC mode. If zero, lookahead BRC or TCBRC is disabled.
     uint32_t     UPD_LA_TargetFulness_U32;  // target VBV buffer fulness in lookahead BRC mode (if EnableLookAhead == 1).
     uint8_t      UPD_Delta_U8;              // delta QP of pyramid
-    uint8_t      RSVD2[15];
+    uint8_t      UPD_ROM_CURRENT_U8;        // ROM average of current frame
+    uint8_t      UPD_ROM_ZERO_U8;           // ROM zero percentage (255 is 100%)
+    uint8_t      UPD_TCBRC_SCENARIO_U8;
+    uint8_t      RSVD2[12];
 };
 using PBrcUpdateDmem = struct BrcUpdateDmem*;
 
@@ -622,6 +625,7 @@ CodechalVdencAvcStateG12::CodechalVdencAvcStateG12(
     m_oneOnOneMapping = true;
 
     m_vdboxOneDefaultUsed = true;
+    m_nonNativeBrcRoiSupported = true;
 
     m_hmeSupported   = true;
     m_16xMeSupported = true;
@@ -1108,6 +1112,8 @@ MOS_STATUS CodechalVdencAvcStateG12::SetDmemHuCBrcUpdate()
         hucVDEncBrcDmem->UPD_Delta_U8 = m_avcPicParam->QpModulationStrength;
     }
 
+    hucVDEncBrcDmem->UPD_TCBRC_SCENARIO_U8 = m_avcSeqParam->bAutoMaxPBFrameSizeForSceneChange;
+
     CODECHAL_DEBUG_TOOL(
         CODECHAL_ENCODE_CHK_STATUS_RETURN(PopulateBrcUpdateParam(
             hucVDEncBrcDmem));
@@ -1488,6 +1494,34 @@ void CodechalVdencAvcStateG12::CopyMBQPDataToStreamIn(CODECHAL_VDENC_STREAMIN_ST
             pData++;
         }
     }
+}
+
+MOS_STATUS CodechalVdencAvcStateG12::PrepareHWMetaData(
+    PMOS_RESOURCE       presMetadataBuffer,
+    PMOS_RESOURCE       presSliceSizeStreamoutBuffer,
+    PMOS_COMMAND_BUFFER cmdBuffer)
+{
+    CODECHAL_ENCODE_FUNCTION_ENTER;
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+    if (!presMetadataBuffer)
+    {
+        return eStatus;
+    }
+
+    MHW_MI_STORE_REGISTER_MEM_PARAMS miStoreRegMemParamsAVC;
+    MOS_ZeroMemory(&miStoreRegMemParamsAVC, sizeof(miStoreRegMemParamsAVC));
+    miStoreRegMemParamsAVC.presStoreBuffer = presSliceSizeStreamoutBuffer;
+    miStoreRegMemParamsAVC.dwOffset        = 0;
+
+    CODECHAL_ENCODE_CHK_COND_RETURN((m_vdboxIndex > m_hwInterface->GetMfxInterface()->GetMaxVdboxIndex()), "ERROR - vdbox index exceed the maximum");
+    MmioRegistersMfx *mmioRegisters   = m_hwInterface->SelectVdboxAndGetMmioRegister(m_vdboxIndex, cmdBuffer);
+    miStoreRegMemParamsAVC.dwRegister = mmioRegisters->mfcBitstreamBytecountFrameRegOffset;
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreRegisterMemCmd(cmdBuffer, &miStoreRegMemParamsAVC));
+
+    eStatus = CodechalVdencAvcState::PrepareHWMetaData(presMetadataBuffer, presSliceSizeStreamoutBuffer, cmdBuffer);
+
+    return eStatus;
 }
 
 #if USE_CODECHAL_DEBUG_TOOL

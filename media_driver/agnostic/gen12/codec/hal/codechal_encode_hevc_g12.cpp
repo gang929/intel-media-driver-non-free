@@ -459,6 +459,9 @@ MOS_STATUS CodechalEncHevcStateG12::AllocateEncResources()
     uint32_t width = 0, height = 0;
     uint32_t size = 0;
 
+    MEDIA_WA_TABLE* waTable = m_osInterface->pfnGetWaTable(m_osInterface);
+    uint32_t memType = (MEDIA_IS_WA(waTable, WaForceAllocateLML4)) ? MOS_MEMPOOL_DEVICEMEMORY : 0;
+
     if (!m_useMdf)
     {
         // Intermediate CU Record surface
@@ -540,7 +543,8 @@ MOS_STATUS CodechalEncHevcStateG12::AllocateEncResources()
                 &m_lcuLevelInputDataSurface[i],
                 width,
                 height,
-                "Lcu Level Data Input surface"));
+                "Lcu Level Data Input surface",
+                MOS_TILE_LINEAR));
         }
     }
 
@@ -563,7 +567,8 @@ MOS_STATUS CodechalEncHevcStateG12::AllocateEncResources()
             &m_currPicWithReconBoundaryPix,
             width,
             aligned_height,
-            "Current Picture Y with Reconstructed Boundary Pixels surface"));
+            "Current Picture Y with Reconstructed Boundary Pixels surface",
+            memType));
     }
 
     // Encoder History Input Surface
@@ -7187,22 +7192,6 @@ MOS_STATUS CodechalEncHevcStateG12::EncodeKernelFunctions()
         }
     }
 
-#if (_DEBUG || _RELEASE_INTERNAL)
-
-    MOS_USER_FEATURE_VALUE_WRITE_DATA userFeatureWriteData;
-    // Weighted prediction for L0 Reporting
-    userFeatureWriteData               = __NULL_USER_FEATURE_VALUE_WRITE_DATA__;
-    userFeatureWriteData.Value.i32Data = m_useWeightedSurfaceForL0;
-    userFeatureWriteData.ValueID       = __MEDIA_USER_FEATURE_VALUE_WEIGHTED_PREDICTION_L0_IN_USE_ID;
-    MOS_UserFeature_WriteValues_ID(NULL, &userFeatureWriteData, 1, m_osInterface->pOsContext);
-    // Weighted prediction for L1 Reporting
-    userFeatureWriteData               = __NULL_USER_FEATURE_VALUE_WRITE_DATA__;
-    userFeatureWriteData.Value.i32Data = m_useWeightedSurfaceForL1;
-    userFeatureWriteData.ValueID       = __MEDIA_USER_FEATURE_VALUE_WEIGHTED_PREDICTION_L1_IN_USE_ID;
-    MOS_UserFeature_WriteValues_ID(NULL, &userFeatureWriteData, 1, m_osInterface->pOsContext);
-
-#endif  // _DEBUG || _RELEASE_INTERNAL
-
     // Reset to use a different performance tag ID
     m_osInterface->pfnResetPerfBufferID(m_osInterface);
 
@@ -8810,6 +8799,9 @@ MOS_STATUS CodechalEncHevcStateG12::SetupSwScoreBoard(CodechalEncodeSwScoreboard
 {
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
+    MEDIA_WA_TABLE* waTable = m_osInterface->pfnGetWaTable(m_osInterface);
+    uint32_t memType = (MEDIA_IS_WA(waTable, WaForceAllocateLML4)) ? MOS_MEMPOOL_DEVICEMEMORY : 0;
+
     if (Mos_ResourceIsNull(&m_swScoreboardState->GetCurSwScoreboardSurface()->OsResource))
     {
         MOS_ZeroMemory(m_swScoreboardState->GetCurSwScoreboardSurface(), sizeof(*m_swScoreboardState->GetCurSwScoreboardSurface()));
@@ -8822,6 +8814,7 @@ MOS_STATUS CodechalEncHevcStateG12::SetupSwScoreBoard(CodechalEncodeSwScoreboard
         allocParamsForBuffer2D.dwWidth  = params->swScoreboardSurfaceWidth;
         allocParamsForBuffer2D.dwHeight = params->swScoreboardSurfaceHeight;
         allocParamsForBuffer2D.pBufName = "SW Scoreboard Init buffer";
+        allocParamsForBuffer2D.dwMemType = memType;
 
         eStatus = (MOS_STATUS)m_osInterface->pfnAllocateResource(
             m_osInterface,

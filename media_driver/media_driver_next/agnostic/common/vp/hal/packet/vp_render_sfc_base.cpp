@@ -82,8 +82,10 @@ MOS_STATUS SfcRenderBase::Init()
     m_bVdboxToSfc = false;
     m_pipeMode = MhwSfcInterface::SFC_PIPE_MODE_VEBOX;
 
-    m_numPipe = 1;
-    m_curPipe = 0;
+    m_scalabilityParams.numPipe = 1;
+    m_scalabilityParams.curPipe = 0;
+
+    MOS_ZeroMemory(&m_histogramSurf, sizeof(m_histogramSurf));
 
     return InitSfcStateParams();
 }
@@ -112,16 +114,17 @@ MOS_STATUS SfcRenderBase::Init(VIDEO_PARAMS &videoParams)
 
     m_videoConfig = videoParams;
 
-    m_videoConfig.numPipe = (0 == m_videoConfig.numPipe ? 1 : m_videoConfig.numPipe);
-    if (m_videoConfig.curPipe >= m_videoConfig.numPipe)
+    m_videoConfig.scalabilityParams.numPipe = (0 == m_videoConfig.scalabilityParams.numPipe ? 1 : m_videoConfig.scalabilityParams.numPipe);
+    if (m_videoConfig.scalabilityParams.curPipe >= m_videoConfig.scalabilityParams.numPipe)
     {
         VP_RENDER_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
     }
 
-    m_numPipe = m_videoConfig.numPipe;
-    m_curPipe = m_videoConfig.curPipe;
+    m_scalabilityParams = m_videoConfig.scalabilityParams;
 
     VP_PUBLIC_CHK_STATUS_RETURN(SetCodecPipeMode(m_videoConfig.codecStandard));
+
+    MOS_ZeroMemory(&m_histogramSurf, sizeof(m_histogramSurf));
 
     return InitSfcStateParams();
 }
@@ -429,8 +432,10 @@ MOS_STATUS SfcRenderBase::SetupSfcState(PVP_SURFACE targetSurface)
 
     m_renderData.sfcStateParams->pOsResOutputSurface = &targetSurface->osSurface->OsResource;
 
-    VP_RENDER_CHK_STATUS_RETURN(SetLineBuffer(m_renderData.sfcStateParams->pOsResAVSLineBuffer, m_AVSLineBufferSurfaceArray[m_curPipe]));
+    VP_RENDER_CHK_STATUS_RETURN(SetLineBuffer(m_renderData.sfcStateParams->pOsResAVSLineBuffer, m_AVSLineBufferSurfaceArray[m_scalabilityParams.curPipe]));
     VP_RENDER_CHK_STATUS_RETURN(SetLineBuffer(m_renderData.sfcStateParams->pOsResIEFLineBuffer, m_IEFLineBufferSurface));
+
+    VP_RENDER_CHK_STATUS_RETURN(SetupScalabilityParams());
 
     return eStatus;
 }
@@ -515,7 +520,8 @@ bool SfcRenderBase::IsVdboxSfcFormatSupported(
     MOS_FORMAT                  inputFormat,
     MOS_FORMAT                  outputFormat)
 {
-    if (CODECHAL_AVC == codecStandard || CODECHAL_HEVC == codecStandard || CODECHAL_VP9 == codecStandard)
+    if (CODECHAL_AVC == codecStandard || CODECHAL_HEVC == codecStandard ||
+        CODECHAL_VP9 == codecStandard || CODECHAL_AV1 == codecStandard)
     {
         if ((inputFormat != Format_NV12) &&
             (inputFormat != Format_400P) &&
@@ -1104,8 +1110,8 @@ MOS_STATUS SfcRenderBase::AllocateLineBufferArray(VP_SURFACE **&lineBufferArray,
 {
     bool allocated = false;
     VP_RENDER_CHK_NULL_RETURN(lineBufferArray);
-    // Use m_numPipe instead of m_lineBufferAllocatedInArray to only allocate surface in use.
-    for (int32_t i = 0; i < m_numPipe; ++i)
+    // Use numPipe instead of m_lineBufferAllocatedInArray to only allocate surface in use.
+    for (int32_t i = 0; i < m_scalabilityParams.numPipe; ++i)
     {
         VP_RENDER_CHK_STATUS_RETURN(AllocateLineBuffer(lineBufferArray[i], size, bufName));
     }
@@ -1122,13 +1128,13 @@ MOS_STATUS SfcRenderBase::AllocateResources()
 
     sfcStateParams = m_renderData.sfcStateParams;
 
-    if (m_numPipe > m_lineBufferAllocatedInArray    ||
+    if (m_scalabilityParams.numPipe > m_lineBufferAllocatedInArray    ||
         nullptr == m_AVSLineBufferSurfaceArray      ||
         nullptr == m_SFDLineBufferSurfaceArray)
     {
         DestroyLineBufferArray(m_AVSLineBufferSurfaceArray);
         DestroyLineBufferArray(m_SFDLineBufferSurfaceArray);
-        m_lineBufferAllocatedInArray = m_numPipe;
+        m_lineBufferAllocatedInArray = m_scalabilityParams.numPipe;
         m_AVSLineBufferSurfaceArray = MOS_NewArray(VP_SURFACE*, m_lineBufferAllocatedInArray);
         VP_RENDER_CHK_NULL_RETURN(m_AVSLineBufferSurfaceArray);
         m_SFDLineBufferSurfaceArray = MOS_NewArray(VP_SURFACE*, m_lineBufferAllocatedInArray);
@@ -1168,7 +1174,7 @@ MOS_STATUS SfcRenderBase::DestroyLineBufferArray(VP_SURFACE **&lineBufferArray)
     {
         return MOS_STATUS_SUCCESS;
     }
-    // Use m_lineBufferAllocatedInArray instead of m_numPipe to destroy all surfaces.
+    // Use m_lineBufferAllocatedInArray instead of numPipe to destroy all surfaces.
     for (int32_t i = 0; i < m_lineBufferAllocatedInArray; ++i)
     {
         if (lineBufferArray[i])
@@ -1200,6 +1206,16 @@ MOS_STATUS SfcRenderBase::FreeResources()
 
     // Free SFD Line Tile Buffer surface for SFC
     m_allocator->DestroyVpSurface(m_SFDLineTileBufferSurface);
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS SfcRenderBase::SetHistogramBuf(PMOS_BUFFER histogramBuf)
+{
+    if (histogramBuf != nullptr)
+    {
+        m_histogramSurf.OsResource = histogramBuf->OsResource;
+    }
 
     return MOS_STATUS_SUCCESS;
 }

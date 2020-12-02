@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018, Intel Corporation
+* Copyright (c) 2018-2020, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -189,10 +189,12 @@ public:
     //!         New size for linear buffer
     //! \param  [in] force
     //!         Flag indicates whether resize buffer by force when size changed
+    //! \param  [in] clearData
+    //!         Flag indicates whether clear cached buffer data when size changed
     //! \return MOS_STATUS
     //!         MOS_STATUS_SUCCESS if success, else fail reason
     //!
-    MOS_STATUS Resize(MOS_BUFFER* &buffer, const uint32_t sizeNew, bool force = false);
+    MOS_STATUS Resize(MOS_BUFFER* &buffer, const uint32_t sizeNew, bool force = false, bool clearData = false);
 
     //!
     //! \brief  Resize surface
@@ -440,6 +442,19 @@ public:
     MOS_STATUS UpdateResoreceUsageType(
         PMOS_RESOURCE osResource,
         ResourceUsage resUsageType);
+
+    //!
+    //! \brief    Registers Resource
+    //! \details  Get the Allocation Index from UMD Context and set into OS
+    //!           resource structure
+    //! \param    PMOS_INTERFACE pOsInterface
+    //!           [in] Pointer to OS Interface
+    //! \param    PMOS_RESOURCE pOsResource
+    //!           [in/out] Pointer to OS Resource
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    MOS_STATUS RegisterResource(PMOS_RESOURCE osResource);
 
     //!
     //! \brief    Convert from GMM usage type of resource to MOS_HW_RESOURCE_DEF

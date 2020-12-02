@@ -759,6 +759,48 @@ public:
         MOS_HW_RESOURCE_DEF mosUsage);
 
     //!
+    //! \brief    Get Reserved info from resource
+    //! \details
+    //!
+    //! \param    [in] resource
+    //!           Handle of resource
+    //! \param    [out] val
+    //!           result of info.
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS GetReservedFromResouce(MOS_RESOURCE_HANDLE resource, uint32_t &val);
+
+    //!
+    //! \brief    Get Reserved info from Stream
+    //! \details
+    //!
+    //! \param    [in] stream
+    //!           Handle of stream
+    //! \param    [out] val
+    //!           result of info.
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS GetReservedFromStream(MOS_STREAM_HANDLE stream, uint32_t &val);
+
+    //!
+    //! \brief    Get Reserved info from Device
+    //! \details
+    //!
+    //! \param    [in] osDeivceContext
+    //!           Handle of device
+    //! \param    [out] val
+    //!           result of info.
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS GetReservedFromDevice(MOS_DEVICE_HANDLE device, uint32_t &val);
+
+    //!
     //! \brief    Convert Resource From Ddi
     //! \details  [Resource Interface] Convert Resource structure From OS/API specific to MOS reource.
     //! \details  Caller: DDI only
@@ -1347,29 +1389,10 @@ public:
         uint32_t            copyHeight,
         uint32_t            copyInputOffset,
         uint32_t            copyOutputOffset,
+        uint32_t            bpp,
         bool                outputCompressed);
 
-    //!
-    //! \brief    copy resource
-    //!
-    //! \param    [in] streamState
-    //!           Handle of Os Stream State
-    //! \param    [in] inputResource
-    //!           Input resource to copy.
-    //! \param    [out] outputResource
-    //!           Output resource.
-    //! \param    [in] preferMethod
-    //!           Insdicate which copy mode is perfered.
-    //! \return   MOS_STATUS
-    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
-    //!
-    static MOS_STATUS MediaCopy(
-        MOS_STREAM_HANDLE   streamState,
-        MOS_RESOURCE_HANDLE inputResource,
-        MOS_RESOURCE_HANDLE outputResource,
-        uint32_t            preferMethod);
     // GPU Status interfaces
-
     //!
     //! \brief   Get Gpu Status Tag
     //!

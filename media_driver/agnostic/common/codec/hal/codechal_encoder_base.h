@@ -144,6 +144,7 @@
 #define CODECHAL_ENCODE_ME_DATA_SIZE_MULTIPLIER         (CODECHAL_ENCODE_NUM_MAX_VME_L0_REF + CODECHAL_ENCODE_NUM_MAX_VME_L1_REF)
 #define CODECHAL_ENCODE_FIELD_NUM_MAX_VME_L0_REF        4 // multiref - G7.5+
 #define CODECHAL_ENCODE_FIELD_NUM_MAX_VME_L1_REF        1 // multiref - G7.5+
+#define CODECHAL_LPLA_NUM_OF_PASSES                     2
 
 // BRC
 #define CODECHAL_ENCODE_BRC_KBPS                        1000     // 1000bps for disk storage, aligned with industry usage
@@ -1410,6 +1411,8 @@ public:
     MOS_SURFACE                     m_rawSurface = {};            //!< Pointer to MOS_SURFACE of raw surface
     MOS_SURFACE                     m_reconSurface = {};          //!< Pointer to MOS_SURFACE of reconstructed surface
     MOS_RESOURCE                    m_resBitstreamBuffer = {};         //!< Pointer to MOS_SURFACE of bitstream surface
+    PMOS_RESOURCE                   m_presMetadataBuffer = {};         //!< Pointer to metadata buffer
+    MetaDataOffset                  m_metaDataOffset = {};             //!< meta data offset
     MOS_RESOURCE                    m_resMbCodeSurface = {};           //!< Pointer to MOS_SURFACE of MbCode surface
     MOS_RESOURCE                    m_resMvDataSurface = {};           //!< Pointer to MOS_SURFACE of MvData surface
     uint32_t                        m_mbDataBufferSize = 0;
@@ -2423,6 +2426,18 @@ public:
     virtual MOS_STATUS SetupWalkerContext(
         MOS_COMMAND_BUFFER* cmdBuffer,
         SendKernelCmdsParams* params);
+
+    MOS_STATUS ResolveMetaData(
+        PMOS_RESOURCE pHwLayoutMetaData,
+        PMOS_RESOURCE pResolvedLayoutMetadata) override;
+
+    virtual MOS_STATUS PrepareHWMetaData(
+        PMOS_RESOURCE           presMetadataBuffer,
+        PMOS_RESOURCE           presLcuBaseAddressBuffer,
+        PMOS_COMMAND_BUFFER     cmdBuffer)
+    {
+        return MOS_STATUS_SUCCESS;
+    }
 
 #if USE_CODECHAL_DEBUG_TOOL
     virtual MOS_STATUS DumpMbEncPakOutput(PCODEC_REF_LIST currRefList, CodechalDebugInterface* debugInterface);
