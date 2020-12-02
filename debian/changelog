@@ -1,3 +1,9 @@
+intel-media-driver-non-free (20.4.2+ds1-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Wed, 02 Dec 2020 20:46:36 +0100
+
 intel-media-driver-non-free (20.4.1+ds1-1) unstable; urgency=medium
 
   * New upstream release
