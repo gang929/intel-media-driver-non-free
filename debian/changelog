@@ -1,3 +1,11 @@
+intel-media-driver-non-free (20.4.3+ds1-1) unstable; urgency=medium
+
+  * New upstream version 20.4.3+ds1
+    - Fix crash on H.264 encoding (Closes: #977286)
+  * debian/control: Bump libigdgmm-dev BD
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Sun, 13 Dec 2020 18:07:37 +0100
+
 intel-media-driver-non-free (20.4.2+ds1-1) unstable; urgency=medium
 
   * New upstream release
