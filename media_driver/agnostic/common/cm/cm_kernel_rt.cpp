@@ -811,6 +811,10 @@ int32_t CmKernelRT::Initialize( const char* kernelName, const char* options )
                 }
             }
         }
+        if (m_kernelInfo->blNoBarrier && m_options && strstr(m_options, "-hasBarrier"))
+        {
+            m_kernelInfo->blNoBarrier = false;
+        }
     }
 
     if(argSize > m_halMaxValues->maxArgByteSizePerKernel)
@@ -5240,8 +5244,9 @@ CM_RT_API int32_t CmKernelRT::DeAssociateThreadSpace(CmThreadSpace * &threadSpac
 CM_RT_API int32_t CmKernelRT::QuerySpillSize(uint32_t &spillMemorySize)
 {
     CM_KERNEL_INFO  *kernelInfo = nullptr;
+    int32_t kernelStartIndex = m_program->GetKernelStartIndex();
 
-    int32_t hr = m_program->GetKernelInfo(m_kernelIndex, kernelInfo);
+    int32_t hr = m_program->GetKernelInfo(m_kernelIndexInProgram, kernelInfo);
     if (hr != CM_SUCCESS || kernelInfo == nullptr)
         return hr;
 

@@ -40,7 +40,7 @@ static struct LinuxCodecInfo tglCodecInfo =
 {
     .avcDecoding    = 1,
     .mpeg2Decoding  = 1,
-    .vp8Decoding    = 0,
+    .vp8Decoding    = 1,
     .vc1Decoding    = SET_STATUS_BY_FULL_OPEN_SOURCE(1, 0),
     .jpegDecoding   = 1,
     .avcEncoding    = SET_STATUS_BY_FULL_OPEN_SOURCE(1, 0),
@@ -212,7 +212,6 @@ static bool InitTglMediaSku(struct GfxDeviceInfo *devInfo,
     MEDIA_WR_SKU(skuTable, FtrHcpDecMemoryCompression, 0);
     MEDIA_WR_SKU(skuTable, Ftr10bitDecMemoryCompression, 0);
 
-    MEDIA_WR_SKU(skuTable, FtrCCSNode, 1);
     MEDIA_WR_SKU(skuTable, FtrRAMode, 1);
     MEDIA_WR_SKU(skuTable, FtrVpP010Output, 1);
     MEDIA_WR_SKU(skuTable, FtrVp10BitSupport, 1);

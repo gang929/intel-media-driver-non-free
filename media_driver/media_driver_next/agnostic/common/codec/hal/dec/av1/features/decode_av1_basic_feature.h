@@ -140,12 +140,15 @@ namespace decode
         bool                            m_usingDummyWl              = false;       //!< Indicate using dummy workload flag
         PMOS_SURFACE                    m_destSurfaceForDummyWL     = nullptr;     //!< Internal Dummy dest surface
         bool                            m_singleKernelPerfFlag      = true;        //!< Defaut to capture whole kernel execution timing for perf
+        PMOS_SURFACE                    m_fgInternalSurf            = nullptr;     //!< Internal film grain surface for AVP+FilmGrain+SFC case
+        MOS_SURFACE                     m_fgOutputSurf              = {};          //!< Film Grain output surface from App
 
     protected:
         virtual MOS_STATUS SetRequiredBitstreamSize(uint32_t requiredSize) override;
         MOS_STATUS SetPictureStructs(CodechalDecodeParams *decodeParams);
         MOS_STATUS SetTileStructs();
         MOS_STATUS SetSegmentData(CodecAv1PicParams &picParams);
+        MOS_STATUS GetDecodeTargetFormat(MOS_FORMAT &format);
 
         //!
         //! \brief    Calculate global motion params

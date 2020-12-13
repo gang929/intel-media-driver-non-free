@@ -27,6 +27,7 @@
 #include "codechal_encode_hevc_base.h"
 #include "codechal_vdenc_hevc.h"
 #include "codechal_encode_hevc.h"
+#include "encode_hevc_header_packer.h"
 #if USE_CODECHAL_DEBUG_TOOL
 #include "codechal_debug.h"
 #endif
@@ -896,7 +897,7 @@ MOS_STATUS CodechalEncodeHevcBase::SetSequenceStructs()
         m_lcuBrcEnabled = false;  // when VCM is enabled, only frame-based BRC
     }
 
-    if (m_hevcSeqParams->RateControlMethod == RATECONTROL_ICQ || m_hevcSeqParams->RateControlMethod == RATECONTROL_QVBR)
+    if ((!m_vdencEnabled && m_hevcSeqParams->RateControlMethod == RATECONTROL_ICQ) || m_hevcSeqParams->RateControlMethod == RATECONTROL_QVBR)
     {
         if (m_hevcSeqParams->ICQQualityFactor < CODECHAL_ENCODE_HEVC_MIN_ICQ_QUALITYFACTOR ||
             m_hevcSeqParams->ICQQualityFactor > CODECHAL_ENCODE_HEVC_MAX_ICQ_QUALITYFACTOR)
@@ -2265,6 +2266,12 @@ MOS_STATUS CodechalEncodeHevcBase::InitializePicture(const EncoderParams& params
         {
             m_cscDsState->SetHcpReconAlignment(1 << (m_hevcSeqParams->log2_min_coding_block_size_minus3 + 3));
         }
+    }
+
+    if (const_cast<EncoderParams *>(&params)->bAcceleratorHeaderPackingCaps)
+    {
+        HevcHeaderPacker Packer;
+        Packer.SliceHeaderPacker(const_cast<EncoderParams *>(&params));
     }
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(SetPictureStructs());
