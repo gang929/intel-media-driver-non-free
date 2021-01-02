@@ -220,6 +220,8 @@ VAStatus DdiMediaUtil_AllocateSurface(
                 !(mediaSurface->surfaceUsageHint & VA_SURFACE_ATTRIB_USAGE_HINT_VPP_WRITE))
             {
                 tileformat = I915_TILING_NONE;
+                alignedWidth = MOS_ALIGN_CEIL(width, 2);
+                alignedHeight = MOS_ALIGN_CEIL(height, 2);
                 break;
             }
         case Media_Format_RGBP:
@@ -311,13 +313,8 @@ VAStatus DdiMediaUtil_AllocateSurface(
         // Default set as compression not supported, surface compression import only support from Memory Type VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2
         bMemCompEnable   = false;
         bMemCompRC       = false;
-        pitch = mediaSurface->pSurfDesc->uiPitches[0];
-        if (pitch == 0)
-        {
-            DDI_ASSERTMESSAGE("Invalid pitch value.");
-            hRes = VA_STATUS_ERROR_INVALID_PARAMETER;
-            goto finish;
-        }
+        pitch            = mediaSurface->pSurfDesc->uiPitches[0];
+        DDI_CHK_CONDITION(pitch == 0, "Invalid pich.", VA_STATUS_ERROR_INVALID_PARAMETER);
         // DRM buffer allocated by Application, No need to re-allocate new DRM buffer
         if ((mediaSurface->pSurfDesc->uiVaMemType == VA_SURFACE_ATTRIB_MEM_TYPE_KERNEL_DRM) ||
             (mediaSurface->pSurfDesc->uiVaMemType == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME))
@@ -419,6 +416,11 @@ VAStatus DdiMediaUtil_AllocateSurface(
                 return VA_STATUS_ERROR_ALLOCATION_FAILED;
             }
         }
+        else
+        {
+            DDI_ASSERTMESSAGE("Unsupported external surface memory type.");
+            return VA_STATUS_ERROR_ALLOCATION_FAILED;
+        }
 
         // Set cp flag to indicate the secure surface
         if (mediaSurface->pSurfDesc->uiFlags & VA_SURFACE_EXTBUF_DESC_PROTECTED)
@@ -478,16 +480,48 @@ VAStatus DdiMediaUtil_AllocateSurface(
         }
         else
         {
+            int32_t baseHeight = 0;
+            DDI_CHK_CONDITION(mediaSurface->pSurfDesc->uiPlanes == 0,
+                "Invalid plane number.",
+                VA_STATUS_ERROR_INVALID_PARAMETER);
+
+            if (mediaSurface->pSurfDesc->uiPlanes == 1)
+            {
+                DDI_CHK_CONDITION(mediaSurface->pSurfDesc->uiSize == 0,
+                    "Invalid Size.",
+                    VA_STATUS_ERROR_INVALID_PARAMETER);
+                baseHeight = mediaSurface->pSurfDesc->uiSize / pitch;
+            }
+            else
+            {
+                DDI_CHK_CONDITION(mediaSurface->pSurfDesc->uiOffsets[1] == 0,
+                    "Invalid offset.",
+                    VA_STATUS_ERROR_INVALID_PARAMETER);
+                baseHeight = mediaSurface->pSurfDesc->uiOffsets[1] / pitch;
+            }
             // Create GmmResourceInfo
             MOS_ZeroMemory(&gmmCustomParams, sizeof(gmmCustomParams));
             gmmCustomParams.Type          = RESOURCE_2D;
             gmmCustomParams.Format        = mediaDrvCtx->m_caps->ConvertMediaFmtToGmmFmt(format);
             gmmCustomParams.BaseWidth64   = width;
-            gmmCustomParams.BaseHeight    = height;
+            gmmCustomParams.BaseHeight    = baseHeight;
             gmmCustomParams.Pitch         = pitch;
             gmmCustomParams.Size          = mediaSurface->pSurfDesc->uiSize;
             gmmCustomParams.BaseAlignment = 4096;
             gmmCustomParams.NoOfPlanes    = mediaSurface->pSurfDesc->uiPlanes;
+            switch (tileformat)
+            {
+                case I915_TILING_Y:
+                    gmmCustomParams.Flags.Info.TiledY = true;
+                    break;
+                case I915_TILING_X:
+                    gmmCustomParams.Flags.Info.TiledX = true;
+                    break;
+                case I915_TILING_NONE:
+                default:
+                    gmmCustomParams.Flags.Info.Linear = true;
+            }
+
             switch(mediaSurface->pSurfDesc->uiPlanes)
             {
                 case 1:
@@ -499,6 +533,8 @@ VAStatus DdiMediaUtil_AllocateSurface(
                     gmmCustomParams.PlaneOffset.Y[GMM_PLANE_Y] = mediaSurface->pSurfDesc->uiOffsets[0] / pitch;
                     gmmCustomParams.PlaneOffset.X[GMM_PLANE_U] = 0;
                     gmmCustomParams.PlaneOffset.Y[GMM_PLANE_U] = mediaSurface->pSurfDesc->uiOffsets[1] / pitch;
+                    gmmCustomParams.PlaneOffset.X[GMM_PLANE_V] = 0;
+                    gmmCustomParams.PlaneOffset.Y[GMM_PLANE_V] = mediaSurface->pSurfDesc->uiOffsets[1] / pitch;
                     break;
                 case 3:
                     if (mediaSurface->format == Media_Format_YV12)
@@ -535,19 +571,27 @@ VAStatus DdiMediaUtil_AllocateSurface(
             goto finish;
         }
 
-        mediaSurface->pGmmResourceInfo = gmmResourceInfo;
-        mediaSurface->bMapped          = false;
-        mediaSurface->format           = format;
-        mediaSurface->iWidth           = width;
-        mediaSurface->iHeight          = mediaSurface->pSurfDesc->uiOffsets[1] / pitch;
-        mediaSurface->iRealHeight      = height;
-        mediaSurface->iPitch           = pitch;
-        mediaSurface->iRefCount        = 0;
-        mediaSurface->bo               = bo;
-        mediaSurface->TileType         = tileformat;
-        mediaSurface->isTiled          = (tileformat != I915_TILING_NONE) ? 1 : 0;
-        mediaSurface->pData            = (uint8_t*) bo->virt;
-        DDI_VERBOSEMESSAGE("Allocate external surface %7d bytes (%d x %d resource).", mediaSurface->pSurfDesc->uiSize, width, height);
+        if (bo)
+        {
+            mediaSurface->pGmmResourceInfo = gmmResourceInfo;
+            mediaSurface->bMapped          = false;
+            mediaSurface->format           = format;
+            mediaSurface->iWidth           = width;
+            mediaSurface->iHeight          = gmmResourceInfo->GetBaseHeight();
+            mediaSurface->iRealHeight      = height;
+            mediaSurface->iPitch           = pitch;
+            mediaSurface->iRefCount        = 0;
+            mediaSurface->bo               = bo;
+            mediaSurface->TileType         = tileformat;
+            mediaSurface->isTiled          = (tileformat != I915_TILING_NONE) ? 1 : 0;
+            mediaSurface->pData            = (uint8_t*) bo->virt;
+            DDI_VERBOSEMESSAGE("Allocate external surface %7d bytes (%d x %d resource).", mediaSurface->pSurfDesc->uiSize, width, height);
+        }
+        else
+        {
+            DDI_ASSERTMESSAGE("Fail to allocate external surface");
+            return VA_STATUS_ERROR_ALLOCATION_FAILED;
+        }
     }
     else
     {
@@ -561,6 +605,11 @@ VAStatus DdiMediaUtil_AllocateSurface(
             {
                 tileformat = I915_TILING_NONE;
                 alignedHeight = height;
+                if (format == Media_Format_YV12 ||
+                    format == Media_Format_I420)
+                {
+                    alignedHeight = MOS_ALIGN_CEIL(height, 2);
+                }
             }
         }
 
