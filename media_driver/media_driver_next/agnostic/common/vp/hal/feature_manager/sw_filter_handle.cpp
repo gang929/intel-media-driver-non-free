@@ -82,7 +82,7 @@ MOS_STATUS SwFilterFeatureHandler::CreateSwFilter(SwFilter*& swFilter, VEBOX_SFC
         // nullptr == swFilter means no such feature in params, which is also the valid case.
         return MOS_STATUS_SUCCESS;
     }
-    swFilter = CreateSwFilter();;
+    swFilter = CreateSwFilter();
     VP_PUBLIC_CHK_NULL_RETURN(swFilter);
     MOS_STATUS status = swFilter->Configure(params);
     if (MOS_FAILED(status))
@@ -246,6 +246,39 @@ SwFilter* SwFilterScalingHandler::CreateSwFilter()
 bool SwFilterScalingHandler::IsFeatureEnabled(VEBOX_SFC_PARAMS& params)
 {
     return true;
+}
+
+int SwFilterScalingHandler::GetPipeCountForProcessing(VP_PIPELINE_PARAMS& params)
+{
+    // For interlaced scaling field-to-interleave mode, need two submission for top field and bottom field,
+    // thus we need 2 pipe to handle it.
+    if (params.pSrc[0]->InterlacedScalingType == ISCALING_FIELD_TO_INTERLEAVED &&
+        params.pSrc[0]->pBwdRef != nullptr)
+    {
+        return 2;
+    }
+    return 1;
+}
+
+MOS_STATUS SwFilterScalingHandler::UpdateParamsForProcessing(VP_PIPELINE_PARAMS& params, int index)
+{
+    if (index >= GetPipeCountForProcessing(params))
+    {
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
+
+    // For second submission of field-to-interleaved mode, we will take second field as input surface,
+    // second field is stored in pBwdRef.
+    if (params.pSrc[0]->InterlacedScalingType == ISCALING_FIELD_TO_INTERLEAVED && index == 1)
+    {
+        if (params.pSrc[0] && params.pSrc[0]->pBwdRef)
+        {
+            params.pSrc[0]->pBwdRef->ScalingMode = params.pSrc[0]->ScalingMode;
+            params.pSrc[0] = params.pSrc[0]->pBwdRef;
+        }
+    }
+
+    return MOS_STATUS_SUCCESS;
 }
 
 void SwFilterScalingHandler::Destory(SwFilter*& swFilter)
