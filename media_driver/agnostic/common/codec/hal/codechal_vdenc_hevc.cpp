@@ -2656,6 +2656,15 @@ MOS_STATUS CodechalVdencHevcState::SetSequenceStructs()
         m_hwInterface->SetRowstoreCachingOffsets(&rowStoreParams);
     }
 
+
+    if (m_hevcSeqParams->VBVBufferSizeInBit < m_hevcSeqParams->InitVBVBufferFullnessInBit)
+    {
+        CODECHAL_ENCODE_NORMALMESSAGE(
+            "VBVBufferSizeInBit is less than InitVBVBufferFullnessInBit, \
+            min(VBVBufferSizeInBit, InitVBVBufferFullnessInBit) will set to \
+            hucVdencBrcInitDmem->InitBufFull_U32 and hucVdencBrcUpdateDmem->TARGETSIZE_U32(except Low Delay BRC).\n");
+    }
+
     m_lookaheadDepth = m_hevcSeqParams->LookaheadDepth;
     m_lookaheadPass  = (m_lookaheadDepth > 0) && (m_hevcSeqParams->RateControlMethod == RATECONTROL_CQP);
 
@@ -3810,14 +3819,6 @@ MOS_STATUS CodechalVdencHevcState::PrepareHWMetaData(
     MOS_ZeroMemory(&storeDataParams, sizeof(storeDataParams));
     storeDataParams.pOsResource         = presMetadataBuffer;
     storeDataParams.dwResourceOffset    = m_metaDataOffset.dwEncodeErrorFlags;
-    storeDataParams.dwValue             = 0;
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(cmdBuffer, &storeDataParams));
-
-    storeDataParams.dwResourceOffset    = m_metaDataOffset.dwReferencePicturesMotionResultsBitMask;
-    storeDataParams.dwValue             = 0;
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(cmdBuffer, &storeDataParams));
-
-    storeDataParams.dwResourceOffset    = m_metaDataOffset.dwReconstructedPictureWrittenBytesCount;
     storeDataParams.dwValue             = 0;
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(cmdBuffer, &storeDataParams));
 

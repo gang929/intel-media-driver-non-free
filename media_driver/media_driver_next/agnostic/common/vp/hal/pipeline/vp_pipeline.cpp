@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2020, Intel Corporation
+* Copyright (c) 2018-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -61,18 +61,13 @@ VpPipeline::~VpPipeline()
     MOS_Delete(m_statusReport);
     MOS_Delete(m_packetSharedContext);
     MOS_Delete(m_reporting);
+    VP_DEBUG_INTERFACE_DESTROY(m_debugInterface);
 
     if (m_mediaContext)
     {
         MOS_Delete(m_mediaContext);
         m_mediaContext = nullptr;
     }
-
-    // Destroy surface dumper
-    VPHAL_SURF_DUMP_DESTORY(m_surfaceDumper);
-
-    // Destroy vphal parameter dump
-    VPHAL_PARAMETERS_DUMPPER_DESTORY(m_parameterDumper);
 }
 
 MOS_STATUS VpPipeline::GetStatusReport(void *status, uint16_t numStatus)
@@ -172,15 +167,7 @@ MOS_STATUS VpPipeline::Init(void *mhwInterface)
     VP_PUBLIC_CHK_NULL_RETURN(m_featureManager);
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-
-    // Initialize Surface Dumper
-    VPHAL_SURF_DUMP_CREATE()
-    VP_PUBLIC_CHK_NULL_RETURN(m_surfaceDumper);
-
-    // Initialize Parameter Dumper
-    VPHAL_PARAMETERS_DUMPPER_CREATE()
-    VP_PUBLIC_CHK_NULL_RETURN(m_parameterDumper);
-
+    VP_DEBUG_INTERFACE_CREATE(m_debugInterface)
 #endif
 
     m_pPacketFactory = MOS_New(PacketFactory, m_vpMhwInterface.m_vpPlatformInterface);
@@ -231,11 +218,13 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
         // Set Pipeline status Table
         m_statusReport->SetPipeStatusReportParams(params, m_vpMhwInterface.m_statusTable);
 
-        VPHAL_PARAMETERS_DUMPPER_DUMP_XML(params);
+        VP_PARAMETERS_DUMPPER_DUMP_XML(m_debugInterface,
+            params,
+            m_frameCounter);
 
         for (uint32_t uiLayer = 0; uiLayer < params->uSrcCount && uiLayer < VPHAL_MAX_SOURCES; uiLayer++)
         {
-            VPHAL_SURFACE_DUMP(m_surfaceDumper,
+            VP_SURFACE_DUMP(m_debugInterface,
                 params->pSrc[uiLayer],
                 m_frameCounter,
                 uiLayer,
@@ -247,7 +236,8 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
     }
 
     VP_PUBLIC_CHK_STATUS_RETURN(CreateSwFilterPipe(m_pvpParams, swFilterPipes));
-    VP_PUBLIC_CHK_STATUS_RETURN(m_resourceManager->StartProcessNewFrame(*swFilterPipes[0]));
+    // Notify resourceManager for start of new frame processing.
+    VP_PUBLIC_CHK_STATUS_RETURN(m_resourceManager->OnNewFrameProcessStart(*swFilterPipes[0]));
 
     for (auto &pipe : swFilterPipes)
     {
@@ -267,16 +257,9 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
 
         m_pPacketPipeFactory->ReturnPacketPipe(pPacketPipe);
 
-        if (PIPELINE_PARAM_TYPE_LEGACY == m_pvpParams.type)
+        if (eStatus)
         {
-            PVP_PIPELINE_PARAMS params = m_pvpParams.renderParams;
-            VP_PUBLIC_CHK_NULL(params);
-            VPHAL_SURFACE_PTRS_DUMP(m_surfaceDumper,
-                                params->pTarget,
-                                VPHAL_MAX_TARGETS,
-                                params->uDstCount,
-                                m_frameCounter,
-                                VPHAL_DUMP_TYPE_POST_ALL);
+            VP_PUBLIC_CHK_STATUS(UpdateExecuteStatus());
         }
     }
 
@@ -287,7 +270,56 @@ finish:
         m_vpInterface->GetSwFilterPipeFactory().Destory(pipe);
     }
     m_statusReport->UpdateStatusTableAfterSubmit(eStatus);
+    // Notify resourceManager for end of new frame processing.
+    m_resourceManager->OnNewFrameProcessEnd();
     m_frameCounter++;
+    return eStatus;
+}
+
+MOS_STATUS VpPipeline::UpdateExecuteStatus()
+{
+    MOS_STATUS                 eStatus = MOS_STATUS_SUCCESS;
+
+    if (PIPELINE_PARAM_TYPE_LEGACY == m_pvpParams.type)
+    {
+        PVP_PIPELINE_PARAMS params = m_pvpParams.renderParams;
+        VP_PUBLIC_CHK_NULL(params);
+        VP_SURFACE_PTRS_DUMP(m_debugInterface,
+            params->pTarget,
+            VPHAL_MAX_TARGETS,
+            params->uDstCount,
+            m_frameCounter,
+            VPHAL_DUMP_TYPE_POST_ALL);
+
+#if ((_DEBUG || _RELEASE_INTERNAL) && !EMUL)
+        // Decompre output surface for debug
+        MOS_USER_FEATURE_VALUE_DATA userFeatureData;
+        bool uiForceDecompressedOutput = false;
+        MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+
+        eStatus = MOS_UserFeature_ReadValue_ID(
+            nullptr,
+            __VPHAL_RNDR_FORCE_VP_DECOMPRESSED_OUTPUT_ID,
+            &userFeatureData,
+            m_osInterface->pOsContext);
+
+        if (eStatus == MOS_STATUS_SUCCESS)
+        {
+            uiForceDecompressedOutput = userFeatureData.u32Data;
+        }
+        else
+        {
+            uiForceDecompressedOutput = false;
+        }
+
+        if (uiForceDecompressedOutput)
+        {
+            VP_PUBLIC_NORMALMESSAGE("uiForceDecompressedOutput: %d", uiForceDecompressedOutput);
+            m_mmc->DecompressVPResource(params->pTarget[0]);
+        }
+#endif
+    }
+finish:
     return eStatus;
 }
 
@@ -328,10 +360,10 @@ MOS_STATUS VpPipeline::GetSystemVeboxNumber()
         &userFeatureData,
         m_osInterface->pOsContext);
 
-    bool disableScalability = false;
+    bool disableScalability = true;
     if (statusKey == MOS_STATUS_SUCCESS)
     {
-        disableScalability = userFeatureData.i32Data ? true : false;
+        disableScalability = userFeatureData.i32Data ? false : true;
     }
 
     if (disableScalability)
@@ -347,7 +379,7 @@ MOS_STATUS VpPipeline::GetSystemVeboxNumber()
     {
         // Both VE mode and media solo mode should be able to get the VDBOX number via the same interface
         m_numVebox = (uint8_t)(mediaSysInfo.VEBoxInfo.NumberOfVEBoxEnabled);
-        if (m_numVebox == 0)
+        if (m_numVebox == 0 && !IsGtEnv())
         {
             VP_PUBLIC_ASSERTMESSAGE("Fail to get the m_numVebox with value 0");
             VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);

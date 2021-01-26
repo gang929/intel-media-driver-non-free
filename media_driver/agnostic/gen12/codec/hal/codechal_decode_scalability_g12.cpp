@@ -965,7 +965,7 @@ MOS_STATUS CodecHalDecodeScalability_InitializeState_G12(
     MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
     MOS_UserFeature_ReadValue_ID(
         nullptr,
-        __MEDIA_USER_FEATURE_VALUE_DISABLE_HEVC_REALTILE_DECODE_ID_G12,
+        __MEDIA_USER_FEATURE_VALUE_DISABLE_HEVC_REALTILE_DECODE_ID,
         &UserFeatureData,
         osInterface->pOsContext);
     pScalabilityState->bDisableRtMode = (UserFeatureData.u32Data != 0);
@@ -974,7 +974,7 @@ MOS_STATUS CodecHalDecodeScalability_InitializeState_G12(
     MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
     MOS_UserFeature_ReadValue_ID(
         nullptr,
-        __MEDIA_USER_FEATURE_VALUE_ENABLE_HEVC_REALTILE_MULTI_PHASE_DECODE_ID_G12,
+        __MEDIA_USER_FEATURE_VALUE_ENABLE_HEVC_REALTILE_MULTI_PHASE_DECODE_ID,
         &UserFeatureData,
         osInterface->pOsContext);
     pScalabilityState->bEnableRtMultiPhase = (UserFeatureData.u32Data != 0);
@@ -990,7 +990,7 @@ MOS_STATUS CodecHalDecodeScalability_InitializeState_G12(
     MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
     MOS_UserFeature_ReadValue_ID(
         nullptr,
-        __MEDIA_USER_FEATURE_VALUE_HCP_DECODE_USER_PIPE_NUM_ID_G12,
+        __MEDIA_USER_FEATURE_VALUE_HCP_DECODE_USER_PIPE_NUM_ID,
         &UserFeatureData,
         osInterface->pOsContext);
     pScalabilityState->dbgOverUserPipeNum = (uint8_t)UserFeatureData.u32Data;
@@ -1581,7 +1581,8 @@ MOS_STATUS CodecHalDecodeScalability_DecidePipeNum_G12(
     uint8_t                                      u8MaxTileColumn      = HEVC_NUM_MAX_TILE_COLUMN;
     bool                                         bCanEnableRealTile   = true;
     bool                                         bCanEnableScalability = !pScalState->pHwInterface->IsDisableScalability();
-    PMOS_INTERFACE                               pOsInterface          = pScalState->pHwInterface->GetOsInterface();
+    PMOS_INTERFACE pOsInterface                                        = pScalState->pHwInterface->GetOsInterface();
+
 #if (_DEBUG || _RELEASE_INTERNAL)
     bCanEnableRealTile = !(static_cast<PCODECHAL_DECODE_SCALABILITY_STATE_G12>(pScalState))->bDisableRtMode;
     if (!pScalStateG12->bEnableRtMultiPhase)
@@ -1636,11 +1637,11 @@ MOS_STATUS CodecHalDecodeScalability_DecidePipeNum_G12(
                         pScalState->ucScalablePipeNum = CODECHAL_DECODE_HCP_SCALABLE_PIPE_NUM_2;
                     }
                 }
-                else if ((!CodechalDecodeNonRextFormat(pInitParams->format)
+                else if ((!pInitParams->usingHistogram) && ((!CodechalDecodeNonRextFormat(pInitParams->format)
                                     && CodechalDecodeResolutionEqualLargerThan4k(pInitParams->u32PicWidthInPixel, pInitParams->u32PicHeightInPixel))
                                 || (CodechalDecodeNonRextFormat(pInitParams->format)
                                     && CodechalDecodeResolutionEqualLargerThan5k(pInitParams->u32PicWidthInPixel, pInitParams->u32PicHeightInPixel))
-                                || (bCanEnableRealTile && (!pInitParams->usingSecureDecode || pOsInterface->bCanEnableSecureRt)))
+                                || (bCanEnableRealTile && (!pOsInterface->osCpInterface->IsCpEnabled() || pOsInterface->bCanEnableSecureRt))))
                 {
                     pScalState->ucScalablePipeNum = CODECHAL_DECODE_HCP_SCALABLE_PIPE_NUM_2;
                 }

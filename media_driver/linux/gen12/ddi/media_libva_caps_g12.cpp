@@ -1599,7 +1599,7 @@ VAStatus MediaLibvaCapsG12::CreateEncAttributes(
 
     attrib.type = VAConfigAttribMaxPictureHeight;
     GetPlatformSpecificAttrib(profile, entrypoint,
-        VAConfigAttribMaxPictureWidth, &attrib.value);
+        VAConfigAttribMaxPictureHeight, &attrib.value);
     (*attribList)[attrib.type] = attrib.value;
 
     attrib.type = VAConfigAttribEncJPEG;
@@ -2220,6 +2220,7 @@ VAStatus MediaLibvaCapsG12::CreateDecAttributes(
                 encryptTypes, DDI_CP_ENCRYPT_TYPES_NUM);
         if (numTypes > 0)
         {
+            attrib.value = 0;
             for (int32_t j = 0; j < numTypes; j++)
             {
                 attrib.value |= encryptTypes[j];
@@ -2257,6 +2258,16 @@ VAStatus MediaLibvaCapsG12::CreateDecAttributes(
             (VAConfigAttribType)VAConfigAttribCustomRoundingControl, &attrib.value);
     (*attribList)[attrib.type] = attrib.value;
 
+#if VA_CHECK_VERSION(1, 11, 0)
+    if(IsAV1Profile(profile) && MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrAV1VLDLSTDecoding))
+    {
+        attrib.type                             = VAConfigAttribDecAV1Features;
+        VAConfigAttribValDecAV1Features feature = {0};
+        feature.bits.lst_support                = true;
+        attrib.value                            = feature.value;
+        (*attribList)[attrib.type]              = attrib.value;
+    }
+#endif
     return status;
 }
 
@@ -2487,10 +2498,20 @@ extern template class MediaLibvaCapsFactory<MediaLibvaCaps, DDI_MEDIA_CONTEXT>;
 static bool tglLPRegistered = MediaLibvaCapsFactory<MediaLibvaCaps, DDI_MEDIA_CONTEXT>::
     RegisterCaps<MediaLibvaCapsG12>((uint32_t)IGFX_TIGERLAKE_LP);
 
+#ifdef IGFX_GEN12_RKL_SUPPORTED
 static bool rklRegistered = MediaLibvaCapsFactory<MediaLibvaCaps, DDI_MEDIA_CONTEXT>::
     RegisterCaps<MediaLibvaCapsG12>((uint32_t)IGFX_ROCKETLAKE);
+#endif
+
+
+#ifdef IGFX_GEN12_ADLS_SUPPORTED
+static bool adlsRegistered = MediaLibvaCapsFactory<MediaLibvaCaps, DDI_MEDIA_CONTEXT>::
+    RegisterCaps<MediaLibvaCapsG12>((uint32_t)IGFX_ALDERLAKE_S);
+#endif
 
 #ifdef IGFX_GEN12_DG1_SUPPORTED
 static bool dg1Registered = MediaLibvaCapsFactory<MediaLibvaCaps, DDI_MEDIA_CONTEXT>::
     RegisterCaps<MediaLibvaCapsG12>((uint32_t)IGFX_DG1);
 #endif
+
+

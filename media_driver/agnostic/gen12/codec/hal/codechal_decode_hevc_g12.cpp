@@ -270,15 +270,15 @@ CodechalDecodeHevcG12::~CodechalDecodeHevcG12 ()
     MOS_USER_FEATURE_VALUE_WRITE_DATA   userFeatureWriteData = __NULL_USER_FEATURE_VALUE_WRITE_DATA__;
 
     userFeatureWriteData.Value.i32Data = m_rtFrameCount;
-    userFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_ENABLE_HEVC_DECODE_RT_FRAME_COUNT_ID_G12;
+    userFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_ENABLE_HEVC_DECODE_RT_FRAME_COUNT_ID;
     MOS_UserFeature_WriteValues_ID(nullptr, &userFeatureWriteData, 1, m_osInterface->pOsContext);
 
     userFeatureWriteData.Value.i32Data = m_vtFrameCount;
-    userFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_ENABLE_HEVC_DECODE_VT_FRAME_COUNT_ID_G12;
+    userFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_ENABLE_HEVC_DECODE_VT_FRAME_COUNT_ID;
     MOS_UserFeature_WriteValues_ID(nullptr, &userFeatureWriteData, 1, m_osInterface->pOsContext);
 
     userFeatureWriteData.Value.i32Data = m_spFrameCount;
-    userFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_ENABLE_HEVC_DECODE_SP_FRAME_COUNT_ID_G12;
+    userFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_ENABLE_HEVC_DECODE_SP_FRAME_COUNT_ID;
     MOS_UserFeature_WriteValues_ID(nullptr, &userFeatureWriteData, 1, m_osInterface->pOsContext);
 
 #endif
@@ -632,7 +632,21 @@ MOS_STATUS CodechalDecodeHevcG12 ::InitializeDecodeMode()
         initParams.bIsTileEnabled      = m_hevcPicParams->tiles_enabled_flag;
         initParams.bHasSubsetParams    = !!m_decodeParams.m_subsetParams;
         initParams.format              = m_decodeParams.m_destSurface->Format;
-        initParams.usingSecureDecode   = m_secureDecoder ? m_secureDecoder->IsSecureDecodeEnabled() : false;
+        initParams.usingSecureDecode   = (m_secureDecoder != nullptr);
+        if (m_decodeHistogram == nullptr)
+        {
+            initParams.usingHistogram = false;
+#if (_DEBUG || _RELEASE_INTERNAL)
+            if (m_histogramDebug)
+            {
+                initParams.usingHistogram = true;
+            }
+#endif
+        }
+        else
+        {
+            initParams.usingHistogram = true;
+        }
         // Only support SCC real tile mode. SCC virtual tile scalability mode is disabled here
         initParams.bIsSccDecoding   = m_hevcSccPicParams != nullptr;
         initParams.u8NumTileColumns = m_hevcPicParams->num_tile_columns_minus1 + 1;
@@ -1221,6 +1235,11 @@ MOS_STATUS CodechalDecodeHevcG12::DecodeStateLevel()
     PERF_UTILITY_AUTO(__FUNCTION__, PERF_DECODE, PERF_LEVEL_HAL);
     CODECHAL_DECODE_FUNCTION_ENTER;
 
+    if (m_secureDecoder && m_hcpDecPhase == CodechalHcpDecodePhaseInitialized)
+    {
+        CODECHAL_DECODE_CHK_STATUS_RETURN(m_secureDecoder->Execute(this));
+    }
+
     //HCP Decode Phase State Machine
     CODECHAL_DECODE_CHK_STATUS_RETURN(DetermineDecodePhase());
 
@@ -1233,11 +1252,6 @@ MOS_STATUS CodechalDecodeHevcG12::DecodeStateLevel()
     // Set HEVC Decode Phase, and execute it.
     if (m_shortFormatInUse && m_hcpDecPhase == CodechalHcpDecodePhaseLegacyS2L)
     {
-        if (m_secureDecoder)
-        {
-            CODECHAL_DECODE_CHK_STATUS_RETURN(m_secureDecoder->Execute(this));
-        }
-
         CODECHAL_DECODE_CHK_STATUS_RETURN(SendPictureS2L());
     }
     else

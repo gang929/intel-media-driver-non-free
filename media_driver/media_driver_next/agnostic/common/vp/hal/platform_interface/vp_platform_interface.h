@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, Intel Corporation
+* Copyright (c) 2020-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -87,7 +87,14 @@ public:
     {
         m_kernel.Destroy();
     }
-
+    virtual MOS_STATUS InitVpHwCaps(VP_HW_CAPS &vpHwCaps)
+    {
+        VP_PUBLIC_CHK_STATUS_RETURN(InitVpVeboxSfcHwCaps(vpHwCaps.m_veboxHwEntry, Format_Count, vpHwCaps.m_sfcHwEntry, Format_Count));
+        VP_PUBLIC_CHK_STATUS_RETURN(InitVpRenderHwCaps());
+        VP_PUBLIC_CHK_STATUS_RETURN(InitPolicyRules(vpHwCaps.m_rules));
+        return MOS_STATUS_SUCCESS;
+    }
+    virtual MOS_STATUS InitPolicyRules(VP_POLICY_RULES &rules);
     virtual MOS_STATUS InitVpVeboxSfcHwCaps(VP_VEBOX_ENTRY_REC *veboxHwEntry, uint32_t veboxEntryCount, VP_SFC_ENTRY_REC *sfcHwEntry, uint32_t sfcEntryCount)
     {
         return MOS_STATUS_UNIMPLEMENTED;
@@ -143,6 +150,8 @@ protected:
     PMOS_INTERFACE m_pOsInterface = nullptr;
     VpRenderKernel m_kernel;
     void (*m_modifyKdllFunctionPointers)(PKdll_State) = nullptr;
+    bool m_sfc2PassScalingEnabled = false;
+    bool m_sfc2PassScalingPerfMode = false;
 };
 
 }

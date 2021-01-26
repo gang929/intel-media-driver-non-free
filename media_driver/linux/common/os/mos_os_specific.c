@@ -1660,6 +1660,57 @@ MOS_STATUS Mos_Specific_SetGpuContextHandle(
 }
 
 //!
+//! \brief    Get GPU context pointer
+//! \details  Get GPU context pointer
+//! \param    PMOS_INTERFACE pOsInterface
+//!           [in] Pointer to OS Interface
+//! \param    GPU_CONTEXT_HANDLE gpuContextHandle
+//!           [in] GPU Context Handle
+//! \return   void *
+//!           a pointer to a gpu context
+//!
+void *Mos_Specific_GetGpuContextbyHandle(
+    PMOS_INTERFACE     pOsInterface,
+    GPU_CONTEXT_HANDLE gpuContextHandle)
+{
+    MOS_OS_FUNCTION_ENTER;
+
+    if (!pOsInterface)
+    {
+        MOS_OS_ASSERTMESSAGE("Invalid nullptr");
+        return nullptr;
+    }
+
+    if (pOsInterface->apoMosEnabled)
+    {
+        return MosInterface::GetGpuContextbyHandle(pOsInterface->osStreamState, gpuContextHandle);
+    }
+
+    OsContextSpecific *pOsContextSpecific = static_cast<OsContextSpecific *>(pOsInterface->osContextPtr);
+    if(!pOsContextSpecific)
+    {
+        MOS_OS_ASSERTMESSAGE("Invalid nullptr");
+        return nullptr;
+    }
+
+    GpuContextMgr *gpuContextMgr = pOsContextSpecific->GetGpuContextMgr();
+    if (!gpuContextMgr)
+    {
+        MOS_OS_ASSERTMESSAGE("Invalid nullptr");
+        return nullptr;
+    }
+
+    GpuContext *gpuContext = gpuContextMgr->GetGpuContext(gpuContextHandle);
+    if (!gpuContext)
+    {
+        MOS_OS_ASSERTMESSAGE("Invalid nullptr");
+        return nullptr;
+    }
+
+    return (void *)gpuContext;
+}
+
+//!
 //! \brief    Get GPU context Manager
 //! \param    PMOS_INTERFACE pOsInterface
 //!           [in] Pointer to OS Interface
@@ -3359,6 +3410,19 @@ MOS_STATUS Mos_Specific_SetPatchEntry(
     MOS_OS_CHK_NULL_RETURN(pOsInterface);
     MOS_OS_CHK_NULL_RETURN(pParams);
 
+#if (_DEBUG || _RELEASE_INTERNAL)
+    if (!pParams->bUpperBoundPatch && pParams->presResource)
+    {
+        uint32_t handle = pParams->presResource->bo?pParams->presResource->bo->handle:0;
+        uint32_t eventData[] = {handle, pParams->uiResourceOffset,
+                                pParams->uiPatchOffset, pParams->bWrite,
+                                pParams->HwCommandType, pParams->forceDwordOffset,
+                                pParams->patchType};
+        MOS_TraceEventExt(EVENT_RESOURCE_PATCH, EVENT_TYPE_INFO2,
+                          &eventData, sizeof(eventData),
+                          nullptr, 0);
+    }
+#endif
     if (pOsInterface->apoMosEnabled)
     {
         return MosInterface::SetPatchEntry(pOsInterface->osStreamState, pParams);
@@ -3928,6 +3992,12 @@ void Mos_Specific_ReturnCommandBuffer(
     {
         MOS_OS_ASSERTMESSAGE("Invalid parameters.");
         return;
+    }
+
+    // Need to ensure 4K extra padding for HW requirement.
+    if (pCmdBuffer && pCmdBuffer->iRemaining < EXTRA_PADDING_NEEDED)
+    {
+        MOS_OS_ASSERTMESSAGE("Need to ensure 4K extra padding for HW requirement.");
     }
 
     if (pOsInterface->apoMosEnabled)
@@ -7455,6 +7525,7 @@ MOS_STATUS Mos_Specific_InitInterface(
 
     pOsInterface->pfnSetGpuContextHandle                    = Mos_Specific_SetGpuContextHandle;
     pOsInterface->pfnGetGpuContextMgr                       = Mos_Specific_GetGpuContextMgr;
+    pOsInterface->pfnGetGpuContextbyHandle                  = Mos_Specific_GetGpuContextbyHandle;
 
     pOsUserFeatureInterface->bIsNotificationSupported   = false;
     pOsUserFeatureInterface->pOsInterface               = pOsInterface;
