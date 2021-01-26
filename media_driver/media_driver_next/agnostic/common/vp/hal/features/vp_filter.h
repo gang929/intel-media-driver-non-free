@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2020, Intel Corporation
+* Copyright (c) 2018-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -33,6 +33,7 @@
 #include "vp_sfc_common.h"
 #include "vp_utils.h"
 #include "sw_filter.h"
+#include "vp_feature_caps.h"
 
 namespace vp {
 class VpCmdPacket;
@@ -245,14 +246,6 @@ struct _VEBOX_CSC_PARAMS
     uint32_t                        chromaDownSamplingHorizontalCoef;            // Chroma DownSampling Horizontal Coeff
 };
 
-struct _VEBOX_UPDATE_PARAMS
-{
-    bool                            bSecureCopyVeboxState;
-    bool                            bDnEnabled;
-    bool                            bAutoDetect;
-    VPHAL_NOISELEVEL                NoiseLevel;
-};
-
 struct _VEBOX_HDR_PARAMS
 {
     uint32_t                        uiMaxDisplayLum;       //!< Maximum Display Luminance
@@ -285,6 +278,14 @@ using VEBOX_PROCAMP_PARAMS  = _VEBOX_PROCAMP_PARAMS;
 using PVEBOX_PROCAMP_PARAMS = VEBOX_PROCAMP_PARAMS *;
 using VEBOX_CSC_PARAMS      = _VEBOX_CSC_PARAMS;
 using PVEBOX_CSC_PARAMS     = VEBOX_CSC_PARAMS *;
+
+struct _VEBOX_UPDATE_PARAMS
+{
+    VEBOX_DN_PARAMS                 denoiseParams;
+    VP_EXECUTE_CAPS                 veboxExecuteCaps;
+    std::vector<uint32_t>           kernelGroup;
+};
+
 using VEBOX_UPDATE_PARAMS      = _VEBOX_UPDATE_PARAMS;
 using PVEBOX_UPDATE_PARAMS     = VEBOX_UPDATE_PARAMS *;
 using VEBOX_HDR_PARAMS      = _VEBOX_HDR_PARAMS;
@@ -332,17 +333,19 @@ private:
 class PolicyFeatureHandler
 {
 public:
-    PolicyFeatureHandler();
+    PolicyFeatureHandler(VP_HW_CAPS &hwCaps);
     virtual ~PolicyFeatureHandler();
     virtual bool IsFeatureEnabled(SwFilterPipe &swFilterPipe);
     virtual HwFilterParameter *CreateHwFilterParam(VP_EXECUTE_CAPS vpExecuteCaps, SwFilterPipe &swFilterPipe, PVP_MHWINTERFACE pHwInterface);
     virtual bool IsFeatureEnabled(VP_EXECUTE_CAPS vpExecuteCaps);
+    virtual MOS_STATUS UpdateFeaturePipe(VP_EXECUTE_CAPS caps, SwFilter &feature, SwFilterPipe &featurePipe, SwFilterPipe &executePipe, bool isInputPipe, int index);
     FeatureType GetType();
     HwFilterParameter *GetHwFeatureParameterFromPool();
     MOS_STATUS ReleaseHwFeatureParameter(HwFilterParameter *&pParam);
 protected:
     FeatureType m_Type = FeatureTypeInvalid;
     std::vector<HwFilterParameter *> m_Pool;
+    VP_HW_CAPS  &m_hwCaps;
 };
 
 class PacketParamFactoryBase

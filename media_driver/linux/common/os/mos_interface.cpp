@@ -378,10 +378,15 @@ MOS_STATUS MosInterface::InitStreamParameters(
 
     if (MEDIA_IS_SKU(&context->SkuTable, FtrContextBasedScheduling))
     {
+        MOS_TraceEventExt(EVENT_GPU_CONTEXT_CREATE, EVENT_TYPE_START,
+                          &eStatus, sizeof(eStatus), nullptr, 0);
         context->intel_context = mos_gem_context_create_ext(context->bufmgr, 0);
         MOS_OS_CHK_NULL_RETURN(context->intel_context);
         context->intel_context->vm = mos_gem_vm_create(context->bufmgr);
         MOS_OS_CHK_NULL_RETURN(context->intel_context->vm);
+        MOS_TraceEventExt(EVENT_GPU_CONTEXT_CREATE, EVENT_TYPE_END,
+                          &context->intel_context, sizeof(void *),
+                          &eStatus, sizeof(eStatus));
     }
     else  //use legacy context create ioctl for pre-gen11 platforms
     {
@@ -619,6 +624,32 @@ MOS_STATUS MosInterface::SetGpuContext(
     streamState->currentGpuContextHandle = gpuContext;
 
     return MOS_STATUS_SUCCESS;
+}
+
+void *MosInterface::GetGpuContextbyHandle(
+    MOS_STREAM_HANDLE  streamState,
+    GPU_CONTEXT_HANDLE gpuContextHandle)
+{
+    if (!streamState || !streamState->osDeviceContext)
+    {
+        MOS_OS_ASSERTMESSAGE("Invalid nullptr");
+        return nullptr;
+    }
+
+    auto gpuContextMgr = streamState->osDeviceContext->GetGpuContextMgr();
+    if (!gpuContextMgr)
+    {
+        MOS_OS_ASSERTMESSAGE("Invalid nullptr");
+        return nullptr;
+    }
+
+    GpuContextNext *gpuContext = gpuContextMgr->GetGpuContext(gpuContextHandle);
+
+    if (!gpuContext)
+    {
+        MOS_OS_ASSERTMESSAGE("Invalid nullptr");
+    }
+    return (void *)gpuContext;
 }
 
 MOS_STATUS MosInterface::AddCommand(

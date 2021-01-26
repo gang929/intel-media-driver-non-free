@@ -37,6 +37,7 @@
 #include "vp_status_report.h"
 #include "vphal.h"
 #include "vp_dumper.h"
+#include "vp_debug_interface.h"
 #include "vp_feature_manager.h"
 #include "vp_packet_shared_context.h"
 #include "vp_kernelset.h"
@@ -168,6 +169,13 @@ protected:
     virtual MOS_STATUS ExecuteVpPipeline();
 
     //!
+    //! \brief  updated Execute Vp Pipeline status
+    //! \return MOS_STATUS
+    //!         MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS UpdateExecuteStatus();
+
+    //!
     //! \brief  Create SwFilterPipe
     //! \param  [in] params
     //!         Pointer to the input parameters
@@ -231,6 +239,16 @@ protected:
         return MOS_STATUS_SUCCESS;
     }
 
+    //!
+    //! \brief  Judge if it is gt test environment
+    //! \return bool
+    //!         true if success, else false
+    //!
+    virtual bool IsGtEnv()
+    {
+        return false;
+    }
+
 protected:
     VP_PARAMS              m_pvpParams              = {};   //!< vp Pipeline params
     VP_MHWINTERFACE        m_vpMhwInterface         = {};   //!< vp Pipeline Mhw Interface
@@ -249,8 +267,7 @@ protected:
     // Surface dumper fields (counter and specification)
     uint32_t               m_frameCounter           = 0;
 #if (_DEBUG || _RELEASE_INTERNAL)
-    VpSurfaceDumper       *m_surfaceDumper          = nullptr;
-    VpParameterDumper     *m_parameterDumper        = nullptr;
+    VpDebugInterface      *m_debugInterface         = nullptr;
 #endif
     bool                   m_currentFrameAPGEnabled = false;
     PacketFactory         *m_pPacketFactory         = nullptr;
