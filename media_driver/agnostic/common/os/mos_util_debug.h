@@ -498,6 +498,20 @@ void _MOS_Assert(
 }
 
 //!
+//! \def MOS_CHK_STATUS_NO_STATUS_RETURN(_compID, _subCompID, _stmt)
+//!  Check MOS_STATUS \a _stmt, return void
+//!
+#define MOS_CHK_STATUS_NO_STATUS_RETURN(_compID, _subCompID, _stmt)                         \
+{                                                                                           \
+    eStatus = (MOS_STATUS)(_stmt);                                                          \
+    if (eStatus != MOS_STATUS_SUCCESS)                                                      \
+    {                                                                                       \
+        MOS_ASSERTMESSAGE(_compID, _subCompID, "MOS returned error, eStatus = 0x%x", eStatus);\
+        return;                                                                             \
+    }                                                                                       \
+}
+
+//!
 //! \def MOS_CHK_STATUS_SAFE(_stmt)
 //!  Check MOS_STATUS \a _stmt, return for failure
 //!
@@ -516,9 +530,9 @@ void _MOS_Assert(
 //!
 #define MOS_CHK_NULL(_compID, _subCompID, _ptr)                                             \
 {                                                                                           \
-    if ((_ptr) == nullptr)                                                                     \
+    if ((_ptr) == nullptr)                                                                  \
     {                                                                                       \
-        MOS_ASSERTMESSAGE(_compID, _subCompID, "Invalid (nullptr) Pointer.");                  \
+        MOS_ASSERTMESSAGE(_compID, _subCompID, "Invalid (nullptr) Pointer.");               \
         eStatus = MOS_STATUS_NULL_POINTER;                                                  \
         goto finish;                                                                        \
     }                                                                                       \
@@ -530,9 +544,9 @@ void _MOS_Assert(
 //!
 #define MOS_CHK_NULL_NO_STATUS(_compID, _subCompID, _ptr)                                   \
 {                                                                                           \
-    if ((_ptr) == nullptr)                                                                     \
+    if ((_ptr) == nullptr)                                                                  \
     {                                                                                       \
-        MOS_ASSERTMESSAGE(_compID, _subCompID, "Invalid (nullptr) Pointer.");                  \
+        MOS_ASSERTMESSAGE(_compID, _subCompID, "Invalid (nullptr) Pointer.");               \
         goto finish;                                                                        \
     }                                                                                       \
 }
@@ -543,9 +557,9 @@ void _MOS_Assert(
 //!
 #define MOS_CHK_NULL_NO_STATUS_RETURN(_compID, _subCompID, _ptr)                            \
 {                                                                                           \
-    if ((_ptr) == nullptr)                                                                     \
+    if ((_ptr) == nullptr)                                                                  \
     {                                                                                       \
-        MOS_ASSERTMESSAGE(_compID, _subCompID, "Invalid (nullptr) Pointer.");                  \
+        MOS_ASSERTMESSAGE(_compID, _subCompID, "Invalid (nullptr) Pointer.");               \
         return;                                                                             \
     }                                                                                       \
 }
@@ -591,6 +605,20 @@ void _MOS_Assert(
 }
 
 //!
+//! \def MOS_CHK_COND_WITH_DESTROY_RETURN_VALUE(_compID, _subCompID, _condition, destroyFunction, retVal, _message)
+//!  Check if \a _condition is true, if so assert, call destroy function and return \a retVal
+//!
+#define MOS_CHK_COND_WITH_DESTROY_RETURN_VALUE(_compID, _subCompID, _condition, destroyFunction, retVal, _message, ...)  \
+{                                                                                                                        \
+    if (_condition)                                                                                                      \
+    {                                                                                                                    \
+        destroyFunction();                                                                                               \
+        MOS_ASSERTMESSAGE(_compID, _subCompID, _message, ##__VA_ARGS__);                                                 \
+        return retVal;                                                                                                   \
+    }                                                                                                                    \
+}
+
+//!
 //! The following HR macros are temporary until MOS switches to MOS_STATUS. When that happens,
 //! and therefore these macros will be moved to an OS specific file.
 //!
@@ -602,10 +630,24 @@ void _MOS_Assert(
 #define MOS_CHK_HR(_compID, _subCompID, _stmt)                                              \
 {                                                                                           \
     hr = (_stmt);                                                                           \
-    if (hr != MOS_STATUS_SUCCESS)                                                                         \
+    if (hr != MOS_STATUS_SUCCESS)                                                           \
     {                                                                                       \
         MOS_ASSERTMESSAGE(_compID, _subCompID, "hr check failed.");                         \
         goto finish;                                                                        \
+    }                                                                                       \
+}
+
+//!
+//! \def MOS_CHK_HR_RETURN(_compID, _subCompID, _stmt)
+//!  Check _stmt, assert and return an error for failure
+//!
+#define MOS_CHK_HR_RETURN(_compID, _subCompID, _stmt)                                       \
+{                                                                                           \
+    hr = (_stmt);                                                                           \
+    if (hr != MOS_STATUS_SUCCESS)                                                           \
+    {                                                                                       \
+        MOS_ASSERTMESSAGE(_compID, _subCompID, "MOS returned error, hr = 0x%x", hr);        \
+        return hr;                                                                          \
     }                                                                                       \
 }
 
@@ -616,7 +658,7 @@ void _MOS_Assert(
 #define MOS_CHK_HR_MESSAGE(_compID, _subCompID, _stmt, _message, ...)                       \
 {                                                                                           \
     hr = (_stmt);                                                                           \
-    if (hr != MOS_STATUS_SUCCESS)                                                                         \
+    if (hr != MOS_STATUS_SUCCESS)                                                           \
     {                                                                                       \
         MOS_ASSERTMESSAGE(_compID, _subCompID, _message, ##__VA_ARGS__);                    \
         goto finish;                                                                        \
