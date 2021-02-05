@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2020, Intel Corporation
+* Copyright (c) 2009-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -3243,7 +3243,16 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_VALUE_TYPE_STRING,
         "",
         "Vphal Debug Dump Output Directory"),
-     MOS_DECLARE_UF_KEY_DBGONLY(__VPHAL_VEBOX_FORCE_VP_MEMCOPY_OUTPUTCOMPRESSED_ID,
+    MOS_DECLARE_UF_KEY(__VPHAL_DBG_PARA_DUMP_ENABLE_SKUWA_DUMP_ID,
+        "enableSkuWaDump",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "VP",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_UINT32,
+        "0",
+        "VP parameter dump sku and wa info enable"),
+    MOS_DECLARE_UF_KEY_DBGONLY(__VPHAL_VEBOX_FORCE_VP_MEMCOPY_OUTPUTCOMPRESSED_ID,
         "Force VP Memorycopy Outputcompressed",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
         __MEDIA_USER_FEATURE_SUBKEY_REPORT,
@@ -3252,6 +3261,17 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_VALUE_TYPE_BOOL,
         "0",
         "Force VP Memorycopy Outputcompressed"),
+#endif
+#if (_DEBUG || _RELEASE_INTERNAL)
+        MOS_DECLARE_UF_KEY(__VPHAL_ENABLE_SFC_NV12_P010_LINEAR_OUTPUT_ID,
+            "Enable SFC NV12 P010 Linear Output",
+            __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+            __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+            "VP",
+            MOS_USER_FEATURE_TYPE_USER,
+            MOS_USER_FEATURE_VALUE_TYPE_BOOL,
+            "0",
+            "Set SFC NV12/P010 Linear Output"),
 #endif
     MOS_DECLARE_UF_KEY_DBGONLY(__VPHAL_SET_SINGLE_SLICE_VEBOX_ID,
         "SetSingleSliceVeboxEnable",
@@ -4072,6 +4092,15 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_VALUE_TYPE_INT32,
         "0",
         "Eanble Apogeios avc decode path. 1: enable, 0: disable."),
+    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_APOGEIOS_VP9D_ENABLE_ID,
+        "ApogeiosVp9dEnable",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "Codec",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Eanble Apogeios VP9 decode path. 1: enable, 0: disable."),
     MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_RESOURCE_ADDR_DUMP_ENABLE_ID,
         "Resource Addr Dump Enable",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,

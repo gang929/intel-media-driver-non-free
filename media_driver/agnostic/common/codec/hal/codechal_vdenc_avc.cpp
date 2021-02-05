@@ -4576,10 +4576,7 @@ MOS_STATUS CodechalVdencAvcState::SetupROIStreamIn(
                     break;
                 }
             }
-            if (dqpidx == -1)
-            {
-                return MOS_STATUS_INVALID_PARAMETER;
-            }
+            CODECHAL_ENCODE_CHK_COND_RETURN(dqpidx == -1, "Max number of supported different dQP for ROI is %u", m_maxNumNativeRoi);
 
             uint32_t curX, curY;
             for (curY = picParams->ROI[i].Top; curY < picParams->ROI[i].Bottom; curY++)
@@ -4779,14 +4776,26 @@ MOS_STATUS CodechalVdencAvcState::SetupBrcROIBuffer(PCODEC_AVC_ENCODE_PIC_PARAMS
 
     MOS_ZeroMemory(pData, m_picHeightInMb * m_picWidthInMb);
 
+
     for (int32_t i = picParams->NumROI - 1; i >= 0; i--)
     {
+        int32_t dqpidx = -1;
+        for (int32_t j = 0; j < m_maxNumBrcRoi; j++)
+        {
+            if (m_avcPicParam->ROIDistinctDeltaQp[j] == m_avcPicParam->ROI[i].PriorityLevelOrDQp)
+            {
+                dqpidx = j;
+                break;
+            }
+        }
+        CODECHAL_ENCODE_CHK_COND_RETURN(dqpidx == -1, "Max number of supported different dQP for ROI is %u", m_maxNumBrcRoi);
+
         uint32_t curX, curY;
         for (curY = picParams->ROI[i].Top; curY < picParams->ROI[i].Bottom; curY++)
         {
             for (curX = picParams->ROI[i].Left; curX < picParams->ROI[i].Right; curX++)
             {
-                *(pData + (m_picWidthInMb * curY + curX)) = i + 1; // Shift ROI by 1
+                *(pData + (m_picWidthInMb * curY + curX)) = dqpidx + 1; // Shift ROI by 1
             }
         }
     }
@@ -5632,7 +5641,8 @@ MOS_STATUS CodechalVdencAvcState::ExecuteKernelFunctions()
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpYUVSurface(
             m_rawSurfaceToEnc,
             CodechalDbgAttr::attrEncodeRawInputSurface,
-            "SrcSurf")))
+            "SrcSurf"))
+        CODECHAL_DEBUG_TOOL(m_debugInterface->DumpSurfaceInfo(m_rawSurfaceToEnc, "RawSurfaceToEnc")));
 
     m_firstTaskInPhase = true;
 
@@ -5950,6 +5960,7 @@ MOS_STATUS CodechalVdencAvcState::ExecutePictureLevel()
     reconSurfaceParams.Mode             = m_mode;
     reconSurfaceParams.ucSurfaceStateId = CODECHAL_MFX_REF_SURFACE_ID;
     reconSurfaceParams.psSurface        = &m_reconSurface;
+    CODECHAL_DEBUG_TOOL(m_debugInterface->DumpSurfaceInfo(&m_reconSurface, "ReconSurface"));
 
     // Src surface
     MHW_VDBOX_SURFACE_PARAMS surfaceParams;
@@ -5961,6 +5972,7 @@ MOS_STATUS CodechalVdencAvcState::ExecutePictureLevel()
     surfaceParams.dwActualWidth         = surfaceParams.psSurface->dwWidth;
     surfaceParams.bDisplayFormatSwizzle = m_avcPicParam->bDisplayFormatSwizzle;
     surfaceParams.bColorSpaceSelection  = (m_avcSeqParam->InputColorSpace == ECOLORSPACE_P709) ? 1 : 0;
+    CODECHAL_DEBUG_TOOL(m_debugInterface->DumpSurfaceInfo(m_rawSurfaceToPak, "RawSurfaceToPak"));
 
     MHW_VDBOX_PIPE_BUF_ADDR_PARAMS pipeBufAddrParams;
     pipeBufAddrParams.pRawSurfParam      = &surfaceParams;
@@ -5985,6 +5997,7 @@ MOS_STATUS CodechalVdencAvcState::ExecutePictureLevel()
     dsSurfaceParams.Mode             = m_mode;
     dsSurfaceParams.ucSurfaceStateId = CODECHAL_MFX_DSRECON_SURFACE_ID;
     dsSurfaceParams.psSurface        = m_trackedBuf->Get4xDsReconSurface(CODEC_CURR_TRACKED_BUFFER);
+    CODECHAL_DEBUG_TOOL(m_debugInterface->DumpSurfaceInfo(dsSurfaceParams.psSurface, "4xDsReconSurface"));
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_mfxInterface->AddMfxSurfaceCmd(&cmdBuffer, &dsSurfaceParams));
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_mfxInterface->AddMfxPipeBufAddrCmd(&cmdBuffer, &pipeBufAddrParams));
 
