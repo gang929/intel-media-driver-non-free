@@ -31,7 +31,7 @@
 
 using namespace vp;
 
-VpAllocator::VpAllocator(PMOS_INTERFACE osInterface, VPMediaMemComp *mmc) :
+VpAllocator::VpAllocator(PMOS_INTERFACE osInterface, MediaMemComp *mmc) :
     m_osInterface(osInterface),
     m_mmc(mmc)
 {
@@ -686,6 +686,12 @@ MOS_STATUS VpAllocator::ReAllocateSurface(
 
     //---------------------------------
     VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
+
+    if (!m_mmc->IsMmcEnabled())
+    {
+        compressible    = 0;
+        compressionMode = MOS_MMC_DISABLED;
+    }
     //---------------------------------
 
     // compressible should be compared with bCompressible since it is inited by bCompressible in previous call
@@ -1112,6 +1118,22 @@ MOS_STATUS VP_SURFACE::Clean()
     bVEBOXCroppingUsed  = false;
 
     return MOS_STATUS_SUCCESS;
+}
+
+uint64_t VP_SURFACE::GetAllocationHandle()
+{
+#if(LINUX)
+    if (osSurface && osSurface->OsResource.bo)
+    {
+        return osSurface->OsResource.bo->handle;
+    }
+    else
+    {
+        return 0;
+    }
+#else
+    return osSurface ? osSurface->OsResource.AllocationInfo.m_AllocationHandle : 0;
+#endif
 }
 
 MOS_STATUS VpAllocator::SetMmcFlags(MOS_SURFACE &osSurface)

@@ -71,6 +71,12 @@ VpPipeline::~VpPipeline()
         MOS_Delete(m_mediaContext);
         m_mediaContext = nullptr;
     }
+
+    if (m_vpSettings)
+    {
+        MOS_FreeMemory(m_vpSettings);
+        m_vpSettings = nullptr;
+    }
 }
 
 MOS_STATUS VpPipeline::GetStatusReport(void *status, uint16_t numStatus)
@@ -170,7 +176,7 @@ MOS_STATUS VpPipeline::Init(void *mhwInterface)
     m_mediaContext = MOS_New(MediaContext, scalabilityVp, &m_vpMhwInterface, m_osInterface);
     VP_PUBLIC_CHK_NULL_RETURN(m_mediaContext);
 
-    m_mmc = MOS_New(VPMediaMemComp, m_osInterface, &m_vpMhwInterface);
+    m_mmc = MOS_New(VPMediaMemComp, m_osInterface, m_vpMhwInterface);
     VP_PUBLIC_CHK_NULL_RETURN(m_mmc);
 
     m_allocator = MOS_New(VpAllocator, m_osInterface, m_mmc);
@@ -195,12 +201,16 @@ MOS_STATUS VpPipeline::Init(void *mhwInterface)
     // Create active tasks
     MediaTask *pTask = GetTask(MediaTask::TaskType::cmdTask);
     VP_PUBLIC_CHK_NULL_RETURN(pTask);
-    VP_PUBLIC_CHK_STATUS_RETURN(m_pPacketFactory->Initialize(pTask, &m_vpMhwInterface, m_allocator, m_mmc, m_packetSharedContext, m_kernelSet));
+    VP_PUBLIC_CHK_STATUS_RETURN(m_pPacketFactory->Initialize(pTask, &m_vpMhwInterface, m_allocator, m_mmc, m_packetSharedContext, m_kernelSet, m_debugInterface));
 
     m_pPacketPipeFactory = MOS_New(PacketPipeFactory, *m_pPacketFactory);
     VP_PUBLIC_CHK_NULL_RETURN(m_pPacketPipeFactory);
 
     VP_PUBLIC_CHK_STATUS_RETURN(GetSystemVeboxNumber());
+
+    VP_PUBLIC_CHK_STATUS_RETURN(SetVideoProcessingSettings(m_vpMhwInterface.m_settings));
+
+    m_vpMhwInterface.m_settings = m_vpSettings;
 
     return MOS_STATUS_SUCCESS;
 }

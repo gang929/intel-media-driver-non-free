@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2014-2018, Intel Corporation
+* Copyright (c) 2014-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -150,6 +150,21 @@ MOS_STATUS Mhw_AddResourceToCmd_GfxAddress(
         MHW_CHK_STATUS(pOsInterface->pfnSetPatchEntry(
             pOsInterface,
             &PatchEntryParams));
+    }
+
+    if (MOS_VEBOX_STATE             == pParams->HwCommandType   ||
+        MOS_VEBOX_DI_IECP           == pParams->HwCommandType   ||
+        MOS_VEBOX_TILING_CONVERT    == pParams->HwCommandType   ||
+        MOS_SFC_STATE               == pParams->HwCommandType   ||
+        MOS_STATE_BASE_ADDR         == pParams->HwCommandType   ||
+        MOS_SURFACE_STATE           == pParams->HwCommandType   ||
+        MOS_SURFACE_STATE_ADV       == pParams->HwCommandType   ||
+        MOS_MFX_PIPE_BUF_ADDR       == pParams->HwCommandType   ||
+        MOS_MFX_VP8_PIC             == pParams->HwCommandType   ||
+        MOS_MFX_BSP_BUF_BASE_ADDR   == pParams->HwCommandType)
+    {
+        HalOcaInterface::DumpResourceInfo(*pCmdBuffer, *pOsInterface, *pParams->presResource, pParams->HwCommandType,
+            pParams->dwLocationInCmd, pParams->dwOffset);
     }
 
 finish:
