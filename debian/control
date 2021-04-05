@@ -8,7 +8,7 @@ Build-Depends:
  debhelper-compat (= 13),
  dh-sequence-libva,
  cmake,
- libigdgmm-dev (>= 20.3.3),
+ libigdgmm-dev (>= 21.1.1),
  libva-dev (>= 2.8),
  libx11-dev,
  pkg-config,
