@@ -41,6 +41,15 @@ using VP_PIPELINE_PARAMS   = VPHAL_RENDER_PARAMS;
 using PVP_PIPELINE_PARAMS  = VPHAL_RENDER_PARAMS*;
 using PCVP_PIPELINE_PARAMS = const VPHAL_RENDER_PARAMS*;
 
+//!
+//! \brief Flags for update/copy/FMD kernels
+//!
+#define VP_VEBOX_FLAG_ENABLE_KERNEL_COPY                   0x00000001
+#define VP_VEBOX_FLAG_ENABLE_KERNEL_COPY_DEBUG             0x00000002
+#define VP_VEBOX_FLAG_ENABLE_KERNEL_DN_UPDATE              0x00000004
+#define VP_VEBOX_FLAG_ENABLE_KERNEL_DN_UPDATE_DEBUG        0x00000008
+#define VP_VEBOX_FLAG_ENABLE_KERNEL_FMD_SUMMATION          0x00000010
+
 struct VP_SURFACE
 {
     MOS_SURFACE                 *osSurface;         //!< mos surface
@@ -69,7 +78,21 @@ struct VP_SURFACE
     bool        IsEmpty();
     // Clean the vp surface to empty state. Only valid for false == isResourceOwner case.
     MOS_STATUS  Clean();
+
+    // Get Allocation Handle of resource
+    uint64_t    GetAllocationHandle();
 };
+
+struct _VP_SETTINGS
+{
+    // For validation purpose settings
+    uint32_t               disableDnDi;                              //!< Disable DNDI(Vebox)
+    uint32_t               kernelUpdate;                             //!< For VEBox Copy and Update kernels
+    uint32_t               disableHdr;                               //!< Disable Hdr
+    uint32_t               veboxParallelExecution;                   //!< Control VEBox parallel execution with render engine
+};
+
+using VP_SETTINGS = _VP_SETTINGS;
 
 struct _VP_MHWINTERFACE
 {
@@ -87,6 +110,7 @@ struct _VP_MHWINTERFACE
     VphalRenderer              *m_renderer;
     PMHW_MI_INTERFACE           m_mhwMiInterface;
     vp::VpPlatformInterface    *m_vpPlatformInterface;
+    void                       *m_settings;
 
     // Render GPU context/node
     MOS_GPU_NODE                m_renderGpuNode;
@@ -133,7 +157,8 @@ struct _VP_EXECUTE_CAPS
 
             // Render Features
             uint32_t bComposite     : 1;
-            uint32_t reserved       : 6;   // Reserved
+            uint32_t bSR            : 1;
+            uint32_t reserved       : 5;   // Reserved
         };
     };
 };

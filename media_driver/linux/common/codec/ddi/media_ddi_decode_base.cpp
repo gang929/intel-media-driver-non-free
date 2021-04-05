@@ -686,7 +686,7 @@ VAStatus DdiMediaDecode::SetDecodeParams()
 
     if (m_ddiDecodeCtx->pCpDdiInterface)
     {
-        DDI_CHK_RET(m_ddiDecodeCtx->pCpDdiInterface->SetDecodeParams(&m_ddiDecodeCtx->DecodeParams),"SetDecodeParams failed!");
+        DDI_CHK_RET(m_ddiDecodeCtx->pCpDdiInterface->SetDecodeParams(m_ddiDecodeCtx, m_codechalSettings),"SetDecodeParams failed!");
     }
 
     Mos_Solo_OverrideBufferSize(m_ddiDecodeCtx->DecodeParams.m_dataSize, m_ddiDecodeCtx->DecodeParams.m_dataBuffer);
@@ -1339,6 +1339,10 @@ void DdiMediaDecode::ReportDecodeMode(
             break;
         case CODECHAL_DECODE_MODE_VP9VLD:
             userFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_DECODE_VP9_MODE_ID;
+            MOS_UserFeature_WriteValues_ID(nullptr, &userFeatureWriteData, 1, nullptr);
+            break;
+        case CODECHAL_DECODE_MODE_AV1VLD:
+            userFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_DECODE_AV1_MODE_ID;
             MOS_UserFeature_WriteValues_ID(nullptr, &userFeatureWriteData, 1, nullptr);
             break;
         default:
