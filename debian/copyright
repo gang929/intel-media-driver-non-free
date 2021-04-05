@@ -9,7 +9,7 @@ Files-Excluded: Tools/MediaDriverTools/UMDPerfProfiler/*
 
 Files: *
 Copyright: 2007-2008, Dave Airlie
-           2007-2019, Intel Corporation
+           2007-2021, Intel Corporation
            2007-2008, Jakob Bornecrantz
            2014, NVIDIA Corporation
            2007-2008, Red Hat Inc
@@ -46,7 +46,7 @@ License: BSD-3-clause
  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Files: debian/*
-Copyright: 2018-2019 Sebastian Ramacher
+Copyright: 2018-2021 Sebastian Ramacher
 License: Expat
 
 License: Expat
