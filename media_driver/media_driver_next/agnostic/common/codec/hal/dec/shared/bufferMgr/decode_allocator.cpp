@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2020, Intel Corporation
+* Copyright (c) 2018-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -32,10 +32,14 @@
 
 namespace decode {
 
-DecodeAllocator::DecodeAllocator(PMOS_INTERFACE osInterface) :
-    m_osInterface(osInterface)
+DecodeAllocator::DecodeAllocator(PMOS_INTERFACE osInterface, bool limitedLMemBar) :
+    m_osInterface(osInterface), m_limitedLMemBar(limitedLMemBar)
 {
     m_allocator = MOS_New(Allocator, m_osInterface);
+#if (_DEBUG || _RELEASE_INTERNAL)
+    m_forceLockable = ReadUserFeature(
+        __MEDIA_USER_FEATURE_VALUE_FORCE_DECODE_RESOURCE_LOCKABLE_ID, m_osInterface->pOsContext).u32Data;
+#endif
 }
 
 DecodeAllocator::~DecodeAllocator()
@@ -44,7 +48,8 @@ DecodeAllocator::~DecodeAllocator()
 }
 
 MOS_BUFFER* DecodeAllocator::AllocateBuffer(
-    const uint32_t sizeOfBuffer, const char* nameOfBuffer, ResourceUsage resUsageType,
+    const uint32_t sizeOfBuffer, const char* nameOfBuffer,
+    ResourceUsage resUsageType, ResourceAccessReq accessReq,
     bool initOnAllocate, uint8_t initValue, bool bPersistent)
 {
     if (!m_allocator)
@@ -59,6 +64,7 @@ MOS_BUFFER* DecodeAllocator::AllocateBuffer(
     allocParams.pBufName        = nameOfBuffer;
     allocParams.bIsPersistent   = bPersistent;
     allocParams.ResUsageType    = static_cast<MOS_HW_RESOURCE_DEF>(resUsageType);
+    SetAccessRequirement(accessReq, allocParams);
 
     MOS_BUFFER* buffer = m_allocator->AllocateBuffer(allocParams, false, COMPONENT_Decode);
     if (buffer == nullptr)
@@ -68,6 +74,7 @@ MOS_BUFFER* DecodeAllocator::AllocateBuffer(
 
     if (initOnAllocate)
     {
+        DECODE_ASSERT(accessReq != notLockableVideoMem);
         MOS_STATUS status = m_allocator->OsFillResource(&buffer->OsResource, sizeOfBuffer, initValue);
         if (status != MOS_STATUS_SUCCESS)
         {
@@ -86,7 +93,8 @@ MOS_BUFFER* DecodeAllocator::AllocateBuffer(
 
 BufferArray * DecodeAllocator::AllocateBufferArray(
     const uint32_t sizeOfBuffer, const char* nameOfBuffer, const uint32_t numberOfBuffer,
-    ResourceUsage resUsageType, bool initOnAllocate, uint8_t initValue, bool bPersistent)
+    ResourceUsage resUsageType, ResourceAccessReq accessReq,
+    bool initOnAllocate, uint8_t initValue, bool bPersistent)
 {
     if (!m_allocator)
         return nullptr;
@@ -99,7 +107,8 @@ BufferArray * DecodeAllocator::AllocateBufferArray(
 
     for (uint32_t i = 0; i < numberOfBuffer; i++)
     {
-        MOS_BUFFER *buf = AllocateBuffer(sizeOfBuffer, nameOfBuffer, resUsageType, initOnAllocate, initValue, bPersistent);
+        MOS_BUFFER *buf = AllocateBuffer(sizeOfBuffer, nameOfBuffer, resUsageType, accessReq,
+            initOnAllocate, initValue, bPersistent);
         bufferArray->Push(buf);
     }
 
@@ -108,7 +117,8 @@ BufferArray * DecodeAllocator::AllocateBufferArray(
 
 MOS_SURFACE* DecodeAllocator::AllocateSurface(
     const uint32_t width, const uint32_t height, const char* nameOfSurface,
-    MOS_FORMAT format, bool isCompressible, ResourceUsage resUsageType,
+    MOS_FORMAT format, bool isCompressible,
+    ResourceUsage resUsageType, ResourceAccessReq accessReq,
     MOS_TILE_MODE_GMM gmmTileMode)
 {
     if (!m_allocator)
@@ -126,6 +136,7 @@ MOS_SURFACE* DecodeAllocator::AllocateSurface(
     allocParams.bIsCompressible = isCompressible;
     allocParams.ResUsageType = static_cast<MOS_HW_RESOURCE_DEF>(resUsageType);
     allocParams.m_tileModeByForce = gmmTileMode;
+    SetAccessRequirement(accessReq, allocParams);
 
     MOS_SURFACE* surface = m_allocator->AllocateSurface(allocParams, false, COMPONENT_Decode);
     if (surface == nullptr)
@@ -142,7 +153,8 @@ MOS_SURFACE* DecodeAllocator::AllocateSurface(
 
 SurfaceArray * DecodeAllocator::AllocateSurfaceArray(
     const uint32_t width, const uint32_t height, const char* nameOfSurface,
-    const uint32_t numberOfSurface, MOS_FORMAT format, bool isCompressed, ResourceUsage resUsageType)
+    const uint32_t numberOfSurface, MOS_FORMAT format, bool isCompressed,
+    ResourceUsage resUsageType, ResourceAccessReq accessReq)
 {
     if (!m_allocator)
         return nullptr;
@@ -155,17 +167,38 @@ SurfaceArray * DecodeAllocator::AllocateSurfaceArray(
 
     for (uint32_t i = 0; i < numberOfSurface; i++)
     {
-        MOS_SURFACE *surface = AllocateSurface(width, height, nameOfSurface, format, isCompressed, resUsageType);
+        MOS_SURFACE *surface = AllocateSurface(width, height, nameOfSurface, format, isCompressed,
+            resUsageType, accessReq);
         surfaceArray->Push(surface);
     }
 
     return surfaceArray;
 }
 
-PMHW_BATCH_BUFFER DecodeAllocator::AllocateBatchBuffer(const uint32_t sizeOfBuffer, const uint32_t numOfBuffer)
+PMHW_BATCH_BUFFER DecodeAllocator::AllocateBatchBuffer(
+    const uint32_t sizeOfBuffer, const uint32_t numOfBuffer, ResourceAccessReq accessReq)
 {
+    // The default setting is lockableVideoMem
+    bool notLockable = false;
+    bool inSystemMem = false;
+
+    // Config setting if running with limited LMem bar config.
+    if (m_limitedLMemBar)
+    {
+        notLockable = (accessReq == notLockableVideoMem);
+        inSystemMem = (accessReq == lockableSystemMem);
+    }
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+    if (m_forceLockable)
+    {
+        notLockable = 0;
+    }
+#endif
+
     PMHW_BATCH_BUFFER batchBuffer = MOS_New(MHW_BATCH_BUFFER);
-    if (Mhw_AllocateBb(m_osInterface, batchBuffer, nullptr, sizeOfBuffer, numOfBuffer) != MOS_STATUS_SUCCESS)
+    if (Mhw_AllocateBb(m_osInterface, batchBuffer, nullptr, sizeOfBuffer, numOfBuffer,
+                       notLockable, inSystemMem) != MOS_STATUS_SUCCESS)
     {
         MOS_Delete(batchBuffer);
         return nullptr;
@@ -176,7 +209,8 @@ PMHW_BATCH_BUFFER DecodeAllocator::AllocateBatchBuffer(const uint32_t sizeOfBuff
 
 BatchBufferArray * DecodeAllocator::AllocateBatchBufferArray(
     const uint32_t sizeOfSubBuffer, const uint32_t numOfSubBuffer,
-    const uint32_t numberOfBatchBuffer, bool secondLevel)
+    const uint32_t numberOfBatchBuffer, bool secondLevel,
+    ResourceAccessReq accessReq)
 {
     if (!m_allocator)
         return nullptr;
@@ -189,7 +223,7 @@ BatchBufferArray * DecodeAllocator::AllocateBatchBufferArray(
 
     for (uint32_t i = 0; i < numberOfBatchBuffer; i++)
     {
-        PMHW_BATCH_BUFFER batchBuffer = AllocateBatchBuffer(sizeOfSubBuffer, numOfSubBuffer);
+        PMHW_BATCH_BUFFER batchBuffer = AllocateBatchBuffer(sizeOfSubBuffer, numOfSubBuffer, accessReq);
         if (batchBuffer == nullptr)
         {
             continue;
@@ -283,7 +317,8 @@ MOS_STATUS DecodeAllocator::UnLock(PMHW_BATCH_BUFFER batchBuffer, bool resetBuff
     return Mhw_UnlockBb(m_osInterface, batchBuffer, resetBuffer);
 }
 
-MOS_STATUS DecodeAllocator::Resize(MOS_BUFFER* &buffer, const uint32_t sizeNew, bool force, bool clearData)
+MOS_STATUS DecodeAllocator::Resize(MOS_BUFFER* &buffer, const uint32_t sizeNew,
+                                   ResourceAccessReq accessReq, bool force, bool clearData)
 {
     DECODE_CHK_NULL(buffer);
 
@@ -306,8 +341,9 @@ MOS_STATUS DecodeAllocator::Resize(MOS_BUFFER* &buffer, const uint32_t sizeNew, 
             buffer->initOnAllocate = true;
             buffer->initValue      = 0;
         }
+        ResourceUsage resUsageType = ConvertGmmResourceUsage(buffer->OsResource.pGmmResInfo->GetCachePolicyUsage());
         MOS_BUFFER* bufferNew = AllocateBuffer(
-            sizeNew, buffer->name, ConvertGmmResourceUsage(buffer->OsResource.pGmmResInfo->GetCachePolicyUsage()),
+            sizeNew, buffer->name, resUsageType, accessReq,
             buffer->initOnAllocate, buffer->initValue, buffer->bPersistent);
         DECODE_CHK_NULL(bufferNew);
 
@@ -319,7 +355,7 @@ MOS_STATUS DecodeAllocator::Resize(MOS_BUFFER* &buffer, const uint32_t sizeNew, 
 }
 
 MOS_STATUS DecodeAllocator::Resize(MOS_SURFACE* &surface, const uint32_t widthNew, const uint32_t heightNew,
-                                   bool force, const char* nameOfSurface)
+                                   ResourceAccessReq accessReq, bool force, const char* nameOfSurface)
 {
     DECODE_CHK_NULL(surface);
 
@@ -330,10 +366,9 @@ MOS_STATUS DecodeAllocator::Resize(MOS_SURFACE* &surface, const uint32_t widthNe
 
     if (force || (widthNew > surface->dwWidth) || (heightNew > surface->dwHeight))
     {
+        ResourceUsage resUsageType = ConvertGmmResourceUsage(surface->OsResource.pGmmResInfo->GetCachePolicyUsage());
         MOS_SURFACE* surfaceNew = AllocateSurface(widthNew, heightNew, nameOfSurface,
-            surface->Format, surface->bCompressible,
-            ConvertGmmResourceUsage(surface->OsResource.pGmmResInfo->GetCachePolicyUsage()), 
-            surface->TileModeGMM);
+            surface->Format, surface->bCompressible, resUsageType, accessReq, surface->TileModeGMM);
         DECODE_CHK_NULL(surfaceNew);
 
         Destroy(surface);
@@ -343,8 +378,9 @@ MOS_STATUS DecodeAllocator::Resize(MOS_SURFACE* &surface, const uint32_t widthNe
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS DecodeAllocator::Resize(PMHW_BATCH_BUFFER &batchBuffer,
-                                   const uint32_t sizeOfBufferNew, const uint32_t numOfBufferNew)
+MOS_STATUS DecodeAllocator::Resize(
+    PMHW_BATCH_BUFFER &batchBuffer, const uint32_t sizeOfBufferNew, const uint32_t numOfBufferNew,
+    ResourceAccessReq accessReq)
 {
     DECODE_CHK_NULL(batchBuffer);
 
@@ -353,7 +389,7 @@ MOS_STATUS DecodeAllocator::Resize(PMHW_BATCH_BUFFER &batchBuffer,
         return MOS_STATUS_SUCCESS;
     }
 
-    PMHW_BATCH_BUFFER batchBufferNew = AllocateBatchBuffer(sizeOfBufferNew, numOfBufferNew);
+    PMHW_BATCH_BUFFER batchBufferNew = AllocateBatchBuffer(sizeOfBufferNew, numOfBufferNew, accessReq);
     DECODE_CHK_NULL(batchBufferNew);
 
     DECODE_CHK_STATUS(Destroy(batchBuffer));
@@ -581,6 +617,46 @@ ResourceUsage DecodeAllocator::ConvertGmmResourceUsage(const GMM_RESOURCE_USAGE_
         resUsageType = resourceDefault;
     }
     return resUsageType;
+}
+
+void DecodeAllocator::SetAccessRequirement(
+    ResourceAccessReq accessReq, MOS_ALLOC_GFXRES_PARAMS &allocParams)
+{
+    // The default setting is lockableVideoMem, just use default setting
+    // if not running with limited LMem bar config.
+    if (!m_limitedLMemBar)
+    {
+        allocParams.Flags.bNotLockable = 0;
+        allocParams.dwMemType = MOS_MEMPOOL_VIDEOMEMORY;
+        return;
+    }
+
+    allocParams.Flags.bNotLockable = (accessReq == notLockableVideoMem) ? 1 : 0;
+
+    if (accessReq == lockableSystemMem)
+    {
+        allocParams.dwMemType = MOS_MEMPOOL_SYSTEMMEMORY;
+    }
+    else if (accessReq == notLockableVideoMem)
+    {
+        allocParams.dwMemType = MOS_MEMPOOL_DEVICEMEMORY;
+    }
+    else
+    {
+        allocParams.dwMemType = MOS_MEMPOOL_VIDEOMEMORY;
+    }
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+    if (m_forceLockable)
+    {
+        allocParams.Flags.bNotLockable = 0;
+
+        if (allocParams.dwMemType == MOS_MEMPOOL_DEVICEMEMORY)
+        {
+            allocParams.dwMemType = MOS_MEMPOOL_VIDEOMEMORY;
+        }
+    }
+#endif
 }
 
 }

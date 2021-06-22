@@ -29,11 +29,15 @@
 #include "vp_pipeline_common.h"
 #include "vp_render_kernel_obj.h"
 #include "hal_oca_interface.h"
+#include "vp_pipeline.h"
+#include "vp_packet_pipe.h"
 
 namespace vp
 {
 static inline RENDERHAL_SURFACE_TYPE InitRenderHalSurfType(VPHAL_SURFACE_TYPE vpSurfType)
 {
+    VP_FUNC_CALL();
+
     switch (vpSurfType)
     {
     case SURF_IN_BACKGROUND:
@@ -60,7 +64,6 @@ static inline RENDERHAL_SURFACE_TYPE InitRenderHalSurfType(VPHAL_SURFACE_TYPE vp
 VpRenderCmdPacket::VpRenderCmdPacket(MediaTask *task, PVP_MHWINTERFACE hwInterface, PVpAllocator &allocator, VPMediaMemComp *mmc, VpKernelSet *kernelSet) : CmdPacket(task),
                                                                                                                                                             RenderCmdPacket(task, hwInterface->m_osInterface, hwInterface->m_renderHal),
                                                                                                                                                             VpCmdPacket(task, hwInterface, allocator, mmc, VP_PIPELINE_PACKET_RENDER),
-                                                                                                                                                            m_filter(nullptr),
                                                                                                                                                             m_firstFrame(true),
                                                                                                                                                             m_kernelSet(kernelSet)
 {
@@ -68,14 +71,6 @@ VpRenderCmdPacket::VpRenderCmdPacket(MediaTask *task, PVP_MHWINTERFACE hwInterfa
 
 VpRenderCmdPacket::~VpRenderCmdPacket()
 {
-    for (auto it : m_surfSetting.surfGroup)
-    {
-        if (it.second)
-        {
-            m_allocator->DestroyVpSurface(it.second);
-        }
-    }
-
     for (auto &samplerstate : m_kernelSamplerStateGroup)
     {
         if (samplerstate.second.SamplerType == MHW_SAMPLER_TYPE_AVS)
@@ -83,7 +78,7 @@ VpRenderCmdPacket::~VpRenderCmdPacket()
             MOS_FreeMemAndSetNull(samplerstate.second.Avs.pMhwSamplerAvsTableParam);
         }
     }
-
+    MOS_Delete(m_surfMemCacheCtl);
 }
 
 MOS_STATUS VpRenderCmdPacket::Prepare()
@@ -132,7 +127,7 @@ MOS_STATUS VpRenderCmdPacket::Prepare()
             VP_RENDER_CHK_STATUS_RETURN(m_renderHal->pfnSetVfeStateParams(
                 m_renderHal,
                 MEDIASTATE_DEBUG_COUNTER_FREE_RUNNING,
-                RENDERHAL_USE_MEDIA_THREADS_MAX,
+                m_renderData.KernelParam.Thread_Count,
                 m_renderData.iCurbeLength,
                 m_renderData.iInlineLength,
                 nullptr));
@@ -229,6 +224,7 @@ MOS_STATUS VpRenderCmdPacket::Submit(MOS_COMMAND_BUFFER *commandBuffer, uint8_t 
     if (m_submissionMode == MULTI_KERNELS_WITH_MULTI_MEDIA_STATES)
     {
         VP_RENDER_CHK_STATUS_RETURN(SetupMediaWalker());
+
         VP_RENDER_CHK_STATUS_RETURN(RenderCmdPacket::Submit(commandBuffer, packetPhase));
     }
     else if (m_submissionMode == MULTI_KERNELS_WITH_ONE_MEDIA_STATE)
@@ -240,33 +236,78 @@ MOS_STATUS VpRenderCmdPacket::Submit(MOS_COMMAND_BUFFER *commandBuffer, uint8_t 
         return MOS_STATUS_INVALID_PARAMETER;
     }
 
-    VP_RENDER_CHK_STATUS_RETURN(m_kernelSet->DestroyKernelObjects(m_kernelObjs));
+    if (!m_surfSetting.dumpLaceSurface)
+    {
+        VP_RENDER_CHK_STATUS_RETURN(m_kernelSet->DestroyKernelObjects(m_kernelObjs));
+    }
 
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS VpRenderCmdPacket::SetVeboxUpdateParams(PVEBOX_UPDATE_PARAMS params)
+MOS_STATUS VpRenderCmdPacket::InitSurfMemCacheControl(VP_EXECUTE_CAPS packetCaps)
 {
+    MOS_HW_RESOURCE_DEF                 Usage           = MOS_HW_RESOURCE_DEF_MAX;
+    MEMORY_OBJECT_CONTROL_STATE         MemObjCtrl      = {};
+    PMOS_INTERFACE                      pOsInterface    = nullptr;
+    PVP_VEBOX_CACHE_CNTL                pSettings       = nullptr;
+
     VP_FUNC_CALL();
-    VP_RENDER_CHK_NULL_RETURN(params);
 
-    if (params->kernelGroup.empty())
+    if (nullptr == m_surfMemCacheCtl)
     {
-        VP_RENDER_ASSERTMESSAGE("No Kernel need to be processed");
-        return MOS_STATUS_INVALID_PARAMETER;
+        m_surfMemCacheCtl = MOS_New(VP_VEBOX_CACHE_CNTL);
     }
 
-    for (auto it : params->kernelGroup)
+    VP_PUBLIC_CHK_NULL_RETURN(m_surfMemCacheCtl);
+    VP_PUBLIC_CHK_NULL_RETURN(m_hwInterface);
+    VP_PUBLIC_CHK_NULL_RETURN(m_hwInterface->m_osInterface);
+
+    MOS_ZeroMemory(m_surfMemCacheCtl, sizeof(VP_VEBOX_CACHE_CNTL));
+
+    pOsInterface    = m_hwInterface->m_osInterface;
+    pSettings       = m_surfMemCacheCtl;
+
+    pSettings->bDnDi = true;
+    pSettings->bLace = MEDIA_IS_SKU(m_hwInterface->m_skuTable, FtrLace);
+
+    if (pSettings->bDnDi)
     {
-        m_kernelConfigs.insert(std::make_pair((KernelId)it, (void *)params));
+        pSettings->DnDi.bL3CachingEnabled = true;
+
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.CurrentInputSurfMemObjCtl,        MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.PreviousInputSurfMemObjCtl,       MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.STMMInputSurfMemObjCtl,           MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.STMMOutputSurfMemObjCtl,          MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.DnOutSurfMemObjCtl,               MOS_MP_RESOURCE_USAGE_SurfaceState);
+
+        if (packetCaps.bVebox && !packetCaps.bSFC && !packetCaps.bRender)
+        {
+            // Disable cache for output surface in vebox only condition
+            VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.CurrentOutputSurfMemObjCtl,    MOS_MP_RESOURCE_USAGE_DEFAULT);
+        }
+        else
+        {
+            VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.CurrentOutputSurfMemObjCtl,    MOS_MP_RESOURCE_USAGE_SurfaceState);
+        }
+
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.StatisticsOutputSurfMemObjCtl,    MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.AlphaOrVignetteSurfMemObjCtl,     MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.LaceOrAceOrRgbHistogramSurfCtrl,  MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.SkinScoreSurfMemObjCtl,           MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.LaceLookUpTablesSurfMemObjCtl,    MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->DnDi.Vebox3DLookUpTablesSurfMemObjCtl, MOS_MP_RESOURCE_USAGE_SurfaceState);
+    }
+    if (pSettings->bLace)
+    {
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->Lace.FrameHistogramSurfaceMemObjCtl,      MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->Lace.AggregatedHistogramSurfaceMemObjCtl, MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->Lace.StdStatisticsSurfaceMemObjCtl,       MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->Lace.PwlfInSurfaceMemObjCtl,              MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->Lace.PwlfOutSurfaceMemObjCtl,             MOS_MP_RESOURCE_USAGE_SurfaceState);
+        VPHAL_SET_SURF_MEMOBJCTL(pSettings->Lace.WeitCoefSurfaceMemObjCtl,            MOS_MP_RESOURCE_USAGE_SurfaceState);
     }
 
     return MOS_STATUS_SUCCESS;
-}
-
-MOS_STATUS VpRenderCmdPacket::SetSecureCopyParams(bool copyNeeded)
-{
-    return MOS_STATUS();
 }
 
 MOS_STATUS VpRenderCmdPacket::PacketInit(
@@ -276,21 +317,12 @@ MOS_STATUS VpRenderCmdPacket::PacketInit(
     VP_SURFACE_SETTING &surfSetting,
     VP_EXECUTE_CAPS     packetCaps)
 {
+    VP_FUNC_CALL();
+
     // will remodify when normal render path enabled
     VP_UNUSED(inputSurface);
     VP_UNUSED(outputSurface);
     VP_UNUSED(previousSurface);
-
-    VP_SURFACE *input  = m_allocator->AllocateVpSurface();
-    VP_RENDER_CHK_NULL_RETURN(input);
-    VP_SURFACE *output = m_allocator->AllocateVpSurface();
-    VP_RENDER_CHK_NULL_RETURN(output);
-
-    VP_PUBLIC_CHK_STATUS_RETURN(m_allocator->CopyVpSurface(*input, *inputSurface));
-    VP_PUBLIC_CHK_STATUS_RETURN(m_allocator->CopyVpSurface(*output, *outputSurface));
-
-    surfSetting.surfGroup.insert(std::make_pair(SurfaceTypeRenderInput, input));
-    surfSetting.surfGroup.insert(std::make_pair(SurfaceTypeRenderOutput, output));
 
     m_PacketCaps = packetCaps;
 
@@ -298,6 +330,9 @@ MOS_STATUS VpRenderCmdPacket::PacketInit(
     m_surfSetting = surfSetting;
 
     m_packetResourcesdPrepared = false;
+    m_renderKernelParams.clear();
+
+    VP_RENDER_CHK_STATUS_RETURN(InitSurfMemCacheControl(packetCaps));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -308,19 +343,13 @@ MOS_STATUS VpRenderCmdPacket::KernelStateSetup()
     VP_RENDER_CHK_NULL_RETURN(m_kernel);
 
     // // Initialize States
-    MOS_ZeroMemory(m_filter, sizeof(m_filter));
     MOS_ZeroMemory(&m_renderData.KernelEntry, sizeof(Kdll_CacheEntry));
 
     // Store pointer to Kernel Parameter
-    VP_RENDER_CHK_STATUS_RETURN(m_kernel->GetKernelSettings(m_renderData.KernelParam, m_kernel->GetKernelID()));
+    VP_RENDER_CHK_STATUS_RETURN(m_kernel->GetKernelSettings(m_renderData.KernelParam));
 
     // Set Parameters for Kernel Entry
-    m_renderData.KernelEntry.iKUID       = m_kernel->GetKernelID();
-    m_renderData.KernelEntry.iKCID       = -1;
-    m_renderData.KernelEntry.iFilterSize = 2;
-    m_renderData.KernelEntry.pFilter     = m_filter;
-    m_renderData.KernelEntry.iSize       = m_kernel->GetKernelSize();
-    m_renderData.KernelEntry.pBinary     = (uint8_t *)m_kernel->GetKernelBinary();
+    VP_RENDER_CHK_STATUS_RETURN(m_kernel->GetKernelEntry(m_renderData.KernelEntry));
 
     // set the Inline Data length
     void *   InlineData    = nullptr;
@@ -384,7 +413,7 @@ MOS_STATUS VpRenderCmdPacket::SetupSurfaceState()
 
             uint32_t index = 0;
 
-            if (kernelSurfaceParam->surfaceOverwriteParams.bindedKernel)
+            if (kernelSurfaceParam->surfaceOverwriteParams.bindedKernel && !kernelSurfaceParam->surfaceOverwriteParams.bufferResource)
             {
                 index = SetSurfaceForHwAccess(
                     &renderHalSurface.OsSurface,
@@ -395,10 +424,26 @@ MOS_STATUS VpRenderCmdPacket::SetupSurfaceState()
             }
             else
             {
-                if ((kernelSurfaceParam->surfaceOverwriteParams.updatedSurfaceParams &&
-                        kernelSurfaceParam->surfaceOverwriteParams.bufferResource) ||
+                if ((kernelSurfaceParam->surfaceOverwriteParams.updatedSurfaceParams  &&
+                     kernelSurfaceParam->surfaceOverwriteParams.bufferResource        &&
+                     kernelSurfaceParam->surfaceOverwriteParams.bindedKernel)         ||
                     (!kernelSurfaceParam->surfaceOverwriteParams.updatedSurfaceParams &&
-                        renderHalSurface.OsSurface.Type == MOS_GFXRES_BUFFER))
+                        (renderHalSurface.OsSurface.Type == MOS_GFXRES_BUFFER         ||
+                         renderHalSurface.OsSurface.Type == MOS_GFXRES_INVALID)))
+                {
+                    index = SetBufferForHwAccess(
+                        &renderHalSurface.OsSurface,
+                        &renderHalSurface,
+                        &renderSurfaceParams,
+                        kernelSurfaceParam->surfaceOverwriteParams.bindIndex,
+                        renderSurfaceParams.bRenderTarget);
+                }
+                else if ((kernelSurfaceParam->surfaceOverwriteParams.updatedSurfaceParams &&
+                     kernelSurfaceParam->surfaceOverwriteParams.bufferResource            &&
+                     !kernelSurfaceParam->surfaceOverwriteParams.bindedKernel)            ||
+                    (!kernelSurfaceParam->surfaceOverwriteParams.updatedSurfaceParams     &&
+                    (renderHalSurface.OsSurface.Type == MOS_GFXRES_BUFFER                 ||
+                     renderHalSurface.OsSurface.Type == MOS_GFXRES_INVALID)))
                 {
                     index = SetBufferForHwAccess(
                         &renderHalSurface.OsSurface,
@@ -448,13 +493,15 @@ MOS_STATUS VpRenderCmdPacket::SetupCurbeState()
     m_renderData.iCurbeLength = MOS_ALIGN_CEIL(curbeLength, m_renderHal->dwCurbeBlockAlign);
     m_totalCurbeSize += m_renderData.iCurbeLength;
 
-    MOS_SafeFreeMemory(curbeData);
+    m_kernel->FreeCurbe(curbeData);
 
     return MOS_STATUS_SUCCESS;
 }
 
 VP_SURFACE *VpRenderCmdPacket::GetSurface(SurfaceType type)
 {
+    VP_FUNC_CALL();
+
     auto        it   = m_surfSetting.surfGroup.find(type);
     VP_SURFACE *surf = (m_surfSetting.surfGroup.end() != it) ? it->second : nullptr;
 
@@ -466,7 +513,8 @@ MOS_STATUS VpRenderCmdPacket::SetupMediaWalker()
     VP_FUNC_CALL();
     VP_RENDER_CHK_NULL_RETURN(m_kernel);
 
-    m_renderData.walkerParam = m_kernel->GetWalkerSetting();
+    VP_RENDER_CHK_STATUS_RETURN(m_kernel->GetWalkerSetting(m_renderData.walkerParam));
+
     switch (m_walkerType)
     {
     case WALKER_TYPE_MEDIA:
@@ -492,8 +540,6 @@ MOS_STATUS VpRenderCmdPacket::SetupWalkerParams()
 {
     VP_FUNC_CALL();
     VP_RENDER_CHK_NULL_RETURN(m_kernel);
-
-    m_renderData.walkerParam = m_kernel->GetWalkerSetting();
 
     m_renderData.walkerParam.iBindingTable = m_renderData.bindingTable;
 
@@ -544,6 +590,18 @@ MOS_STATUS VpRenderCmdPacket::InitStateHeapSurface(SurfaceType type, RENDERHAL_S
         mosSurface.OsResource = pVeboxHeap->DriverResource;
         break;
     case SurfaceTypeVeboxStateHeap_Knr:
+    case SurfaceTypeVeboxInput:
+    case SurfaceTypeLaceAceRGBHistogram:
+    case SurfaceTypeLaceLut:
+    case SurfaceTypeStatistics:
+    case SurfaceTypeSkinScore:
+    case SurfaceTypeAggregatedHistogram:
+    case SurfaceTypeFrameHistogram:
+    case SurfaceTypeStdStatistics:
+    case SurfaceTypePwlfIn:
+    case SurfaceTypePwlfOut:
+    case SurfaceTypeWeitCoef:
+    case SurfaceTypGlobalToneMappingCurveLUT:
         mosSurface.OsResource = pVeboxHeap->KernelResource;
         break;
     default:
@@ -579,271 +637,6 @@ MOS_STATUS VpRenderCmdPacket::UpdateRenderSurface(RENDERHAL_SURFACE_NEXT &render
 
         renderSurface.OsSurface.Format = (overwriteParam.format != 0) ? overwriteParam.format : renderSurface.OsSurface.Format;
     }
-
-    return MOS_STATUS_SUCCESS;
-}
-
-MOS_STATUS VpRenderCmdPacket::ReadSRWeights(uint16_t *pBuf, const uint8_t *pWeight, const uint32_t uWeightSize, uint32_t outChannels, uint32_t inChannels, uint32_t nWeightsPerChannel, uint32_t layer)
-{
-    VP_FUNC_CALL();
-    MOS_STATUS eStatus        = MOS_STATUS_SUCCESS;
-    uint16_t * tempBuf        = nullptr;
-    uint32_t   sizeWeightsBuf = inChannels * outChannels * nWeightsPerChannel * sizeof(uint16_t);
-    int        writeIndex     = 0;
-
-    tempBuf = (uint16_t *)MOS_AllocAndZeroMemory(sizeWeightsBuf);
-
-    VPHAL_RENDER_CHK_NULL(tempBuf);
-
-    VPHAL_RENDER_CHK_STATUS(MOS_SecureMemcpy((uint8_t *)tempBuf, sizeWeightsBuf, pWeight, uWeightSize));
-
-    // re-order weights, and apply padding
-    for (uint32_t o = 0; o < outChannels; o++)
-    {
-        for (uint32_t i = 0; i < inChannels; i++)
-        {
-            for (uint32_t w = 0; w < nWeightsPerChannel; w++)
-            {
-                // ugly hack, to solve different ordering of weights for layers
-                if (layer >= 1 && layer <= 7)
-                {
-                    pBuf[writeIndex++] = tempBuf[w * (inChannels * outChannels) + o * inChannels + i];
-                }
-                else
-                {
-                    pBuf[writeIndex++] = tempBuf[w * (inChannels * outChannels) + i * outChannels + o];
-                }
-            }
-
-            if (layer <= 7)
-            {
-                int padding = 64 - (writeIndex % 64);
-                if (padding < 9)
-                {
-                    // add input channel padding
-                    for (int p = 0; p < padding; p++)
-                    {
-                        pBuf[writeIndex++] = 0;
-                    }
-                }
-            }
-            else if (layer == 9)  // for layer 9 we add padding between every inchannel
-            {
-                int padding = 16 - (writeIndex % 16);
-
-                // add input channel padding
-                for (int p = 0; p < padding; p++)
-                {
-                    pBuf[writeIndex++] = 0;
-                }
-            }
-        }
-
-        if (layer <= 7)
-        {
-            int padding = 64 - (writeIndex % 64);
-
-            // add input channel padding
-            for (int p = 0; p < padding; p++)
-            {
-                pBuf[writeIndex++] = 0;
-            }
-        }
-        else if (layer == 8)
-        {
-            // add output channel padding
-            for (int p = 0; p < 32 - (int)inChannels; p++)
-            {
-                pBuf[writeIndex++] = 0;
-            }
-        }
-    }
-
-finish:
-    MOS_FreeMemAndSetNull(tempBuf);
-    return eStatus;
-}
-
-MOS_STATUS VpRenderCmdPacket::SetSRParams(PRENDER_SR_PARAMS params)
-{
-    VP_FUNC_CALL();
-    VP_RENDER_CHK_NULL_RETURN(params);
-    VP_RENDER_CHK_NULL_RETURN(m_allocator);
-
-    if (params->bEnableSR)
-    {
-        for (auto &layer : params->layersParam)
-        {
-            VP_SURFACE * pSurface    = nullptr;
-            MOS_ALLOC_GFXRES_PARAMS allocParams = {};
-            KERNEL_PARAMS kernelParams = {};
-
-            allocParams.dwWidth = layer.uWidth;
-            allocParams.dwHeight = layer.uHeight;
-            allocParams.Format = layer.format;
-            allocParams.bIsCompressible = false;
-            allocParams.CompressionMode = MOS_MMC_DISABLED;
-            allocParams.pBufName = "SR intermediate Surface";
-            allocParams.dwArraySize = 1;
-            allocParams.ResUsageType = MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_WRITE_RENDER;
-            allocParams.m_tileModeByForce = MOS_TILE_UNSET_GMM;
-            allocParams.TileType = MOS_TILE_Y;
-            allocParams.Type = MOS_GFXRES_2D;
-
-            pSurface = m_allocator->AllocateVpSurface(allocParams, true);
-            VP_RENDER_CHK_NULL_RETURN(pSurface);
-
-            m_surfSetting.surfGroup.insert(std::make_pair(layer.outputSurface, pSurface));
-
-            if (layer.uWeightBufferSize)
-            {
-                MOS_ZeroMemory(&allocParams, sizeof(MOS_ALLOC_GFXRES_PARAMS));
-                allocParams.dwWidth = layer.uWeightBufferSize;
-                allocParams.dwHeight = 1;
-                allocParams.Format = Format_Buffer;
-                allocParams.bIsCompressible = false;
-                allocParams.CompressionMode = MOS_MMC_DISABLED;
-                allocParams.pBufName = "SR intermediate Buffer";
-                allocParams.dwArraySize = 1;
-                allocParams.ResUsageType = MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_WRITE_RENDER;
-                allocParams.m_tileModeByForce = MOS_TILE_UNSET_GMM;
-                allocParams.TileType = MOS_TILE_LINEAR;
-                allocParams.Type = MOS_GFXRES_BUFFER;
-
-                pSurface = m_allocator->AllocateVpSurface(allocParams, true);
-                VP_RENDER_CHK_NULL_RETURN(pSurface);
-
-                uint16_t *pTempBuffer = (uint16_t *)MOS_AllocAndZeroMemory(layer.uWeightBufferSize);
-                VP_PUBLIC_CHK_NULL_RETURN(pTempBuffer);
-
-                ReadSRWeights(pTempBuffer,
-                    (*params->sr2xConvWeightTable)[layer.uLayerID - 1],
-                    (*params->sr2xConvWeightTableSize)[layer.uLayerID - 1],
-                    layer.uOutChannels,
-                    layer.uInChannels,
-                    layer.uWeightsPerChannel,
-                    layer.uLayerID - 1);
-
-                m_allocator->Write1DSurface(pSurface, (uint8_t *)pTempBuffer, layer.uWeightBufferSize);
-
-                m_surfSetting.surfGroup.insert(std::make_pair(layer.weightBuffer, pSurface));
-
-                MOS_FreeMemAndSetNull(pTempBuffer);
-            }
-
-            if (layer.uBiasBufferSize)
-            {
-                MOS_ZeroMemory(&allocParams, sizeof(MOS_ALLOC_GFXRES_PARAMS));
-                allocParams.dwWidth = layer.uBiasBufferSize;
-                allocParams.dwHeight = 1;
-                allocParams.Format = Format_Buffer;
-                allocParams.bIsCompressible = false;
-                allocParams.CompressionMode = MOS_MMC_DISABLED;
-                allocParams.pBufName = "SR intermediate Buffer";
-                allocParams.dwArraySize = 1;
-                allocParams.ResUsageType = MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_WRITE_RENDER;
-                allocParams.m_tileModeByForce = MOS_TILE_UNSET_GMM;
-                allocParams.TileType = MOS_TILE_LINEAR;
-                allocParams.Type = MOS_GFXRES_BUFFER;
-
-                pSurface = m_allocator->AllocateVpSurface(allocParams, true);
-                VP_RENDER_CHK_NULL_RETURN(pSurface);
-
-                m_allocator->Write1DSurface(pSurface, (*params->sr2xConvBiasTable)[layer.uLayerID - 1], (*params->sr2xConvBiasTableSize)[layer.uLayerID - 1]);
-
-                m_surfSetting.surfGroup.insert(std::make_pair(layer.biasBuffer, pSurface));
-            }
-
-            if (layer.uReluBufferSize)
-            {
-                MOS_ZeroMemory(&allocParams, sizeof(MOS_ALLOC_GFXRES_PARAMS));
-                allocParams.dwWidth = layer.uReluBufferSize;
-                allocParams.dwHeight = 1;
-                allocParams.Format = Format_Buffer;
-                allocParams.bIsCompressible = false;
-                allocParams.CompressionMode = MOS_MMC_DISABLED;
-                allocParams.pBufName = "SR intermediate Buffer";
-                allocParams.dwArraySize = 1;
-                allocParams.ResUsageType = MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_WRITE_RENDER;
-                allocParams.m_tileModeByForce = MOS_TILE_UNSET_GMM;
-                allocParams.TileType = MOS_TILE_LINEAR;
-                allocParams.Type = MOS_GFXRES_BUFFER;
-
-                pSurface = m_allocator->AllocateVpSurface(allocParams, true);
-                VP_RENDER_CHK_NULL_RETURN(pSurface);
-
-                if ((*params->sr2xConvPreluTableSize)[layer.uLayerID - 1])
-                {
-                    m_allocator->Write1DSurface(pSurface, (*params->sr2xConvPreluTable)[layer.uLayerID - 1], (*params->sr2xConvPreluTableSize)[layer.uLayerID - 1]);
-                }
-                else
-                {
-                    uint8_t *temp = (uint8_t *)MOS_AllocAndZeroMemory(layer.uReluBufferSize);
-                    VP_RENDER_CHK_NULL_RETURN(temp);
-                    m_allocator->Write1DSurface(pSurface, temp, layer.uReluBufferSize);
-                    MOS_FreeMemAndSetNull(temp);
-                }
-
-                m_surfSetting.surfGroup.insert(std::make_pair(layer.reluBuffer, pSurface));
-            }
-
-            kernelParams.kernelId = layer.uKernelID;
-            kernelParams.kernelArgs = layer.kernelArgs;
-            kernelParams.kernelThreadSpace.uHeight = layer.uThreadHeight;
-            kernelParams.kernelThreadSpace.uWidth = layer.uThreadWidth;
-            kernelParams.syncFlag = true;
-
-            m_renderKernelParams.push_back(kernelParams);
-        }
-
-        RENDER_PACKET_CHK_STATUS_RETURN(SetSRChromaParams(params));
-
-        m_submissionMode = MULTI_KERNELS_WITH_ONE_MEDIA_STATE;
-    }
-
-    return MOS_STATUS_SUCCESS;
-}
-
-MOS_STATUS VpRenderCmdPacket::SetSRChromaParams(PRENDER_SR_PARAMS params)
-{
-    VP_FUNC_CALL();
-    RENDER_PACKET_CHK_NULL_RETURN(params);
-
-    KERNEL_PARAMS kernelParams = {};
-    kernelParams.kernelId = params->chromaLayerParam.uKernelID;
-    kernelParams.kernelArgs = params->chromaLayerParam.kernelArgs;
-    kernelParams.kernelThreadSpace.uWidth = params->chromaLayerParam.uThreadWidth;
-    kernelParams.kernelThreadSpace.uHeight = params->chromaLayerParam.uThreadHeight;
-
-    MHW_SAMPLER_STATE_PARAM samplerStateParam = {};
-    MOS_ZeroMemory(&samplerStateParam, sizeof(samplerStateParam));
-
-    samplerStateParam.Avs.pMhwSamplerAvsTableParam = (PMHW_SAMPLER_AVS_TABLE_PARAM)MOS_AllocAndZeroMemory(sizeof(MHW_SAMPLER_AVS_TABLE_PARAM));
-
-    samplerStateParam.bInUse      = true;
-    samplerStateParam.SamplerType = MHW_SAMPLER_TYPE_AVS;
-    samplerStateParam.ElementType = MHW_Sampler128Elements;
-
-    RENDER_PACKET_CHK_STATUS_RETURN(SetSamplerAvsParams(samplerStateParam, params));
-
-    SamplerIndex samplerindex = m_kernelSamplerStateGroup.size();
-    kernelParams.kernelSamplerIndex.push_back(samplerindex);
-
-    KRN_ARG& krnArg = kernelParams.kernelArgs.at(0);
-    if (krnArg.eArgKind == ARG_KIND_SAMPLER)
-    {
-        *(uint32_t *)krnArg.pData = samplerindex;
-    }
-    else
-    {
-        return MOS_STATUS_INVALID_PARAMETER;
-    }
-
-    m_kernelSamplerStateGroup.insert(std::make_pair(samplerindex, samplerStateParam));
-
-    kernelParams.syncFlag = true;
-
-    m_renderKernelParams.push_back(kernelParams);
 
     return MOS_STATUS_SUCCESS;
 }
@@ -1577,7 +1370,7 @@ MOS_STATUS VpRenderCmdPacket::SubmitWithMultiKernel(MOS_COMMAND_BUFFER *commandB
     pOsContext      = pOsInterface->pOsContext;
     pMmioRegisters  = pMhwRender->GetMmioRegisters();
 
-    RENDER_PACKET_CHK_STATUS_RETURN(SetPowerMode(CombinedFc));
+    RENDER_PACKET_CHK_STATUS_RETURN(SetPowerMode(kernelCombinedFc));
 
     // Initialize command buffer and insert prolog
     RENDER_PACKET_CHK_STATUS_RETURN(m_renderHal->pfnInitCommandBuffer(m_renderHal, commandBuffer, &GenericPrologParams));
@@ -1678,6 +1471,13 @@ MOS_STATUS VpRenderCmdPacket::SubmitWithMultiKernel(MOS_COMMAND_BUFFER *commandB
             pBatchBuffer->dwSyncTag = dwSyncTag;
         }
     }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpRenderCmdPacket::DumpOutput()
+{
+    VP_FUNC_CALL();
 
     return MOS_STATUS_SUCCESS;
 }
@@ -1836,6 +1636,13 @@ MOS_STATUS VpRenderCmdPacket::SendMediaStates(
 
 finish:
     return eStatus;
+}
+
+MOS_STATUS VpRenderCmdPacket::SetDiFmdParams(PRENDER_DI_FMD_PARAMS params)
+{
+    VP_FUNC_CALL();
+
+    return MOS_STATUS_SUCCESS;
 }
 
 }  // namespace vp

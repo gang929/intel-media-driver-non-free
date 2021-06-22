@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2020, Intel Corporation
+* Copyright (c) 2017-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -77,6 +77,9 @@
 
 #ifdef _MPEG2_DECODE_SUPPORTED
 #include "codechal_decode_mpeg2_g12.h"
+#ifdef _APOGEIOS_SUPPORTED
+#include "decode_mpeg2_pipeline_adapter_m12.h"
+#endif
 #endif
 
 #ifdef _VC1_DECODE_SUPPORTED
@@ -93,6 +96,9 @@
 
 #ifdef _JPEG_ENCODE_SUPPORTED
 #include "codechal_encode_jpeg_g12.h"
+#ifdef _APOGEIOS_SUPPORTED
+#include "decode_jpeg_pipeline_adapter_m12.h"
+#endif
 #endif
 
 #ifdef _AV1_DECODE_SUPPORTED
@@ -120,7 +126,7 @@
 #ifdef _HEVC_ENCODE_VDENC_SUPPORTED
 #include "codechal_vdenc_hevc_g12.h"
 #ifdef _APOGEIOS_SUPPORTED
-#include "encode_hevc_vdenc_pipeline_adapter_g12.h"
+#include "encode_hevc_vdenc_pipeline_adapter_g12_xe.h"
 #include "decode_hevc_pipeline_adapter_m12.h"
 #include "decode_vp9_pipeline_adapter_m12.h"
 #endif
@@ -135,7 +141,7 @@
 
 #include "cm_hal_g12.h"
 #include "vphal_g12_tgllp.h"
-#include "renderhal_g12.h"
+#include "renderhal_g12_0.h"
 #include "media_user_settings_mgr_g12.h"
 
 #include "codechal_decode_histogram_g12.h"
@@ -314,12 +320,16 @@ public:
         PMOS_CONTEXT    osDriverContext,
         bool            bInitVphalState,
         MOS_STATUS      *eStatus);
+
+    MOS_STATUS CreateVpPlatformInterface(
+        PMOS_INTERFACE osInterface,
+        MOS_STATUS *   eStatus);
 };
 
 class RenderHalInterfacesG12Tgllp : public RenderHalDevice
 {
 protected:
-    using XRenderHal = XRenderHal_Interface_g12;
+    using XRenderHal = XRenderHal_Interface_G12_0;
     MOS_STATUS Initialize();
 };
 

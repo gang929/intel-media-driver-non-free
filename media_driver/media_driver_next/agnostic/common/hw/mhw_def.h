@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, Intel Corporation
+* Copyright (c) 2020-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -39,6 +39,20 @@
 //              only used by other    |   _DECL: declaration
 //              macros                |   _DEF : definition
 
+#define MHW_HWCMDPARSER_ENABLED (_MHW_HWCMDPARSER_SUPPORTED && (_DEBUG || _RELEASE_INTERNAL))
+#if MHW_HWCMDPARSER_ENABLED
+#include "mhw_hwcmd_parser.h"
+#else
+#define MHW_HWCMDPARSER_INIT(osInterface)
+#define MHW_HWCMDPARSER_DESTROY()
+#define MHW_HWCMDPARSER_PARSEFIELDSLAYOUTEN() false
+#define MHW_HWCMDPARSER_PARSEFIELDLAYOUT(dw, field)
+#define MHW_HWCMDPARSER_FRAMEINFOUPDATE(frameType)
+#define MHW_HWCMDPARSER_PARSECMD(cmdName, cmdData, dwLen)
+#define MHW_HWCMDPARSER_PARSECMDBUF(cmdBuf, dwLen)
+#define MHW_HWCMDPARSER_PARSECMDBUFGFX(cmdBufGfx)
+#endif
+
 #define _MHW_CMD_T(cmd)      cmd##_CMD         // MHW command type
 #define __MHW_CMD_PAR_M(cmd) m_##cmd##_Params  // member which is a pointer to MHW command parameters
 
@@ -56,8 +70,14 @@
                                                                 const uint8_t *     extraData     = nullptr, \
                                                                 size_t              extraDataSize = 0)
 
-#define __MHW_CMD_CREATE_DECL(cmd)      mhw::Pointer<std::vector<uint8_t>> __MHW_CMD_CREATE_F(cmd)() const
-#define __MHW_CMD_SET_DECL(cmd)         MOS_STATUS __MHW_CMD_SET_F(cmd)(uint8_t * cmdDataPtr)
+#define __MHW_CMD_CREATE_DECL(cmd) mhw::Pointer<std::vector<uint8_t>> __MHW_CMD_CREATE_F(cmd)() const
+
+#if MHW_HWCMDPARSER_ENABLED
+#define __MHW_CMD_SET_DECL(cmd) MOS_STATUS __MHW_CMD_SET_F(cmd)(uint8_t * cmdDataPtr, const std::string &cmdName = #cmd)
+#else
+#define __MHW_CMD_SET_DECL(cmd) MOS_STATUS __MHW_CMD_SET_F(cmd)(uint8_t * cmdDataPtr)
+#endif
+
 #define _MHW_CMD_SET_DECL_OVERRIDE(cmd) __MHW_CMD_SET_DECL(cmd) override
 
 #define __MHW_CMD_PAR_GET_COMMON_DEF(cmd, par_t)                                      \
@@ -90,6 +110,9 @@
         this->m_currentBatchBuf = batchBuf;                                                               \
         auto cmdData            = this->__MHW_CMD_CREATE_F(cmd)();                                        \
         MHW_CHK_STATUS_RETURN(this->__MHW_CMD_SET_F(cmd)(cmdData->data()));                               \
+        MHW_HWCMDPARSER_PARSECMD(#cmd,                                                                    \
+            reinterpret_cast<uint32_t *>(cmdData->data()),                                                \
+            cmdData->size() / sizeof(uint32_t));                                                          \
         MHW_CHK_STATUS_RETURN(Mhw_AddCommandCmdOrBB(cmdBuf, batchBuf, cmdData->data(), cmdData->size())); \
         if (extraData && extraDataSize > 0)                                                               \
         {                                                                                                 \
@@ -157,6 +180,8 @@ protected:                                     \
 // DWORD location of a command field
 #define _MHW_CMD_DW_LOCATION(field) \
     static_cast<uint32_t>((reinterpret_cast<uint32_t *>(&(cmd->field)) - reinterpret_cast<uint32_t *>(&(*cmd))))
+
+#define _MHW_CMD_ASSIGN_FIELD(dw, field, value) cmd->dw.field = (value)
 
 namespace mhw
 {

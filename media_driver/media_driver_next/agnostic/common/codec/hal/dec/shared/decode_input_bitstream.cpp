@@ -95,22 +95,23 @@ MOS_STATUS DecodeInputBitstream::AllocateCatenatedBuffer()
 {
     DECODE_CHK_NULL(m_allocator);
 
-    uint32_t allocSize = MOS_ALIGN_CEIL(m_requiredSize, CODECHAL_CACHELINE_SIZE);
+    uint32_t allocSize = MOS_ALIGN_CEIL(m_requiredSize, MHW_CACHELINE_SIZE);
 
     if (m_catenatedBuffer == nullptr)
     {
-        m_catenatedBuffer = m_allocator->AllocateBuffer(allocSize, "bitstream", resourceInputBitstream);
+        m_catenatedBuffer = m_allocator->AllocateBuffer(
+            allocSize, "bitstream", resourceInputBitstream, notLockableVideoMem);
         DECODE_CHK_NULL(m_catenatedBuffer);
         return MOS_STATUS_SUCCESS;
     }
 
-    DECODE_CHK_STATUS(m_allocator->Resize(m_catenatedBuffer, allocSize));
+    DECODE_CHK_STATUS(m_allocator->Resize(m_catenatedBuffer, allocSize, notLockableVideoMem));
     return MOS_STATUS_SUCCESS;
 }
 
 MOS_STATUS DecodeInputBitstream::Append(const CodechalDecodeParams &decodeParams)
 {
-    uint32_t segmentSize = decodeParams.m_dataOffset + decodeParams.m_dataSize;
+    uint32_t segmentSize = decodeParams.m_dataSize;
 
     bool firstExecuteCall = (decodeParams.m_executeCallIndex == 0);
     if (firstExecuteCall)
@@ -137,7 +138,7 @@ MOS_STATUS DecodeInputBitstream::Append(const CodechalDecodeParams &decodeParams
         AddNewSegment(*(decodeParams.m_dataBuffer), decodeParams.m_dataOffset, decodeParams.m_dataSize);
     }
 
-    m_segmentsTotalSize += MOS_ALIGN_CEIL(decodeParams.m_dataSize, MHW_CACHELINE_SIZE);
+    m_segmentsTotalSize += MOS_ALIGN_CEIL(segmentSize, MHW_CACHELINE_SIZE);
 
     return MOS_STATUS_SUCCESS;
 }

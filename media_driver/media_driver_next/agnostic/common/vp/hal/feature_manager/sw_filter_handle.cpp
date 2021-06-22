@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, Intel Corporation
+* Copyright (c) 2020-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -40,6 +40,8 @@ SwFilterFeatureHandler::~SwFilterFeatureHandler()
 
 bool SwFilterFeatureHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInputSurf, int surfIndex, SwFilterPipeType pipeType)
 {
+    VP_FUNC_CALL();
+
     if (isInputSurf && (uint32_t)surfIndex >= params.uSrcCount ||
         !isInputSurf && (uint32_t)surfIndex >= params.uDstCount)
     {
@@ -52,6 +54,8 @@ bool SwFilterFeatureHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool i
 
 MOS_STATUS SwFilterFeatureHandler::CreateSwFilter(SwFilter*& swFilter, VP_PIPELINE_PARAMS& params, bool isInputSurf, int surfIndex, SwFilterPipeType pipeType)
 {
+    VP_FUNC_CALL();
+
     swFilter = nullptr;
     if (!IsFeatureEnabled(params, isInputSurf, surfIndex, pipeType))
     {
@@ -71,11 +75,15 @@ MOS_STATUS SwFilterFeatureHandler::CreateSwFilter(SwFilter*& swFilter, VP_PIPELI
 
 bool SwFilterFeatureHandler::IsFeatureEnabled(VEBOX_SFC_PARAMS& params)
 {
+    VP_FUNC_CALL();
+
     return false;
 }
 
 MOS_STATUS SwFilterFeatureHandler::CreateSwFilter(SwFilter*& swFilter, VEBOX_SFC_PARAMS& params)
 {
+    VP_FUNC_CALL();
+
     swFilter = nullptr;
     if (!IsFeatureEnabled(params))
     {
@@ -109,6 +117,8 @@ SwFilterCscHandler::~SwFilterCscHandler()
 
 bool SwFilterCscHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInputSurf, int surfIndex, SwFilterPipeType pipeType)
 {
+    VP_FUNC_CALL();
+
     if (!SwFilterFeatureHandler::IsFeatureEnabled(params, isInputSurf, surfIndex, pipeType))
     {
         return false;
@@ -124,6 +134,8 @@ bool SwFilterCscHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInp
 
 SwFilter* SwFilterCscHandler::CreateSwFilter()
 {
+    VP_FUNC_CALL();
+
     SwFilterCsc* swFilter = nullptr;
     swFilter = dynamic_cast<SwFilterCsc*>(m_swFilterFactory.Create());
     if (swFilter)
@@ -141,11 +153,15 @@ SwFilter* SwFilterCscHandler::CreateSwFilter()
 
 bool SwFilterCscHandler::IsFeatureEnabled(VEBOX_SFC_PARAMS& params)
 {
+    VP_FUNC_CALL();
+
     return true;
 }
 
 void SwFilterCscHandler::Destory(SwFilter*& swFilter)
 {
+    VP_FUNC_CALL();
+
     SwFilterCsc* filter = nullptr;
     filter = dynamic_cast<SwFilterCsc*>(swFilter);
     m_swFilterFactory.Destory(filter);
@@ -165,6 +181,8 @@ SwFilterRotMirHandler::~SwFilterRotMirHandler()
 
 bool SwFilterRotMirHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInputSurf, int surfIndex, SwFilterPipeType pipeType)
 {
+    VP_FUNC_CALL();
+
     if (!SwFilterFeatureHandler::IsFeatureEnabled(params, isInputSurf, surfIndex, pipeType))
     {
         return false;
@@ -180,6 +198,8 @@ bool SwFilterRotMirHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool is
 
 SwFilter* SwFilterRotMirHandler::CreateSwFilter()
 {
+    VP_FUNC_CALL();
+
     SwFilter* swFilter = nullptr;
     swFilter = m_swFilterFactory.Create();
 
@@ -193,11 +213,15 @@ SwFilter* SwFilterRotMirHandler::CreateSwFilter()
 
 bool SwFilterRotMirHandler::IsFeatureEnabled(VEBOX_SFC_PARAMS& params)
 {
+    VP_FUNC_CALL();
+
     return true;
 }
 
 void SwFilterRotMirHandler::Destory(SwFilter*& swFilter)
 {
+    VP_FUNC_CALL();
+
     SwFilterRotMir* filter = nullptr;
     filter = dynamic_cast<SwFilterRotMir*>(swFilter);
     m_swFilterFactory.Destory(filter);
@@ -217,6 +241,8 @@ SwFilterScalingHandler::~SwFilterScalingHandler()
 
 bool SwFilterScalingHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInputSurf, int surfIndex, SwFilterPipeType pipeType)
 {
+    VP_FUNC_CALL();
+
     if (!SwFilterFeatureHandler::IsFeatureEnabled(params, isInputSurf, surfIndex, pipeType))
     {
         return false;
@@ -232,6 +258,8 @@ bool SwFilterScalingHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool i
 
 SwFilter* SwFilterScalingHandler::CreateSwFilter()
 {
+    VP_FUNC_CALL();
+
     SwFilter* swFilter = nullptr;
     swFilter = m_swFilterFactory.Create();
 
@@ -245,11 +273,15 @@ SwFilter* SwFilterScalingHandler::CreateSwFilter()
 
 bool SwFilterScalingHandler::IsFeatureEnabled(VEBOX_SFC_PARAMS& params)
 {
+    VP_FUNC_CALL();
+
     return true;
 }
 
 int SwFilterScalingHandler::GetPipeCountForProcessing(VP_PIPELINE_PARAMS& params)
 {
+    VP_FUNC_CALL();
+
     // For interlaced scaling field-to-interleave mode, need two submission for top field and bottom field,
     // thus we need 2 pipe to handle it.
     if (params.pSrc[0]->InterlacedScalingType == ISCALING_FIELD_TO_INTERLEAVED &&
@@ -262,6 +294,8 @@ int SwFilterScalingHandler::GetPipeCountForProcessing(VP_PIPELINE_PARAMS& params
 
 MOS_STATUS SwFilterScalingHandler::UpdateParamsForProcessing(VP_PIPELINE_PARAMS& params, int index)
 {
+    VP_FUNC_CALL();
+
     if (index >= GetPipeCountForProcessing(params))
     {
         return MOS_STATUS_INVALID_PARAMETER;
@@ -299,6 +333,8 @@ MOS_STATUS SwFilterScalingHandler::UpdateParamsForProcessing(VP_PIPELINE_PARAMS&
 
 void SwFilterScalingHandler::Destory(SwFilter*& swFilter)
 {
+    VP_FUNC_CALL();
+
     SwFilterScaling* filter = nullptr;
     filter = dynamic_cast<SwFilterScaling*>(swFilter);
     m_swFilterFactory.Destory(filter);
@@ -318,8 +354,20 @@ SwFilterDnHandler::~SwFilterDnHandler()
 
 bool SwFilterDnHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInputSurf, int surfIndex, SwFilterPipeType pipeType)
 {
+    VP_FUNC_CALL();
+
     if (!SwFilterFeatureHandler::IsFeatureEnabled(params, isInputSurf, surfIndex, pipeType))
     {
+        return false;
+    }
+
+    PVPHAL_SURFACE inputSurface = params.pSrc[surfIndex];
+
+    if (inputSurface                               &&
+        (inputSurface->Format == Format_A8R8G8B8   ||
+        inputSurface->Format == Format_A16R16G16B16))
+    {
+        VP_PUBLIC_ASSERTMESSAGE("Unsupported Format '0x%08x' which DN will not supported", inputSurface->Format);
         return false;
     }
 
@@ -335,6 +383,8 @@ bool SwFilterDnHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInpu
 
 SwFilter* SwFilterDnHandler::CreateSwFilter()
 {
+    VP_FUNC_CALL();
+
     SwFilter* swFilter = nullptr;
     swFilter = m_swFilterFactory.Create();
 
@@ -348,6 +398,8 @@ SwFilter* SwFilterDnHandler::CreateSwFilter()
 
 void SwFilterDnHandler::Destory(SwFilter*& swFilter)
 {
+    VP_FUNC_CALL();
+
     SwFilterDenoise* filter = nullptr;
     filter = dynamic_cast<SwFilterDenoise*>(swFilter);
     m_swFilterFactory.Destory(filter);
@@ -367,6 +419,8 @@ SwFilterDiHandler::~SwFilterDiHandler()
 
 bool SwFilterDiHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInputSurf, int surfIndex, SwFilterPipeType pipeType)
 {
+    VP_FUNC_CALL();
+
     if (!SwFilterFeatureHandler::IsFeatureEnabled(params, isInputSurf, surfIndex, pipeType))
     {
         return false;
@@ -383,6 +437,8 @@ bool SwFilterDiHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInpu
 
 SwFilter* SwFilterDiHandler::CreateSwFilter()
 {
+    VP_FUNC_CALL();
+
     SwFilter* swFilter = nullptr;
     swFilter = m_swFilterFactory.Create();
 
@@ -396,6 +452,8 @@ SwFilter* SwFilterDiHandler::CreateSwFilter()
 
 void SwFilterDiHandler::Destory(SwFilter*& swFilter)
 {
+    VP_FUNC_CALL();
+
     SwFilterDeinterlace* filter = nullptr;
     filter = dynamic_cast<SwFilterDeinterlace*>(swFilter);
     m_swFilterFactory.Destory(filter);
@@ -415,6 +473,8 @@ SwFilterSteHandler::~SwFilterSteHandler()
 
 bool SwFilterSteHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInputSurf, int surfIndex, SwFilterPipeType pipeType)
 {
+    VP_FUNC_CALL();
+
     if (!SwFilterFeatureHandler::IsFeatureEnabled(params, isInputSurf, surfIndex, pipeType))
     {
         return false;
@@ -432,6 +492,8 @@ bool SwFilterSteHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInp
 
 SwFilter* SwFilterSteHandler::CreateSwFilter()
 {
+    VP_FUNC_CALL();
+
     SwFilter* swFilter = nullptr;
     swFilter = m_swFilterFactory.Create();
 
@@ -445,6 +507,8 @@ SwFilter* SwFilterSteHandler::CreateSwFilter()
 
 void SwFilterSteHandler::Destory(SwFilter*& swFilter)
 {
+    VP_FUNC_CALL();
+
     SwFilterSte* filter = nullptr;
     filter = dynamic_cast<SwFilterSte*>(swFilter);
     m_swFilterFactory.Destory(filter);
@@ -464,6 +528,8 @@ SwFilterTccHandler::~SwFilterTccHandler()
 
 bool SwFilterTccHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInputSurf, int surfIndex, SwFilterPipeType pipeType)
 {
+    VP_FUNC_CALL();
+
     if (!SwFilterFeatureHandler::IsFeatureEnabled(params, isInputSurf, surfIndex, pipeType))
     {
         return false;
@@ -481,6 +547,8 @@ bool SwFilterTccHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInp
 
 SwFilter* SwFilterTccHandler::CreateSwFilter()
 {
+    VP_FUNC_CALL();
+
     SwFilter* swFilter = nullptr;
     swFilter = m_swFilterFactory.Create();
 
@@ -494,6 +562,8 @@ SwFilter* SwFilterTccHandler::CreateSwFilter()
 
 void SwFilterTccHandler::Destory(SwFilter*& swFilter)
 {
+    VP_FUNC_CALL();
+
     SwFilterTcc* filter = nullptr;
     filter = dynamic_cast<SwFilterTcc*>(swFilter);
     m_swFilterFactory.Destory(filter);
@@ -513,6 +583,8 @@ SwFilterProcampHandler::~SwFilterProcampHandler()
 
 bool SwFilterProcampHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInputSurf, int surfIndex, SwFilterPipeType pipeType)
 {
+    VP_FUNC_CALL();
+
     if (!SwFilterFeatureHandler::IsFeatureEnabled(params, isInputSurf, surfIndex, pipeType))
     {
         return false;
@@ -520,6 +592,7 @@ bool SwFilterProcampHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool i
 
     PVPHAL_SURFACE vphalSurf = isInputSurf ? params.pSrc[surfIndex] : params.pTarget[surfIndex];
     if (vphalSurf && vphalSurf->pProcampParams &&
+        !IS_RGB_FORMAT(vphalSurf->Format)      &&
         vphalSurf->pProcampParams->bEnabled)
     {
         return true;
@@ -530,6 +603,8 @@ bool SwFilterProcampHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool i
 
 SwFilter* SwFilterProcampHandler::CreateSwFilter()
 {
+    VP_FUNC_CALL();
+
     SwFilter* swFilter = nullptr;
     swFilter = m_swFilterFactory.Create();
 
@@ -543,6 +618,8 @@ SwFilter* SwFilterProcampHandler::CreateSwFilter()
 
 void SwFilterProcampHandler::Destory(SwFilter*& swFilter)
 {
+    VP_FUNC_CALL();
+
     SwFilterProcamp* filter = nullptr;
     filter = dynamic_cast<SwFilterProcamp*>(swFilter);
     m_swFilterFactory.Destory(filter);
@@ -562,6 +639,8 @@ SwFilterHdrHandler::~SwFilterHdrHandler()
 
 bool SwFilterHdrHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS &params, bool isInputSurf, int surfIndex, SwFilterPipeType pipeType)
 {
+    VP_FUNC_CALL();
+
     // Avoid recheck when it is output or surfIndex > 0
     if (!isInputSurf || surfIndex > 0)
     {
@@ -606,6 +685,8 @@ bool SwFilterHdrHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS &params, bool isInp
 
 SwFilter *SwFilterHdrHandler::CreateSwFilter()
 {
+    VP_FUNC_CALL();
+
     SwFilter *swFilter = nullptr;
     swFilter           = m_swFilterFactory.Create();
 
@@ -619,6 +700,8 @@ SwFilter *SwFilterHdrHandler::CreateSwFilter()
 
 void SwFilterHdrHandler::Destory(SwFilter *&swFilter)
 {
+    VP_FUNC_CALL();
+
     SwFilterHdr *filter = nullptr;
     filter              = dynamic_cast<SwFilterHdr *>(swFilter);
     m_swFilterFactory.Destory(filter);

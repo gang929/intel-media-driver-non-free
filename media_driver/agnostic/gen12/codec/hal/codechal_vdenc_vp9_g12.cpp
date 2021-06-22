@@ -3660,6 +3660,11 @@ MOS_STATUS CodechalVdencVp9StateG12::ExecutePictureLevel()
         }
     }
 
+    if (m_dysRefFrameFlags != DYS_REF_NONE)
+    {
+        m_brcReset = 1;
+    }
+
     if (m_vdencBrcEnabled && IsFirstPipe())
     {
         // Invoke BRC init/reset FW
@@ -3967,6 +3972,7 @@ MOS_STATUS CodechalVdencVp9StateG12::ExecutePictureLevel()
         pipeBufAddrParams->bDynamicScalingEnable = (m_dysRefFrameFlags != DYS_REF_NONE) && !m_dysVdencMultiPassEnabled;
         pipeBufAddrParams->pRawSurfParam                              = &surfaceParams[CODECHAL_HCP_SRC_SURFACE_ID];
         pipeBufAddrParams->pDecodedReconParam                         = &surfaceParams[CODECHAL_HCP_DECODED_SURFACE_ID];
+        pipeBufAddrParams->isIFrame                                   = (m_vp9PicParams->PicFlags.fields.frame_type == 0);
 
 #ifdef _MMC_SUPPORTED
         CODECHAL_ENCODE_CHK_NULL_RETURN(m_mmcState);
@@ -6072,6 +6078,7 @@ MOS_STATUS CodechalVdencVp9StateG12::ConfigStitchDataBuffer()
     lockFlagsWriteOnly.WriteOnly = 1;
 
     HucCommandData *hucStitchDataBuf = (HucCommandData *)m_osInterface->pfnLockResource(m_osInterface, &m_resHucStitchDataBuffer[m_currRecycledBufIdx][currentPass], &lockFlagsWriteOnly);
+    CODECHAL_ENCODE_CHK_NULL_RETURN(hucStitchDataBuf);
 
     MOS_ZeroMemory(hucStitchDataBuf, sizeof(HucCommandData));
     hucStitchDataBuf->TotalCommands          = 1;

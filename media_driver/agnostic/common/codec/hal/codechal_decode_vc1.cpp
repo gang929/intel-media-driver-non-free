@@ -3669,12 +3669,13 @@ MOS_STATUS CodechalDecodeVc1::DecodePrimitiveLevelVLD()
 
             CodechalResLock ResourceLock(m_osInterface, &m_resDataBuffer);
             auto buf = (uint8_t*)ResourceLock.Lock(CodechalResLock::readOnly);
-            buf += slc->slice_data_offset;
             if (offset > 3 && buf != nullptr &&
                 m_vc1PicParams->sequence_fields.AdvancedProfileFlag)
             {
                 int i = 0;
                 int j = 0;
+                buf += slc->slice_data_offset;
+
                 for (i = 0, j = 0; i < offset - 1; i++, j++)
                 {
                     if (!buf[j] && !buf[j + 1] && buf[j + 2] == 3 && buf[j + 3] < 4)
@@ -4841,6 +4842,9 @@ CodechalDecodeVc1::CodechalDecodeVc1(
     MOS_ZeroMemory(&m_resBitplaneBuffer, sizeof(m_resBitplaneBuffer));
     MOS_ZeroMemory(&m_resSyncObjectWaContextInUse, sizeof(m_resSyncObjectWaContextInUse));
     MOS_ZeroMemory(&m_resSyncObjectVideoContextInUse, sizeof(m_resSyncObjectVideoContextInUse));
+#if (_DEBUG || _RELEASE_INTERNAL)
+    m_reportFrameCrc = true;
+#endif
 
 }
 

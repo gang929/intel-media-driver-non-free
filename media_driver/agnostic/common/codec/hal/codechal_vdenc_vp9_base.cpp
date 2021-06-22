@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2018, Intel Corporation
+* Copyright (c) 2017-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -595,10 +595,10 @@ MOS_STATUS CodechalVdencVp9State::CalculateRePakThresholds()
             int32_t threshold = (int32_t)((18630 - b + c - d) / 10);
             int32_t calculatedRepakSavingThreshold = repakSavingThreshold * scale;
 
-            // to avoid overflow of the integer threshold, it must be (RepakSavingThreshold * scale) <= 40342
-            if (calculatedRepakSavingThreshold > 40342)
+            // To avoid overflow of the integer threshold, it must be (RepakSavingThreshold * scale) <= CODEC_VP9_MAX_REPAK_THRESHOLD
+            if (calculatedRepakSavingThreshold > CODEC_VP9_MAX_REPAK_THRESHOLD)
             {
-                calculatedRepakSavingThreshold = 40342;
+                calculatedRepakSavingThreshold = CODEC_VP9_MAX_REPAK_THRESHOLD;
             }
             m_rePakThreshold[i] = calculatedRepakSavingThreshold * threshold;
         }
@@ -4414,6 +4414,7 @@ void CodechalVdencVp9State::SetHcpPipeModeSelectParams(MHW_VDBOX_PIPE_MODE_SELEC
     pipeModeSelectParams.bVdencEnabled = true;
     pipeModeSelectParams.bVdencPakObjCmdStreamOutEnable = m_vdencPakObjCmdStreamOutEnabled;
     pipeModeSelectParams.bTlbPrefetchEnable = true;
+    pipeModeSelectParams.isIFrame = (m_vp9PicParams->PicFlags.fields.frame_type == 0);
 
     // Add 1 to compensate for VdencPipeModeSelect params values
     pipeModeSelectParams.ChromaType = m_vp9SeqParams->SeqFlags.fields.EncodedFormat + 1;

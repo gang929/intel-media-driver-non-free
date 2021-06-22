@@ -1,4 +1,4 @@
-# Copyright (c) 2019, Intel Corporation
+# Copyright (c) 2019-2021, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -21,3 +21,6 @@
 media_include_subdirectory(os)
 media_include_subdirectory(cp)
 media_include_subdirectory(vp)
+media_include_subdirectory(ddi)
+media_include_subdirectory(dec)
+media_include_subdirectory(enc)

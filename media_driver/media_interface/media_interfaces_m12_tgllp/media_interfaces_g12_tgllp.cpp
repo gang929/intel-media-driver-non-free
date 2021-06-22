@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2020, Intel Corporation
+* Copyright (c) 2017-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -113,6 +113,23 @@ MOS_STATUS VphalInterfacesG12Tgllp::Initialize(
         eStatus);
     }
 
+    return *eStatus;
+}
+
+MOS_STATUS VphalInterfacesG12Tgllp::CreateVpPlatformInterface(
+    PMOS_INTERFACE osInterface,
+    MOS_STATUS *   eStatus)
+{
+    vp::VpPlatformInterface *vpPlatformInterface = MOS_New(vp::VpPlatformInterfaceG12Tgllp, osInterface);
+    if (nullptr == vpPlatformInterface)
+    {
+        *eStatus = MOS_STATUS_NULL_POINTER;
+    }
+    else
+    {
+        m_vpPlatformInterface = vpPlatformInterface;
+        *eStatus              = MOS_STATUS_SUCCESS;
+    }
     return *eStatus;
 }
 
@@ -429,7 +446,8 @@ MOS_STATUS McpyDeviceG12Tgllp::Initialize(
     if (device->Initialize(
         osInterface, mhwInterfaces) != MOS_STATUS_SUCCESS)
     {
-        MCPY_FAILURE();
+        MOS_Delete(device);
+        MOS_OS_CHK_STATUS_RETURN(MOS_STATUS_UNINITIALIZED);
     }
 
     m_mcpyDevice = device;
@@ -528,7 +546,29 @@ MOS_STATUS CodechalInterfacesG12Tgllp::Initialize(
         if (info->Mode == CODECHAL_DECODE_MODE_MPEG2IDCT ||
             info->Mode == CODECHAL_DECODE_MODE_MPEG2VLD)
         {
-            m_codechalDevice = MOS_New(Decode::Mpeg2, hwInterface, debugInterface, info);
+        #ifdef _APOGEIOS_SUPPORTED
+            bool apogeiosEnable = false;
+            MOS_USER_FEATURE_VALUE_DATA         userFeatureData;
+            MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+
+            userFeatureData.i32Data = apogeiosEnable;
+            userFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
+            MOS_UserFeature_ReadValue_ID(
+                nullptr,
+                __MEDIA_USER_FEATURE_VALUE_APOGEIOS_MPEG2D_ENABLE_ID,
+                &userFeatureData,
+                hwInterface->GetOsInterface()->pOsContext);
+            apogeiosEnable = userFeatureData.bData ? true : false;
+
+            if (apogeiosEnable)
+            {
+                m_codechalDevice = MOS_New(DecodeMpeg2PipelineAdapterM12, hwInterface, debugInterface);
+            }
+            else
+        #endif
+            {
+                m_codechalDevice = MOS_New(Decode::Mpeg2, hwInterface, debugInterface, info);
+            }
         }
         else
     #endif
@@ -602,7 +642,29 @@ MOS_STATUS CodechalInterfacesG12Tgllp::Initialize(
     #ifdef _JPEG_DECODE_SUPPORTED
         if (info->Mode == CODECHAL_DECODE_MODE_JPEG)
         {
-            m_codechalDevice = MOS_New(Decode::Jpeg, hwInterface, debugInterface, info);
+            bool apogeiosEnable = false;
+#ifdef _APOGEIOS_SUPPORTED
+            MOS_USER_FEATURE_VALUE_DATA userFeatureData;
+            MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+
+            userFeatureData.i32Data     = apogeiosEnable;
+            userFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
+            MOS_UserFeature_ReadValue_ID(
+                nullptr,
+                __MEDIA_USER_FEATURE_VALUE_APOGEIOS_JPEGD_ENABLE_ID,
+                &userFeatureData,
+                hwInterface->GetOsInterface()->pOsContext);
+            apogeiosEnable = userFeatureData.bData ? true : false;
+
+            if (apogeiosEnable)
+            {
+                m_codechalDevice = MOS_New(DecodeJpegPipelineAdapterM12, hwInterface, debugInterface);
+            }
+            else
+#endif
+            {
+                m_codechalDevice = MOS_New(Decode::Jpeg, hwInterface, debugInterface, info);
+            }
         }
         else
     #endif
@@ -833,7 +895,7 @@ MOS_STATUS CodechalInterfacesG12Tgllp::Initialize(
 
                 if (apogeiosEnable)
                 {
-                    m_codechalDevice = MOS_New(EncodeHevcVdencPipelineAdapterG12, hwInterface, debugInterface);
+                    m_codechalDevice = MOS_New(EncodeHevcVdencPipelineAdapterG12Xe, hwInterface, debugInterface);
                     if (m_codechalDevice == nullptr)
                     {
                         CODECHAL_PUBLIC_ASSERTMESSAGE("Encode state creation failed!");

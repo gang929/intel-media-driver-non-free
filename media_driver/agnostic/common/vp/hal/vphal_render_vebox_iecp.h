@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017, Intel Corporation
+* Copyright (c) 2017 - 2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -34,62 +34,7 @@
 typedef struct VPHAL_VEBOX_RENDER_DATA       *PVPHAL_VEBOX_RENDER_DATA;
 typedef class  VPHAL_VEBOX_STATE             *PVPHAL_VEBOX_STATE;
 
-//!
-//! \brief  VEBOX IECP parameters
-//!
 typedef class VPHAL_VEBOX_IECP_PARAMS *PVPHAL_VEBOX_IECP_PARAMS;
-typedef class VPHAL_VEBOX_IECP_PARAMS_EXT *PVPHAL_VEBOX_IECP_PARAMS_EXT;
-class VPHAL_VEBOX_IECP_PARAMS
-{
-public:
-    PVPHAL_COLORPIPE_PARAMS         pColorPipeParams;
-    PVPHAL_PROCAMP_PARAMS           pProcAmpParams;
-    MOS_FORMAT                      dstFormat;
-    MOS_FORMAT                      srcFormat;
-
-    // CSC params
-    bool                            bCSCEnable;                                 // Enable CSC transform
-    float*                          pfCscCoeff;                                 // [3x3] CSC Coeff matrix
-    float*                          pfCscInOffset;                              // [3x1] CSC Input Offset matrix
-    float*                          pfCscOutOffset;                             // [3x1] CSC Output Offset matrix
-    bool                            bAlphaEnable;                               // Alpha Enable Param
-    uint16_t                        wAlphaValue;                                // Color Pipe Alpha Value
-
-    VPHAL_VEBOX_IECP_PARAMS()
-    {
-        pColorPipeParams    = nullptr;
-        pProcAmpParams      = nullptr;
-        dstFormat           = Format_Any;
-        srcFormat           = Format_Any;
-        bCSCEnable          = false;
-        pfCscCoeff          = nullptr;
-        pfCscInOffset       = nullptr;
-        pfCscOutOffset      = nullptr;
-        bAlphaEnable        = false;
-        wAlphaValue         = 0;
-    }
-    virtual ~VPHAL_VEBOX_IECP_PARAMS()
-    {
-        pColorPipeParams    = nullptr;
-        pProcAmpParams      = nullptr;
-    }
-    virtual void Init()
-    {
-        pColorPipeParams    = nullptr;
-        pProcAmpParams      = nullptr;
-
-        dstFormat           = Format_Any;
-        srcFormat           = Format_Any;
-
-        bCSCEnable          = false;
-        pfCscCoeff          = nullptr;
-        pfCscInOffset       = nullptr;
-        pfCscOutOffset      = nullptr;
-        bAlphaEnable        = false;
-        wAlphaValue         = 0;
-    }
-    virtual PVPHAL_VEBOX_IECP_PARAMS_EXT   GetExtParams() { return nullptr; }
-};
 
 class VPHAL_VEBOX_IECP_FILTER
 {

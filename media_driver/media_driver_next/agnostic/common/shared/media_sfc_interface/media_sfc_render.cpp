@@ -168,19 +168,38 @@ MOS_STATUS MediaSfcRender::Initialize()
     vphalDevice = VphalFactory::CreateHal(platform.eProductFamily);
     VP_PUBLIC_CHK_NULL_RETURN(vphalDevice);
 
-    if (vphalDevice->Initialize(m_osInterface, m_osInterface->pOsContext, false, &status) != MOS_STATUS_SUCCESS)
+    if (m_mode.veboxSfcEnabled)
     {
-        vphalDevice->Destroy();
-        MOS_Delete(vphalDevice);
-        return status;
+        if (vphalDevice->Initialize(m_osInterface, m_osInterface->pOsContext, false, &status) != MOS_STATUS_SUCCESS)
+        {
+            vphalDevice->Destroy();
+            MOS_Delete(vphalDevice);
+            return status;
+        }
+        if (nullptr == vphalDevice->m_vpPipeline || nullptr == vphalDevice->m_vpPlatformInterface)
+        {
+            vphalDevice->Destroy();
+            MOS_Delete(vphalDevice);
+            return status;
+        }
+    }
+    else
+    {
+        if (vphalDevice->CreateVpPlatformInterface(m_osInterface, &status) != MOS_STATUS_SUCCESS)
+        {
+            vphalDevice->Destroy();
+            MOS_Delete(vphalDevice);
+            return status;
+        }
+        if (nullptr == vphalDevice->m_vpPlatformInterface)
+        {
+            vphalDevice->Destroy();
+            MOS_Delete(vphalDevice);
+            return status;
+        }
     }
 
-    if (nullptr == vphalDevice->m_vpPipeline || nullptr == vphalDevice->m_vpPlatformInterface)
-    {
-        vphalDevice->Destroy();
-        MOS_Delete(vphalDevice);
-        return status;
-    }
+    
 
     m_vpPipeline = vphalDevice->m_vpPipeline;
     m_vpPlatformInterface = vphalDevice->m_vpPlatformInterface;
@@ -238,6 +257,7 @@ MOS_STATUS MediaSfcRender::Initialize()
     m_vpMhwinterface->m_statusTable            = m_statusTable;
     m_vpMhwinterface->m_vpPlatformInterface    = m_vpPlatformInterface;
     m_vpMhwinterface->m_settings               = nullptr;
+    m_vpMhwinterface->m_reporting              = nullptr;
 
     if (m_mode.veboxSfcEnabled)
     {

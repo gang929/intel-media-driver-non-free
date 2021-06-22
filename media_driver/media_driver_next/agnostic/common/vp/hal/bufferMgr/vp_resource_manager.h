@@ -50,11 +50,16 @@
 #define VEBOX_AUTO_DENOISE_SUPPORTED    1
 #endif
 
+//!
+//! \brief Number of LACE's PWLF surfaces
+//!
+#define VP_NUM_LACE_PWLF_SURFACES                    2
+
 #define IS_VP_VEBOX_DN_ONLY(_a) (_a.bDN &&          \
                                !(_a.bDI) &&   \
                                !(_a.bQueryVariance) && \
                                !(_a.bIECP) && \
-                               !(_a.bHDR3DLUT))
+                               !(_a.b3DlutOutput))
 
 namespace vp {
     struct VEBOX_SPATIAL_ATTRIBUTES_CONFIGURATION
@@ -327,20 +332,21 @@ struct VP_SURFACE_PARAMS;
 class VpResourceManager
 {
 public:
-    VpResourceManager(MOS_INTERFACE &osInterface, VpAllocator &allocator, VphalFeatureReport &reporting);
+    VpResourceManager(MOS_INTERFACE &osInterface, VpAllocator &allocator, VphalFeatureReport &reporting, vp::VpPlatformInterface &vpPlatformInterface);
     virtual ~VpResourceManager();
-    MOS_STATUS OnNewFrameProcessStart(SwFilterPipe &pipe);
-    void OnNewFrameProcessEnd();
+    virtual MOS_STATUS OnNewFrameProcessStart(SwFilterPipe &pipe);
+    virtual void OnNewFrameProcessEnd();
     MOS_STATUS GetResourceHint(std::vector<FeatureType> &featurePool, SwFilterPipe& executedFilters, RESOURCE_ASSIGNMENT_HINT &hint);
     MOS_STATUS AssignExecuteResource(std::vector<FeatureType> &featurePool, VP_EXECUTE_CAPS& caps, SwFilterPipe &executedFilters);
     MOS_STATUS AssignExecuteResource(VP_EXECUTE_CAPS& caps, VP_SURFACE *inputSurface, VP_SURFACE *outputSurface, VP_SURFACE *pastSurface, VP_SURFACE *futureSurface,
         RESOURCE_ASSIGNMENT_HINT resHint, VP_SURFACE_SETTING &surfSetting);
-    virtual MOS_STATUS AssignVeboxResource(VP_EXECUTE_CAPS& caps, VP_SURFACE *inputSurface, VP_SURFACE *outputSurface, VP_SURFACE *pastSurface, VP_SURFACE *futureSurface,
-        RESOURCE_ASSIGNMENT_HINT resHint, VP_SURFACE_SETTING &surfSetting);
+
     bool IsSameSamples()
     {
         return m_sameSamples;
     }
+
+    bool IsOutputSurfaceNeeded(VP_EXECUTE_CAPS caps);
 
     bool IsRefValid()
     {
@@ -358,6 +364,41 @@ public:
         height = m_imageHeightOfPastHistogram;
     }
 
+    virtual VP_SURFACE* GetVeboxLaceLut()
+    {
+        return NULL;
+    }
+
+    virtual VP_SURFACE* GetVeboxAggregatedHistogramSurface()
+    {
+       return NULL;
+    }
+
+    virtual VP_SURFACE* GetVeboxFrameHistogramSurface()
+   {
+       return NULL;
+    }
+
+    virtual VP_SURFACE* GetVeboxStdStatisticsSurface()
+    {
+       return NULL;
+    }
+
+    virtual VP_SURFACE* GetVeboxPwlfSurface()
+    {
+       return NULL;
+    }
+
+    virtual VP_SURFACE* GetVeboxWeitCoefSurface()
+    {
+       return NULL;
+    }
+
+    virtual VP_SURFACE* GetVeboxGlobalToneMappingCurveLUTSurface()
+    {
+       return NULL;
+    }
+
 protected:
     VP_SURFACE* GetVeboxOutputSurface(VP_EXECUTE_CAPS& caps, VP_SURFACE *outputSurface);
     MOS_STATUS InitVeboxSpatialAttributesConfiguration();
@@ -365,6 +406,7 @@ protected:
     MOS_STATUS AssignSurface(VP_EXECUTE_CAPS caps, VEBOX_SURFACE_ID &surfaceId, SurfaceType surfaceType, VP_SURFACE *inputSurface, VP_SURFACE *outputSurface, VP_SURFACE *pastRefSurface, VP_SURFACE *futureRefSurface, VP_SURFACE_GROUP &surfGroup);
     bool VeboxOutputNeeded(VP_EXECUTE_CAPS& caps);
     bool VeboxDenoiseOutputNeeded(VP_EXECUTE_CAPS& caps);
+    bool VeboxHdr3DlutNeeded(VP_EXECUTE_CAPS &caps);
     // In some case, STMM should not be destroyed but not be used by current workload to maintain data,
     // e.g. DI second field case.
     // If queryAssignment == true, query whether STMM needed by current workload.
@@ -372,12 +414,17 @@ protected:
     bool VeboxSTMMNeeded(VP_EXECUTE_CAPS& caps, bool queryAssignment);
     virtual uint32_t GetHistogramSurfaceSize(VP_EXECUTE_CAPS& caps, uint32_t inputWidth, uint32_t inputHeight);
     virtual uint32_t Get3DLutSize();
+    virtual Mos_MemPool GetHistStatMemType();
     MOS_STATUS ReAllocateVeboxOutputSurface(VP_EXECUTE_CAPS& caps, VP_SURFACE *inputSurface, VP_SURFACE *outputSurface, bool &allocated);
     MOS_STATUS ReAllocateVeboxDenoiseOutputSurface(VP_EXECUTE_CAPS& caps, VP_SURFACE *inputSurface, bool &allocated);
     MOS_STATUS ReAllocateVeboxSTMMSurface(VP_EXECUTE_CAPS& caps, VP_SURFACE *inputSurface, bool &allocated);
     void DestoryVeboxOutputSurface();
     void DestoryVeboxDenoiseOutputSurface();
     void DestoryVeboxSTMMSurface();
+    virtual MOS_STATUS AssignRenderResource(VP_EXECUTE_CAPS &caps, VP_SURFACE *inputSurface, VP_SURFACE *outputSurface, RESOURCE_ASSIGNMENT_HINT resHint, VP_SURFACE_SETTING &surfSetting);
+    virtual MOS_STATUS AssignVeboxResourceForRender(VP_EXECUTE_CAPS &caps, VP_SURFACE *inputSurface, RESOURCE_ASSIGNMENT_HINT resHint, VP_SURFACE_SETTING &surfSetting);
+    virtual MOS_STATUS AssignVeboxResource(VP_EXECUTE_CAPS& caps, VP_SURFACE* inputSurface, VP_SURFACE* outputSurface, VP_SURFACE* pastSurface, VP_SURFACE* futureSurface,
+        RESOURCE_ASSIGNMENT_HINT resHint, VP_SURFACE_SETTING& surfSetting);
 
     //!
     //! \brief    Vebox initialize STMM History
@@ -442,12 +489,15 @@ protected:
     MOS_INTERFACE                &m_osInterface;
     VpAllocator                  &m_allocator;
     VphalFeatureReport           &m_reporting;
+    vp::VpPlatformInterface      &m_vpPlatformInterface;
 
     // Vebox Resource
     VP_SURFACE* m_veboxDenoiseOutput[VP_NUM_DN_SURFACES]     = {};            //!< Vebox Denoise output surface
     VP_SURFACE* m_veboxOutput[VP_MAX_NUM_VEBOX_SURFACES]     = {};            //!< Vebox output surface, can be reuse for DI usages
     VP_SURFACE* m_veboxSTMMSurface[VP_NUM_STMM_SURFACES]     = {};            //!< Vebox STMM input/output surface
     VP_SURFACE *m_veboxStatisticsSurface                     = nullptr;       //!< Statistics Surface for VEBOX
+    uint32_t    m_dwVeboxPerBlockStatisticsWidth             = 0;
+    uint32_t    m_dwVeboxPerBlockStatisticsHeight            = 0;
     VP_SURFACE *m_veboxRgbHistogram                          = nullptr;       //!< RGB Histogram surface for Vebox
     VP_SURFACE *m_veboxDNTempSurface                         = nullptr;       //!< Vebox DN Update kernels temp surface
     VP_SURFACE *m_veboxDNSpatialConfigSurface                = nullptr;       //!< Spatial Attributes Configuration Surface for DN kernel
@@ -474,6 +524,15 @@ protected:
     std::map<uint64_t, VP_SURFACE *> m_tempSurface; // allocation handle and surface pointer pair.
     // Pipe index for one DDI call.
     uint32_t    m_currentPipeIndex                           = 0;
+
+    VP_SURFACE *m_veboxLaceInputSurface                       = nullptr;
+    VP_SURFACE *m_veboxAggregatedHistogramSurface             = nullptr;       //!< VEBOX 1D LUT surface for Vebox Gen12
+    VP_SURFACE *m_veboxFrameHistogramSurface                  = nullptr;       //!< VEBOX 1D LUT surface for Vebox Gen12
+    VP_SURFACE *m_veboxStdStatisticsSurface                   = nullptr;       //!< VEBOX 1D LUT surface for Vebox Gen12
+    VP_SURFACE *m_veboxPwlfSurface[VP_NUM_LACE_PWLF_SURFACES] = {};            //!< VEBOX 1D LUT surface for Vebox Gen12
+    VP_SURFACE *m_veboxWeitCoefSurface                        = nullptr;       //!< VEBOX 1D LUT surface for Vebox Gen12
+    VP_SURFACE *m_veboxGlobalToneMappingCurveLUTSurface       = nullptr;       //!< VEBOX 1D LUT surface for Vebox Gen12
+
 };
 }
 #endif // _VP_RESOURCE_MANAGER_H__

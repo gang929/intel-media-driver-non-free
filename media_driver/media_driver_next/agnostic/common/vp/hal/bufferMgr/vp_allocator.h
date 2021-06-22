@@ -289,6 +289,8 @@ public:
     //!
     MOS_STATUS GetSurfaceInfo(VPHAL_SURFACE *surface, VPHAL_GET_SURFACE_INFO &info);
 
+    MOS_STATUS GetSurfaceInfo(VP_SURFACE* surface, VPHAL_GET_SURFACE_INFO& info);
+
     //!
     //! \brief    Initial the Type/TileType fields in Alloc Params structure
     //! \details  Initial the Type/TileType fields in Alloc Params structure
@@ -362,6 +364,8 @@ public:
     //!           Deferred destroy the resource until CleanRecycler being called.
     //! \param    [in] resUsageType
     //!           resource usage type for cache policy
+    //! \param    [in] Flag to indicate whether resource being lockable
+    //!           resource usage type for cache policy
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success. Error code otherwise
     //!
@@ -379,7 +383,9 @@ public:
         bool                    zeroOnAllocate = 0,
         bool                    deferredDestroyed = false,
         MOS_HW_RESOURCE_DEF     resUsageType   = MOS_HW_RESOURCE_DEF_MAX,
-        MOS_TILE_MODE_GMM       tileModeByForce = MOS_TILE_UNSET_GMM);
+        MOS_TILE_MODE_GMM       tileModeByForce = MOS_TILE_UNSET_GMM,
+        Mos_MemPool             memType = MOS_MEMPOOL_VIDEOMEMORY,
+        bool                    isNotLockable = false);
 
     //!
     //! \brief    Allocates the Surface

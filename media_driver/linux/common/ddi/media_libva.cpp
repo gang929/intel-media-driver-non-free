@@ -57,10 +57,12 @@
 #include "media_interfaces_mmd.h"
 #include "media_interfaces_mcpy.h"
 #include "media_user_settings_mgr.h"
-#include "cplib_utils.h"
 #include "media_interfaces.h"
 #include "mos_interface.h"
 #include "drm_fourcc.h"
+#include "media_libva_interface.h"
+#include "media_libva_interface_next.h"
+#include "media_libva_apo_decision.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -100,10 +102,6 @@ VAProcColorStandardType vp_output_color_std[DDI_VP_NUM_OUT_COLOR_STD] = {
     VAProcColorStandardBT2020,
     VAProcColorStandardExplicit
 };
-
-static VAStatus DdiMedia_DestroyContext (
-    VADriverContextP    ctx,
-    VAContextID         context);
 
 // Making this API public since media_libva_vp.c calls this
 VAStatus DdiMedia_MapBuffer (
@@ -1535,23 +1533,34 @@ void DestroyMediaContextMutex(PDDI_MEDIA_CONTEXT mediaCtx)
     return;
 }
 
-//!
-//! \brief  Initialize
-//! 
-//! \param  [in] ctx
-//!         Pointer to VA driver context
-//! \param  [out] major_version
-//!         Major version
-//! \param  [out] minor_version
-//!         Minor version
-//!
-//! \return VAStatus
-//!     VA_STATUS_SUCCESS if success, else fail reason
-//!
+VAStatus DdiMedia_GetDeviceFD (
+    VADriverContextP ctx,
+    int32_t         *pDevicefd
+)
+{
+    struct drm_state *pDRMState = (struct drm_state *)ctx->drm_state;
+    DDI_CHK_NULL(pDRMState,    "nullptr pDRMState", VA_STATUS_ERROR_INVALID_CONTEXT);
+    DDI_CHK_NULL(pDevicefd,    "nullptr pDevicefd", VA_STATUS_ERROR_INVALID_CONTEXT);
+
+    // If libva failes to open the graphics card, try to open it again within Media Driver
+    if(pDRMState->fd < 0 || pDRMState->fd == 0 )
+    {
+        DDI_ASSERTMESSAGE("DDI:LIBVA Wrapper doesn't pass file descriptor for graphics adaptor, trying to open the graphics... ");
+        pDRMState->fd = DdiMediaUtil_OpenGraphicsAdaptor((char *)DEVICE_NAME);
+        if (pDRMState->fd < 0) {
+            DDI_ASSERTMESSAGE("DDI: Still failed to open the graphic adaptor, return failure");
+            return VA_STATUS_ERROR_INVALID_PARAMETER;
+        }
+    }
+    *pDevicefd = pDRMState->fd;
+
+    return VA_STATUS_SUCCESS;
+}
+
 VAStatus DdiMedia__Initialize (
     VADriverContextP ctx,
-    int32_t         *major_version,     /* out */
-    int32_t         *minor_version      /* out */
+    int32_t         *major_version,
+    int32_t         *minor_version
 )
 {
 #if !defined(ANDROID) && defined(X11_FOUND)
@@ -1568,21 +1577,38 @@ VAStatus DdiMedia__Initialize (
 
     DDI_CHK_NULL(ctx,          "nullptr ctx",       VA_STATUS_ERROR_INVALID_CONTEXT);
 
-    struct drm_state *pDRMState = (struct drm_state *)ctx->drm_state;
-    DDI_CHK_NULL(pDRMState,    "nullptr pDRMState", VA_STATUS_ERROR_INVALID_CONTEXT);
-
-    // If libva failes to open the graphics card, try to open it again within Media Driver
-    if(pDRMState->fd < 0 || pDRMState->fd == 0 )
+    bool    apoDdiEnabled = false;
+    int32_t devicefd = 0;
+    if(DdiMedia_GetDeviceFD(ctx, &devicefd) != VA_STATUS_SUCCESS)
     {
-        DDI_ASSERTMESSAGE("DDI:LIBVA Wrapper doesn't pass file descriptor for graphics adaptor, trying to open the graphics... ");
-        pDRMState->fd = DdiMediaUtil_OpenGraphicsAdaptor((char *)DEVICE_NAME);
-        if (pDRMState->fd < 0) {
-            DDI_ASSERTMESSAGE("DDI: Still failed to open the graphic adaptor, return failure");
-            return VA_STATUS_ERROR_INVALID_PARAMETER;
-        }
+        DDI_ASSERTMESSAGE("Unable to get device FD");
+        return VA_STATUS_ERROR_ALLOCATION_FAILED;
     }
-    int32_t devicefd = pDRMState->fd;
 
+    apoDdiEnabled = MediaLibvaApoDecision::InitDdiApoState(devicefd);
+
+    if(MediaLibvaInterface::LoadFunction(ctx) != VA_STATUS_SUCCESS)
+    {
+        DDI_ASSERTMESSAGE("Failed to load function pointer");
+        return VA_STATUS_ERROR_ALLOCATION_FAILED;
+    }
+    if(apoDdiEnabled)
+    {
+        return MediaLibvaInterfaceNext::Initialize(ctx, devicefd, major_version, minor_version);
+    }
+    else
+    {
+        return DdiMedia_InitMediaContext(ctx, devicefd, major_version, minor_version);
+    }
+}
+
+VAStatus DdiMedia_InitMediaContext (
+    VADriverContextP ctx,
+    int32_t          devicefd,
+    int32_t         *major_version,
+    int32_t         *minor_version
+)
+{
     if(major_version)
     {
         *major_version = VA_MAJOR_VERSION;
@@ -1614,12 +1640,6 @@ VAStatus DdiMedia__Initialize (
     mediaCtx->fd     = devicefd;
 
     mediaCtx->m_apoMosEnabled = SetupApoMosSwitch(devicefd);
-
-    mediaCtx->cpLibWasLoaded = CPLibUtils::LoadCPLib(ctx);
-    if (!mediaCtx->cpLibWasLoaded)
-    {
-        DDI_NORMALMESSAGE("CPLIB is not loaded.");
-    }
 
 #ifdef _MMC_SUPPORTED
     mediaCtx->pfnMemoryDecompress  = DdiMedia_MediaMemoryDecompressInternal;
@@ -1945,20 +1965,14 @@ VAStatus DdiMedia__Initialize (
     output_dri_init(ctx);
 #endif
 
-    if (VA_STATUS_SUCCESS != DdiMediaUtil_SetMediaResetEnableFlag(mediaCtx))
-    {
-        mediaCtx->bMediaResetEnable = false;
-    }
+    DdiMediaUtil_SetMediaResetEnableFlag(mediaCtx);
 
     DdiMediaUtil_UnLockMutex(&GlobalMutex);
 
     return VA_STATUS_SUCCESS;
 }
 
-/*
- * After this call, all library internal resources will be cleaned up
- */
-static VAStatus DdiMedia_Terminate (
+VAStatus DdiMedia_Terminate (
     VADriverContextP ctx
 )
 {
@@ -2057,11 +2071,6 @@ static VAStatus DdiMedia_Terminate (
     mediaCtx->SkuTable.reset();
     mediaCtx->WaTable.reset();
 
-    if (mediaCtx->cpLibWasLoaded)
-    {
-        CPLibUtils::UnloadCPLib(ctx);
-    }
-
     // release media driver context, ctx creation is behind the mos_utilities_init
     // If free earilier than MOS_utilities_close, memnja count error.
     MOS_FreeMemory(mediaCtx);
@@ -2073,13 +2082,7 @@ static VAStatus DdiMedia_Terminate (
     return VA_STATUS_SUCCESS;
 }
 
-/*
- * Query supported entrypoints for a given profile
- * The caller must provide an "entrypoint_list" array that can hold at
- * least vaMaxNumEntrypoints() entries. The actual number of entrypoints
- * returned in "entrypoint_list" is returned in "num_entrypoints".
- */
-static VAStatus DdiMedia_QueryConfigEntrypoints(
+VAStatus DdiMedia_QueryConfigEntrypoints(
     VADriverContextP    ctx,
     VAProfile           profile,
     VAEntrypoint       *entrypoint_list,
@@ -2102,13 +2105,7 @@ static VAStatus DdiMedia_QueryConfigEntrypoints(
             entrypoint_list, num_entrypoints);
 }
 
-/*
- * Query supported profiles
- * The caller must provide a "profile_list" array that can hold at
- * least vaMaxNumProfile() entries. The actual number of profiles
- * returned in "profile_list" is returned in "num_profile".
- */
-static VAStatus DdiMedia_QueryConfigProfiles (
+VAStatus DdiMedia_QueryConfigProfiles (
     VADriverContextP    ctx,
     VAProfile          *profile_list,
     int32_t            *num_profiles
@@ -2127,15 +2124,7 @@ static VAStatus DdiMedia_QueryConfigProfiles (
     return mediaCtx->m_caps->QueryConfigProfiles(profile_list, num_profiles);
 }
 
-/*
- * Query all attributes for a given configuration
- * The profile of the configuration is returned in "profile"
- * The entrypoint of the configuration is returned in "entrypoint"
- * The caller must provide an "attrib_list" array that can hold at least
- * vaMaxNumConfigAttributes() entries. The actual number of attributes
- * returned in "attrib_list" is returned in "num_attribs"
- */
-static VAStatus DdiMedia_QueryConfigAttributes (
+VAStatus DdiMedia_QueryConfigAttributes (
     VADriverContextP    ctx,
     VAConfigID          config_id,
     VAProfile          *profile,
@@ -2159,12 +2148,7 @@ static VAStatus DdiMedia_QueryConfigAttributes (
                 config_id, profile, entrypoint, attrib_list, num_attribs);
 }
 
-/*
- * Create a configuration for the encode/decode/vp pipeline
- * it passes in the attribute list that specifies the attributes it cares
- * about, with the rest taking default values.
- */
-static VAStatus DdiMedia_CreateConfig (
+VAStatus DdiMedia_CreateConfig (
     VADriverContextP    ctx,
     VAProfile           profile,
     VAEntrypoint        entrypoint,
@@ -2186,10 +2170,7 @@ static VAStatus DdiMedia_CreateConfig (
             profile, entrypoint, attrib_list, num_attribs, config_id);
 }
 
-/*
- * Free resources associated with a given config
- */
-static VAStatus DdiMedia_DestroyConfig (
+VAStatus DdiMedia_DestroyConfig (
     VADriverContextP    ctx,
     VAConfigID          config_id
 )
@@ -2205,15 +2186,7 @@ static VAStatus DdiMedia_DestroyConfig (
     return mediaCtx->m_caps->DestroyConfig(config_id);
 }
 
-/*
- * Get attributes for a given profile/entrypoint pair
- * The caller must provide an "attrib_list" with all attributes to be
- * retrieved.  Upon return, the attributes in "attrib_list" have been
- * updated with their value.  Unknown attributes or attributes that are
- * not supported for the given profile/entrypoint pair will have their
- * value set to VA_ATTRIB_NOT_SUPPORTED
- */
-static VAStatus DdiMedia_GetConfigAttributes(
+VAStatus DdiMedia_GetConfigAttributes(
     VADriverContextP    ctx,
     VAProfile           profile,
     VAEntrypoint        entrypoint,
@@ -2233,7 +2206,7 @@ static VAStatus DdiMedia_GetConfigAttributes(
             profile, entrypoint, attrib_list, num_attribs);
 }
 
-static VAStatus DdiMedia_CreateSurfaces (
+VAStatus DdiMedia_CreateSurfaces (
     VADriverContextP    ctx,
     int32_t             width,
     int32_t             height,
@@ -2283,15 +2256,7 @@ static VAStatus DdiMedia_CreateSurfaces (
     return VA_STATUS_SUCCESS;
 }
 
-/*
- * vaDestroySurfaces - Destroy resources associated with surfaces.
- *  Surfaces can only be destroyed after the context associated has been
- *  destroyed.
- *  dpy: display
- *  surfaces: array of surfaces to destroy
- *  num_surfaces: number of surfaces in the array to be destroyed.
- */
-static VAStatus DdiMedia_DestroySurfaces (
+VAStatus DdiMedia_DestroySurfaces (
     VADriverContextP    ctx,
     VASurfaceID        *surfaces,
     int32_t             num_surfaces
@@ -2357,8 +2322,7 @@ static VAStatus DdiMedia_DestroySurfaces (
     return VA_STATUS_SUCCESS;
 }
 
-static VAStatus
-DdiMedia_CreateSurfaces2(
+VAStatus DdiMedia_CreateSurfaces2(
     VADriverContextP    ctx,
     uint32_t            format,
     uint32_t            width,
@@ -2651,18 +2615,23 @@ DdiMedia_CreateSurfaces2(
                 surfDesc->modifier       = drmPrimeSurfaceDescriptor.objects[0].drm_format_modifier;
                 surfDesc->uiSize         = drmPrimeSurfaceDescriptor.objects[0].size;
                 surfDesc->uiBuffserSize  = drmPrimeSurfaceDescriptor.objects[0].size;
-                surfDesc->uiPlanes       = drmPrimeSurfaceDescriptor.layers[0].num_planes;
-                eStatus = MOS_SecureMemcpy(surfDesc->uiPitches, sizeof(surfDesc->uiPitches), drmPrimeSurfaceDescriptor.layers[0].pitch, sizeof(drmPrimeSurfaceDescriptor.layers[0].pitch));
-                if (eStatus != MOS_STATUS_SUCCESS)
+                if(drmPrimeSurfaceDescriptor.num_layers > 1)
                 {
-                    DDI_VERBOSEMESSAGE("DDI:Failed to copy surface buffer data!");
-                    return VA_STATUS_ERROR_OPERATION_FAILED;
+                     surfDesc->uiPlanes = drmPrimeSurfaceDescriptor.num_layers;
+                     for (uint32_t k = 0; k < surfDesc->uiPlanes; k ++)
+                     {
+                         surfDesc->uiPitches[k] = drmPrimeSurfaceDescriptor.layers[k].pitch[0];
+                         surfDesc->uiOffsets[k] = drmPrimeSurfaceDescriptor.layers[k].offset[0];
+                     }
                 }
-                eStatus = MOS_SecureMemcpy(surfDesc->uiOffsets, sizeof(surfDesc->uiOffsets), drmPrimeSurfaceDescriptor.layers[0].offset, sizeof(drmPrimeSurfaceDescriptor.layers[0].offset));
-                if (eStatus != MOS_STATUS_SUCCESS)
+                else
                 {
-                    DDI_VERBOSEMESSAGE("DDI:Failed to copy surface buffer data!");
-                    return VA_STATUS_ERROR_OPERATION_FAILED;
+                    surfDesc->uiPlanes       = drmPrimeSurfaceDescriptor.layers[0].num_planes;
+                    for(uint32_t k = 0; k < surfDesc->uiPlanes; k ++)
+                    {
+                        surfDesc->uiPitches[k] = drmPrimeSurfaceDescriptor.layers[0].pitch[k];
+                        surfDesc->uiOffsets[k] = drmPrimeSurfaceDescriptor.layers[0].offset[k];
+                    }
                 }
             }
             else if (memTypeFlag != VA_SURFACE_ATTRIB_MEM_TYPE_VA) {
@@ -2716,7 +2685,7 @@ DdiMedia_CreateSurfaces2(
     return VA_STATUS_SUCCESS;
 }
 
-static VAStatus DdiMedia_CreateMfeContextInternal(
+VAStatus DdiMedia_CreateMfeContextInternal(
     VADriverContextP    ctx,
     VAMFContextID      *mfe_context
 )
@@ -2803,7 +2772,7 @@ static VAStatus DdiMedia_DestoryMfeContext (
     return VA_STATUS_SUCCESS;
 }
 
-static VAStatus DdiMedia_AddContextInternal(
+VAStatus DdiMedia_AddContextInternal(
     VADriverContextP    ctx,
     VAContextID         context,
     VAMFContextID      mfe_context
@@ -2877,7 +2846,7 @@ static VAStatus DdiMedia_AddContextInternal(
     return VA_STATUS_SUCCESS;
 }
 
-static VAStatus DdiMedia_ReleaseContextInternal(
+VAStatus DdiMedia_ReleaseContextInternal(
     VADriverContextP    ctx,
     VAContextID         context,
     VAMFContextID      mfe_context
@@ -2924,7 +2893,7 @@ static VAStatus DdiMedia_ReleaseContextInternal(
     return VA_STATUS_SUCCESS;
 }
 
-static VAStatus DdiMedia_CreateContext (
+VAStatus DdiMedia_CreateContext (
     VADriverContextP    ctx,
     VAConfigID          config_id,
     int32_t             picture_width,
@@ -2976,7 +2945,7 @@ static VAStatus DdiMedia_CreateContext (
     return vaStatus;
 }
 
-static VAStatus DdiMedia_DestroyContext (
+VAStatus DdiMedia_DestroyContext (
     VADriverContextP    ctx,
     VAContextID         context
 )
@@ -3004,7 +2973,7 @@ static VAStatus DdiMedia_DestroyContext (
     }
 }
 
-static VAStatus DdiMedia_CreateBuffer (
+VAStatus DdiMedia_CreateBuffer (
     VADriverContextP    ctx,
     VAContextID         context,
     VABufferType        type,
@@ -3056,13 +3025,7 @@ static VAStatus DdiMedia_CreateBuffer (
     return va;
 }
 
-/*
- * Convey to the server how many valid elements are in the buffer.
- * e.g. if multiple slice parameters are being held in a single buffer,
- * this will communicate to the server the number of slice parameters
- * that are valid in the buffer.
- */
-static VAStatus DdiMedia_BufferSetNumElements (
+VAStatus DdiMedia_BufferSetNumElements (
     VADriverContextP    ctx,
     VABufferID          buf_id,
     uint32_t            num_elements
@@ -3405,11 +3368,6 @@ VAStatus DdiMedia_MapBuffer (
     return DdiMedia_MapBufferInternal(ctx, buf_id, pbuf, MOS_LOCKFLAG_READONLY | MOS_LOCKFLAG_WRITEONLY);
 }
 
-/*
- * After client making changes to a mapped data store, it needs to
- * "Unmap" it to let the server know that the data is ready to be
- * consumed by the server
- */
 VAStatus DdiMedia_UnmapBuffer (
     VADriverContextP    ctx,
     VABufferID          buf_id
@@ -3509,10 +3467,6 @@ VAStatus DdiMedia_UnmapBuffer (
     return VA_STATUS_SUCCESS;
 }
 
-/*
- * After this call, the buffer is deleted and this buffer_id is no longer valid
- * Only call this if the buffer is not going to be passed to vaRenderBuffer
- */
 VAStatus DdiMedia_DestroyBuffer (
     VADriverContextP    ctx,
     VABufferID          buffer_id
@@ -3703,10 +3657,7 @@ VAStatus DdiMedia_DestroyBuffer (
     return VA_STATUS_SUCCESS;
 }
 
-/*
- * Get ready to decode a picture to a target surface
- */
-static VAStatus DdiMedia_BeginPicture (
+VAStatus DdiMedia_BeginPicture (
     VADriverContextP    ctx,
     VAContextID         context,
     VASurfaceID         render_target
@@ -3753,11 +3704,7 @@ static VAStatus DdiMedia_BeginPicture (
     }
 }
 
-/*
- * Send decode buffers to the server.
- * Buffers are automatically destroyed afterwards
- */
-static VAStatus DdiMedia_RenderPicture (
+VAStatus DdiMedia_RenderPicture (
     VADriverContextP    ctx,
     VAContextID         context,
     VABufferID         *buffers,
@@ -3800,13 +3747,7 @@ static VAStatus DdiMedia_RenderPicture (
 
 }
 
-/*
- * Make the end of rendering for a picture.
- * The server should start processing all pending operations for this
- * surface. This call is non-blocking. The client can start another
- * Begin/Render/End sequence on a different render target.
- */
-static VAStatus DdiMedia_EndPicture (
+VAStatus DdiMedia_EndPicture (
     VADriverContextP    ctx,
     VAContextID         context
 )
@@ -3941,12 +3882,7 @@ static VAStatus DdiMedia_StatusCheck (
 
 }
 
-/*
- * This function blocks until all pending operations on the render target
- * have been completed.  Upon return it is safe to use the render target for a
- * different picture.
- */
-static VAStatus DdiMedia_SyncSurface (
+VAStatus DdiMedia_SyncSurface (
     VADriverContextP    ctx,
     VASurfaceID         render_target
 )
@@ -3986,12 +3922,7 @@ static VAStatus DdiMedia_SyncSurface (
 }
 
 #if VA_CHECK_VERSION(1, 9, 0)
-/*
- * This function blocks until all pending operations on the surface have been 
- * completed or exceed timeout.  Upon return it is safe to use the render target for a
- * different picture.
- */
-static VAStatus DdiMedia_SyncSurface2 (
+VAStatus DdiMedia_SyncSurface2 (
     VADriverContextP    ctx,
     VASurfaceID         surface_id,
     uint64_t            timeout_ns
@@ -4062,12 +3993,7 @@ static VAStatus DdiMedia_SyncSurface2 (
     return DdiMedia_StatusCheck(mediaCtx, surface, surface_id);
 }
 
-/*
- * This function blocks until all pending operations on the buffer have been
- * completed or exceed timeout.  Upon return it is safe to use the render target for a
- * different picture.
- */
-static VAStatus DdiMedia_SyncBuffer (
+VAStatus DdiMedia_SyncBuffer (
     VADriverContextP    ctx,
     VABufferID          buf_id,
     uint64_t            timeout_ns
@@ -4133,10 +4059,8 @@ static VAStatus DdiMedia_SyncBuffer (
     return VA_STATUS_SUCCESS;
 }
 #endif
-/*
- * Find out any pending ops on the render target
- */
-static VAStatus DdiMedia_QuerySurfaceStatus (
+
+VAStatus DdiMedia_QuerySurfaceStatus (
     VADriverContextP    ctx,
     VASurfaceID         render_target,
     VASurfaceStatus    *status
@@ -4185,21 +4109,6 @@ static VAStatus DdiMedia_QuerySurfaceStatus (
     return VA_STATUS_SUCCESS;
 }
 
-//!
-//! \brief  Report MB error info
-//! 
-//! \param  [in] ctx
-//!         Pointer to VA driver context 
-//! \param  [in] render_target
-//!         VA surface ID
-//! \param  [in] error_status
-//!         Error status
-//! \param  [out] error_info
-//!         Information on error
-//!
-//! \return VAStatus
-//!     VA_STATUS_SUCCESS if success, else fail reason
-//!
 VAStatus DdiMedia_QuerySurfaceError(
     VADriverContextP ctx,
     VASurfaceID      render_target,
@@ -4283,23 +4192,7 @@ VAStatus DdiMedia_QuerySurfaceError(
     return VA_STATUS_SUCCESS;
 }
 
-//!
-//! \brief  End picture process for cenc query
-//! 
-//! \param  [in] ctx
-//!         Pointer to VA driver context 
-//! \param  [in] context
-//!         VA context ID
-//!
-//! \return VAStatus
-//!     VA_STATUS_SUCCESS if success, else fail reason
-//!
-
-/*
- * Query surface attributes for the supplied config
- */
-static VAStatus
-DdiMedia_QuerySurfaceAttributes(
+VAStatus DdiMedia_QuerySurfaceAttributes(
     VADriverContextP ctx,
     VAConfigID config_id,
     VASurfaceAttrib *attrib_list,
@@ -4319,10 +4212,10 @@ DdiMedia_QuerySurfaceAttributes(
             attrib_list, num_attribs);
 }
 
-static VAStatus DdiMedia_PutSurface(
+VAStatus DdiMedia_PutSurface(
     VADriverContextP ctx,
     VASurfaceID      surface,
-    void*            draw,             /* Drawable of window system */
+    void*            draw,
     int16_t          srcx,
     int16_t          srcy,
     uint16_t         srcw,
@@ -4372,16 +4265,7 @@ static VAStatus DdiMedia_PutSurface(
 
 }
 
-/* List all the VAImageFormats supported during vaCreateSurfaces
- *  It can be used by vaQueryImageFormats and other functions
- */
-/*
- * Query supported image formats
- * The caller must provide a "format_list" array that can hold at
- * least vaMaxNumImageFormats() entries. The actual number of formats
- * returned in "format_list" is returned in "num_formats".
- */
-static VAStatus DdiMedia_QueryImageFormats (
+VAStatus DdiMedia_QueryImageFormats (
     VADriverContextP    ctx,
     VAImageFormat      *format_list,
     int32_t            *num_formats
@@ -4395,23 +4279,6 @@ static VAStatus DdiMedia_QueryImageFormats (
     return mediaCtx->m_caps->QueryImageFormats(format_list, num_formats);
 }
 
-//!
-//! \brief  Create an image
-//! 
-//! \param  [in] ctx
-//!     Driver context
-//! \param  [in] format
-//!     The format of image
-//! \param  [in] width
-//!     The width of the image
-//! \param  [in] height
-//!     The height of the image
-//! \param  [out] image
-//!     The generated image
-//!
-//! \return VAStatus
-//!     VA_STATUS_SUCCESS if success, else fail reason
-//!
 VAStatus DdiMedia_CreateImage(
     VADriverContextP ctx,
     VAImageFormat   *format,
@@ -7229,7 +7096,7 @@ VAStatus DdiMedia_ExportSurfaceHandle(
                     else
                     {
                         desc->layers[i].offset[0] = offsetU;
-                    }                    
+                    }
                     desc->layers[i].pitch[0]  = chromaPitch;
                     break;
                 case 2:
@@ -7255,7 +7122,7 @@ VAStatus DdiMedia_ExportSurfaceHandle(
 
 //!
 //! \brief  Init VA driver 0.31
-//! 
+//!
 //! \param  [in] ctx
 //!         Pointer to VA driver context
 //!
@@ -7264,114 +7131,6 @@ VAStatus DdiMedia_ExportSurfaceHandle(
 //!
 VAStatus __vaDriverInit(VADriverContextP ctx )
 {
-    DDI_CHK_NULL(ctx,         "nullptr ctx",          VA_STATUS_ERROR_INVALID_CONTEXT);
-
-    struct VADriverVTable    *pVTable     = DDI_CODEC_GET_VTABLE(ctx);
-    DDI_CHK_NULL(pVTable,     "nullptr pVTable",      VA_STATUS_ERROR_INVALID_CONTEXT);
-
-    struct VADriverVTableVPP *pVTableVpp  = DDI_CODEC_GET_VTABLE_VPP(ctx);
-    DDI_CHK_NULL(pVTableVpp,  "nullptr pVTableVpp",   VA_STATUS_ERROR_INVALID_CONTEXT);
-
-#if VA_CHECK_VERSION(1,11,0)
-    struct VADriverVTableProt *pVTableProt = DDI_CODEC_GET_VTABLE_PROT(ctx);
-    DDI_CHK_NULL(pVTableProt,  "nullptr pVTableProt",   VA_STATUS_ERROR_INVALID_CONTEXT);
-#endif
-
-    ctx->pDriverData                         = nullptr;
-    ctx->version_major                       = VA_MAJOR_VERSION;
-    ctx->version_minor                       = VA_MINOR_VERSION;
-    ctx->max_profiles                        = DDI_CODEC_GEN_MAX_PROFILES;
-    ctx->max_entrypoints                     = DDI_CODEC_GEN_MAX_ENTRYPOINTS;
-    ctx->max_attributes                      = (int32_t)VAConfigAttribTypeMax;
-    ctx->max_subpic_formats                  = DDI_CODEC_GEN_MAX_SUBPIC_FORMATS;
-    ctx->max_display_attributes              = DDI_CODEC_GEN_MAX_DISPLAY_ATTRIBUTES ;
-    ctx->str_vendor                          = DDI_CODEC_GEN_STR_VENDOR;
-    ctx->vtable_tpi                          = nullptr;
-
-    pVTable->vaTerminate                     = DdiMedia_Terminate;
-    pVTable->vaQueryConfigEntrypoints        = DdiMedia_QueryConfigEntrypoints;
-    pVTable->vaQueryConfigProfiles           = DdiMedia_QueryConfigProfiles;
-    pVTable->vaQueryConfigAttributes         = DdiMedia_QueryConfigAttributes;
-    pVTable->vaCreateConfig                  = DdiMedia_CreateConfig;
-    pVTable->vaDestroyConfig                 = DdiMedia_DestroyConfig;
-    pVTable->vaGetConfigAttributes           = DdiMedia_GetConfigAttributes;
-
-    pVTable->vaCreateSurfaces                = DdiMedia_CreateSurfaces;
-    pVTable->vaDestroySurfaces               = DdiMedia_DestroySurfaces;
-    pVTable->vaCreateSurfaces2               = DdiMedia_CreateSurfaces2;
-
-    pVTable->vaCreateContext                 = DdiMedia_CreateContext;
-    pVTable->vaDestroyContext                = DdiMedia_DestroyContext;
-    pVTable->vaCreateBuffer                  = DdiMedia_CreateBuffer;
-    pVTable->vaBufferSetNumElements          = DdiMedia_BufferSetNumElements;
-    pVTable->vaMapBuffer                     = DdiMedia_MapBuffer;
-    pVTable->vaUnmapBuffer                   = DdiMedia_UnmapBuffer;
-    pVTable->vaDestroyBuffer                 = DdiMedia_DestroyBuffer;
-    pVTable->vaBeginPicture                  = DdiMedia_BeginPicture;
-    pVTable->vaRenderPicture                 = DdiMedia_RenderPicture;
-    pVTable->vaEndPicture                    = DdiMedia_EndPicture;
-    pVTable->vaSyncSurface                   = DdiMedia_SyncSurface;
-#if VA_CHECK_VERSION(1, 9, 0)
-    pVTable->vaSyncSurface2                  = DdiMedia_SyncSurface2;
-    pVTable->vaSyncBuffer                    = DdiMedia_SyncBuffer;
-#endif
-    pVTable->vaQuerySurfaceStatus            = DdiMedia_QuerySurfaceStatus;
-    pVTable->vaQuerySurfaceError             = DdiMedia_QuerySurfaceError;
-    pVTable->vaQuerySurfaceAttributes        = DdiMedia_QuerySurfaceAttributes;
-    pVTable->vaPutSurface                    = DdiMedia_PutSurface;
-    pVTable->vaQueryImageFormats             = DdiMedia_QueryImageFormats;
-
-    pVTable->vaCreateImage                   = DdiMedia_CreateImage;
-    pVTable->vaDeriveImage                   = DdiMedia_DeriveImage;
-    pVTable->vaDestroyImage                  = DdiMedia_DestroyImage;
-    pVTable->vaSetImagePalette               = DdiMedia_SetImagePalette;
-    pVTable->vaGetImage                      = DdiMedia_GetImage;
-    pVTable->vaPutImage                      = DdiMedia_PutImage;
-    pVTable->vaQuerySubpictureFormats        = DdiMedia_QuerySubpictureFormats;
-    pVTable->vaCreateSubpicture              = DdiMedia_CreateSubpicture;
-    pVTable->vaDestroySubpicture             = DdiMedia_DestroySubpicture;
-    pVTable->vaSetSubpictureImage            = DdiMedia_SetSubpictureImage;
-    pVTable->vaSetSubpictureChromakey        = DdiMedia_SetSubpictureChromakey;
-    pVTable->vaSetSubpictureGlobalAlpha      = DdiMedia_SetSubpictureGlobalAlpha;
-    pVTable->vaAssociateSubpicture           = DdiMedia_AssociateSubpicture;
-    pVTable->vaDeassociateSubpicture         = DdiMedia_DeassociateSubpicture;
-    pVTable->vaQueryDisplayAttributes        = DdiMedia_QueryDisplayAttributes;
-    pVTable->vaGetDisplayAttributes          = DdiMedia_GetDisplayAttributes;
-    pVTable->vaSetDisplayAttributes          = DdiMedia_SetDisplayAttributes;
-    pVTable->vaQueryProcessingRate           = DdiMedia_QueryProcessingRate;
-#if VA_CHECK_VERSION(1,10,0)
-    pVTable->vaCopy                          = DdiMedia_Copy;
-#endif
-
-    // vaTrace
-    pVTable->vaBufferInfo                    = DdiMedia_BufferInfo;
-    pVTable->vaLockSurface                   = DdiMedia_LockSurface;
-    pVTable->vaUnlockSurface                 = DdiMedia_UnlockSurface;
-
-    pVTableVpp->vaQueryVideoProcFilters      = DdiMedia_QueryVideoProcFilters;
-    pVTableVpp->vaQueryVideoProcFilterCaps   = DdiMedia_QueryVideoProcFilterCaps;
-    pVTableVpp->vaQueryVideoProcPipelineCaps = DdiMedia_QueryVideoProcPipelineCaps;
-
-#if VA_CHECK_VERSION(1,11,0)
-    pVTableProt->vaCreateProtectedSession    = DdiMediaProtected::DdiMedia_CreateProtectedSession;
-    pVTableProt->vaDestroyProtectedSession   = DdiMediaProtected::DdiMedia_DestroyProtectedSession;
-    pVTableProt->vaAttachProtectedSession    = DdiMediaProtected::DdiMedia_AttachProtectedSession;
-    pVTableProt->vaDetachProtectedSession    = DdiMediaProtected::DdiMedia_DetachProtectedSession;
-    pVTableProt->vaProtectedSessionExecute   = DdiMediaProtected::DdiMedia_ProtectedSessionExecute;
-#endif
-
-    //pVTable->vaSetSurfaceAttributes          = DdiMedia_SetSurfaceAttributes;
-    pVTable->vaGetSurfaceAttributes          = DdiMedia_GetSurfaceAttributes;
-    //Export PRIMEFD/FLINK to application for buffer sharing with OpenCL/GL
-    pVTable->vaAcquireBufferHandle           = DdiMedia_AcquireBufferHandle;
-    pVTable->vaReleaseBufferHandle           = DdiMedia_ReleaseBufferHandle;
-    pVTable->vaExportSurfaceHandle           = DdiMedia_ExportSurfaceHandle;
-#ifndef ANDROID
-    pVTable->vaCreateMFContext               = DdiMedia_CreateMfeContextInternal;
-    pVTable->vaMFAddContext                  = DdiMedia_AddContextInternal;
-    pVTable->vaMFReleaseContext              = DdiMedia_ReleaseContextInternal;
-    pVTable->vaMFSubmit                      = DdiEncode_MfeSubmit;
-#endif
     return DdiMedia__Initialize(ctx, nullptr, nullptr);
 }
 

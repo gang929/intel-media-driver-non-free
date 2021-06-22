@@ -121,13 +121,16 @@ MOS_STATUS CodechalDecodeJpegG12::DecodeStateLevel()
     CODECHAL_DECODE_FUNCTION_ENTER;
 #ifdef _MMC_SUPPORTED
     // To WA invalid aux data caused HW issue when MMC on
-    if (m_mmc->IsMmcEnabled() && (MEDIA_IS_WA(m_waTable, Wa_1408785368) || MEDIA_IS_WA(m_waTable, Wa_22010493002)) &&
-        !Mos_ResourceIsNull(&m_destSurface.OsResource) &&
+    // Add disable Clear CCS WA due to green corruption issue
+    if (m_mmc->IsMmcEnabled() && !Mos_ResourceIsNull(&m_destSurface.OsResource) &&
         m_destSurface.OsResource.bConvertedFromDDIResource)
     {
-        CODECHAL_DECODE_VERBOSEMESSAGE("Clear CCS by VE resolve before frame %d submission", m_frameNum);
-        CODECHAL_DECODE_CHK_STATUS_RETURN(static_cast<CodecHalMmcStateG12 *>(m_mmc)->ClearAuxSurf(
-            this, m_miInterface, &m_destSurface.OsResource, m_veState));
+        if (MEDIA_IS_WA(m_waTable, Wa_1408785368) || MEDIA_IS_WA(m_waTable, Wa_22010493002) && (!MEDIA_IS_WA(m_waTable, WaDisableClearCCS)))
+        {
+            CODECHAL_DECODE_VERBOSEMESSAGE("Clear CCS by VE resolve before frame %d submission", m_frameNum);
+            CODECHAL_DECODE_CHK_STATUS_RETURN(static_cast<CodecHalMmcStateG12 *>(m_mmc)->ClearAuxSurf(
+                this, m_miInterface, &m_destSurface.OsResource, m_veState));
+        }
     }
 #endif
 
@@ -484,6 +487,13 @@ MOS_STATUS CodechalDecodeJpegG12::DecodePrimitiveLevel()
             &cmdBuffer));
     }
 
+#if (_DEBUG || _RELEASE_INTERNAL)
+    uint32_t curIdx         = (GetDecodeStatusBuf()->m_currIndex + CODECHAL_DECODE_STATUS_NUM - 1) % CODECHAL_DECODE_STATUS_NUM;
+    uint32_t frameCrcOffset = curIdx * sizeof(CodechalDecodeStatus) + GetDecodeStatusBuf()->m_decFrameCrcOffset + sizeof(uint32_t) * 2;
+    std::vector<MOS_RESOURCE> vSemaResource{GetDecodeStatusBuf()->m_statusBuffer};
+    m_debugInterface->DetectCorruptionHw(m_hwInterface, &m_frameCountTypeBuf, curIdx, frameCrcOffset, vSemaResource, &cmdBuffer, m_frameNum);
+#endif
+
     CODECHAL_DECODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferEnd(
         &cmdBuffer,
         nullptr));
@@ -567,16 +577,20 @@ MOS_STATUS CodechalDecodeJpegG12::AllocateStandard(
 
 #ifdef _MMC_SUPPORTED
     // To WA invalid aux data caused HW issue when MMC on
-    if (m_mmc->IsMmcEnabled() && (MEDIA_IS_WA(m_waTable, Wa_1408785368) || MEDIA_IS_WA(m_waTable, Wa_22010493002)))
+    // Add disable Clear CCS WA due to green corruption issue
+    if (m_mmc->IsMmcEnabled())
     {
-        //Add HUC STATE Commands
-        MHW_VDBOX_STATE_CMDSIZE_PARAMS stateCmdSizeParams;
+        if (MEDIA_IS_WA(m_waTable, Wa_1408785368) || MEDIA_IS_WA(m_waTable, Wa_22010493002) && (!MEDIA_IS_WA(m_waTable, WaDisableClearCCS)))
+        {
+            MHW_VDBOX_STATE_CMDSIZE_PARAMS stateCmdSizeParams;
 
-        m_hwInterface->GetHucStateCommandSize(
-            CODECHAL_DECODE_MODE_JPEG,
-            &m_HucStateCmdBufferSizeNeeded,
-            &m_HucPatchListSizeNeeded,
-            &stateCmdSizeParams);
+            //Add HUC STATE Commands
+            m_hwInterface->GetHucStateCommandSize(
+                CODECHAL_DECODE_MODE_JPEG,
+                &m_HucStateCmdBufferSizeNeeded,
+                &m_HucPatchListSizeNeeded,
+                &stateCmdSizeParams);
+        }
     }
 #endif
 

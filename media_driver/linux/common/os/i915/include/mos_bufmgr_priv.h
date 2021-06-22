@@ -122,24 +122,6 @@ struct mos_bufmgr {
     int (*bo_unmap) (struct mos_linux_bo *bo);
 
     /**
-     * Write data into an object.
-     *
-     * This is an optional function, if missing,
-     * drm_intel_bo will map/memcpy/unmap.
-     */
-    int (*bo_subdata) (struct mos_linux_bo *bo, unsigned long offset,
-               unsigned long size, const void *data);
-
-    /**
-     * Read data from an object
-     *
-     * This is an optional function, if missing,
-     * drm_intel_bo will map/memcpy/unmap.
-     */
-    int (*bo_get_subdata) (struct mos_linux_bo *bo, unsigned long offset,
-                   unsigned long size, void *data);
-
-    /**
      * Waits for rendering to an object by the GPU to have completed.
      *
      * This is not required for any access to the BO by bo_map,
@@ -352,6 +334,13 @@ struct mos_bufmgr {
      * \param target_bo Buffer to set async
      */
     void (*set_exec_object_async) (struct mos_linux_bo *bo, struct mos_linux_bo *target_bo);
+
+     /**
+     * Set capture flag for a buffer object.
+     *
+     * \param bo Buffer to set capture
+     */
+    void (*set_object_capture)(struct mos_linux_bo *bo);
 
     /**< Enables verbose debugging printouts */
     int debug;

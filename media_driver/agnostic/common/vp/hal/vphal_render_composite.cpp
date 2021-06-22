@@ -2319,7 +2319,7 @@ MOS_STATUS CompositeState::Render(
         VPHAL_RENDER_ASSERTMESSAGE("Invalid number of samples.");
         goto finish;
     }
-
+    pRenderHal->iSourceCount = iSources;
     // Determine cspace for compositing
     ColorSpace = PrepareCSC(pcRenderParams,
                             pSources,
@@ -7006,6 +7006,7 @@ MOS_STATUS CompositeState::Initialize(
     MOS_NULL_RENDERING_FLAGS        NullRenderingFlags;
     bool                            bAllocated;
     MOS_STATUS                      eStatus;
+    Mos_MemPool                     memTypeSurfVdieoMem = MOS_MEMPOOL_VIDEOMEMORY;
 
     eStatus = MOS_STATUS_SUCCESS;
 
@@ -7015,6 +7016,11 @@ MOS_STATUS CompositeState::Initialize(
     if (m_reporting == nullptr)
     {
         m_reporting = MOS_New(VphalFeatureReport);
+    }
+
+    if (MEDIA_IS_SKU(m_pSkuTable, FtrLimitedLMemBar))
+    {
+        memTypeSurfVdieoMem = MOS_MEMPOOL_DEVICEMEMORY;
     }
 
 #if (_DEBUG || _RELEASE_INTERNAL)
@@ -7053,7 +7059,10 @@ MOS_STATUS CompositeState::Initialize(
             false,
             MOS_MMC_DISABLED,
             &bAllocated,
-            MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_RENDER));
+            MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_RENDER,
+            MOS_TILE_UNSET_GMM,
+            memTypeSurfVdieoMem,
+            MOS_MEMPOOL_DEVICEMEMORY == memTypeSurfVdieoMem));
     }
 
     // Setup Procamp Parameters

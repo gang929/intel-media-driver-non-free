@@ -60,11 +60,6 @@ namespace decode
         DECODE_CHK_STATUS(RegisterPacket(DecodePacketId(this, av1DecodePacketId), m_av1DecodePkt));
         DECODE_CHK_STATUS(m_av1DecodePkt->Init());
 
-        if (m_decodecp)
-        {
-            m_decodecp->EnableSampleGroupConstantIV();
-        }
-
         return MOS_STATUS_SUCCESS;
     }
 
@@ -157,6 +152,7 @@ namespace decode
 
         auto basicFeature = dynamic_cast<Av1BasicFeature *>(m_featureManager->GetFeature(FeatureIDs::basicFeature));
         DECODE_CHK_NULL(basicFeature);
+        DECODE_CHK_NULL(basicFeature->m_av1PicParams);
         if (basicFeature->m_av1PicParams->m_anchorFrameInsertion)
         {
             return MOS_STATUS_SUCCESS;
@@ -201,6 +197,7 @@ namespace decode
 
             CODECHAL_DEBUG_TOOL(
                 PMHW_BATCH_BUFFER batchBuffer = m_av1DecodePkt->GetSecondLvlBB();
+                DECODE_CHK_NULL(batchBuffer);
                 batchBuffer->iLastCurrent = batchBuffer->iSize;
                 batchBuffer->dwOffset = 0;
                 DECODE_CHK_STATUS(m_debugInterface->Dump2ndLvlBatch(

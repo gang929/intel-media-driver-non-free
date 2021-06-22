@@ -45,7 +45,7 @@ namespace decode
         {
             if (m_hwInterface != nullptr)
             {
-                m_avpInterface  =  static_cast<CodechalHwInterfaceG12*>(hwInterface)->GetAvpInterface();
+                m_avpInterface = hwInterface->GetAvpInterface();
             }
         }
 
@@ -122,7 +122,6 @@ namespace decode
         virtual MOS_STATUS AddAvpIndObjBaseAddrCmd(MOS_COMMAND_BUFFER &cmdBuffer);
         virtual void       SetAvpIndObjBaseAddrParams(MHW_VDBOX_IND_OBJ_BASE_ADDR_PARAMS &indObjBaseAddrParams);
 
-        virtual void       SetAvpPipeModeSelectParams(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS_G12 &vdboxPipeModeSelectParams);
         virtual MOS_STATUS AddAvpPipeModeSelectCmd(MOS_COMMAND_BUFFER &cmdBuffer) = 0;
 
         virtual MOS_STATUS SetAvpPicStateParams(MhwVdboxAvpPicStateParams &picStateParams);
@@ -158,8 +157,6 @@ namespace decode
 
         CodecAv1PicParams          *m_av1PicParams    = nullptr; //!< Pointer to picture parameter
         MOS_SURFACE                 refSurface[av1TotalRefsPerFrame];
-
-        MOS_BUFFER                  m_resDataBufferForDummyWL;
 
         //!
         //! \brief    Setup SkipModeFrame[0] and SkipModeFrame[1] per av1_setup_skip_mode_allowed of ref decoder
@@ -227,7 +224,8 @@ namespace decode
         //buffers for dummy workload
         PMOS_BUFFER                 m_curMvBufferForDummyWL                                   = nullptr;
         PMOS_BUFFER                 m_bwdAdaptCdfBufForDummyWL                                = nullptr;
-        bool                        m_isBsBufferWritten                                       = false;
+        PMOS_BUFFER                 m_resDataBufferForDummyWL                                 = nullptr;
+        bool                        m_dummyBsBufInited                                        = false;
 
         uint32_t m_prevFrmWidth         = 0;    //!< Frame width of the previous frame
         uint32_t m_prevFrmHeight        = 0;    //!< Frame height of the previous frame

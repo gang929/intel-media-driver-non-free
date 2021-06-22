@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2011-2020, Intel Corporation
+* Copyright (c) 2011-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -579,6 +579,8 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
     PVPHAL_VEBOX_STATE_G12_BASE pVeboxState = this;
     PVPHAL_VEBOX_RENDER_DATA    pRenderData = GetLastExecRenderData();
     uint8_t                     InitValue;
+    Mos_MemPool                 memTypeSurfVideoMem = MOS_MEMPOOL_VIDEOMEMORY;
+    MOS_TILE_MODE_GMM           tileModeByForce = MOS_TILE_UNSET_GMM;
 
     bAllocated              = false;
     bSurfCompressible       = false;
@@ -595,6 +597,11 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
     if (NullHW::IsEnabled())
     {
         InitValue = 0x80;
+    }
+
+    if (MEDIA_IS_SKU(pVeboxState->m_pSkuTable, FtrLimitedLMemBar))
+    {
+        memTypeSurfVideoMem = MOS_MEMPOOL_DEVICEMEMORY;
     }
 
     GetOutputSurfParams(format, TileType);
@@ -649,7 +656,11 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
                 pVeboxState->m_currentSurface->dwHeight,
                 bFFDISurfCompressible,
                 FFDISurfCompressionMode,
-                &bAllocated));
+                &bAllocated,
+                MOS_HW_RESOURCE_DEF_MAX,
+                MOS_TILE_UNSET_GMM,
+                memTypeSurfVideoMem,
+                MOS_MEMPOOL_DEVICEMEMORY == memTypeSurfVideoMem));
 
             pVeboxState->FFDISurfaces[i]->SampleType = SampleType;
 
@@ -707,6 +718,12 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
         FFDNSurfCompressionMode = SurfCompressionMode;
     }
 
+    tileModeByForce = MOS_TILE_UNSET_GMM;
+    if (MEDIA_IS_SKU(pVeboxState->m_pSkuTable, FtrMediaTile64))
+    {
+        VPHAL_RENDER_NORMALMESSAGE("tilemode: media support tile encoding 1");
+        tileModeByForce = MOS_TILE_64_GMM;
+    }
     // Allocate FFDN surfaces---------------------------------------------------
     if (IsFFDNSurfNeeded())
     {
@@ -723,7 +740,11 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
                 pVeboxState->m_currentSurface->dwHeight,
                 bFFDNSurfCompressible,
                 FFDNSurfCompressionMode,
-                &bAllocated));
+                &bAllocated,
+                MOS_HW_RESOURCE_DEF_MAX,
+                tileModeByForce,
+                memTypeSurfVideoMem,
+                MOS_MEMPOOL_DEVICEMEMORY == memTypeSurfVideoMem));
 
             // if allocated, pVeboxState->PreviousSurface is not valid for DN reference.
             if (bAllocated)
@@ -789,6 +810,12 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
         pRenderData->pRenderTarget->rcMaxSrc = pVeboxState->m_currentSurface->rcMaxSrc;
     }
 
+    tileModeByForce = MOS_TILE_UNSET_GMM;
+    if (MEDIA_IS_SKU(pVeboxState->m_pSkuTable, FtrMediaTile64))
+    {
+        VPHAL_RENDER_NORMALMESSAGE("tilemode: media support tile encoding 1");
+        tileModeByForce = MOS_TILE_64_GMM;
+    }
     // Allocate STMM (Spatial-Temporal Motion Measure) Surfaces------------------
     if (IsSTMMSurfNeeded())
     {
@@ -808,7 +835,9 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
                 pVeboxState->m_currentSurface->dwHeight,
                 bSurfCompressible,
                 SurfCompressionMode,
-                &bAllocated));
+                &bAllocated,
+                MOS_HW_RESOURCE_DEF_MAX,
+                tileModeByForce));
 
             if (bAllocated)
             {
@@ -990,29 +1019,36 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
 
     if (pRenderData->bHdr3DLut)
     {
-        // Allocate 3DLut Table Surface
-        const uint32_t dwSegSize = 65;
-        const uint32_t dwMulSize = 128;
-        uint32_t dwSizeInBytes = dwSegSize * dwSegSize * dwMulSize * 8;
-        VPHAL_RENDER_CHK_STATUS(VpHal_ReAllocateSurface(
-            pOsInterface,
-            &pVeboxState->Vebox3DLookUpTables,
-            "Vebox3DLutTableSurface_g12",
-            Format_Buffer,
-            MOS_GFXRES_BUFFER,
-            MOS_TILE_LINEAR,
-            dwSizeInBytes,
-            1,
-            false,
-            MOS_MMC_DISABLED,
-            &bAllocated));
-
-        if (nullptr == m_hdr3DLutGenerator)
+        if (pVeboxState->m_currentSurface->p3DLutParams)
         {
+            pVeboxState->Vebox3DLookUpTables = *(pVeboxState->m_currentSurface->p3DLutParams->pExt3DLutSurface);
+        }
+        else
+        {
+            // Allocate 3DLut Table Surface
+            const uint32_t dwSegSize = 65;
+            const uint32_t dwMulSize = 128;
+            uint32_t dwSizeInBytes = dwSegSize * dwSegSize * dwMulSize * 8;
+            VPHAL_RENDER_CHK_STATUS(VpHal_ReAllocateSurface(
+                pOsInterface,
+                &pVeboxState->Vebox3DLookUpTables,
+                "Vebox3DLutTableSurface_g12",
+                Format_Buffer,
+                MOS_GFXRES_BUFFER,
+                MOS_TILE_LINEAR,
+                dwSizeInBytes,
+                1,
+                false,
+                MOS_MMC_DISABLED,
+                &bAllocated));
+
+            if (nullptr == m_hdr3DLutGenerator)
+            {
 #if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
-            PRENDERHAL_INTERFACE pRenderHal = pVeboxState->m_pRenderHal;
-            m_hdr3DLutGenerator = MOS_New(Hdr3DLutGenerator, pRenderHal, IGVP3DLUT_GENERATION_G12_TGLLP, IGVP3DLUT_GENERATION_G12_TGLLP_SIZE);
+                PRENDERHAL_INTERFACE pRenderHal = pVeboxState->m_pRenderHal;
+                m_hdr3DLutGenerator = MOS_New(Hdr3DLutGenerator, pRenderHal, IGVP3DLUT_GENERATION_G12_TGLLP, IGVP3DLUT_GENERATION_G12_TGLLP_SIZE);
 #endif
+            }
         }
     }
     else
@@ -1044,6 +1080,19 @@ void VPHAL_VEBOX_STATE_G12_BASE::FreeResources()
     PVPHAL_VEBOX_STATE_G12_BASE pVeboxState  = this;
     PMOS_INTERFACE              pOsInterface = pVeboxState->m_pOsInterface;
     VPHAL_RENDER_CHK_NULL_NO_STATUS(pOsInterface);
+
+    // Free 3DLook Up table surface which is allocated in VEBOX
+    // If it is the external surface, the external needs to call free explicitly
+    // e.g. pVeboxState->m_currentSurface->p3DLutParams->pExt3DLutSurface
+    // is allocated by App, passed to driver for VEBOX access, this surface should
+    // be freed by App instead of driver.
+    if ((pVeboxState->m_currentSurface) &&
+        (pVeboxState->m_currentSurface->p3DLutParams == NULL))
+    {
+        pOsInterface->pfnFreeResource(
+            pOsInterface,
+            &pVeboxState->Vebox3DLookUpTables.OsResource);
+    }
 
     // Free FFDI surfaces
     for (int i = 0; i < pVeboxState->iNumFFDISurfaces; i++)
@@ -1102,31 +1151,12 @@ void VPHAL_VEBOX_STATE_G12_BASE::FreeResources()
         &pVeboxState->VeboxTempSurface.OsResource);
 #endif
 
-    // Free SFC temp surface
-    pOsInterface->pfnFreeResource(
-        pOsInterface,
-        &pVeboxState->SfcTempSurface.OsResource);
-    MOS_SafeFreeMemory(SfcTempSurface.pBlendingParams);
-    MOS_SafeFreeMemory(SfcTempSurface.pLumaKeyParams);
-
-    // Free SFC temp surface
-    pOsInterface->pfnFreeResource(
-      pOsInterface,
-      &pVeboxState->Sfc2ndTempSurface.OsResource);
-    MOS_SafeFreeMemory(Sfc2ndTempSurface.pBlendingParams);
-    MOS_SafeFreeMemory(Sfc2ndTempSurface.pLumaKeyParams);
-
     // Free SFC resources
     if (MEDIA_IS_SKU(pVeboxState->m_pSkuTable, FtrSFCPipe) &&
         m_sfcPipeState)
     {
         m_sfcPipeState->FreeResources();
     }
-
-    // Free 3DLook Up table surface for VEBOX
-    pOsInterface->pfnFreeResource(
-        pOsInterface,
-        &pVeboxState->Vebox3DLookUpTables.OsResource);
 
     MOS_Delete(m_hdr3DLutGenerator);
 
@@ -2310,19 +2340,38 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::SetupVeboxState(
             true));
         pVeboxStateCmdParams->Vebox3DLookUpTablesSurfCtrl.Value = pVeboxState->DnDiSurfMemObjCtl.Vebox3DLookUpTablesSurfMemObjCtl;
 
-        if (m_hdr3DLutGenerator)
-        {
-            m_hdr3DLutGenerator->Render(
-                pRenderData->uiMaxDisplayLum,
-                pRenderData->uiMaxContentLevelLum,
-                pRenderData->hdrMode,
-                &pVeboxState->Vebox3DLookUpTables);
-        }
-
         pLUT3D->ArbitrationPriorityControl = 0;
         pLUT3D->Lut3dEnable                = true;
-        // 65^3 is the default.
-        pLUT3D->Lut3dSize                  =  2;
+        pLUT3D->Lut3dSize                  = 2;
+
+        if (pVeboxState->m_currentSurface->p3DLutParams)
+        {
+            if (pVeboxState->m_currentSurface->p3DLutParams->LutSize == 17)
+            {
+                pLUT3D->Lut3dSize = 1;
+            }
+            else if (pVeboxState->m_currentSurface->p3DLutParams->LutSize == 33)
+            {
+                pLUT3D->Lut3dSize = 0;
+            }
+            else if (pVeboxState->m_currentSurface->p3DLutParams->LutSize == 65)
+            {
+                pLUT3D->Lut3dSize = 2;
+            }
+        }
+        else
+        {
+            if (m_hdr3DLutGenerator)
+            {
+                m_hdr3DLutGenerator->Render(
+                    pRenderData->uiMaxDisplayLum,
+                    pRenderData->uiMaxContentLevelLum,
+                    pRenderData->hdrMode,
+                    &pVeboxState->Vebox3DLookUpTables);
+            }
+            // 65^3 is the default.
+            pLUT3D->Lut3dSize = 2;
+        }
     }
 
 finish:
@@ -2938,7 +2987,8 @@ void VPHAL_VEBOX_STATE_G12_BASE::VeboxSetRenderingFlags(
         bToneMapping = true;
     }
     pRenderData->bHdr3DLut = bToneMapping;
-    VPHAL_RENDER_NORMALMESSAGE("Enable 3DLut for HDR ToneMapping %d.", pRenderData->bHdr3DLut);
+    pRenderData->bHdr3DLut |= (pSrc->p3DLutParams != nullptr);
+    VPHAL_RENDER_NORMALMESSAGE("Enable 3DLut for HDR ToneMapping %d or 3DLUT filter %d.", bToneMapping, (pSrc->p3DLutParams != nullptr));
 
     VPHAL_VEBOX_STATE::VeboxSetRenderingFlags(pSrc, pRenderTarget);
 

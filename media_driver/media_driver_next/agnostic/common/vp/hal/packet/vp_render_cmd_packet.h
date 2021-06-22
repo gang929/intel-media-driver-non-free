@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, Intel Corporation
+* Copyright (c) 2020-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,34 +19,22 @@
 * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 * OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef __VP_RENDER_CMD_PACKET_EXT_H__
-#define __VP_RENDER_CMD_PACKET_EXT_H__
+#ifndef __VP_RENDER_CMD_PACKET_H__
+#define __VP_RENDER_CMD_PACKET_H__
 #include "media_render_cmd_packet.h"
 #include "vp_allocator.h"
 #include "vp_cmd_packet.h"
 #include "vp_kernelset.h"
 #include "vp_render_common.h"
+#include "vp_render_kernel_obj.h"
 
 namespace vp
 {
-//!
-//! \brief Secure Block Copy kernel inline data size
-//!
-#define SECURE_BLOCK_COPY_KERNEL_INLINE_SIZE    (1 * sizeof(uint32_t))
-//!
-//! \brief Secure Block Copy kernel width
-//!
-#define SECURE_BLOCK_COPY_KERNEL_SURF_WIDTH     64
-
-//!
-//! \brief Secure Block Copy kernel block height
-//!
-#define SECURE_BLOCK_COPY_KERNEL_BLOCK_HEIGHT   24
-
 class VpRenderCmdPacket : virtual public RenderCmdPacket, virtual public VpCmdPacket
 {
 public:
     VpRenderCmdPacket(MediaTask* task, PVP_MHWINTERFACE hwInterface, PVpAllocator& allocator, VPMediaMemComp* mmc, VpKernelSet* kernelSet);
+
     virtual ~VpRenderCmdPacket();
 
     MOS_STATUS Prepare() override;
@@ -65,10 +53,6 @@ public:
 
     virtual MOS_STATUS SubmitWithMultiKernel(MOS_COMMAND_BUFFER* commandBuffer, uint8_t packetPhase = otherPacket);
 
-    MOS_STATUS SetVeboxUpdateParams(PVEBOX_UPDATE_PARAMS params);
-
-    MOS_STATUS SetSecureCopyParams(bool copyNeeded);
-
     MOS_STATUS PacketInit(
         VP_SURFACE* inputSurface,
         VP_SURFACE* outputSurface,
@@ -76,11 +60,9 @@ public:
         VP_SURFACE_SETTING& surfSetting,
         VP_EXECUTE_CAPS packetCaps) override;
 
-    MOS_STATUS SetSRParams(PRENDER_SR_PARAMS params);
+    virtual MOS_STATUS SetDiFmdParams(PRENDER_DI_FMD_PARAMS params);
 
-    MOS_STATUS SetSRChromaParams(PRENDER_SR_PARAMS params);
-
-    MOS_STATUS ReadSRWeights(uint16_t *pBuf, const uint8_t*pWeight, const uint32_t uWeightSize, uint32_t outChannels, uint32_t inChannels, uint32_t nWeightsPerChannel, uint32_t layer);
+    virtual MOS_STATUS DumpOutput() override;
 
 protected:
 
@@ -147,25 +129,30 @@ protected:
         float   fInverseScaleFactor,
         int32_t iUvPhaseOffset);
 
+    MOS_STATUS InitSurfMemCacheControl(VP_EXECUTE_CAPS packetCaps);
+
 protected:
 
     KERNEL_OBJECTS                     m_kernelObjs;
-    KERNEL_CONFIGS                     m_kernelConfigs;
     KERNEL_RENDER_DATA                 m_kernelRenderData;
 
-    Kdll_FilterEntry                  *m_filter = nullptr;    // Kernel Filter (points to base of filter array)
+    KERNEL_CONFIGS                     m_kernelConfigs; // Kernel parameters for legacy kernels.
+
     bool                               m_firstFrame = true;
-    
     VpKernelSet                       *m_kernelSet = nullptr;
     VpRenderKernelObj                 *m_kernel    = nullptr; // processing kernel pointer
 
-    RENDER_KERNEL_PARAMS               m_renderKernelParams;
+    KERNEL_PARAMS_LIST                 m_renderKernelParams;
     KERNEL_SAMPLER_STATE_GROUP         m_kernelSamplerStateGroup;
 
     KERNEL_SUBMISSION_MODE             m_submissionMode = MULTI_KERNELS_WITH_MULTI_MEDIA_STATES;
     uint32_t                           m_slmSize        = 0;
     uint32_t                           m_totalCurbeSize = 0;
     uint32_t                           m_totoalInlineSize = 0;
+
+    VP_SURFACE                        *m_currentSurface  = nullptr;              //!< Current frame
+    PVP_VEBOX_CACHE_CNTL               m_surfMemCacheCtl = nullptr;                      //!< Surface memory cache control
+
 };
 }
 

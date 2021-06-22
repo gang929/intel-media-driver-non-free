@@ -85,6 +85,9 @@ CodechalDecodeJpeg::CodechalDecodeJpeg(
     MOS_ZeroMemory(&m_resDataBuffer, sizeof(m_resDataBuffer));
     MOS_ZeroMemory(&m_resSyncObjectWaContextInUse, sizeof(m_resSyncObjectWaContextInUse));
     MOS_ZeroMemory(&m_resSyncObjectVideoContextInUse, sizeof(m_resSyncObjectVideoContextInUse));
+#if (_DEBUG || _RELEASE_INTERNAL)
+    m_reportFrameCrc = true;
+#endif
 }
 
 MOS_STATUS CodechalDecodeJpeg::InitializeBeginFrame()
@@ -546,7 +549,7 @@ MOS_STATUS CodechalDecodeJpeg::SetFrameStates()
                 &m_resDataBuffer,
                 CodechalDbgAttr::attrBitstream,
                 "_DEC",
-                m_dataSize,
+                (m_copiedDataBufferInUse ? m_nextCopiedDataOffset : m_dataSize),
                 0,
                 CODECHAL_NUM_MEDIA_STATES));
         })

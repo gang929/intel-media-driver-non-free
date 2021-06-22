@@ -32,6 +32,7 @@
 #include "mhw_vebox.h"
 #include "mhw_sfc.h"
 #include "vp_render_ief.h"
+#include "mos_interface.h"
 
 namespace vp {
 
@@ -77,6 +78,8 @@ SfcRenderBase::~SfcRenderBase()
 
 MOS_STATUS SfcRenderBase::Init()
 {
+    VP_FUNC_CALL();
+
     MOS_ZeroMemory(&m_renderData, sizeof(m_renderData));
 
     m_bVdboxToSfc = false;
@@ -92,6 +95,8 @@ MOS_STATUS SfcRenderBase::Init()
 
 MOS_STATUS SfcRenderBase::SetCodecPipeMode(CODECHAL_STANDARD codecStandard)
 {
+    VP_FUNC_CALL();
+
     if (CODECHAL_VC1 == codecStandard ||
         CODECHAL_AVC == codecStandard ||
         CODECHAL_VP8 == codecStandard ||
@@ -108,6 +113,8 @@ MOS_STATUS SfcRenderBase::SetCodecPipeMode(CODECHAL_STANDARD codecStandard)
 
 MOS_STATUS SfcRenderBase::Init(VIDEO_PARAMS &videoParams)
 {
+    VP_FUNC_CALL();
+
     MOS_ZeroMemory(&m_renderData, sizeof(m_renderData));
 
     m_bVdboxToSfc = true;
@@ -131,6 +138,8 @@ MOS_STATUS SfcRenderBase::Init(VIDEO_PARAMS &videoParams)
 
 void SfcRenderBase::SetRotationAndMirrowParams(PMHW_SFC_STATE_PARAMS psfcStateParams)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_NO_STATUS_RETURN(psfcStateParams);
 
     psfcStateParams->RotationMode  = (MHW_ROTATION)m_renderData.SfcRotation;
@@ -140,6 +149,8 @@ void SfcRenderBase::SetRotationAndMirrowParams(PMHW_SFC_STATE_PARAMS psfcStatePa
 
 void SfcRenderBase::SetChromasitingParams(PMHW_SFC_STATE_PARAMS psfcStateParams)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_NO_STATUS_RETURN(psfcStateParams);
     SetSfcStateInputChromaSubSampling(psfcStateParams);
     SetSfcStateInputOrderingMode(psfcStateParams);
@@ -148,6 +159,8 @@ void SfcRenderBase::SetChromasitingParams(PMHW_SFC_STATE_PARAMS psfcStateParams)
 void SfcRenderBase::SetColorFillParams(
     PMHW_SFC_STATE_PARAMS       psfcStateParams)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_NO_STATUS_RETURN(m_renderData.pColorFillParams);
 
     psfcStateParams->bColorFillEnable = m_renderData.pColorFillParams->bColorfillEnable;
@@ -164,6 +177,8 @@ void SfcRenderBase::SetColorFillParams(
 void SfcRenderBase::SetXYAdaptiveFilter(
     PMHW_SFC_STATE_PARAMS       psfcStateParams)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_NO_STATUS_RETURN(psfcStateParams);
 
     // Enable Adaptive Filtering for YUV input only, if it is being upscaled
@@ -188,6 +203,8 @@ void SfcRenderBase::SetXYAdaptiveFilter(
 void SfcRenderBase::SetRGBAdaptive(
     PMHW_SFC_STATE_PARAMS       psfcStateParams)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_NO_STATUS_RETURN(psfcStateParams);
 
     if (IS_RGB_FORMAT(m_renderData.SfcInputFormat) &&
@@ -205,6 +222,8 @@ MOS_STATUS SfcRenderBase::SetIefStateCscParams(
     PMHW_SFC_STATE_PARAMS           psfcStateParams,
     PMHW_SFC_IEF_STATE_PARAMS       pIEFStateParams)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
     VP_RENDER_CHK_NULL_RETURN(psfcStateParams);
@@ -256,6 +275,8 @@ MOS_STATUS SfcRenderBase::SetIefStateCscParams(
 MOS_STATUS SfcRenderBase::SetIefStateParams(
     PMHW_SFC_STATE_PARAMS           psfcStateParams)
 {
+    VP_FUNC_CALL();
+
     PMHW_SFC_IEF_STATE_PARAMS   pIefStateParams = nullptr;
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
@@ -283,6 +304,8 @@ MOS_STATUS SfcRenderBase::SetIefStateParams(
 
 MOS_STATUS SfcRenderBase::SetAvsStateParams()
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS                  eStatus            = MOS_STATUS_SUCCESS;
     PMHW_SFC_AVS_STATE          pMhwAvsState       = nullptr;
     MHW_SCALING_MODE            scalingMode        = MHW_SCALING_AVS;
@@ -366,6 +389,8 @@ MOS_STATUS SfcRenderBase::SetAvsStateParams()
 
 MOS_STATUS SfcRenderBase::SetLineBuffer(PMOS_RESOURCE &osResLineBuffer, VP_SURFACE *lineBuffer)
 {
+    VP_FUNC_CALL();
+
     if (lineBuffer)
     {
         if (nullptr == lineBuffer->osSurface || Mos_ResourceIsNull(&lineBuffer->osSurface->OsResource))
@@ -383,6 +408,8 @@ MOS_STATUS SfcRenderBase::SetLineBuffer(PMOS_RESOURCE &osResLineBuffer, VP_SURFA
 
 MOS_STATUS SfcRenderBase::SetupSfcState(PVP_SURFACE targetSurface)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS              eStatus = MOS_STATUS_SUCCESS;
 
     VP_RENDER_CHK_NULL_RETURN(targetSurface);
@@ -461,6 +488,8 @@ MOS_STATUS SfcRenderBase::SetupSfcState(PVP_SURFACE targetSurface)
 
 MOS_STATUS SfcRenderBase::SetScalingParams(PSFC_SCALING_PARAMS scalingParams)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_RETURN(scalingParams);
 
     if (MhwSfcInterface::SFC_PIPE_MODE_VEBOX != m_pipeMode                          &&
@@ -539,6 +568,8 @@ bool SfcRenderBase::IsVdboxSfcFormatSupported(
     MOS_FORMAT                  inputFormat,
     MOS_FORMAT                  outputFormat)
 {
+    VP_FUNC_CALL();
+
     if (CODECHAL_AVC == codecStandard || CODECHAL_HEVC == codecStandard ||
         CODECHAL_VP9 == codecStandard || CODECHAL_AV1 == codecStandard)
     {
@@ -608,6 +639,8 @@ bool SfcRenderBase::IsVdboxSfcFormatSupported(
 
 bool SfcRenderBase::IsInputChannelSwapNeeded(MOS_FORMAT inputFormat)
 {
+    VP_FUNC_CALL();
+
     // 1st and 3rd columns of A8R8G8B8 and X8R8G8B8 need be swapped
     // to ensure SFC input being A8B8G8R8.
     if (inputFormat == Format_A8R8G8B8 ||
@@ -623,6 +656,8 @@ bool SfcRenderBase::IsInputChannelSwapNeeded(MOS_FORMAT inputFormat)
 
 MOS_STATUS SfcRenderBase::SetCSCParams(PSFC_CSC_PARAMS cscParams)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_RETURN(cscParams);
 
     if (MhwSfcInterface::SFC_PIPE_MODE_VEBOX == m_pipeMode)
@@ -671,6 +706,9 @@ MOS_STATUS SfcRenderBase::SetCSCParams(PSFC_CSC_PARAMS cscParams)
 
 MOS_STATUS SfcRenderBase::SetRotMirParams(PSFC_ROT_MIR_PARAMS rotMirParams)
 {
+
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_RETURN(rotMirParams);
 
     if (MhwSfcInterface::SFC_PIPE_MODE_VEBOX != m_pipeMode      &&
@@ -726,6 +764,8 @@ MOS_STATUS SfcRenderBase::SetMmcParams(PMOS_SURFACE renderTarget, bool isFormalM
 MOS_STATUS SfcRenderBase::SetSfcStateInputChromaSubSampling(
     PMHW_SFC_STATE_PARAMS       sfcStateParams)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_RETURN(sfcStateParams);
     VPHAL_COLORPACK colorPack = VpHal_GetSurfaceColorPack(m_renderData.SfcInputFormat);
     if (VPHAL_COLORPACK_400 == colorPack)
@@ -758,6 +798,8 @@ MOS_STATUS SfcRenderBase::SetSfcStateInputChromaSubSampling(
 MOS_STATUS SfcRenderBase::SetSfcStateInputOrderingMode(
     PMHW_SFC_STATE_PARAMS       sfcStateParams)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_RETURN(sfcStateParams);
 
     if (m_bVdboxToSfc)
@@ -782,6 +824,8 @@ MOS_STATUS SfcRenderBase::SetSfcStateInputOrderingMode(
 MOS_STATUS SfcRenderBase::SetSfcStateInputOrderingModeVdbox(
     PMHW_SFC_STATE_PARAMS       sfcStateParams)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_RETURN(sfcStateParams);
     switch (m_videoConfig.codecStandard)
     {
@@ -811,6 +855,8 @@ MOS_STATUS SfcRenderBase::SetSfcStateInputOrderingModeVdbox(
 MOS_STATUS SfcRenderBase::SetSfcStateInputOrderingModeJpeg(
     PMHW_SFC_STATE_PARAMS       sfcStateParams)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_RETURN(sfcStateParams);
     if (CODECHAL_JPEG != m_videoConfig.codecStandard)
     {
@@ -849,6 +895,8 @@ MOS_STATUS SfcRenderBase::InitMhwOutSurfParams(
   PVP_SURFACE                               pSfcPipeOutSurface,
   PMHW_SFC_OUT_SURFACE_PARAMS               pMhwOutSurfParams)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS                   eStatus = MOS_STATUS_SUCCESS;
     VP_RENDER_CHK_NULL_RETURN(pSfcPipeOutSurface);
     VP_RENDER_CHK_NULL_RETURN(pSfcPipeOutSurface->osSurface);
@@ -874,6 +922,9 @@ MOS_STATUS SfcRenderBase::InitMhwOutSurfParams(
     {
         pMhwOutSurfParams->dwUYoffset = ((pSfcPipeOutSurface->osSurface->UPlaneOffset.iSurfaceOffset - pSfcPipeOutSurface->osSurface->YPlaneOffset.iSurfaceOffset)
               / pSfcPipeOutSurface->osSurface->dwPitch) + pSfcPipeOutSurface->osSurface->UPlaneOffset.iYOffset;
+
+        pMhwOutSurfParams->dwVUoffset = ((pSfcPipeOutSurface->osSurface->VPlaneOffset.iSurfaceOffset - pSfcPipeOutSurface->osSurface->UPlaneOffset.iSurfaceOffset)
+              / pSfcPipeOutSurface->osSurface->dwPitch) + pSfcPipeOutSurface->osSurface->VPlaneOffset.iYOffset;
     }
 
     return eStatus;
@@ -883,6 +934,8 @@ MOS_STATUS SfcRenderBase::AddSfcLock(
     PMOS_COMMAND_BUFFER            pCmdBuffer,
     PMHW_SFC_LOCK_PARAMS           pSfcLockParams)
 {
+    VP_FUNC_CALL();
+
     VP_RENDER_CHK_NULL_RETURN(m_sfcInterface);
 
     // Send SFC_LOCK command to acquire SFC pipe for Vebox
@@ -897,6 +950,8 @@ MOS_STATUS SfcRenderBase::SendSfcCmd(
     bool                            bOutputToMemory,
     PMOS_COMMAND_BUFFER             pCmdBuffer)
 {
+    VP_FUNC_CALL();
+
     PMHW_SFC_INTERFACE              pSfcInterface;
     MHW_SFC_LOCK_PARAMS             SfcLockParams;
     MOS_STATUS                      eStatus;
@@ -968,6 +1023,9 @@ void SfcRenderBase::InitAVSParams(
     uint32_t            uiYCoeffTableSize,
     uint32_t            uiUVCoeffTableSize)
 {
+
+    VP_FUNC_CALL();
+
     int32_t     size;
     char*       ptr;
 
@@ -1006,6 +1064,8 @@ void SfcRenderBase::InitAVSParams(
 void SfcRenderBase::DestroyAVSParams(
     PMHW_AVS_PARAMS   pAVS_Params)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_NO_STATUS_RETURN(pAVS_Params);
     MOS_SafeFreeMemory(pAVS_Params->piYCoefsX);
     pAVS_Params->piYCoefsX = nullptr;
@@ -1013,6 +1073,8 @@ void SfcRenderBase::DestroyAVSParams(
 
 uint32_t SfcRenderBase::GetAvsLineBufferSize(bool lineTiledBuffer, bool b8tapChromafiltering, uint32_t width, uint32_t height)
 {
+    VP_FUNC_CALL();
+
     uint32_t size = 0;
     uint32_t linebufferSizePerPixel = 0;
 
@@ -1063,6 +1125,8 @@ uint32_t SfcRenderBase::GetAvsLineBufferSize(bool lineTiledBuffer, bool b8tapChr
 
 uint32_t SfcRenderBase::GetIefLineBufferSize(bool lineTiledBuffer, uint32_t heightOutput)
 {
+    VP_FUNC_CALL();
+
     uint32_t size = 0;
 
     // For VE+SFC mode, height needs be used.
@@ -1087,6 +1151,8 @@ uint32_t SfcRenderBase::GetIefLineBufferSize(bool lineTiledBuffer, uint32_t heig
 
 uint32_t SfcRenderBase::GetSfdLineBufferSize(bool lineTiledBuffer, MOS_FORMAT formatOutput, uint32_t widthOutput, uint32_t heightOutput)
 {
+    VP_FUNC_CALL();
+
     int size = 0;
 
     // For VD+SFC mode, width needs be used. For VE+SFC mode, height needs be used.
@@ -1112,7 +1178,21 @@ uint32_t SfcRenderBase::GetSfdLineBufferSize(bool lineTiledBuffer, MOS_FORMAT fo
 
 MOS_STATUS SfcRenderBase::AllocateLineBuffer(VP_SURFACE *&lineBuffer, uint32_t size, const char *bufName)
 {
-    bool allocated = false;
+    VP_FUNC_CALL();
+
+    bool                allocated           = false;
+    MEDIA_FEATURE_TABLE *skuTable           = nullptr;
+    Mos_MemPool         memTypeSurfVideoMem = MOS_MEMPOOL_VIDEOMEMORY;
+
+    VP_PUBLIC_CHK_NULL_RETURN(m_osInterface)
+
+    skuTable = MosInterface::GetSkuTable(m_osInterface->osStreamState);
+
+    if (skuTable && MEDIA_IS_SKU(skuTable, FtrLimitedLMemBar))
+    {
+        memTypeSurfVideoMem = MOS_MEMPOOL_DEVICEMEMORY;
+    }
+
     if (size)
     {
         VP_RENDER_CHK_STATUS_RETURN(m_allocator->ReAllocateSurface(
@@ -1128,7 +1208,10 @@ MOS_STATUS SfcRenderBase::AllocateLineBuffer(VP_SURFACE *&lineBuffer, uint32_t s
                                       allocated,
                                       false,
                                       true,
-                                      MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_WRITE_FF));
+                                      MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_WRITE_FF,
+                                      MOS_TILE_UNSET_GMM,
+                                      memTypeSurfVideoMem,
+                                      MOS_MEMPOOL_DEVICEMEMORY == memTypeSurfVideoMem));
     }
     else if (lineBuffer)
     {
@@ -1139,6 +1222,8 @@ MOS_STATUS SfcRenderBase::AllocateLineBuffer(VP_SURFACE *&lineBuffer, uint32_t s
 
 MOS_STATUS SfcRenderBase::AllocateLineBufferArray(VP_SURFACE **&lineBufferArray, uint32_t size, const char *bufName)
 {
+    VP_FUNC_CALL();
+
     bool allocated = false;
     VP_RENDER_CHK_NULL_RETURN(lineBufferArray);
     // Use numPipe instead of m_lineBufferAllocatedInArray to only allocate surface in use.
@@ -1151,6 +1236,8 @@ MOS_STATUS SfcRenderBase::AllocateLineBufferArray(VP_SURFACE **&lineBufferArray,
 
 MOS_STATUS SfcRenderBase::AllocateResources()
 {
+    VP_FUNC_CALL();
+
     uint32_t                size;
     PMHW_SFC_STATE_PARAMS   sfcStateParams;
 
@@ -1205,6 +1292,8 @@ MOS_STATUS SfcRenderBase::AllocateResources()
 
 MOS_STATUS SfcRenderBase::DestroyLineBufferArray(VP_SURFACE **&lineBufferArray)
 {
+    VP_FUNC_CALL();
+
     if (nullptr == lineBufferArray)
     {
         return MOS_STATUS_SUCCESS;
@@ -1223,6 +1312,8 @@ MOS_STATUS SfcRenderBase::DestroyLineBufferArray(VP_SURFACE **&lineBufferArray)
 
 MOS_STATUS SfcRenderBase::FreeResources()
 {
+    VP_FUNC_CALL();
+
     VP_RENDER_CHK_NULL_RETURN(m_allocator);
     // Free AVS Line Buffer surface for SFC
     DestroyLineBufferArray(m_AVSLineBufferSurfaceArray);
@@ -1247,6 +1338,8 @@ MOS_STATUS SfcRenderBase::FreeResources()
 
 MOS_STATUS SfcRenderBase::SetHistogramBuf(PMOS_BUFFER histogramBuf)
 {
+    VP_FUNC_CALL();
+
     if (histogramBuf != nullptr)
     {
         m_histogramSurf.OsResource = histogramBuf->OsResource;

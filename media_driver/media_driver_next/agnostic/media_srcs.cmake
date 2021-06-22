@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2020, Intel Corporation
+# Copyright (c) 2019-2021, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -22,3 +22,4 @@ media_include_subdirectory(common)
 media_include_subdirectory(gen12)
 media_include_subdirectory(gen12_tgllp)
 media_include_subdirectory(m12)
+media_include_subdirectory(g12)

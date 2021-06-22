@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2018, Intel Corporation
+* Copyright (c) 2017-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -783,7 +783,7 @@ MOS_STATUS CodechalVdencHevcState::SetupMbQpStreamIn(PMOS_RESOURCE streamIn)
     auto pInputData = (uint8_t*)m_osInterface->pfnLockResource(
                                                             m_osInterface, &(m_encodeParams.psMbQpDataSurface->OsResource),
                                                             &LockFlagsReadOnly);
-
+    CODECHAL_ENCODE_CHK_NULL_RETURN(pInputData);
     MHW_VDBOX_VDENC_STREAMIN_STATE_PARAMS streaminDataParams;
 
     for (uint32_t h = 0; h < streamInHeight; h++)
@@ -2719,7 +2719,7 @@ MOS_STATUS CodechalVdencHevcState::SetSequenceStructs()
             return eStatus;
         }
 
-        if (m_targetBufferFulness == 0)
+        if (m_targetBufferFulness == 0 && m_prevTargetFrameSize == 0)
         {
             m_targetBufferFulness = m_hevcSeqParams->VBVBufferSizeInBit - m_hevcSeqParams->InitVBVBufferFullnessInBit;
             if (m_lookaheadPass)
@@ -3144,12 +3144,21 @@ MOS_STATUS CodechalVdencHevcState::GetStatusReport(
             m_targetBufferFulness = encTargetBufferFulness < 0 ?
                 0 : (encTargetBufferFulness > 0xFFFFFFFF ? 0xFFFFFFFF : (uint32_t)encTargetBufferFulness);
             int32_t deltaBits = (int32_t)((int64_t)(encodeStatus->lookaheadStatus.targetBufferFulness) + m_bufferFulnessError - (int64_t)(m_targetBufferFulness));
+            deltaBits /= 64;
             if (deltaBits > 8)
             {
+                if ((uint32_t)deltaBits > encodeStatus->lookaheadStatus.targetFrameSize)
+                {
+                    deltaBits = (int32_t)(encodeStatus->lookaheadStatus.targetFrameSize);
+                }
                 encodeStatus->lookaheadStatus.targetFrameSize += (uint32_t)(deltaBits >> 3);
             }
             else if (deltaBits < -8)
             {
+                if ((-deltaBits) > (int32_t)(encodeStatus->lookaheadStatus.targetFrameSize))
+                {
+                    deltaBits = -(int32_t)(encodeStatus->lookaheadStatus.targetFrameSize);
+                }
                 encodeStatus->lookaheadStatus.targetFrameSize -= (uint32_t)((-deltaBits) >> 3);
             }
         }
@@ -3922,6 +3931,30 @@ MOS_STATUS CodechalVdencHevcState::PrepareHWMetaData(
 
     storeDataParams.dwResourceOffset    = m_metaDataOffset.dwWrittenSubregionsCount;
     storeDataParams.dwValue             = m_numSlices;
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(cmdBuffer, &storeDataParams));
+
+    storeDataParams.dwResourceOffset    = m_metaDataOffset.dwEncodeStats + m_metaDataOffset.dwAverageQP;
+    storeDataParams.dwValue             = 0;
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(cmdBuffer, &storeDataParams));
+
+    storeDataParams.dwResourceOffset    = m_metaDataOffset.dwEncodeStats + m_metaDataOffset.dwIntraCodingUnitsCount;
+    storeDataParams.dwValue             = 0;
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(cmdBuffer, &storeDataParams));
+
+    storeDataParams.dwResourceOffset    = m_metaDataOffset.dwEncodeStats + m_metaDataOffset.dwInterCodingUnitsCount;
+    storeDataParams.dwValue             = 0;
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(cmdBuffer, &storeDataParams));
+
+    storeDataParams.dwResourceOffset    = m_metaDataOffset.dwEncodeStats + m_metaDataOffset.dwSkipCodingUnitsCount;
+    storeDataParams.dwValue             = 0;
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(cmdBuffer, &storeDataParams));
+
+    storeDataParams.dwResourceOffset    = m_metaDataOffset.dwEncodeStats + m_metaDataOffset.dwAverageMotionEstimationXDirection;
+    storeDataParams.dwValue             = 0;
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(cmdBuffer, &storeDataParams));
+
+    storeDataParams.dwResourceOffset    = m_metaDataOffset.dwEncodeStats + m_metaDataOffset.dwAverageMotionEstimationYDirection;
+    storeDataParams.dwValue             = 0;
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(cmdBuffer, &storeDataParams));
 
     MHW_MI_COPY_MEM_MEM_PARAMS miCpyMemMemParams;

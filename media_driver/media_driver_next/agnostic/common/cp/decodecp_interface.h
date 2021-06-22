@@ -116,7 +116,8 @@ public:
     virtual MOS_STATUS SetHucPipeModeSelectParameter(bool& param)        = 0;
     virtual bool       IsStreamOutNeeded()                               = 0;
     virtual bool       IsCpEnabled()                                     = 0;
-    virtual void       EnableSampleGroupConstantIV()                     = 0;
+    virtual void       SetCpEnabled(bool isCpInUse)                      = 0;
+
 };
 
 //!

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, Intel Corporation
+* Copyright (c) 2019-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -178,6 +178,7 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
     gmmParams.ArraySize = 1;
 
     MOS_TILE_TYPE tileformat = params.m_tileType;
+    MOS_OS_NORMALMESSAGE("tilemode: tileformat = %d for %s, tileModeByForce = %d", tileformat, params.m_name.c_str(), params.m_tileModeByForce);
     switch (tileformat)
     {
         case MOS_TILE_Y:
@@ -185,7 +186,18 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
             if (params.m_isCompressible && MEDIA_IS_SKU(pOsContextSpecific->GetSkuTable(), FtrE2ECompression))
             {
                 gmmParams.Flags.Gpu.MMC  = 1;
-                gmmParams.Flags.Info.MediaCompressed = 1;
+                
+                if (params.m_compressionMode == MOS_MMC_RC)
+                {
+                    gmmParams.Flags.Info.MediaCompressed = 0;
+                    gmmParams.Flags.Info.RenderCompressed = 1;
+                }
+                else
+                {
+                    gmmParams.Flags.Info.MediaCompressed = 1;
+                    gmmParams.Flags.Info.RenderCompressed = 0;
+                }
+
                 gmmParams.Flags.Gpu.CCS = 1;
                 gmmParams.Flags.Gpu.UnifiedAuxSurface = 1;
                 gmmParams.Flags.Gpu.RenderTarget = 1;
@@ -195,6 +207,7 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
                     gmmParams.Flags.Gpu.UnifiedAuxSurface = 0;
                 }
             }
+            SetTileModebyForce(gmmParams, params.m_tileModeByForce);
             break;
         case MOS_TILE_X:
             gmmParams.Flags.Info.TiledX   = true;
@@ -347,7 +360,7 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
         m_isCompressed    = gmmResourceInfoPtr->IsMediaMemoryCompressed(0);
         m_compressionMode = (MOS_RESOURCE_MMC_MODE)gmmResourceInfoPtr->GetMmcMode(0);
 
-        MOS_OS_VERBOSEMESSAGE("Alloc %7d bytes (%d x %d resource).",bufSize, params.m_width, bufHeight);
+        MOS_OS_VERBOSEMESSAGE("Alloc %7d bytes (%d x %d resource), tile encoding %d.",bufSize, params.m_width, bufHeight, m_tileModeGMM);
 
         struct {
             uint32_t m_handle;
@@ -829,7 +842,7 @@ MOS_STATUS GraphicsResourceSpecificNext::AllocateExternalResource(
         resource->TileModeGMM     = (MOS_TILE_MODE_GMM)gmmResourceInfo->GetTileModeSurfaceState();
         resource->bGMMTileEnabled = true;
         resource->pData    = (uint8_t *)bo->virt;  //It is useful for batch buffer to fill commands
-        MOS_OS_VERBOSEMESSAGE("Alloc %7d bytes (%d x %d resource).", iSize, params->dwWidth, iHeight);
+        MOS_OS_VERBOSEMESSAGE("Alloc %7d bytes (%d x %d resource), tile encoding.", iSize, params->dwWidth, iHeight, resource->TileModeGMM);
     }
     else
     {
