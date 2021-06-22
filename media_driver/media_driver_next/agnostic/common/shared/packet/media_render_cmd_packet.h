@@ -143,28 +143,6 @@ struct SseuSetting
     uint8_t   reserved;       // Place holder for frequency setting
 };
 
-enum KernelID
-{
-    // FC
-    CombinedFc = 0,
-
-    // 2 VEBOX KERNELS
-    VeboxSecureBlockCopy,
-    VeboxUpdateDnState,
-    VeboxKernelMax,
-
-    // User Ptr
-    UserPtr,
-    // Fast 1toN
-    Fast1toN,
-
-    // HDR
-    HdrMandatory,
-    HdrPreprocess,
-
-    KernelMaxNumID
-};
-
 typedef struct _RENDERHAL_SURFACE_NEXT : public _RENDERHAL_SURFACE
 {
     uint32_t Index;
@@ -211,6 +189,13 @@ public:
         PMOS_SURFACE                        buffer,
         PRENDERHAL_SURFACE_NEXT             pRenderSurface,
         PRENDERHAL_SURFACE_STATE_PARAMS     pSurfaceParams,
+        bool                                bWrite);
+
+    virtual uint32_t SetBufferForHwAccess(
+        PMOS_SURFACE                        buffer,
+        PRENDERHAL_SURFACE_NEXT             pRenderSurface,
+        PRENDERHAL_SURFACE_STATE_PARAMS     pSurfaceParams,
+        uint32_t                            bindingIndex,
         bool                                bWrite);
 
     virtual uint32_t SetBufferForHwAccess(
@@ -286,10 +271,10 @@ protected:
     // object walker: media walker/compute walker
     WALKER_TYPE                 m_walkerType = WALKER_TYPE_DISABLED;
 
-    MHW_WALKER_PARAMS m_mediaWalkerParams = {};
+    MHW_WALKER_PARAMS       m_mediaWalkerParams = {};
 
     MHW_GPGPU_WALKER_PARAMS m_gpgpuWalkerParams = {};
 
-    PMHW_BATCH_BUFFER            pBatchBuffer = nullptr;
+    PMHW_BATCH_BUFFER       pBatchBuffer = nullptr;
 };
 #endif // __MEDIA_RENDER_CMD_PACKET_H__

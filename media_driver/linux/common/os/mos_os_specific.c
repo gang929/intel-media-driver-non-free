@@ -82,6 +82,32 @@
 
 //============= PRIVATE FUNCTIONS <BEGIN>=========================================
 
+bool SetupMediaSoloSwitch()
+{
+    bool mediaSoloEnabled = false;
+    MosUtilities::MosReadMediaSoloEnabledUserFeature(mediaSoloEnabled);
+    return mediaSoloEnabled;
+}
+
+bool SetupApoDdiSwitch(int32_t fd)
+{
+    if (fd < 0)
+    {
+        return false;
+    }
+
+    //Read user feature to determine if apg mos is enabled.
+    uint32_t    userfeatureValue = 0;
+    MOS_STATUS  estatus          = MosUtilities::MosReadApoDdiEnabledUserFeature(userfeatureValue);
+
+    if(estatus == MOS_STATUS_SUCCESS)
+    {
+        return (userfeatureValue != 0);
+    }
+
+    return false;
+}
+
 bool SetupApoMosSwitch(int32_t fd)
 {
     if (fd < 0)
@@ -2493,6 +2519,17 @@ MOS_STATUS Mos_Specific_AllocateResource(
                 GmmParams.Flags.Gpu.CCS = 1;
                 GmmParams.Flags.Gpu.RenderTarget = 1;
                 GmmParams.Flags.Gpu.UnifiedAuxSurface = 1;
+
+                if (pParams->CompressionMode == MOS_MMC_RC)
+                {
+                    GmmParams.Flags.Info.MediaCompressed = 0;
+                    GmmParams.Flags.Info.RenderCompressed = 1;
+                }
+                else
+                {
+                    GmmParams.Flags.Info.MediaCompressed = 1;
+                    GmmParams.Flags.Info.RenderCompressed = 0;
+                }
 
                 if(MEDIA_IS_SKU(&pOsInterface->pOsContext->SkuTable, FtrFlatPhysCCS))
                 {
@@ -7646,18 +7683,18 @@ MOS_STATUS Mos_Specific_InitInterface(
     pOsInterface->dwGPUActiveBatch  = 0;
     pOsInterface->dwGPUPendingBatch = 0;
 
-    // disable it on Linux
-    pOsInterface->bMediaReset         = false;
-    pOsInterface->umdMediaResetEnable = false;
+    // enable it on Linux
+    pOsInterface->bMediaReset         = true;
+    pOsInterface->umdMediaResetEnable = true;
 
     pMediaWatchdog = getenv("INTEL_MEDIA_RESET_WATCHDOG");
     if (pMediaWatchdog != nullptr)
     {
         watchdog = strtol(pMediaWatchdog, nullptr, 0);
-        if (watchdog == 1)
+        if (watchdog == 0)
         {
-            pOsInterface->bMediaReset         = true;
-            pOsInterface->umdMediaResetEnable = true;
+            pOsInterface->bMediaReset         = false;
+            pOsInterface->umdMediaResetEnable = false;
         }
     }
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, Intel Corporation
+* Copyright (c) 2019-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -347,9 +347,10 @@ MOS_STATUS GpuContextSpecificNext::Init(OsContextNext *osContext,
                                                                      0); // I915_CONTEXT_CREATE_FLAGS_SINGLE_TIMELINE not allowed for parallel submission
                         if (mos_set_context_param_parallel(m_i915Context[i], engine_map, ctxWidth) != S_SUCCESS)
                         {
-                            MOS_OS_ASSERTMESSAGE("Failed to set parallel extension.\n");
-                            MOS_SafeFreeMemory(engine_map);
-                            return MOS_STATUS_UNKNOWN;
+                            MOS_OS_ASSERTMESSAGE("Failed to set parallel extension since discontinuous logical engine.\n");
+                            mos_gem_context_destroy(m_i915Context[i]);
+                            m_i915Context[i] = nullptr;
+                            break;
                         }
                     }
                 }
@@ -1013,15 +1014,18 @@ MOS_STATUS GpuContextSpecificNext::SubmitCommandBuffer(
             resource));
 
         uint64_t boOffset = alloc_bo->offset64;
-        if (alloc_bo != tempCmdBo)
+        if (!mos_gem_bo_is_softpin(alloc_bo))
         {
-            auto item_ctx = perStreamParameters->contextOffsetList.begin();
-            for (; item_ctx != perStreamParameters->contextOffsetList.end(); item_ctx++)
+            if (alloc_bo != tempCmdBo)
             {
-                if (item_ctx->intel_context == perStreamParameters->intel_context && item_ctx->target_bo == alloc_bo)
+                auto item_ctx = perStreamParameters->contextOffsetList.begin();
+                for (; item_ctx != perStreamParameters->contextOffsetList.end(); item_ctx++)
                 {
-                    boOffset = item_ctx->offset64;
-                    break;
+                    if (item_ctx->intel_context == perStreamParameters->intel_context && item_ctx->target_bo == alloc_bo)
+                    {
+                        boOffset = item_ctx->offset64;
+                        break;
+                    }
                 }
             }
         }
@@ -1505,6 +1509,7 @@ int32_t GpuContextSpecificNext::ParallelSubmitCommands(
             if(it->second->iSubmissionType & SUBMISSION_TYPE_MULTI_PIPE_FLAGS_LAST_PIPE)
             {
                 queue = m_i915Context[numBos - 1];
+                MOS_OS_CHK_NULL_RETURN(queue);
                 if(-1 != fence)
                 {
                     fenceFlag = I915_EXEC_FENCE_IN;

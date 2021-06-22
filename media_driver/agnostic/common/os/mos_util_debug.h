@@ -222,6 +222,7 @@ typedef struct _MOS_MESSAGE_PARAMS
     int32_t                     bUseHybridLogTrace;                             //!< Log debug messages and trace dumps to a file or not
     int32_t                     bUseOutputDebugString;                          //!< Onscreen debug message prints enabled or not
     uint32_t                    bEnableMaps;                                    //!< Dump mapped memory regions to trace file
+    uint32_t                    bDisableAssert;                                 //!< Disable assert
     MOS_COMPONENT_DEBUG_PARAMS  components[MOS_COMPONENT_COUNT];
     char                        g_MosMsgBuffer[MOS_MAX_MSG_BUF_SIZE];           //!< Array for debug message
 } MOS_MESSAGE_PARAMS;
@@ -356,6 +357,7 @@ MOS_STATUS MOS_LogFileNamePrefix(char *fileNamePrefix, MOS_CONTEXT_HANDLE mosCtx
 #define MOS_ASSERTMESSAGE(_compID, _subCompID, _message, ...)
 #define MOS_NORMALMESSAGE(_compID, _subCompID, _message, ...)
 #define MOS_VERBOSEMESSAGE(_compID, _subCompID, _message, ...)
+#define MOS_CRITICALMESSAGE(_compID, _subCompID, _message, ...)
 #define MOS_DEBUGMESSAGE_IF(_cond, _level, _compID, _subCompID, _message, ...)
 #define MOS_DEBUGMESSAGE(_compID, _subCompID, _message, ...)
 #define MOS_MEMNINJAMESSAGE(_compID, _subCompID, _message, ...)
@@ -648,6 +650,20 @@ void _MOS_Assert(
     {                                                                                       \
         MOS_ASSERTMESSAGE(_compID, _subCompID, "MOS returned error, hr = 0x%x", hr);        \
         return hr;                                                                          \
+    }                                                                                       \
+}
+
+//!
+//! \def MOS_CHK_HR_NO_STATUS_RETURN(_compID, _subCompID, _stmt)
+//!  Check _stmt, assert and return void
+//!
+#define MOS_CHK_HR_NO_STATUS_RETURN(_compID, _subCompID, _stmt)                             \
+{                                                                                           \
+    hr = (_stmt);                                                                           \
+    if (hr != MOS_STATUS_SUCCESS)                                                           \
+    {                                                                                       \
+        MOS_ASSERTMESSAGE(_compID, _subCompID, "MOS returned error, hr = 0x%x", hr);        \
+        return;                                                                             \
     }                                                                                       \
 }
 

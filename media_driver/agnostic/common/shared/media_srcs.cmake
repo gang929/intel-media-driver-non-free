@@ -18,6 +18,8 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
+media_include_subdirectory(user_setting)
+
 set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/mediamemdecomp.cpp
     ${CMAKE_CURRENT_LIST_DIR}/media_perf_profiler.cpp

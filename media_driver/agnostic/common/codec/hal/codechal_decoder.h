@@ -168,6 +168,8 @@ struct CodechalDecodeStatusReport
 #if (_DEBUG || _RELEASE_INTERNAL)
     //! \brief Applies when debug dumps are enabled, pointer to SFC output resource for the picture associated with this status report
     PMOS_RESOURCE           m_currSfcOutputPicRes = nullptr;
+    //! \brief Applies when debug dumps are enabled, pointer to histogram output resource for the picture associated with this status report
+    PMOS_RESOURCE           m_currHistogramOutBuf = nullptr;
     //! \brief Applies when debug dumps are enabled, stream out buffer
     PMOS_RESOURCE           m_streamOutBuf = nullptr;
     //! \brief Applies when debug dumps are enabled, index of the streamout buffer
@@ -674,6 +676,8 @@ public:
     //!
     bool IsDecoderMmcEnabled(){return m_mmc ? m_mmc->IsMmcEnabled() : false;}
 
+    MOS_STATUS CheckDecodeOutputBufSize(MOS_SURFACE &dstSurface);
+
 protected:
 
     //!
@@ -924,6 +928,17 @@ private:
         uint32_t     width,
         uint32_t     height,
         MOS_FORMAT   format);
+
+   //!
+   //! \brief    Allocate Decode Output Buffer
+   //! \details  To Allocate Decode Output Buffer for media debug hook.
+   //! \param    dstSurface
+   //!           Decoded dstSurface
+   //! \return   MOS_STATUS
+   //!           MOS_STATUS_SUCCESS if success, else fail reason
+   //!
+   MOS_STATUS AllocateDecodeOutputBuf();
+
     //!
     //! \brief    Deallocate specific reference surfaces
     //! \details  Deallocate specific reference surfaces for decode downsampling for all codec types
@@ -1082,11 +1097,17 @@ protected:
     //! \brief Internal buffer for predication
     MOS_RESOURCE               m_predicationBuffer = { 0 };
 
+    MOS_RESOURCE               m_frameCountTypeBuf = { 0 };
+
+    MOS_RESOURCE               m_crcBuf = { 0 };
+
 #if (_DEBUG || _RELEASE_INTERNAL)
     //! \brief Downsampled surfaces
     PMOS_SURFACE                m_downsampledSurfaces = nullptr;
 #endif
+    uint8_t*                    m_decodeOutputBuf = nullptr;
 
+    uint32_t                    m_decodeOutputBufSize = 0;
     //! \brief    Decode histogram interface
     //! \details  Support YUV Luma histogram.
     CodechalDecodeHistogram    *m_decodeHistogram = nullptr;

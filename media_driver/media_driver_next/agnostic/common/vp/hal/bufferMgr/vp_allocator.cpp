@@ -51,6 +51,7 @@ VpAllocator::~VpAllocator()
 //Paried with DestroyResource or DestroyAllResources
 MOS_RESOURCE* VpAllocator::AllocateResource(MOS_ALLOC_GFXRES_PARAMS &param, bool zeroOnAllocate)
 {
+    VP_FUNC_CALL();
     if (!m_allocator)
         return nullptr;
 
@@ -59,6 +60,7 @@ MOS_RESOURCE* VpAllocator::AllocateResource(MOS_ALLOC_GFXRES_PARAMS &param, bool
 
 MOS_STATUS VpAllocator::DestroyResource(MOS_RESOURCE *resource)
 {
+    VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
 
     return m_allocator->DestroyResource(resource);
@@ -66,6 +68,7 @@ MOS_STATUS VpAllocator::DestroyResource(MOS_RESOURCE *resource)
 
 MOS_STATUS VpAllocator::DestroyAllResources()
 {
+    VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
 
     return m_allocator->DestroyAllResources();
@@ -74,6 +77,7 @@ MOS_STATUS VpAllocator::DestroyAllResources()
 //Paried with FreeResource
 MOS_STATUS VpAllocator::AllocateResource(MOS_RESOURCE *res, MOS_ALLOC_GFXRES_PARAMS &param)
 {
+    VP_FUNC_CALL();
     if (!m_allocator)
         return MOS_STATUS_NULL_POINTER;
 
@@ -82,6 +86,7 @@ MOS_STATUS VpAllocator::AllocateResource(MOS_RESOURCE *res, MOS_ALLOC_GFXRES_PAR
 
 MOS_STATUS VpAllocator::FreeResource(MOS_RESOURCE *resource)
 {
+    VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
 
     return m_allocator->FreeResource(resource);
@@ -89,6 +94,7 @@ MOS_STATUS VpAllocator::FreeResource(MOS_RESOURCE *resource)
 
 void VpAllocator::UpdateSurfacePlaneOffset(MOS_SURFACE &surf)
 {
+    VP_FUNC_CALL();
     // dwOffset/YPlaneOffset/UPlaneOffset/VPlaneOffset will not be initialized during GetSurfaceInfo.
     // Initialize them with RenderOffset when needed.
     if (IS_RGB32_FORMAT(surf.Format) ||
@@ -128,6 +134,7 @@ void VpAllocator::UpdateSurfacePlaneOffset(MOS_SURFACE &surf)
 //Paried with AllocateSurface
 MOS_SURFACE* VpAllocator::AllocateSurface(MOS_ALLOC_GFXRES_PARAMS &param, bool zeroOnAllocate)
 {
+    VP_FUNC_CALL();
     if (!m_allocator)
         return nullptr;
 
@@ -154,6 +161,7 @@ MOS_SURFACE* VpAllocator::AllocateSurface(MOS_ALLOC_GFXRES_PARAMS &param, bool z
 
 MOS_STATUS VpAllocator::DestroySurface(MOS_SURFACE *surface, MOS_GFXRES_FREE_FLAGS flags)
 {
+    VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
 
     return m_allocator->DestroySurface(surface, flags);
@@ -161,6 +169,7 @@ MOS_STATUS VpAllocator::DestroySurface(MOS_SURFACE *surface, MOS_GFXRES_FREE_FLA
 
 VP_SURFACE* VpAllocator::AllocateVpSurface(MOS_ALLOC_GFXRES_PARAMS &param, bool zeroOnAllocate, VPHAL_CSPACE ColorSpace, uint32_t ChromaSiting)
 {
+    VP_FUNC_CALL();
     VP_SURFACE *surface = MOS_New(VP_SURFACE);
     if (nullptr == surface)
     {
@@ -213,6 +222,7 @@ VP_SURFACE* VpAllocator::AllocateVpSurface(MOS_ALLOC_GFXRES_PARAMS &param, bool 
 // Allocate vp surface from vphalSurf. Reuse the resource in vphalSurf.
 VP_SURFACE *VpAllocator::AllocateVpSurface(VPHAL_SURFACE &vphalSurf)
 {
+    VP_FUNC_CALL();
     if (Mos_ResourceIsNull(&vphalSurf.OsResource))
     {
         return nullptr;
@@ -305,6 +315,7 @@ VP_SURFACE *VpAllocator::AllocateVpSurface(VPHAL_SURFACE &vphalSurf)
 // Allocate vp surface from vpSurfSrc. Reuse the resource in vpSurfSrc.
 VP_SURFACE *VpAllocator::AllocateVpSurface(VP_SURFACE &vpSurfSrc)
 {
+    VP_FUNC_CALL();
     if (nullptr == vpSurfSrc.osSurface || Mos_ResourceIsNull(&vpSurfSrc.osSurface->OsResource))
     {
         return nullptr;
@@ -338,6 +349,7 @@ VP_SURFACE *VpAllocator::AllocateVpSurface(VP_SURFACE &vpSurfSrc)
 VP_SURFACE *VpAllocator::AllocateVpSurface(MOS_SURFACE &osSurf,
     VPHAL_CSPACE colorSpace, uint32_t chromaSiting, RECT rcSrc, RECT rcDst, VPHAL_SURFACE_TYPE SurfType, bool updatePlaneOffset)
 {
+    VP_FUNC_CALL();
     if (Mos_ResourceIsNull(&osSurf.OsResource))
     {
         return nullptr;
@@ -381,6 +393,7 @@ VP_SURFACE *VpAllocator::AllocateVpSurface(MOS_SURFACE &osSurf,
 // Allocate empty vp surface.
 VP_SURFACE *VpAllocator::AllocateVpSurface()
 {
+    VP_FUNC_CALL();
     // Allocate VpSurface without resource.
     VP_SURFACE *surf = MOS_New(VP_SURFACE);
 
@@ -407,6 +420,7 @@ VP_SURFACE *VpAllocator::AllocateVpSurface()
 // Copy surface info from src to dst. dst shares the resource of src.
 MOS_STATUS VpAllocator::CopyVpSurface(VP_SURFACE &dst, VP_SURFACE &src)
 {
+    VP_FUNC_CALL();
     if (nullptr == dst.osSurface || nullptr == src.osSurface || dst.isResourceOwner)
     {
         return MOS_STATUS_INVALID_PARAMETER;
@@ -424,6 +438,7 @@ MOS_STATUS VpAllocator::CopyVpSurface(VP_SURFACE &dst, VP_SURFACE &src)
 
 MOS_STATUS VpAllocator::DestroyVpSurface(VP_SURFACE* &surface, bool deferredDestroyed, MOS_GFXRES_FREE_FLAGS flags)
 {
+    VP_FUNC_CALL();
     MOS_STATUS status = MOS_STATUS_SUCCESS;
     if (nullptr == surface)
     {
@@ -460,6 +475,7 @@ MOS_STATUS VpAllocator::DestroyVpSurface(VP_SURFACE* &surface, bool deferredDest
 
 void* VpAllocator::Lock(MOS_RESOURCE* resource, MOS_LOCK_PARAMS *lockFlag)
 {
+    VP_FUNC_CALL();
     if (!m_allocator)
         return nullptr;
 
@@ -468,6 +484,7 @@ void* VpAllocator::Lock(MOS_RESOURCE* resource, MOS_LOCK_PARAMS *lockFlag)
 
 void* VpAllocator::LockResouceForWrite(MOS_RESOURCE *resource)
 {
+    VP_FUNC_CALL();
     MOS_LOCK_PARAMS lockFlags;
     MOS_ZeroMemory(&lockFlags, sizeof(MOS_LOCK_PARAMS));
     lockFlags.WriteOnly = 1;
@@ -480,6 +497,7 @@ void* VpAllocator::LockResouceForWrite(MOS_RESOURCE *resource)
 
 void* VpAllocator::LockResouceWithNoOverwrite(MOS_RESOURCE *resource)
 {
+    VP_FUNC_CALL();
     MOS_LOCK_PARAMS lockFlags;
     MOS_ZeroMemory(&lockFlags, sizeof(MOS_LOCK_PARAMS));
     lockFlags.WriteOnly   = 1;
@@ -493,6 +511,7 @@ void* VpAllocator::LockResouceWithNoOverwrite(MOS_RESOURCE *resource)
 
 void* VpAllocator::LockResouceForRead(MOS_RESOURCE *resource)
 {
+    VP_FUNC_CALL();
     MOS_LOCK_PARAMS lockFlags;
     MOS_ZeroMemory(&lockFlags, sizeof(MOS_LOCK_PARAMS));
     lockFlags.ReadOnly = 1;
@@ -505,6 +524,7 @@ void* VpAllocator::LockResouceForRead(MOS_RESOURCE *resource)
 
 MOS_STATUS VpAllocator::UnLock(MOS_RESOURCE *resource)
 {
+    VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
 
     return m_allocator->UnLock(resource);
@@ -512,6 +532,7 @@ MOS_STATUS VpAllocator::UnLock(MOS_RESOURCE *resource)
 
 MOS_STATUS VpAllocator::SkipResourceSync(MOS_RESOURCE *resource)
 {
+    VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
 
     return m_allocator->SkipResourceSync(resource);
@@ -519,6 +540,7 @@ MOS_STATUS VpAllocator::SkipResourceSync(MOS_RESOURCE *resource)
 
 MOS_STATUS VpAllocator::GetSurfaceInfo(VPHAL_SURFACE *surface, VPHAL_GET_SURFACE_INFO &info)
 {
+    VP_FUNC_CALL();
     MOS_MEMCOMP_STATE mmcMode = MOS_MEMCOMP_DISABLED;
     MOS_SURFACE       resDetails;
 
@@ -607,12 +629,63 @@ MOS_STATUS VpAllocator::GetSurfaceInfo(VPHAL_SURFACE *surface, VPHAL_GET_SURFACE
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS VpAllocator::GetSurfaceInfo(VP_SURFACE* surface, VPHAL_GET_SURFACE_INFO& info)
+{
+    VP_FUNC_CALL();
+    MOS_MEMCOMP_STATE mmcMode = MOS_MEMCOMP_DISABLED;
+    MOS_SURFACE       resDetails;
+
+    VP_PUBLIC_CHK_NULL_RETURN(m_mmc);
+    VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
+    VP_PUBLIC_CHK_NULL_RETURN(surface);
+    VP_PUBLIC_CHK_NULL_RETURN(surface->osSurface);
+
+    if (Mos_ResourceIsNull(&surface->osSurface->OsResource))
+    {
+        VP_PUBLIC_NORMALMESSAGE("invalid resource handle");
+        return MOS_STATUS_INVALID_HANDLE;
+    }
+
+    MOS_ZeroMemory(&resDetails, sizeof(MOS_SURFACE));
+    resDetails.dwArraySlice = info.ArraySlice;
+    resDetails.dwMipSlice   = info.MipSlice;
+    resDetails.S3dChannel   = info.S3dChannel;
+    resDetails.Format       = surface->osSurface->Format;
+
+    VP_PUBLIC_CHK_STATUS_RETURN(m_allocator->GetSurfaceInfo(&surface->osSurface->OsResource, &resDetails));
+
+    // Format_420O is mapped to Format_NV12 in VpHal here.
+    // But it is mapped to several different Formats in CodecHal under different conditions.
+    if (resDetails.Format == Format_420O)
+    {
+        resDetails.Format = Format_NV12;
+    }
+
+    // Get resource information
+    surface->osSurface->dwWidth         = resDetails.dwWidth;
+    surface->osSurface->dwHeight        = resDetails.dwHeight;
+    surface->osSurface->dwPitch         = resDetails.dwPitch;
+    surface->osSurface->dwSlicePitch    = resDetails.dwSlicePitch;
+    surface->osSurface->dwDepth         = resDetails.dwDepth;
+    surface->osSurface->TileType        = resDetails.TileType;
+    surface->osSurface->TileModeGMM     = resDetails.TileModeGMM;
+    surface->osSurface->bGMMTileEnabled = resDetails.bGMMTileEnabled;
+    surface->osSurface->bOverlay        = resDetails.bOverlay ? true : false;
+    surface->osSurface->bFlipChain      = resDetails.bFlipChain ? true : false;
+    surface->osSurface->Format          = resDetails.Format;
+    surface->osSurface->bCompressible   = resDetails.bCompressible ? true : false;
+    surface->osSurface->bIsCompressed   = resDetails.bIsCompressed ? true : false;
+    
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS VpAllocator::AllocParamsInitType(
     MOS_ALLOC_GFXRES_PARAMS     &allocParams,
     PVPHAL_SURFACE              surface,
     MOS_GFXRES_TYPE             defaultResType,
     MOS_TILE_TYPE               defaultTileType)
 {
+    VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(surface);
 
 #if !EMUL && !LINUX
@@ -642,6 +715,7 @@ MOS_STATUS VpAllocator::AllocParamsInitType(
         MOS_GFXRES_TYPE             defaultResType,
         MOS_TILE_TYPE               defaultTileType)
 {
+    VP_FUNC_CALL();
     //  Need to reallocate surface according to expected tiletype instead of tiletype of the surface what we have
     if (surface != nullptr                                      &&
         surface->osSurface != nullptr                           &&
@@ -676,8 +750,11 @@ MOS_STATUS VpAllocator::ReAllocateSurface(
         bool                    zeroOnAllocate,
         bool                    deferredDestroyed,
         MOS_HW_RESOURCE_DEF     resUsageType,
-        MOS_TILE_MODE_GMM       tileModeByForce)
+        MOS_TILE_MODE_GMM       tileModeByForce,
+        Mos_MemPool             memType,
+        bool                    isNotLockable)
 {
+    VP_FUNC_CALL();
     MOS_STATUS              eStatus = MOS_STATUS_SUCCESS;
     MOS_ALLOC_GFXRES_PARAMS allocParams = {};
     MOS_GFXRES_FREE_FLAGS   resFreeFlags = {0};
@@ -739,6 +816,8 @@ MOS_STATUS VpAllocator::ReAllocateSurface(
     allocParams.dwArraySize     = 1;
     allocParams.ResUsageType    = resUsageType;
     allocParams.m_tileModeByForce = tileModeByForce;
+    allocParams.dwMemType       = memType;
+    allocParams.Flags.bNotLockable = isNotLockable;
 
     surface = AllocateVpSurface(allocParams, zeroOnAllocate);
     VP_PUBLIC_CHK_NULL_RETURN(surface);
@@ -763,6 +842,7 @@ MOS_STATUS VpAllocator::ReAllocateSurface(
     MOS_HW_RESOURCE_DEF   resUsageType,
     MOS_TILE_MODE_GMM     tileModeByForce)
 {
+    VP_FUNC_CALL();
     MOS_STATUS              eStatus;
     VPHAL_GET_SURFACE_INFO  info;
     MOS_ALLOC_GFXRES_PARAMS allocParams;
@@ -827,6 +907,7 @@ MOS_STATUS VpAllocator::OsFillResource(
     uint32_t          size,
     uint8_t           value)
 {
+    VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
     return m_allocator->OsFillResource(osResource, size, value);
 }
@@ -836,6 +917,7 @@ MOS_STATUS VpAllocator::ReadSurface (
     uint32_t            bpp,
     uint8_t             *dst)
 {
+    VP_FUNC_CALL();
     uint8_t         *src        = nullptr;
     uint8_t         *tempSrc    = nullptr;
     uint8_t         *tempDst    = nullptr;
@@ -893,6 +975,7 @@ MOS_STATUS VpAllocator::WriteSurface (
     uint32_t            bpp,
     const uint8_t       *src)
 {
+    VP_FUNC_CALL();
     uint8_t             *dst        = nullptr;
     uint8_t             *tempSrc    = nullptr;
     uint8_t             *tempDst    = nullptr;
@@ -948,6 +1031,7 @@ MOS_STATUS VpAllocator::WriteSurface (
 
 MOS_STATUS VpAllocator::WriteSurface(VP_SURFACE* vpsurface, uint32_t bpp, const uint8_t* src)
 {
+    VP_FUNC_CALL();
     uint8_t* dst = nullptr;
     uint8_t* tempSrc = nullptr;
     uint8_t* tempDst = nullptr;
@@ -1008,6 +1092,7 @@ MOS_STATUS VpAllocator::WriteSurface(VP_SURFACE* vpsurface, uint32_t bpp, const 
 
 MOS_STATUS VpAllocator::Write1DSurface(VP_SURFACE* vpsurface, const uint8_t* src, uint32_t srcSize)
 {
+    VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(vpsurface);
     VP_PUBLIC_CHK_NULL_RETURN(vpsurface->osSurface);
     VP_PUBLIC_CHK_NULL_RETURN(src);
@@ -1040,6 +1125,7 @@ MOS_STATUS VpAllocator::SyncOnResource(
     PMOS_RESOURCE         osResource,
     bool                  bWriteOperation)
 {
+    VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
 
     return (m_allocator->SyncOnResource(osResource, bWriteOperation));
@@ -1049,6 +1135,7 @@ MOS_STATUS VpAllocator::UpdateResourceUsageType(
     PMOS_RESOURCE           osResource,
     MOS_HW_RESOURCE_DEF     resUsageType)
 {
+    VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
 
     return (m_allocator->UpdateResourceUsageType(osResource, resUsageType));
@@ -1057,6 +1144,7 @@ MOS_STATUS VpAllocator::UpdateResourceUsageType(
 
 bool VpAllocator::IsSyncFreeNeededForMMCSurface(PMOS_SURFACE pOsSurface)
 {
+    VP_FUNC_CALL();
     if (nullptr == pOsSurface)
     {
         return false;
@@ -1067,6 +1155,7 @@ bool VpAllocator::IsSyncFreeNeededForMMCSurface(PMOS_SURFACE pOsSurface)
 
 void VpAllocator::CleanRecycler()
 {
+    VP_FUNC_CALL();
     while (!m_recycler.empty())
     {
         MOS_GFXRES_FREE_FLAGS resFreeFlags = {};
@@ -1084,11 +1173,13 @@ void VpAllocator::CleanRecycler()
 
 bool VP_SURFACE::IsEmpty()
 {
+    VP_FUNC_CALL();
     return nullptr == osSurface || Mos_ResourceIsNull(&osSurface->OsResource);
 }
 
 MOS_STATUS VP_SURFACE::Clean()
 {
+    VP_FUNC_CALL();
     // The vp surface, which owns the resource, cannot be cleaned.
     if (isResourceOwner)
     {
@@ -1122,6 +1213,7 @@ MOS_STATUS VP_SURFACE::Clean()
 
 uint64_t VP_SURFACE::GetAllocationHandle()
 {
+    VP_FUNC_CALL();
 #if(LINUX)
     if (osSurface && osSurface->OsResource.bo)
     {
@@ -1138,6 +1230,7 @@ uint64_t VP_SURFACE::GetAllocationHandle()
 
 MOS_STATUS VpAllocator::SetMmcFlags(MOS_SURFACE &osSurface)
 {
+    VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(m_mmc);
 
     // Init MMC related flags.

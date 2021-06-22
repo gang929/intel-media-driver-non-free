@@ -161,13 +161,14 @@ MOS_STATUS DecodePipeline::Initialize(void *settings)
 
     m_numVdbox = GetSystemVdboxNumber();
 
-    m_allocator = MOS_New(DecodeAllocator, m_osInterface);
+    bool limitedLMemBar = MEDIA_IS_SKU(m_skuTable, FtrLimitedLMemBar) ? true : false;
+    m_allocator = MOS_New(DecodeAllocator, m_osInterface, limitedLMemBar);
     DECODE_CHK_NULL(m_allocator);
 
     DECODE_CHK_STATUS(CreateStatusReport());
 
     m_decodecp = Create_DecodeCpInterface(codecSettings, m_hwInterface);
-    if(m_decodecp)
+    if (m_decodecp)
     {
         m_decodecp->RegisterParams(codecSettings);
     }
@@ -253,7 +254,7 @@ MOS_STATUS DecodePipeline::Prepare(void *params)
     DECODE_CHK_NULL(m_featureManager);
     DECODE_CHK_STATUS(m_featureManager->CheckFeatures(decodeParams));
     DECODE_CHK_STATUS(m_featureManager->Update(decodeParams));
-    if(m_decodecp)
+    if (m_decodecp)
     {
         m_decodecp->UpdateParams(true);
     }
@@ -418,6 +419,16 @@ MOS_STATUS DecodePipeline::DumpOutput(const DecodeStatusReportData& reportData)
                 DECODE_CHK_STATUS(m_debugInterface->DumpYUVSurface(
                     &sfcDstSurface, CodechalDbgAttr::attrSfcOutputSurface, "SfcDstSurf"));
             }
+        }
+
+        if (reportData.currHistogramOutBuf != nullptr &&
+            !Mos_ResourceIsNull(reportData.currHistogramOutBuf))
+        {
+            DECODE_CHK_STATUS(m_debugInterface->DumpBuffer(
+                reportData.currHistogramOutBuf,
+                CodechalDbgAttr::attrSfcHistogram,
+                "_DEC",
+                HISTOGRAM_BINCOUNT * downSamplingFeature->m_histogramBinWidth));
         }
     }
 #endif

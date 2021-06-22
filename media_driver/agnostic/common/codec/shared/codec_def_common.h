@@ -152,6 +152,8 @@ enum CODECHAL_STANDARD
     //AVP pipeline
     CODECHAL_AVP_BASE   = CODECHAL_HCP_BASE + 2,
     CODECHAL_AV1        = CODECHAL_AVP_BASE,
+
+    CODECHAL_RESERVED0,
     CODECHAL_STANDARD_MAX
 };
 
@@ -543,6 +545,26 @@ static __inline uint8_t GetU44ModeCost(double mcost)
     return (uint8_t)(mcost * 16 + 0.5);
 }
 
+static __inline uint8_t LimNumBits(uint8_t cost, int32_t numBits)
+{
+    int32_t startBit = -1;
+
+    for (int i = 7; i >= numBits; i--)
+    {
+        if ((cost >> i) != 0)
+        {
+            startBit = i;
+        }
+    }
+
+    if (startBit >= 0)
+    {
+        cost = ((cost >> (startBit - numBits + 1)) << (startBit - numBits + 1));
+    }
+
+    return cost;
+}
+
 static __inline uint32_t CodecHal_GetStandardFromMode(uint32_t mode)
 {
     uint32_t standard = CODECHAL_UNDEFINED;
@@ -580,6 +602,9 @@ static __inline uint32_t CodecHal_GetStandardFromMode(uint32_t mode)
         break;
     case CODECHAL_DECODE_MODE_CENC:
         standard = CODECHAL_CENC;
+        break;
+    case CODECHAL_ENCODE_RESERVED_0:
+        standard = CODECHAL_RESERVED0;
         break;
     default:
         standard = CODECHAL_UNDEFINED;

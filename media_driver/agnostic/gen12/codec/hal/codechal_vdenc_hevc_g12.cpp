@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2020, Intel Corporation
+* Copyright (c) 2017-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -4424,6 +4424,7 @@ MOS_STATUS CodechalVdencHevcStateG12::SetDmemHuCBrcInitReset()
         {
         case RATECONTROL_ICQ:
             hucVdencBrcInitDmem->BRCFlag = 0;
+            hucVdencBrcInitDmem->ACQP_U32 = m_hevcSeqParams->ICQQualityFactor;
             break;
         case RATECONTROL_CBR:
             hucVdencBrcInitDmem->BRCFlag = 1;
@@ -4798,6 +4799,7 @@ MOS_STATUS CodechalVdencHevcStateG12::SetConstDataHuCBrcUpdate()
     }
 
     hucConstData->UPD_TR_TargetSize_U32 = m_hevcPicParams->TargetFrameSize << 3;// byte to bit
+    hucConstData->UPD_TCBRC_SCENARIO_U8 = m_tcbrcQualityBoost;
 
     m_osInterface->pfnUnlockResource(m_osInterface, &m_vdencBrcConstDataBuffer[m_currRecycledBufIdx]);
 
@@ -4862,6 +4864,12 @@ MOS_STATUS CodechalVdencHevcStateG12::SetDmemHuCBrcUpdate()
         if (selectedSlot == -1)
         {
             selectedSlot = oldestIdx;
+        }
+
+        if (selectedSlot == -1)
+        {
+            CODECHAL_ENCODE_ASSERTMESSAGE("No valid ref slot index");
+            return MOS_STATUS_INVALID_PARAMETER;
         }
 
         slotInfo[selectedSlot].age = 0;
@@ -5787,8 +5795,8 @@ MOS_STATUS CodechalVdencHevcStateG12::SetMeCurbe(HmeLevel hmeLevel)
     {
         //StreamIn CURBE
         curbe.DW6.LCUSize            = 1;//Only LCU64 supported by the VDEnc HW
-        // Kernel should use driver-prepared stream-in surface during ROI/ Dirty-Rect
-        curbe.DW6.InputStreamInEn    = (m_hevcPicParams->NumROI || (m_hevcPicParams->NumDirtyRects > 0 && (B_TYPE == m_hevcPicParams->CodingType)));
+        // Kernel should use driver-prepared stream-in surface during ROI/ MBQP(LCUQP)/ Dirty-Rect
+        curbe.DW6.InputStreamInEn    = (m_hevcPicParams->NumROI || m_encodeParams.bMbQpDataEnabled || (m_hevcPicParams->NumDirtyRects > 0 && (B_TYPE == m_hevcPicParams->CodingType)));
         curbe.DW31.MaxCuSize         = 3;
         curbe.DW31.MaxTuSize         = 3;
         switch (m_hevcSeqParams->TargetUsage)
@@ -6095,8 +6103,8 @@ MOS_STATUS CodechalVdencHevcStateG12::SendMeSurfaces(HmeLevel hmeLevel, PMOS_COM
 
         auto streamingSize = (MOS_ALIGN_CEIL(m_frameWidth, 64) / 32) * (MOS_ALIGN_CEIL(m_frameHeight, 64) / 32) * CODECHAL_CACHELINE_SIZE;
 
-        // Send driver-prepared stream-in surface as input during ROI/ Dirty-Rect
-        if (m_hevcPicParams->NumROI || (m_hevcPicParams->NumDirtyRects > 0 && (B_TYPE == m_hevcPicParams->CodingType)))
+        // Send driver-prepared stream-in surface as input during ROI/ MBQP(LCUQP)/ Dirty-Rect
+        if (m_hevcPicParams->NumROI || m_encodeParams.bMbQpDataEnabled || (m_hevcPicParams->NumDirtyRects > 0 && (B_TYPE == m_hevcPicParams->CodingType)))
         {
             MOS_ZeroMemory(&surfaceCodecParams, sizeof(surfaceCodecParams));
             surfaceCodecParams.dwSize = MOS_BYTES_TO_DWORDS(streamingSize);
@@ -6413,6 +6421,14 @@ MOS_STATUS CodechalVdencHevcStateG12::Initialize(CodechalSetting * settings)
     m_forceScalability = userFeatureData.i32Data ? true : false;
 #endif
 
+    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+    MOS_UserFeature_ReadValue_ID(
+        nullptr,
+        __MEDIA_USER_FEATURE_VALUE_HEVC_TCBRC_QUALITY_BOOST_ENABLE_ID,
+        &userFeatureData,
+        m_osInterface->pOsContext);
+    m_tcbrcQualityBoost = (userFeatureData.i32Data) ? true : false;
+
     return eStatus;
 }
 
@@ -6432,6 +6448,7 @@ CodechalVdencHevcStateG12::CodechalVdencHevcStateG12(
 #endif
     m_kuidCommon = IDR_CODEC_HME_DS_SCOREBOARD_KERNEL;
     m_scalabilityState = nullptr;
+    m_brcAdaptiveRegionBoostSupported = true;
 
     MOS_ZeroMemory(&m_resPakcuLevelStreamoutData, sizeof(m_resPakcuLevelStreamoutData));
     MOS_ZeroMemory(&m_resPakSliceLevelStreamoutData, sizeof(m_resPakSliceLevelStreamoutData));
@@ -8055,6 +8072,11 @@ MOS_STATUS CodechalVdencHevcStateG12::HuCLookaheadInit()
     dmem->statsRecords       = m_numLaDataEntry;
     dmem->avgFrameSizeInByte = m_averageFrameSize >> 3;
     dmem->downscaleRatio     = downscaleRatioIndicator;
+    dmem->enc_frame_width    = m_frameWidth;
+    dmem->enc_frame_height   = m_frameHeight;
+    dmem->codec_type         = 2;
+    dmem->mbr_ratio          = (m_hevcSeqParams->TargetBitRate > 0 && m_hevcSeqParams->MaxBitRate >= m_hevcSeqParams->TargetBitRate) ? 
+                               m_hevcSeqParams->MaxBitRate * 100 / m_hevcSeqParams->TargetBitRate : 100;
 
     if (m_hevcSeqParams->bLookAheadPhase)
     {
@@ -8068,8 +8090,15 @@ MOS_STATUS CodechalVdencHevcStateG12::HuCLookaheadInit()
             dmem->maxGop = m_hevcSeqParams->GopPicSize;
         }
 
-        dmem->maxGop      = m_hevcSeqParams->MaxAdaptiveGopPicSize;
-        dmem->minGop      = m_hevcSeqParams->MinAdaptiveGopPicSize;
+        dmem->GopOpt = m_hevcSeqParams->GopFlags.fields.StrictGop ? 2 : m_hevcSeqParams->GopFlags.fields.ClosedGop;
+        dmem->AGop = m_hevcSeqParams->GopFlags.fields.AdaptiveGop;
+        if (m_hevcSeqParams->GopFlags.fields.AdaptiveGop)
+        {
+            dmem->AGop_Threshold = 30;
+        }
+
+        dmem->maxGop = m_hevcSeqParams->MaxAdaptiveGopPicSize;
+        dmem->minGop = m_hevcSeqParams->MinAdaptiveGopPicSize;
         dmem->adaptiveIDR = (uint8_t)m_lookaheadAdaptiveI;
     }
 
@@ -8913,7 +8942,7 @@ void CodechalVdencHevcStateG12::SetStreaminDataPerLcu(
     PCODECHAL_VDENC_HEVC_STREAMIN_STATE_G12 data = (PCODECHAL_VDENC_HEVC_STREAMIN_STATE_G12)streaminData;
     if (streaminParams->setQpRoiCtrl)
     {
-        if (m_vdencNativeROIEnabled)
+        if (m_vdencNativeROIEnabled || m_brcAdaptiveRegionBoostEnable)
         {
             data->DW0.RoiCtrl = streaminParams->roiCtrl;
         }
@@ -9462,6 +9491,7 @@ MOS_STATUS CodechalVdencHevcStateG12::SetAddCommands(uint32_t commandType, PMOS_
         cmd2Params->bHevcVisualQualityImprovement = m_hevcVisualQualityImprovement;
         cmd2Params->roundInterValue = roundInterValue;
         cmd2Params->roundIntraValue = roundIntraValue;
+        cmd2Params->bROIStreamInEnabled = m_brcAdaptiveRegionBoostEnable ? true : cmd2Params->bROIStreamInEnabled;
 
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_vdencInterface->AddVdencCmd2Cmd(cmdBuffer, nullptr, cmd2Params));
     }

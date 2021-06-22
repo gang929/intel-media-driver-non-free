@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2020, Intel Corporation
+* Copyright (c) 2017-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -700,6 +700,11 @@ MOS_STATUS CodechalDecodeHevcG12::SetFrameStates ()
 
     CODECHAL_DECODE_CHK_NULL_RETURN(m_decodeParams.m_destSurface);
     CODECHAL_DECODE_CHK_NULL_RETURN(m_decodeParams.m_dataBuffer);
+
+    if (m_secureDecoder)
+    {
+        m_secureDecoder->EnableSampleGroupConstantIV();
+    }
 
     m_frameIdx++;
 
@@ -1629,6 +1634,14 @@ MOS_STATUS CodechalDecodeHevcG12::SendPictureLongFormat()
         {
             CODECHAL_DECODE_CHK_STATUS_RETURN(StartStatusReport(cmdBufferInUse));
         }
+        else
+        {
+            CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StartPredicate(m_miInterface, cmdBufferInUse));
+        }
+    }
+    else
+    {
+        CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StartPredicate(m_miInterface, cmdBufferInUse));
     }
 
     if (CodecHalDecodeScalabilityIsScalableMode(m_scalabilityState))
@@ -1786,6 +1799,14 @@ MOS_STATUS CodechalDecodeHevcG12::AddPipeEpilog(
                 decodeStatusReport,
                 cmdBufferInUse));
         }
+        else
+        {
+            CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StopPredicate(m_miInterface, cmdBufferInUse));
+        }
+    }
+    else
+    {
+        CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StopPredicate(m_miInterface, cmdBufferInUse));
     }
 
     MOS_ZeroMemory(&flushDwParams, sizeof(flushDwParams));
@@ -2051,6 +2072,10 @@ MOS_STATUS CodechalDecodeHevcG12::DecodePrimitiveLevel()
     {
         CODECHAL_DECODE_CHK_STATUS_RETURN(AddPipeEpilog(cmdBufferInUse, scdryCmdBuffer));
     }
+    else
+    {
+        CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StopPredicate(m_miInterface, cmdBufferInUse));
+    }
 
     m_osInterface->pfnReturnCommandBuffer(m_osInterface, &primCmdBuffer, 0);
     if (CodecHalDecodeScalabilityIsScalableMode(m_scalabilityState) && MOS_VE_SUPPORTED(m_osInterface))
@@ -2213,6 +2238,10 @@ MOS_STATUS CodechalDecodeHevcG12::AllocateStandard (
     CODECHAL_DECODE_CHK_NULL_RETURN(settings);
 
     CODECHAL_DECODE_CHK_STATUS_RETURN(InitMmcState());
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+    m_debugInterface->SetSWCrcMode(true);
+#endif
 
     m_width                         = settings->width;
     m_height                        = settings->height;

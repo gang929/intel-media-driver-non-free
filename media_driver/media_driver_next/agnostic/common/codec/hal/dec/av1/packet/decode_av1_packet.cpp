@@ -64,7 +64,7 @@ MOS_STATUS Av1DecodePkt::Init()
     DECODE_CHK_STATUS(m_tilePkt->CalculateCommandSize(m_tileStatesSize, m_tilePatchListSize));
 
     m_secondLevelBBArray = m_allocator->AllocateBatchBufferArray(
-        m_pictureStatesSize, 1, CODEC_NUM_AV1_SECOND_BB, true);
+        m_pictureStatesSize, 1, CODEC_NUM_AV1_SECOND_BB, true, lockableVideoMem);
     DECODE_CHK_NULL(m_secondLevelBBArray);
 
     return MOS_STATUS_SUCCESS;
@@ -94,7 +94,9 @@ void Av1DecodePkt::SetPerfTag(CODECHAL_MODE mode, uint16_t picCodingType)
     DECODE_FUNC_CALL();
 
     uint16_t perfTag = ((mode << 4) & 0xF0) | (picCodingType & 0xF);
+    m_osInterface->pfnIncPerfFrameID(m_osInterface);
     m_osInterface->pfnSetPerfTag(m_osInterface, perfTag);
+    m_osInterface->pfnResetPerfBufferID(m_osInterface);
 }
 
 bool Av1DecodePkt::IsPrologRequired()
@@ -270,6 +272,8 @@ MOS_STATUS Av1DecodePkt::EndStatusReport(uint32_t srType, MOS_COMMAND_BUFFER* cm
     DECODE_CHK_STATUS(ReadAvpStatus( m_statusReport, *cmdBuffer));
 
     DECODE_CHK_STATUS(MediaPacket::EndStatusReport(srType, cmdBuffer));
+
+    SetPerfTag(CODECHAL_DECODE_MODE_AV1VLD, m_av1BasicFeature->m_pictureCodingType);
 
     MediaPerfProfiler* perfProfiler = MediaPerfProfiler::Instance();
     DECODE_CHK_NULL(perfProfiler);

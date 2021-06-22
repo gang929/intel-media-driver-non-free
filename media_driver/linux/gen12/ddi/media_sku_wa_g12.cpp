@@ -139,6 +139,12 @@ static bool InitTglMediaSku(struct GfxDeviceInfo *devInfo,
         MEDIA_WR_SKU(skuTable, FtrEncodeHEVCVdencMain10bit422, codecInfo->hevcVdenc);
         MEDIA_WR_SKU(skuTable, FtrEncodeHEVCVdencMain10bit444, codecInfo->hevcVdenc);
 
+        /* HEVC VDENC Main8/10bit-420/422/444 Scc Encoding. */
+        MEDIA_WR_SKU(skuTable, FtrEncodeHEVCVdencMainSCC, codecInfo->hevcVdenc);
+        MEDIA_WR_SKU(skuTable, FtrEncodeHEVCVdencMain10bitSCC, codecInfo->hevcVdenc);
+        MEDIA_WR_SKU(skuTable, FtrEncodeHEVCVdencMain444SCC, codecInfo->hevcVdenc);
+        MEDIA_WR_SKU(skuTable, FtrEncodeHEVCVdencMain10bit444SCC, codecInfo->hevcVdenc);
+
         /* HEVC 12bit Decoding. Currently it is enabled */
         MEDIA_WR_SKU(skuTable, FtrIntelHEVCVLDMain12bit420Decoding, 1);
         MEDIA_WR_SKU(skuTable, FtrIntelHEVCVLDMain12bit422Decoding, 1);
@@ -322,6 +328,9 @@ static bool InitTglMediaWa(struct GfxDeviceInfo *devInfo,
 
     /*software wa to fix some corner cases of HEVC/VP9 SFC and Scalability*/
     MEDIA_WR_WA(waTable, Wa_14010222001, 1);
+
+    /*software wa to fix some corner hang cases for Scalability*/
+    MEDIA_WR_WA(waTable, Wa_2209620131, 1);
 
     /*software wa to prevent error propagation for vertical intra refresh on H264 VDEnc*/
     MEDIA_WR_WA(waTable, Wa_18011246551, 1);

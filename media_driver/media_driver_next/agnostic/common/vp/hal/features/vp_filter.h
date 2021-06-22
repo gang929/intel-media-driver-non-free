@@ -200,6 +200,7 @@ struct _VEBOX_ACE_PARAMS
     uint32_t                        dwAceLevel;
     uint32_t                        dwAceStrength;
     bool                            bAceHistogramEnabled;
+    bool                            bEnableLACE;
 };
 
 struct _VEBOX_TCC_PARAMS
@@ -216,7 +217,11 @@ struct _VEBOX_TCC_PARAMS
 struct _VEBOX_CGC_PARAMS
 {
     bool                                bEnableCGC;                                 // CGC Enabled
-    VPHAL_CSPACE                        colorSpace;
+    bool                                bBt2020ToRGB;                               // Bt2020 convert to sRGB
+    VPHAL_CSPACE                        inputColorSpace;
+    VPHAL_CSPACE                        outputColorSpace;
+    MOS_FORMAT                          inputFormat;
+    MOS_FORMAT                          outputFormat;
     bool                                bExtendedSrcGamut;
     bool                                bExtendedDstGamut;
     VPHAL_GAMUT_MODE                    GCompMode;
@@ -289,13 +294,22 @@ struct _VEBOX_UPDATE_PARAMS
 {
     VEBOX_DN_PARAMS                 denoiseParams;
     VP_EXECUTE_CAPS                 veboxExecuteCaps;
-    std::vector<uint32_t>           kernelGroup;
+    VpKernelID                      kernelId;
 };
 
 using VEBOX_UPDATE_PARAMS      = _VEBOX_UPDATE_PARAMS;
 using PVEBOX_UPDATE_PARAMS     = VEBOX_UPDATE_PARAMS *;
 using VEBOX_HDR_PARAMS      = _VEBOX_HDR_PARAMS;
 using PVEBOX_HDR_PARAMS     = VEBOX_HDR_PARAMS *;
+
+struct _STATE_COPY_PARAMS
+{
+    bool needed;
+    VpKernelID                      kernelId;
+};
+
+using STATE_COPY_PARAMS = _STATE_COPY_PARAMS;
+using PSTATE_COPY_PARAMS = STATE_COPY_PARAMS*;
 
 struct SR_LAYER_PARAMS
 {
@@ -306,7 +320,7 @@ struct SR_LAYER_PARAMS
     uint32_t                                          uHeight;
     MOS_FORMAT                                        format;
     std::string                                       sKernelName;
-    uint32_t                                          uKernelID;
+    VpKernelID                                        kernelId;
     SurfaceIndex                                      weightBuffer;
     uint32_t                                          uWeightBufferSize;
     uint32_t                                          uOutChannels;
@@ -352,7 +366,7 @@ struct CHROMA_LAYER_PARAMS
     float                                             fScaleRatioY;
 
     std::string                                       sKernelName;
-    uint32_t                                          uKernelID;
+    VpKernelID                                        kernelId;
 
     uint32_t                                          uThreadWidth;
     uint32_t                                          uThreadHeight;
@@ -381,6 +395,18 @@ struct  _RENDER_SR_PARAMS
 
 using RENDER_SR_PARAMS = _RENDER_SR_PARAMS;
 using PRENDER_SR_PARAMS = RENDER_SR_PARAMS*;
+
+struct _RENDER_DI_FMD_PARAMS
+{
+    bool                  bEnableDiFmd;
+    uint32_t              uKernelID;
+    uint32_t              dwVeboxPerBlockStatisticsHeight;
+    uint32_t              dwVeboxPerBlockStatisticsWidth;
+    VpKernelID            kernelId;
+};
+
+using RENDER_DI_FMD_PARAMS  = _RENDER_DI_FMD_PARAMS;
+using PRENDER_DI_FMD_PARAMS = RENDER_DI_FMD_PARAMS *;
 
 class SwFilterPipe;
 class HwFilter;
@@ -500,7 +526,5 @@ struct HW_FILTER_PARAM
     VpPacketParameter*    (*pfnCreatePacketParam)(HW_FILTER_PARAM&) = nullptr;
 };
 }
-
-
 
 #endif // !__VP_FILTER_H__

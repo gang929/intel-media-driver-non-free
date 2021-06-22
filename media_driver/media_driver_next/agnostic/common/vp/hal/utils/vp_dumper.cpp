@@ -32,6 +32,7 @@
 #include "mos_os.h"
 #include "vp_dumper.h"
 #include "mos_context_next.h"
+#include "vp_utils.h"
 
 #define ALLOC_GRANULARITY                           5000000
 
@@ -53,6 +54,8 @@
 #define VPHAL_SURF_DUMP_LOC_POSTCOMP            "postcomp"
 #define VPHAL_SURF_DUMP_LOC_PREMEMDECOMP        "prememdecomp"
 #define VPHAL_SURF_DUMP_LOC_POSTMEMDECOMP       "postmemdecomp"
+#define VPHAL_SURF_DUMP_LOC_VEBOX_DRIVERHEAP    "veboxdriverheap"
+#define VPHAL_SURF_DUMP_LOC_VEBOX_KERNELHEAP    "veboxkernelheap"
 #define VPHAL_SURF_DUMP_LOC_POSTALL             "postall"
 
 //==<Dump Parameters>====================================================
@@ -64,6 +67,8 @@ void VpDumperTool::GetOsFilePath(
     const char* pcFilePath,
     char*       pOsFilePath)
 {
+    VP_FUNC_CALL();
+
     MOS_SecureMemcpy(pOsFilePath, MAX_PATH, (void*)pcFilePath, strlen(pcFilePath));
 }
 
@@ -75,6 +80,8 @@ MOS_STATUS VpSurfaceDumper::GetPlaneDefs(
     bool                              auxEnable,
     bool                              isDeswizzled)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS      eStatus;
     uint32_t        i;
     bool            PaddingEnable = false;
@@ -136,7 +143,6 @@ MOS_STATUS VpSurfaceDumper::GetPlaneDefs(
     case Format_X8R8G8B8:
     case Format_A8B8G8R8:
     case Format_X8B8G8R8:
-    case Format_R8G8B8:
     case Format_AYUV:
     case Format_AUYV:
     case Format_R10G10B10A2:
@@ -145,6 +151,12 @@ MOS_STATUS VpSurfaceDumper::GetPlaneDefs(
         *pdwNumPlanes = 1;
 
         pPlanes[0].dwWidth  = pSurface->dwWidth * 4;
+        pPlanes[0].dwHeight = pSurface->dwHeight;
+        pPlanes[0].dwPitch  = pSurface->dwPitch;
+        break;
+    case Format_R8G8B8:
+        *pdwNumPlanes = 1;
+        pPlanes[0].dwWidth  = pSurface->dwWidth * 3;
         pPlanes[0].dwHeight = pSurface->dwHeight;
         pPlanes[0].dwPitch  = pSurface->dwPitch;
         break;
@@ -362,11 +374,21 @@ MOS_STATUS VpSurfaceDumper::GetPlaneDefs(
         break;
 
     default:
-        VPHAL_DEBUG_ASSERTMESSAGE("Format '%d' not supported.", pSurface->Format);
-        eStatus = MOS_STATUS_UNKNOWN;
-        goto finish;
+        VPHAL_DEBUG_NORMALMESSAGE("Format '%d' not supported in current driver, using default 1 plane for dump", pSurface->Format);
+        *pdwNumPlanes = 1;
+        pPlanes[0].dwWidth = pSurface->dwWidth;
+        pPlanes[0].dwHeight = pSurface->dwHeight;
+        pPlanes[0].dwPitch = pSurface->dwPitch;
+        break;
     }
 
+    if (MOS_TILE_LINEAR != pSurface->TileType && (Format_RGBP == pSurface->Format || Format_BGRP == pSurface->Format))
+    {
+        for (i = 0; i < *pdwNumPlanes; i++)
+        {
+            pPlanes[i].dwHeight = MOS_ALIGN_CEIL(pPlanes[i].dwHeight, 16);
+        }
+    }
     // For Deswizzled surfaces, Mos_Specific_LockResource() already do the de-padding between Y and UV surf.
     // so, don't use the info of U/V PlaneOffset, as the padding is already removed.
     for (i = 0; i < *pdwNumPlanes; i++)
@@ -434,7 +456,6 @@ MOS_STATUS VpSurfaceDumper::GetPlaneDefs(
                    (pPlanes[2].dwWidth * pPlanes[2].dwHeight);
     }
 
-finish:
     return eStatus;
 }
 
@@ -446,6 +467,8 @@ MOS_STATUS VpSurfaceDumper::GetPlaneDefs(
     bool                              auxEnable,
     bool                              isDeswizzled)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS      eStatus;
     uint32_t        i;
     bool            PaddingEnable = false;
@@ -733,9 +756,13 @@ MOS_STATUS VpSurfaceDumper::GetPlaneDefs(
         break;
 
     default:
-        VPHAL_DEBUG_ASSERTMESSAGE("Format '%d' not supported.", pSurface->osSurface->Format);
-        eStatus = MOS_STATUS_UNKNOWN;
-        goto finish;
+        VPHAL_DEBUG_NORMALMESSAGE("Format '%d' not supported in current driver, using default 1 plane for dump", pSurface->osSurface->Format);
+        *pdwNumPlanes = 1;
+
+        pPlanes[0].dwWidth = pSurface->osSurface->dwWidth;
+        pPlanes[0].dwHeight = pSurface->osSurface->dwHeight;
+        pPlanes[0].dwPitch = pSurface->osSurface->dwPitch;
+        break;
     }
 
     // For Deswizzled surfaces, Mos_Specific_LockResource() already do the de-padding between Y and UV surf.
@@ -805,13 +832,14 @@ MOS_STATUS VpSurfaceDumper::GetPlaneDefs(
             (pPlanes[2].dwWidth * pPlanes[2].dwHeight);
     }
 
-finish:
     return eStatus;
 }
 
 bool VpSurfaceDumper::HasAuxSurf(
     PMOS_RESOURCE    osResource)
 {
+    VP_FUNC_CALL();
+
     bool    hasAuxSurf = false;
 #if !EMUL
     GMM_RESOURCE_FLAG                   gmmFlags;
@@ -832,6 +860,8 @@ MOS_STATUS VpSurfaceDumper::DumpSurfaceToFile(
     bool                    bNoDecompWhenLock,
     uint8_t*                pData)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS                          eStatus;
     bool                                isSurfaceLocked;
     char                                sPath[MAX_PATH], sOsPath[MAX_PATH];
@@ -1003,16 +1033,33 @@ MOS_STATUS VpSurfaceDumper::DumpSurfaceToFile(
             }
             else
             {
-                MOS_SecureMemcpy(
-                    pTmpDst,
-                    planes[j].dwWidth,
-                    pTmpSrc,
-                    planes[j].dwWidth);
+                // For RGB24 format, need to remove one invalid zero every 64 byte
+                // which is designed to avoid splitting two cache lines
+                if (pSurface->Format == Format_R8G8B8)
+                {
+                    int dummyBytesPerLine = (int)(ceil)((planes[j].dwWidth) / 63.0);
+                    for (int p = 0; p < dummyBytesPerLine; p++)
+                    {
+                        MOS_SecureMemcpy(
+                            &pTmpDst[p * 63],
+                            63,
+                            &pTmpSrc[p * 64],
+                            63);
+                    }
+                }
+                else
+                {
+                    MOS_SecureMemcpy(
+                        pTmpDst,
+                        planes[j].dwWidth,
+                        pTmpSrc,
+                        planes[j].dwWidth);
 
+                }
                 pTmpSrc += planes[j].dwPitch;
                 pTmpDst += planes[j].dwWidth;
 
-                dstPlaneOffset[j+1] += planes[j].dwWidth;
+                dstPlaneOffset[j + 1] += planes[j].dwWidth;
             }
         }
 
@@ -1164,6 +1211,8 @@ MOS_STATUS VpSurfaceDumper::DumpSurfaceToFile(
     bool                    bNoDecompWhenLock,
     uint8_t*                pData)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS                          eStatus;
     bool                                isSurfaceLocked;
     char                                sPath[MAX_PATH], sOsPath[MAX_PATH];
@@ -1356,6 +1405,8 @@ finish:
 char* VpSurfaceDumper::WhitespaceTrim(
     char*   ptr)
 {
+    VP_FUNC_CALL();
+
     char*    pcTemp;                             // pointer to temp string to remove spces
 
     VPHAL_DEBUG_ASSERT(ptr);
@@ -1386,6 +1437,8 @@ finish:
 void VpDumperTool::StringToLower(
     char* pcString)
 {
+    VP_FUNC_CALL();
+
     size_t stStrLen;                                                           // length of string
     size_t i;                                                                  // loop iterator
 
@@ -1403,6 +1456,8 @@ MOS_STATUS VpSurfaceDumper::LocStringToEnum(
     char*                           pcLocString,
     uint32_t                        *pLocation)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS eStatus;
 
     eStatus = MOS_STATUS_SUCCESS;
@@ -1440,6 +1495,14 @@ MOS_STATUS VpSurfaceDumper::LocStringToEnum(
     {
         *pLocation = VPHAL_DUMP_TYPE_POST_ALL;
     }
+    else if (strcmp(pcLocString, VPHAL_SURF_DUMP_LOC_VEBOX_DRIVERHEAP) == 0)
+    {
+        *pLocation = VPHAL_DUMP_TYPE_VEBOX_DRIVERHEAP;
+    }
+    else if (strcmp(pcLocString, VPHAL_SURF_DUMP_LOC_VEBOX_KERNELHEAP) == 0)
+    {
+        *pLocation = VPHAL_DUMP_TYPE_VEBOX_KERNELHEAP;
+    }
     else
     {
         VPHAL_DEBUG_NORMALMESSAGE("Unknown dump location \"%s\".", pcLocString);
@@ -1455,6 +1518,8 @@ MOS_STATUS VpSurfaceDumper::EnumToLocString(
     uint32_t                        Location,
     char*                           pcLocString)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS  eStatus;
     uint32_t    i;
     size_t      stStrLen;
@@ -1493,6 +1558,12 @@ MOS_STATUS VpSurfaceDumper::EnumToLocString(
         case VPHAL_DUMP_TYPE_POST_ALL:
             MOS_SecureStringPrint(pcLocString, MAX_PATH, MAX_PATH, VPHAL_SURF_DUMP_LOC_POSTALL);
             break;
+        case VPHAL_DUMP_TYPE_VEBOX_DRIVERHEAP:
+            MOS_SecureStringPrint(pcLocString, MAX_PATH, MAX_PATH, VPHAL_SURF_DUMP_LOC_VEBOX_DRIVERHEAP);
+            break;
+        case VPHAL_DUMP_TYPE_VEBOX_KERNELHEAP:
+            MOS_SecureStringPrint(pcLocString, MAX_PATH, MAX_PATH, VPHAL_SURF_DUMP_LOC_VEBOX_KERNELHEAP);
+            break;
         default:
             VPHAL_DEBUG_ASSERTMESSAGE("Unknown dump location \"%d\".", Location);
             eStatus = MOS_STATUS_UNKNOWN;
@@ -1517,6 +1588,8 @@ MOS_STATUS VpSurfaceDumper::SurfTypeStringToEnum(
     char*                         pcSurfType,
     VPHAL_SURFACE_TYPE            *pSurfType)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS eStatus;
 
     eStatus = MOS_STATUS_SUCCESS;
@@ -1556,6 +1629,8 @@ finish:
 MOS_STATUS VpSurfaceDumper::ProcessDumpLocations(
     char*                      pcDumpLocData)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS  eStatus;
     char*       pcCommaLoc;                                                        // pointer to next comma in dump location string
     char*       pcCurrToken;                                                       // pointer to current token in a string
@@ -1630,6 +1705,8 @@ finish:
 
 void VpSurfaceDumper::GetSurfaceDumpSpec()
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS                      eStatus = MOS_STATUS_SUCCESS;
     MOS_USER_FEATURE_VALUE_DATA     UserFeatureData;
     bool                            bDumpEnabled;
@@ -1777,6 +1854,8 @@ MOS_STATUS VpSurfaceDumper::DumpSurface(
     uint32_t                        uiCounter,
     uint32_t                        Location)
 {
+    VP_FUNC_CALL();
+
     MOS_USER_FEATURE_VALUE_DATA UserFeatureData;
     int32_t VphalSurfDumpManualTrigger = VPHAL_SURF_DUMP_MANUAL_TRIGGER_DEFAULT_NOT_SET;
 
@@ -1952,6 +2031,8 @@ MOS_STATUS VpSurfaceDumper::DumpSurface(
     uint32_t                        uiCounter,
     uint32_t                        Location)
 {
+    VP_FUNC_CALL();
+
     MOS_USER_FEATURE_VALUE_DATA UserFeatureData;
     int32_t VphalSurfDumpManualTrigger = VPHAL_SURF_DUMP_MANUAL_TRIGGER_DEFAULT_NOT_SET;
 
@@ -2128,6 +2209,8 @@ MOS_STATUS VpSurfaceDumper::DumpSurfaceArray(
     uint32_t                        uiFrameNumber,
     uint32_t                        Location)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS      eStatus;
     uint32_t        uiIndex;
     uint32_t        uiLayer;
@@ -2162,6 +2245,8 @@ finish:
 
 void VpParameterDumper::GetParametersDumpSpec()
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS                      eStatus = MOS_STATUS_SUCCESS;
     MOS_USER_FEATURE_VALUE_DATA     UserFeatureData;
     bool                            bDumpEnabled;
@@ -2271,6 +2356,8 @@ MOS_STATUS VpParameterDumper::DumpSourceSurface(
     uint32_t                        index,
     char*                           &pcOutContents)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS                      eStatus;
     char                            sSurfaceFilePath[MAX_PATH] = { 0 }, sOsSurfaceFilePath[MAX_PATH] = { 0 };
 
@@ -2484,6 +2571,8 @@ MOS_STATUS VpParameterDumper::DumpTargetSurface(
     uint32_t                        index,
     char*                           &pcOutContents)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS                      eStatus;
 
     eStatus = MOS_STATUS_SUCCESS;
@@ -2515,6 +2604,8 @@ MOS_STATUS VpParameterDumper::DumpRenderParameter(
     PVPHAL_RENDER_PARAMS            pRenderParams,
     char*                           &pcOutContents)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS                      eStatus;
 
     eStatus = MOS_STATUS_SUCCESS;
@@ -2553,6 +2644,8 @@ MOS_STATUS VpParameterDumper::DumpToXML(
     char                            *pcOutputPath,
     PVPHAL_RENDER_PARAMS            pRenderParams)
 {
+    VP_FUNC_CALL();
+
     char                            sPath[MAX_PATH] = { 0 }, sOsPath[MAX_PATH] = { 0 };
     MOS_STATUS                      eStatus;
     char*                           pcOutContents;
@@ -2649,6 +2742,8 @@ VpParameterDumper::~VpParameterDumper()
 
 const char * VpDumperTool::GetFormatStr(MOS_FORMAT format)
 {
+    VP_FUNC_CALL();
+
     switch (format)
     {
         case Format_A8R8G8B8    : return _T("argb");
@@ -2727,6 +2822,8 @@ MOS_STATUS VpDumperTool::GetSurfaceSize(
     uint32_t*               piWidthInBytes,
     uint32_t*               piHeightInRows)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS  eStatus;
     uint32_t    iWidthInBytes;
     uint32_t    iHeightInRows;
@@ -3072,6 +3169,8 @@ MOS_STATUS VpDumperTool::AppendString(
     PCCHAR pcToAppendFmt,
     ...)
 {
+    VP_FUNC_CALL();
+
     static size_t stTotalStrLen = 0;
     static size_t stTotalAlloc  = 0;
 
@@ -3148,6 +3247,8 @@ void VpDumperTool::WriteFrame(
     PCCHAR                  fileName,
     uint64_t                iCounter)
 {
+    VP_FUNC_CALL();
+
     uint8_t*                pData;
     char                    sPath[MAX_PATH];
     char                    sOsPath[MAX_PATH];
@@ -3186,6 +3287,12 @@ void VpDumperTool::WriteFrame(
         &pSurface->OsResource,
         &LockFlags);
 
+    if(pData == nullptr)
+    {
+        VPHAL_DEBUG_ASSERTMESSAGE("pData == nullptr.");
+
+        return;
+    }
     MOS_SecureStringPrint(
         sPath,
         MAX_PATH,
@@ -3233,6 +3340,8 @@ void VpDumperTool::WriteFrame(
 
 const char * VpParameterDumper::GetComponentStr(MOS_COMPONENT component)
 {
+    VP_FUNC_CALL();
+
     switch (component)
     {
     case COMPONENT_UNKNOWN:         return _T("COMPONENT_UNKNOWN");
@@ -3250,6 +3359,8 @@ const char * VpParameterDumper::GetComponentStr(MOS_COMPONENT component)
 
 const char * VpParameterDumper::GetWholeFormatStr(MOS_FORMAT format)
 {
+    VP_FUNC_CALL();
+
     switch (format)
     {
     case Format_Invalid:            return _T("Format_Invalid");
@@ -3365,6 +3476,8 @@ const char * VpParameterDumper::GetWholeFormatStr(MOS_FORMAT format)
 
 const char * VpParameterDumper::GetTileTypeStr(MOS_TILE_TYPE tile_type)
 {
+    VP_FUNC_CALL();
+
     switch (tile_type)
     {
     case MOS_TILE_X:            return _T("MOS_TILE_X");
@@ -3379,6 +3492,8 @@ const char * VpParameterDumper::GetTileTypeStr(MOS_TILE_TYPE tile_type)
 
 const char * VpParameterDumper::GetSurfaceTypeStr(VPHAL_SURFACE_TYPE surface_type)
 {
+    VP_FUNC_CALL();
+
     switch (surface_type)
     {
     case SURF_NONE:             return _T("SURF_NONE");
@@ -3396,6 +3511,8 @@ const char * VpParameterDumper::GetSurfaceTypeStr(VPHAL_SURFACE_TYPE surface_typ
 
 const char * VpParameterDumper::GetSampleTypeStr(VPHAL_SAMPLE_TYPE sample_type)
 {
+    VP_FUNC_CALL();
+
     switch (sample_type)
     {
     case SAMPLE_PROGRESSIVE:                                 return _T("SAMPLE_PROGRESSIVE");
@@ -3414,6 +3531,8 @@ const char * VpParameterDumper::GetSampleTypeStr(VPHAL_SAMPLE_TYPE sample_type)
 
 const char * VpParameterDumper::GetColorSpaceStr(VPHAL_CSPACE color_space)
 {
+    VP_FUNC_CALL();
+
     switch (color_space)
     {
     case CSpace_None:                      return _T("CSpace_None");
@@ -3445,6 +3564,8 @@ const char * VpParameterDumper::GetColorSpaceStr(VPHAL_CSPACE color_space)
 
 const char * VpParameterDumper::GetBlendTypeStr(VPHAL_BLEND_TYPE blend_type)
 {
+    VP_FUNC_CALL();
+
     switch (blend_type)
     {
     case BLEND_NONE:               return _T("BLEND_NONE");
@@ -3461,6 +3582,8 @@ const char * VpParameterDumper::GetBlendTypeStr(VPHAL_BLEND_TYPE blend_type)
 
 const char * VpParameterDumper::GetPaletteTypeStr(VPHAL_PALETTE_TYPE palette_type)
 {
+    VP_FUNC_CALL();
+
     switch (palette_type)
     {
     case VPHAL_PALETTE_NONE:          return _T("VPHAL_PALETTE_NONE");
@@ -3475,6 +3598,8 @@ const char * VpParameterDumper::GetPaletteTypeStr(VPHAL_PALETTE_TYPE palette_typ
 
 const char * VpParameterDumper::GetScalingModeStr(VPHAL_SCALING_MODE scaling_mode)
 {
+    VP_FUNC_CALL();
+
     switch (scaling_mode)
     {
     case VPHAL_SCALING_NEAREST:         return _T("VPHAL_SCALING_NEAREST");
@@ -3488,6 +3613,8 @@ const char * VpParameterDumper::GetScalingModeStr(VPHAL_SCALING_MODE scaling_mod
 
 const char * VpParameterDumper::GetRotationModeStr(VPHAL_ROTATION rotation_mode)
 {
+    VP_FUNC_CALL();
+
     switch (rotation_mode)
     {
     case VPHAL_ROTATION_IDENTITY:               return _T("VPHAL_ROTATION_IDENTITY");
@@ -3507,6 +3634,8 @@ const char * VpParameterDumper::GetRotationModeStr(VPHAL_ROTATION rotation_mode)
 
 const char * VpParameterDumper::GetDIModeStr(VPHAL_DI_MODE di_mode)
 {
+    VP_FUNC_CALL();
+
     switch (di_mode)
     {
     case DI_MODE_BOB:         return _T("DI_MODE_BOB");
@@ -3519,6 +3648,8 @@ const char * VpParameterDumper::GetDIModeStr(VPHAL_DI_MODE di_mode)
 
 const char * VpParameterDumper::GetDenoiseModeStr(VPHAL_NOISELEVEL noise_level)
 {
+    VP_FUNC_CALL();
+
     switch (noise_level)
     {
     case NOISELEVEL_DEFAULT:         return _T("NOISELEVEL_DEFAULT");

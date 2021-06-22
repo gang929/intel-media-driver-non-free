@@ -753,7 +753,7 @@ VAStatus MediaLibvaCaps::CreateEncAttributes(
     attrib.type = VAConfigAttribEncInterlaced;
     attrib.value = VA_ENC_INTERLACED_NONE;
 #ifndef ANDROID
-    if(IsAvcProfile(profile))
+    if(IsAvcProfile(profile) && (entrypoint != VAEntrypointEncSliceLP))
     {
         attrib.value = VA_ENC_INTERLACED_FIELD;
     }
@@ -786,6 +786,10 @@ VAStatus MediaLibvaCaps::CreateEncAttributes(
         if(IsVp8Profile(profile))
         {
             attrib.value = ENCODE_VP8_NUM_MAX_L0_REF ;
+        }
+        if(IsVp9Profile(profile))
+        {
+            attrib.value = ENCODE_VP9_NUM_MAX_L0_REF;
         }
         if (IsHevcProfile(profile))
         {
@@ -1249,8 +1253,11 @@ VAStatus MediaLibvaCaps::CreateVpAttributes(
                    VA_RT_FORMAT_RGB16 |
                    VA_RT_FORMAT_RGB32;
 
-    if (m_mediaCtx->platform.eRenderCoreFamily == IGFX_GEN9_CORE)
+    if ((m_mediaCtx->platform.eRenderCoreFamily == IGFX_GEN9_CORE) ||
+        (m_mediaCtx->platform.eRenderCoreFamily == IGFX_GEN12_CORE))
+    {
         attrib.value |= VA_RT_FORMAT_RGBP;
+    }
 
     (*attribList)[attrib.type] = attrib.value;
     return status;

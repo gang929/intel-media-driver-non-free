@@ -675,6 +675,20 @@ void *MosInterface::GetGpuContextbyHandle(
     return (void *)gpuContext;
 }
 
+MOS_STATUS MosInterface:: SetObjectCapture(
+    PMOS_RESOURCE osResource)
+{
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+    //---------------------------------------
+    MOS_OS_CHK_NULL_RETURN(osResource);
+    //---------------------------------------
+
+    mos_bo_set_object_capture(osResource->bo);
+
+    return eStatus;
+}
+
 MOS_STATUS MosInterface::AddCommand(
     COMMAND_BUFFER_HANDLE cmdBuffer,
     const void *cmd,
@@ -752,6 +766,7 @@ MOS_STATUS MosInterface::DumpCommandBuffer(
         MosUtilities::MosSecureStrcpy(sEngName, sizeof(sEngName), MOS_COMMAND_BUFFER_VIDEO_ENGINE);
         break;
     case MOS_GPU_NODE_COMPUTE:
+    case MOS_GPU_NODE_BLT:
         MosUtilities::MosSecureStrcpy(sEngName, sizeof(sEngName), MOS_COMMAND_BUFFER_RENDER_ENGINE);
         break;
     case MOS_GPU_NODE_VE:

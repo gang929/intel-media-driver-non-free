@@ -52,6 +52,7 @@
 
 // Media Features width
 #define VPHAL_RNDR_8K_WIDTH (7680)
+#define VPHAL_RNDR_16K_HEIGHT_LIMIT (16352)
 
 // Media Features height
 #define VPHAL_RNDR_2K_HEIGHT  1080
@@ -335,8 +336,9 @@ struct VphalFeatureReport
     //! \brief    VphalFeatureReport Constructor
     //! \details  Creates instance of VphalFeatureReport
     //!
-    VphalFeatureReport()
+    VphalFeatureReport(void *owner = nullptr)
     {
+        this->owner = owner;
         // call InitReportValue() to initialize report value
         InitReportValue();
     };
@@ -346,7 +348,7 @@ struct VphalFeatureReport
     //! \details  initialize VphalFeatureReport value, can use it to reset report value
     //!
     void InitReportValue();
-
+    void                           *owner = nullptr;    //!< Pointer to object creating the report
     bool                            IECP;               //!< IECP enable/disable
     bool                            IEF;                //!< Enhancement filter
     bool                            Denoise;            //!< Denoise

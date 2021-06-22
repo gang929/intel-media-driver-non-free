@@ -63,7 +63,15 @@ VpPipeline::~VpPipeline()
     MOS_Delete(m_allocator);
     MOS_Delete(m_statusReport);
     MOS_Delete(m_packetSharedContext);
-    MOS_Delete(m_reporting);
+    if (m_vpMhwInterface.m_reporting && this != m_vpMhwInterface.m_reporting->owner)
+    {
+        m_reporting = nullptr;
+    }
+    else
+    {
+        MOS_Delete(m_reporting);
+        m_vpMhwInterface.m_reporting = nullptr;
+    }
     VP_DEBUG_INTERFACE_DESTROY(m_debugInterface);
 
     if (m_mediaContext)
@@ -96,6 +104,8 @@ MOS_STATUS VpPipeline::Destroy()
 #if (_DEBUG || _RELEASE_INTERNAL)
 MOS_STATUS VpPipeline::DestroySurface()
 {
+    VP_FUNC_CALL();
+
     if (m_tempTargetSurface)
     {
         m_allocator->FreeResource(&m_tempTargetSurface->OsResource);
@@ -155,6 +165,8 @@ MOS_STATUS VpPipeline::UserFeatureReport()
 
 MOS_STATUS VpPipeline::CreatePacketSharedContext()
 {
+    VP_FUNC_CALL();
+
     m_packetSharedContext = MOS_New(VP_PACKET_SHARED_CONTEXT);
     VP_PUBLIC_CHK_NULL_RETURN(m_packetSharedContext);
     return MOS_STATUS_SUCCESS;
@@ -187,11 +199,13 @@ MOS_STATUS VpPipeline::Init(void *mhwInterface)
 
     VP_PUBLIC_CHK_STATUS_RETURN(CreateFeatureManager());
     VP_PUBLIC_CHK_NULL_RETURN(m_featureManager);
-
+    VP_PUBLIC_CHK_STATUS_RETURN(InitUserFeatureSetting());
 #if (_DEBUG || _RELEASE_INTERNAL)
     VP_DEBUG_INTERFACE_CREATE(m_debugInterface)
     SkuWaTable_DUMP_XML(m_skuTable, m_waTable)
 #endif
+
+    m_vpMhwInterface.m_debugInterface = (void*)m_debugInterface;
 
     m_pPacketFactory = MOS_New(PacketFactory, m_vpMhwInterface.m_vpPlatformInterface);
     VP_PUBLIC_CHK_NULL_RETURN(m_pPacketFactory);
@@ -217,6 +231,8 @@ MOS_STATUS VpPipeline::Init(void *mhwInterface)
 
 bool VpPipeline::IsVeboxSfcFormatSupported(MOS_FORMAT formatInput, MOS_FORMAT formatOutput)
 {
+    VP_FUNC_CALL();
+
     VpFeatureManagerNext *featureManagerNext = dynamic_cast<VpFeatureManagerNext *>(m_featureManager);
     if (nullptr == featureManagerNext)
     {
@@ -305,6 +321,8 @@ finish:
 
 MOS_STATUS VpPipeline::UpdateExecuteStatus()
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
     if (PIPELINE_PARAM_TYPE_LEGACY == m_pvpParams.type)
     {
@@ -351,6 +369,8 @@ finish:
 
 MOS_STATUS VpPipeline::CreateSwFilterPipe(VP_PARAMS &params, std::vector<SwFilterPipe*> &swFilterPipe)
 {
+    VP_FUNC_CALL();
+
     switch (m_pvpParams.type)
     {
     case PIPELINE_PARAM_TYPE_LEGACY:
@@ -375,6 +395,8 @@ MOS_STATUS VpPipeline::CreateSwFilterPipe(VP_PARAMS &params, std::vector<SwFilte
 
 MOS_STATUS VpPipeline::GetSystemVeboxNumber()
 {
+    VP_FUNC_CALL();
+
     // Check whether scalability being disabled.
     MOS_USER_FEATURE_VALUE_DATA userFeatureData;
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
@@ -386,16 +408,36 @@ MOS_STATUS VpPipeline::GetSystemVeboxNumber()
         &userFeatureData,
         m_osInterface->pOsContext);
 
-    bool disableScalability = true;
+    bool disableScalability = false;
     if (statusKey == MOS_STATUS_SUCCESS)
     {
         disableScalability = userFeatureData.i32Data ? false : true;
+        if (disableScalability == false)
+        {
+            m_forceMultiplePipe = MOS_SCALABILITY_ENABLE_MODE_USER_FORCE | MOS_SCALABILITY_ENABLE_MODE_DEFAULT;
+        }
+        else
+        {
+            m_forceMultiplePipe = MOS_SCALABILITY_ENABLE_MODE_USER_FORCE | MOS_SCALABILITY_ENABLE_MODE_FALSE;
+        }
+    }
+    else
+    {
+        m_forceMultiplePipe = MOS_SCALABILITY_ENABLE_MODE_DEFAULT;
     }
 
-    if (disableScalability)
+    if (disableScalability == true)
     {
         m_numVebox = 1;
         return MOS_STATUS_SUCCESS;
+    }
+    else if (m_forceMultiplePipe == MOS_SCALABILITY_ENABLE_MODE_DEFAULT)
+    {
+        if (m_vpMhwInterface.m_veboxInterface && !(m_vpMhwInterface.m_veboxInterface->m_veboxScalabilitywith4K))
+        {
+            m_numVebox = 1;
+            return MOS_STATUS_SUCCESS;
+        }
     }
 
     // Get vebox number from meida sys info.
@@ -403,12 +445,17 @@ MOS_STATUS VpPipeline::GetSystemVeboxNumber()
     MOS_STATUS        eStatus      = m_osInterface->pfnGetMediaEngineInfo(m_osInterface, mediaSysInfo);
     if (MOS_SUCCEEDED(eStatus))
     {
-        // Both VE mode and media solo mode should be able to get the VDBOX number via the same interface
+        // Both VE mode and media solo mode should be able to get the VEBOX number via the same interface
         m_numVebox = (uint8_t)(mediaSysInfo.VEBoxInfo.NumberOfVEBoxEnabled);
+        VP_PUBLIC_NORMALMESSAGE("Vebox Number of Enabled %d", m_numVebox);
         if (m_numVebox == 0 && !IsGtEnv())
         {
             VP_PUBLIC_ASSERTMESSAGE("Fail to get the m_numVebox with value 0");
             VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
+        }
+        else if (m_numVebox == 0 && MEDIA_IS_SKU(m_osInterface->pfnGetSkuTable(m_osInterface), FtrVERing))
+        {
+            m_numVebox = 1;
         }
     }
     else
@@ -450,7 +497,7 @@ MOS_STATUS VpPipeline::CreateVpKernelSets()
     VP_FUNC_CALL();
     if (nullptr == m_kernelSet)
     {
-        m_kernelSet = MOS_New(VpKernelSet, &m_vpMhwInterface);
+        m_kernelSet = MOS_New(VpKernelSet, &m_vpMhwInterface, m_allocator);
         VP_PUBLIC_CHK_NULL_RETURN(m_kernelSet);
     }
     return MOS_STATUS_SUCCESS;
@@ -463,9 +510,11 @@ MOS_STATUS VpPipeline::CreateVpKernelSets()
 //!
 MOS_STATUS VpPipeline::CreateResourceManager()
 {
+    VP_FUNC_CALL();
+
     if (nullptr == m_resourceManager)
     {
-        m_resourceManager = MOS_New(VpResourceManager, *m_osInterface, *m_allocator, *m_reporting);
+        m_resourceManager = MOS_New(VpResourceManager, *m_osInterface, *m_allocator, *m_reporting, *m_vpMhwInterface.m_vpPlatformInterface);
         VP_PUBLIC_CHK_NULL_RETURN(m_resourceManager);
     }
     return MOS_STATUS_SUCCESS;
@@ -473,16 +522,33 @@ MOS_STATUS VpPipeline::CreateResourceManager()
 
 MOS_STATUS VpPipeline::CheckFeatures(void *params, bool &bapgFuncSupported)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_RETURN(m_paramChecker);
     return m_paramChecker->CheckFeatures(params, bapgFuncSupported);
 }
 
 MOS_STATUS VpPipeline::CreateFeatureReport()
 {
-    if (m_reporting == nullptr)
+    VP_FUNC_CALL();
+
+    if (m_vpMhwInterface.m_reporting)
     {
-       m_reporting = MOS_New(VphalFeatureReport);
+        if (m_reporting && m_reporting->owner == this && m_vpMhwInterface.m_reporting != m_reporting)
+        {
+            MOS_FreeMemory(m_reporting);
+        }
+        m_reporting = m_vpMhwInterface.m_reporting;
     }
+    else
+    {
+        if (m_reporting == nullptr)
+        {
+            VP_PUBLIC_CHK_STATUS_RETURN(CreateReport());
+        }
+        m_vpMhwInterface.m_reporting = m_reporting;
+    }
+
     VP_PUBLIC_CHK_NULL_RETURN(m_reporting);
     return MOS_STATUS_SUCCESS;
 }
@@ -490,6 +556,8 @@ MOS_STATUS VpPipeline::CreateFeatureReport()
 #if (_DEBUG || _RELEASE_INTERNAL)
 VPHAL_SURFACE *VpPipeline::AllocateTempTargetSurface(VPHAL_SURFACE *m_tempTargetSurface)
 {
+    VP_FUNC_CALL();
+
     m_tempTargetSurface = (VPHAL_SURFACE *)MOS_AllocAndZeroMemory(sizeof(VPHAL_SURFACE));
     if (!m_tempTargetSurface)
     {
@@ -499,24 +567,46 @@ VPHAL_SURFACE *VpPipeline::AllocateTempTargetSurface(VPHAL_SURFACE *m_tempTarget
 }
 #endif
 
-#if (_DEBUG || _RELEASE_INTERNAL)
-MOS_STATUS VpPipeline::SurfaceReplace(PVP_PIPELINE_PARAMS params)
+MOS_STATUS VpPipeline::InitUserFeatureSetting()
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
-    bool                        allocated;
     MOS_USER_FEATURE_VALUE_DATA userFeatureData = {0};
 
-    MEDIA_FEATURE_TABLE *skuTable = nullptr;
-    skuTable                      = m_vpMhwInterface.m_osInterface->pfnGetSkuTable(m_vpMhwInterface.m_osInterface);
-    VP_PUBLIC_CHK_NULL_RETURN(skuTable);
-
+#if (_DEBUG || _RELEASE_INTERNAL)
+    //SFC NV12/P010 Linear Output.
+    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
     MOS_UserFeature_ReadValue_ID(
         nullptr,
         __VPHAL_ENABLE_SFC_NV12_P010_LINEAR_OUTPUT_ID,
         &userFeatureData,
         m_vpMhwInterface.m_osInterface->pOsContext);
+    m_userFeatureSetting.enableSFCNv12P010LinearOutput = userFeatureData.bData;
 
-    if (userFeatureData.bData                       &&
+    //SFC RGBP Linear/Tile RGB24 Linear Output.
+    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+    MOS_UserFeature_ReadValue_ID(
+        nullptr,
+        __VPHAL_ENABLE_SFC_RGBP_RGB24_OUTPUT_ID,
+        &userFeatureData,
+        m_vpMhwInterface.m_osInterface->pOsContext);
+    m_userFeatureSetting.enableSFCRGBPRGB24Output = userFeatureData.u32Data;
+#endif
+    return eStatus;
+}
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+MOS_STATUS VpPipeline::SurfaceReplace(PVP_PIPELINE_PARAMS params)
+{
+    MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
+    bool                        allocated;
+
+    MEDIA_FEATURE_TABLE *skuTable = nullptr;
+    skuTable                      = m_vpMhwInterface.m_osInterface->pfnGetSkuTable(m_vpMhwInterface.m_osInterface);
+    VP_PUBLIC_CHK_NULL_RETURN(skuTable);
+
+    if (m_userFeatureSetting.enableSFCNv12P010LinearOutput &&
         MOS_TILE_LINEAR != params->pTarget[0]->TileType &&
         (Format_P010 == params->pTarget[0]->Format || Format_NV12 == params->pTarget[0]->Format) &&
         MEDIA_IS_SKU(skuTable, FtrSFCLinearOutputSupport))
@@ -548,6 +638,59 @@ MOS_STATUS VpPipeline::SurfaceReplace(PVP_PIPELINE_PARAMS params)
             params->pTarget[0] = m_tempTargetSurface;    //params is the copy of pcRenderParams which will not cause the memleak,
         }
     }
+
+    typedef struct _RGBFormatConfig
+    {
+        MOS_FORMAT      format;
+        MOS_TILE_TYPE   tielType;
+    } RGBFormatConfig;
+
+    static const RGBFormatConfig rgbCfg[VP_RGB_OUTPUT_OVERRIDE_ID_MAX] = {
+        {Format_Invalid, MOS_TILE_INVALID},
+        {Format_RGBP, MOS_TILE_LINEAR},
+        {Format_RGBP, MOS_TILE_Y},
+        {Format_R8G8B8, MOS_TILE_LINEAR},
+        {Format_BGRP, MOS_TILE_LINEAR},
+        {Format_BGRP, MOS_TILE_Y}
+    };
+
+    if (m_userFeatureSetting.enableSFCRGBPRGB24Output == VP_RGB_OUTPUT_OVERRIDE_ID_INVALID ||
+        m_userFeatureSetting.enableSFCRGBPRGB24Output >= VP_RGB_OUTPUT_OVERRIDE_ID_MAX)
+    {
+        return MOS_STATUS_SUCCESS;
+    }
+
+    if (rgbCfg[m_userFeatureSetting.enableSFCRGBPRGB24Output].format != params->pTarget[0]->Format &&
+        MEDIA_IS_SKU(skuTable, FtrSFCRGBPRGB24OutputSupport))
+    {
+        if (!m_tempTargetSurface)
+        {
+            m_tempTargetSurface = AllocateTempTargetSurface(m_tempTargetSurface);
+        }
+        VP_PUBLIC_CHK_NULL_RETURN(m_tempTargetSurface);
+        eStatus = m_allocator->ReAllocateSurface(
+            m_tempTargetSurface,
+            "TempTargetSurface",
+            rgbCfg[m_userFeatureSetting.enableSFCRGBPRGB24Output].format,
+            MOS_GFXRES_2D,
+            rgbCfg[m_userFeatureSetting.enableSFCRGBPRGB24Output].tielType,
+            params->pTarget[0]->dwWidth,
+            params->pTarget[0]->dwHeight,
+            false,
+            MOS_MMC_DISABLED,
+            &allocated);
+
+        m_tempTargetSurface->ColorSpace = params->pTarget[0]->ColorSpace;
+        m_tempTargetSurface->rcSrc      = params->pTarget[0]->rcSrc;
+        m_tempTargetSurface->rcDst      = params->pTarget[0]->rcDst;
+        m_tempTargetSurface->rcMaxSrc   = params->pTarget[0]->rcMaxSrc;
+
+        if (eStatus == MOS_STATUS_SUCCESS)
+        {
+            params->pTarget[0] = m_tempTargetSurface;  //params is the copy of pcRenderParams which will not cause the memleak,
+        }
+    }
+
     return eStatus;
 }
 #endif
@@ -663,6 +806,61 @@ MOS_STATUS VpPipeline::PrepareVpPipelineParams(PVP_PIPELINE_PARAMS params)
         m_vpMhwInterface.m_osInterface->osCpInterface->PrepareResources(
             (void **)ppSource, params->uSrcCount, (void **)ppTarget, params->uDstCount);
     }
+
+    PrepareVpPipelineScalabilityParams(params);
+
+    return MOS_STATUS_SUCCESS;
+}
+
+//!
+//! \brief  prepare execution params for vp scalability pipeline
+//! \param  [in] params
+//!         Pointer to VP scalability pipeline params
+//! \return MOS_STATUS
+//!         MOS_STATUS_SUCCESS if success, else fail reason
+//!
+MOS_STATUS VpPipeline::PrepareVpPipelineScalabilityParams(PVP_PIPELINE_PARAMS params)
+{
+    VP_FUNC_CALL();
+    VP_PUBLIC_CHK_NULL_RETURN(params);
+    VP_PUBLIC_CHK_NULL_RETURN(params->pSrc[0]);
+    VP_PUBLIC_CHK_NULL_RETURN(params->pTarget[0]);
+
+    // Disable vesfc scalability when reg key "Enable Vebox Scalability" was set to zero
+    if (m_forceMultiplePipe == (MOS_SCALABILITY_ENABLE_MODE_USER_FORCE | MOS_SCALABILITY_ENABLE_MODE_FALSE))
+    {
+        m_numVebox = 1;
+    }
+    else
+    {
+        if (((MOS_MIN(params->pSrc[0]->dwWidth, (uint32_t)params->pSrc[0]->rcSrc.right) > m_4k_content_width) &&
+             (MOS_MIN(params->pSrc[0]->dwHeight, (uint32_t)params->pSrc[0]->rcSrc.bottom) > m_4k_content_height)) ||
+            ((MOS_MIN(params->pTarget[0]->dwWidth, (uint32_t)params->pTarget[0]->rcSrc.right) > m_4k_content_width) &&
+             (MOS_MIN(params->pTarget[0]->dwHeight, (uint32_t)params->pTarget[0]->rcSrc.bottom) > m_4k_content_height)))
+        {
+            // Enable vesfc scalability only with 4k+ clips
+        }
+        else
+        {
+            // disable vesfc scalability with 4k- resolution clips if reg "Enable Vebox Scalability" was not set as true
+            if (m_forceMultiplePipe != (MOS_SCALABILITY_ENABLE_MODE_USER_FORCE | MOS_SCALABILITY_ENABLE_MODE_DEFAULT))
+            {
+                m_numVebox = 1;
+            }
+        }
+
+        // Disable DN when vesfc scalability was enabled for output mismatch issue
+        if (IsMultiple())
+        {
+            if (params->pSrc[0]->pDenoiseParams)
+            {
+                params->pSrc[0]->pDenoiseParams->bAutoDetect   = false;
+                params->pSrc[0]->pDenoiseParams->bEnableChroma = false;
+                params->pSrc[0]->pDenoiseParams->bEnableLuma   = false;
+            }
+        }
+    }
+
     return MOS_STATUS_SUCCESS;
 }
 

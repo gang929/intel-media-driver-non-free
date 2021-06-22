@@ -48,7 +48,8 @@ namespace decode {
 
         // Allocate status buffer which includes decode status and completed count
         uint32_t bufferSize = m_statusBufSizeMfx * m_statusNum + m_completedCountSize;
-        m_statusBufMfx = m_allocator->AllocateBuffer(bufferSize, "StatusQueryBufferMfx", resourceInternalWrite, true, 0, true);
+        m_statusBufMfx = m_allocator->AllocateBuffer(
+            bufferSize, "StatusQueryBufferMfx", resourceInternalWrite, lockableSystemMem, true, 0, true);
         DECODE_CHK_NULL(m_statusBufMfx);
         m_completedCountBuf = &(m_statusBufMfx->OsResource);
 
@@ -62,7 +63,8 @@ namespace decode {
 
         if (m_enableRcs)
         {
-            m_statusBufRcs = m_allocator->AllocateBuffer(m_statusBufSizeRcs * m_statusNum, "StatusQueryBufferRcs", resourceInternalWrite, true, 0, true);
+            m_statusBufRcs = m_allocator->AllocateBuffer(
+                m_statusBufSizeRcs * m_statusNum, "StatusQueryBufferRcs", resourceInternalWrite, lockableSystemMem, true, 0, true);
 
             DECODE_CHK_STATUS(m_allocator->SkipResourceSync(m_statusBufRcs));
             m_dataStatusRcs = (uint8_t *)m_allocator->LockResouceForRead(m_statusBufRcs);
@@ -79,7 +81,7 @@ namespace decode {
         m_statusBufAddr[statusReportGlobalCount].offset = m_statusBufSizeMfx * m_statusNum;
         m_statusBufAddr[statusReportGlobalCount].bufSize = sizeof(uint32_t) * 2;
 
-        for(int i = 0; i < statusReportGlobalCount; i++)
+        for (int i = statusReportMfx; i < statusReportMaxNum; i++)
         {
             m_statusBufAddr[i].osResource = &m_statusBufMfx->OsResource;
             m_statusBufAddr[i].bufSize = m_statusBufSizeMfx;
@@ -110,6 +112,7 @@ namespace decode {
             m_statusReportData[submitIndex].currDecodedPicRes = inputParameters->currDecodedPicRes;
 #if (_DEBUG || _RELEASE_INTERNAL)
             m_statusReportData[submitIndex].currSfcOutputPicRes = inputParameters->sfcOutputPicRes;
+            m_statusReportData[submitIndex].currHistogramOutBuf = inputParameters->histogramOutputBuf;
             m_statusReportData[submitIndex].frameType = inputParameters->pictureCodingType;
 #endif
         }

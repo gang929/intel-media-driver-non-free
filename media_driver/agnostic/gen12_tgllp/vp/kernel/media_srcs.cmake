@@ -1,4 +1,4 @@
-# Copyright (c) 2019, Intel Corporation
+# Copyright (c) 2019-2021, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -21,6 +21,7 @@
 #check whether need some flags to guard the including of below folders
 media_include_subdirectory(cmfc)
 media_include_subdirectory(cmfcpatch)
+media_include_subdirectory(cmfccmlpch)
 
 set(TMP_1_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/igvpkrn_isa_g12_tgllp.c

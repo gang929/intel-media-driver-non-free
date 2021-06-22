@@ -85,6 +85,18 @@ public:
             return false;
         }
     }
+    RenderTargetType GetRenderTargetType()
+    {
+        if (m_UnorderedFilters.IsEmpty())
+        {
+            // For VEBOX copy case w/o any feature enabled
+            return RenderTargetTypeSurface;
+        }
+        else
+        {
+            return m_UnorderedFilters.GetRenderTargetType();
+        }
+    }
 
 private:
     std::vector<SwFilterSet *> m_OrderedFilters;    // For features in featureRule
@@ -155,7 +167,7 @@ public:
         return MOS_STATUS_SUCCESS;
     }
 
-    bool GetSecureProcessFlag()
+    bool IsSecurePreProcessComplete()
     {
         return m_processedSecurePrepared;
     }
@@ -164,6 +176,22 @@ public:
     {
         m_processedSecurePrepared = false;
         return MOS_STATUS_SUCCESS;
+    }
+
+    RenderTargetType GetRenderTargetType()
+    {
+        for (auto subpipe : m_InputPipes)
+        {
+            if (subpipe)
+            {
+                RenderTargetType targetType = subpipe->GetRenderTargetType();
+                if (targetType == RenderTargetTypeSurface)
+                {
+                    return RenderTargetTypeSurface;
+                }
+            }
+        }
+        return RenderTargetTypeParameter;
     }
 
 protected:

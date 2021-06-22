@@ -207,7 +207,7 @@ extern "C" {
 #define NLAS_NONLINEARCROP_DEFAULT    0.0F
 #define NLAS_NONLINEARCROP_STEP       0.001F
 
-#define VPHAL_MAX_SOURCES               17       //!< worst case: 16 sub-streams + 1 pri video
+#define VPHAL_MAX_SOURCES               65       //!< worst case: 64 sub-streams + 1 pri video
 #define VPHAL_MAX_CHANNELS              2
 #define VPHAL_MAX_TARGETS               8        //!< multi output support
 #define VPHAL_MAX_FUTURE_FRAMES         18       //!< maximum future frames supported in VPHAL
@@ -662,6 +662,8 @@ typedef enum _VPHAL_OUTPUT_PIPE_MODE
 typedef struct _RENDERHAL_INTERFACE     *PRENDERHAL_INTERFACE;
 typedef class MhwVeboxInterface         *PMHW_VEBOX_INTERFACE;
 typedef class MhwSfcInterface           *PMHW_SFC_INTERFACE;
+typedef struct VPHAL_SURFACE            *PVPHAL_SURFACE;
+
 class VphalRenderer;
 
 class MhwCpInterface;
@@ -871,6 +873,15 @@ typedef struct _VPHAL_HVSDENOISE_PARAMS
     VPHAL_HVSDN_MODE    Mode;
     void*               pHVSDenoiseParam;
     uint32_t            dwDenoiseParamSize;
+    uint32_t            dwGlobalNoiseLevel  = 0;  //!< Global Noise Level for Y
+    uint32_t            dwGlobalNoiseLevelU = 0;  //!< Global Noise Level for U
+    uint32_t            dwGlobalNoiseLevelV = 0;  //!< Global Noise Level for V
+    uint16_t            TgneEnable          = 0;
+    uint16_t            FirstFrame          = 0;
+    uint16_t            TgneFirstFrame      = 0;
+    uint16_t            Fallback            = 0;
+    uint16_t            EnableChroma        = 0;
+    uint16_t            EnableTemporalGNE   = 0;
 } VPHAL_HVSDENOISE_PARAMS, *PVPHAL_HVSDENOISE_PARAMS;
 
 //!
@@ -940,10 +951,32 @@ typedef struct _VPHAL_COLORPIPE_PARAMS
 } VPHAL_COLORPIPE_PARAMS, *PVPHAL_COLORPIPE_PARAMS;
 
 //!
+//! \brief Vphal 3DLUT Channel Mapping enum
+//!
+typedef enum _VPHAL_3DLUT_CHANNEL_MAPPING
+{
+    CHANNEL_MAPPING_RGB_RGB          = 0,
+    CHANNEL_MAPPING_YUV_RGB          = 1 << 0,
+    CHANNEL_MAPPING_VUY_RGB          = 1 << 1,
+} VPHAL_3DLUT_CHANNEL_MAPPING;
+
+//!
+//! Structure VPHAL_3DLUT_PARAMS
+//! \brief 3DLUT parameters - 3DLUT
+//!
+typedef struct _VPHAL_3DLUT_PARAMS
+{
+    PVPHAL_SURFACE             pExt3DLutSurface;          // Pointer to the 3DLUT surface which app passes to driver.
+    uint32_t                   LutSize;                   // Size of 3DLUT, i.e, how many entries LUT has.
+    uint32_t                   ChannelMapping;            // Channel Mapping for the 3DLUT input to 3DLUT output.
+    uint16_t                   BitDepthPerChannel;        // Bit Depth Per Channel(4 channels for 3DLUT).
+    uint16_t                   ByteCountPerEntry;         // Byte Count Per Entry including reserved bytes.
+} VPHAL_3DLUT_PARAMS, * PVPHAL_3DLUT_PARAMS;
+
+//!
 //! Structure VPHAL_SURFACE
 //! \brief DDI-VPHAL surface definition
 //!
-typedef struct VPHAL_SURFACE           *PVPHAL_SURFACE;
 struct VPHAL_SURFACE
 {
     // Color Information
@@ -1041,6 +1074,9 @@ struct VPHAL_SURFACE
     PVPHAL_HDR_PARAMS           pHDRParams = nullptr;
     VPHAL_GAMMA_TYPE            GammaType = VPHAL_GAMMA_NONE;    //!<Gamma Type
     bool                        bPreAPGWorkloadEnable = false;   //!< Previous Surface Execution Path
+
+    // 3DLUT parameters
+    PVPHAL_3DLUT_PARAMS         p3DLutParams = nullptr;          //!< 3DLut Mapping Params
 };
 
 //!
@@ -1351,6 +1387,10 @@ MOS_STATUS VpHal_GetSurfaceInfo(
 //!           true if allocated, false for not
 //! \param    [in] resUsageType
 //!           resource usage type for caching
+//! \param    [in] tileModeByForce
+//!           Forced tile mode
+//! \param    [in] memType
+//!           vidoe memory location
 //! \return   MOS_STATUS
 //!           MOS_STATUS_SUCCESS if success. Error code otherwise
 //!
@@ -1367,7 +1407,9 @@ MOS_STATUS VpHal_ReAllocateSurface(
     MOS_RESOURCE_MMC_MODE   CompressionMode,                                    // [in]    Compression mode
     bool*                   pbAllocated,                                        // [out]   Flag indicating new allocation
     MOS_HW_RESOURCE_DEF     resUsageType = MOS_HW_RESOURCE_DEF_MAX,             // [in]    resource usage type
-    MOS_TILE_MODE_GMM       tileModeByForce = MOS_TILE_UNSET_GMM);              // [in]    Flag to indicate if GMM flag tile64 need set
+    MOS_TILE_MODE_GMM       tileModeByForce = MOS_TILE_UNSET_GMM,               // [in]    Flag to indicate if GMM flag tile64 need set
+    Mos_MemPool             memType = MOS_MEMPOOL_VIDEOMEMORY,                  // [in]    Flag to indicate the memType
+    bool                    isNotLockable = false);                             // [in]    Flag to indicate whether resource being not lockable
 
 //!
 //! \brief    Reads the Surface contents and copy to the Dst Buffer
@@ -1515,6 +1557,71 @@ void VpHal_AllocParamsInitType(
 MOS_SURFACE VpHal_ConvertVphalSurfaceToMosSurface(
     PVPHAL_SURFACE pSurface);
 
+//!
+//! \brief  VEBOX IECP parameters
+//!
+class VPHAL_VEBOX_IECP_PARAMS
+{
+public:
+    PVPHAL_COLORPIPE_PARAMS         pColorPipeParams;
+    PVPHAL_PROCAMP_PARAMS           pProcAmpParams;
+    MOS_FORMAT                      dstFormat;
+    MOS_FORMAT                      srcFormat;
+
+    // CSC params
+    bool                            bCSCEnable;                                 // Enable CSC transform
+    float*                          pfCscCoeff;                                 // [3x3] CSC Coeff matrix
+    float*                          pfCscInOffset;                              // [3x1] CSC Input Offset matrix
+    float*                          pfCscOutOffset;                             // [3x1] CSC Output Offset matrix
+    bool                            bAlphaEnable;                               // Alpha Enable Param
+    uint16_t                        wAlphaValue;                                // Color Pipe Alpha Value
+
+    // Front End CSC params
+    bool                            bFeCSCEnable;                               // Enable Front End CSC transform
+    float*                          pfFeCscCoeff;                               // [3x3] Front End CSC Coeff matrix
+    float*                          pfFeCscInOffset;                            // [3x1] Front End CSC Input Offset matrix
+    float*                          pfFeCscOutOffset;                           // [3x1] Front End CSC Output Offset matrix
+
+    VPHAL_VEBOX_IECP_PARAMS()
+    {
+        pColorPipeParams    = nullptr;
+        pProcAmpParams      = nullptr;
+        dstFormat           = Format_Any;
+        srcFormat           = Format_Any;
+        bCSCEnable          = false;
+        pfCscCoeff          = nullptr;
+        pfCscInOffset       = nullptr;
+        pfCscOutOffset      = nullptr;
+        bAlphaEnable        = false;
+        wAlphaValue         = 0;
+
+        bFeCSCEnable        = false;
+        pfFeCscCoeff        = nullptr;
+        pfFeCscInOffset     = nullptr;
+        pfFeCscOutOffset    = nullptr;
+    }
+    virtual ~VPHAL_VEBOX_IECP_PARAMS()
+    {
+        pColorPipeParams    = nullptr;
+        pProcAmpParams      = nullptr;
+    }
+    virtual void Init()
+    {
+        pColorPipeParams    = nullptr;
+        pProcAmpParams      = nullptr;
+
+        dstFormat           = Format_Any;
+        srcFormat           = Format_Any;
+
+        bCSCEnable          = false;
+        pfCscCoeff          = nullptr;
+        pfCscInOffset       = nullptr;
+        pfCscOutOffset      = nullptr;
+        bAlphaEnable        = false;
+        wAlphaValue         = 0;
+    }
+    virtual void   *GetExtParams() { return nullptr; }
+};
 #ifdef __cplusplus
 }
 #endif

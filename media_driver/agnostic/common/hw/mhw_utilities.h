@@ -506,7 +506,7 @@ typedef union _MHW_MEMORY_OBJECT_CONTROL_PARAMS
         uint32_t                   : 1 ;
         uint32_t   Index           : 6 ;
         uint32_t                   : 25;
-    } Gen9;
+    } Gen9, Gen10, Gen11, Gen12, Gen12_5, Gen12_7;
     uint32_t       Value;
 } MHW_MEMORY_OBJECT_CONTROL_PARAMS, *PMHW_MEMORY_OBJECT_CONTROL_PARAMS;
 
@@ -676,7 +676,9 @@ MOS_STATUS Mhw_AllocateBb(
     PMHW_BATCH_BUFFER       pBatchBuffer,
     PMHW_BATCH_BUFFER       pBatchBufferList,
     uint32_t                dwSize,
-    uint32_t                batchCount=1);
+    uint32_t                batchCount = 1,
+    bool                    notLockable = false,
+    bool                    inSystemMem = false);
 
 MOS_STATUS Mhw_FreeBb(
     PMOS_INTERFACE          pOsInterface,

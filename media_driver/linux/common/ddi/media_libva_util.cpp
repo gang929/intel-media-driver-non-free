@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2020, Intel Corporation
+* Copyright (c) 2009-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -207,7 +207,7 @@ VAStatus DdiMediaUtil_AllocateSurface(
         case Media_Format_B10G10R10X2:
         case Media_Format_A16R16G16B16:
         case Media_Format_A16B16G16R16:
-            if (VA_SURFACE_ATTRIB_USAGE_HINT_ENCODER != mediaSurface->surfaceUsageHint   &&
+            if (VA_SURFACE_ATTRIB_USAGE_HINT_ENCODER != mediaSurface->surfaceUsageHint     &&
                 !(mediaSurface->surfaceUsageHint & VA_SURFACE_ATTRIB_USAGE_HINT_VPP_WRITE))
             {
                 tileformat = I915_TILING_NONE;
@@ -224,12 +224,22 @@ VAStatus DdiMediaUtil_AllocateSurface(
                 alignedHeight = MOS_ALIGN_CEIL(height, 2);
                 break;
             }
+
         case Media_Format_RGBP:
         case Media_Format_BGRP:
-        case Media_Format_A8R8G8B8:
-            if (VA_SURFACE_ATTRIB_USAGE_HINT_ENCODER != mediaSurface->surfaceUsageHint &&
+            if (VA_SURFACE_ATTRIB_USAGE_HINT_ENCODER != mediaSurface->surfaceUsageHint   &&
                 !(mediaSurface->surfaceUsageHint & VA_SURFACE_ATTRIB_USAGE_HINT_DECODER) &&
                 !(mediaSurface->surfaceUsageHint & VA_SURFACE_ATTRIB_USAGE_HINT_VPP_WRITE))
+            {
+                tileformat = I915_TILING_NONE;
+                break;
+            }
+        case Media_Format_A8R8G8B8:
+            if (VA_SURFACE_ATTRIB_USAGE_HINT_ENCODER != mediaSurface->surfaceUsageHint     &&
+                !(mediaSurface->surfaceUsageHint & VA_SURFACE_ATTRIB_USAGE_HINT_DECODER)   &&
+                !(mediaSurface->surfaceUsageHint & VA_SURFACE_ATTRIB_USAGE_HINT_VPP_WRITE) &&
+                !(MEDIA_IS_SKU(&mediaDrvCtx->SkuTable, FtrRenderCompressionOnly)           &&
+                  MEDIA_IS_SKU(&mediaDrvCtx->SkuTable, FtrE2ECompression)))
             {
                 tileformat = I915_TILING_NONE;
                 break;
@@ -333,6 +343,10 @@ VAStatus DdiMediaUtil_AllocateSurface(
                 uint32_t swizzle_mode;
                 //Overwrite the tile format that matches the exteral buffer
                 mos_bo_get_tiling(bo, &tileformat, &swizzle_mode);
+                if(tileformat == 0)
+                {
+                    tileformat = mediaSurface->pSurfDesc->uiFlags & VA_SURFACE_EXTBUF_DESC_ENABLE_TILING? I915_TILING_Y:I915_TILING_NONE;
+                }
             }
             else
             {
@@ -459,6 +473,21 @@ VAStatus DdiMediaUtil_AllocateSurface(
                         {
                             gmmParams.Flags.Info.MediaCompressed  = 0;
                             gmmParams.Flags.Info.RenderCompressed = 1;
+                        }
+
+                        if(MEDIA_IS_SKU(&mediaDrvCtx->SkuTable, FtrRenderCompressionOnly))
+                        {
+                            gmmParams.Flags.Info.MediaCompressed = 0;
+
+                            if (format == Media_Format_X8R8G8B8 ||
+                                format == Media_Format_X8B8G8R8 ||
+                                format == Media_Format_A8B8G8R8 ||
+                                format == Media_Format_A8R8G8B8 ||
+                                format == Media_Format_R8G8B8A8)
+                            {
+                                gmmParams.Flags.Info.MediaCompressed  = 0;
+                                gmmParams.Flags.Info.RenderCompressed = 1;
+                            }
                         }
 
                         if(MEDIA_IS_SKU(&mediaDrvCtx->SkuTable, FtrFlatPhysCCS))
@@ -649,6 +678,21 @@ VAStatus DdiMediaUtil_AllocateSurface(
                     if(MEDIA_IS_SKU(&mediaDrvCtx->SkuTable, FtrFlatPhysCCS))
                     {
                         gmmParams.Flags.Gpu.UnifiedAuxSurface = 0;
+                    }
+
+                    if(MEDIA_IS_SKU(&mediaDrvCtx->SkuTable, FtrRenderCompressionOnly))
+                    {
+                        gmmParams.Flags.Info.MediaCompressed = 0;
+
+                        if (format == Media_Format_X8R8G8B8 ||
+                            format == Media_Format_X8B8G8R8 ||
+                            format == Media_Format_A8B8G8R8 ||
+                            format == Media_Format_A8R8G8B8 ||
+                            format == Media_Format_R8G8B8A8)
+                        {
+                            gmmParams.Flags.Info.MediaCompressed  = 0;
+                            gmmParams.Flags.Info.RenderCompressed = 1;
+                        }
                     }
                 }
                 break;
@@ -1813,6 +1857,8 @@ VAStatus DdiMediaUtil_UnRegisterRTSurfaces(
 
 VAStatus DdiMediaUtil_SetMediaResetEnableFlag(PDDI_MEDIA_CONTEXT mediaCtx)
 {
+    mediaCtx->bMediaResetEnable = false;
+    
     DDI_CHK_NULL(mediaCtx,"nullptr mediaCtx!", VA_STATUS_ERROR_INVALID_CONTEXT);
     
     if(!MEDIA_IS_SKU(&mediaCtx->SkuTable, FtrSWMediaReset))
@@ -1820,6 +1866,8 @@ VAStatus DdiMediaUtil_SetMediaResetEnableFlag(PDDI_MEDIA_CONTEXT mediaCtx)
         mediaCtx->bMediaResetEnable = false;
         return VA_STATUS_SUCCESS;
     }
+
+    mediaCtx->bMediaResetEnable = true;
 
     MOS_USER_FEATURE_VALUE_DATA userFeatureData;
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
@@ -1829,18 +1877,17 @@ VAStatus DdiMediaUtil_SetMediaResetEnableFlag(PDDI_MEDIA_CONTEXT mediaCtx)
                                      &userFeatureData,
                                      nullptr));
     mediaCtx->bMediaResetEnable = userFeatureData.i32Data ? true : false;
-    if(mediaCtx->bMediaResetEnable)
+    if(!mediaCtx->bMediaResetEnable)
     {
         return VA_STATUS_SUCCESS;
     }
 
     char* mediaResetEnv = getenv("INTEL_MEDIA_RESET_WATCHDOG");
-    if(!mediaResetEnv)
+    if(mediaResetEnv)
     {
-        mediaCtx->bMediaResetEnable = false;
+        mediaCtx->bMediaResetEnable = strcmp(mediaResetEnv, "1") ? false : true;
         return VA_STATUS_SUCCESS;
     }
 
-    mediaCtx->bMediaResetEnable = strcmp(mediaResetEnv, "1") ? false : true;
     return VA_STATUS_SUCCESS;
 }

@@ -41,6 +41,7 @@
 #endif
 #endif
 
+#include "media_user_setting.h"
 #include "null_hardware.h"
 extern PerfUtility *g_perfutility;
 
@@ -159,6 +160,7 @@ private:
 #define MOS_INVALID_APPID                   0xFFFFFFFF
 
 #define MOS_GPU_CONTEXT_CREATE_DEFAULT      1
+#define MOS_GPU_CONTEXT_CREATE_CM_DEFAULT   15
 
 #define MOS_VCS_ENGINE_USED(GpuContext) (              \
     ((GpuContext) == MOS_GPU_CONTEXT_VIDEO)         || \
@@ -433,6 +435,7 @@ typedef struct _MOS_GFXRES_FLAGS
     int32_t         bOverlay;
     int32_t         bFlipChain;
     int32_t         bSVM;
+    int32_t         bCacheable;
 } MOS_GFXRES_FLAGS, *PMOS_GFXRES_FLAGS;
 
 //!
@@ -1269,6 +1272,9 @@ typedef struct _MOS_INTERFACE
         PMOS_ALLOC_GFXRES_PARAMS    pParams);
 
     MOS_STATUS(*pfnSkipResourceSync)(
+        PMOS_RESOURCE               pOsResource);
+
+    MOS_STATUS(*pfnSetObjectCapture)(
         PMOS_RESOURCE               pOsResource);
 
     MOS_STATUS(*pfnSkipResourceSyncDynamic)(

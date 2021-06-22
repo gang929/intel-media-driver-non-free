@@ -33,32 +33,18 @@
 #include "igvpkrn_g12_tgllp_cmfc.h"
 #include "igvpkrn_g12_tgllp_cmfcpatch.h"
 #endif
+#include "vp_kernel_config_m12_base.h"
 
 extern const Kdll_RuleEntry         g_KdllRuleTable_g12lp[];
 extern const Kdll_RuleEntry         g_KdllRuleTable_g12lpcmfc[];
 
 using namespace vp;
-//Kernel Params ---------------------------------------------------------------
-extern const RENDERHAL_KERNEL_PARAM g_Vebox_KernelParam_m12[VEBOX_KERNEL_BASE_MAX_G12] =
-{
-    ///*  GRF_Count
-    //    |  BT_Count
-    //    |  |    Sampler_Count
-    //    |  |    |  Thread_Count
-    //    |  |    |  |                             GRF_Start_Register
-    //    |  |    |  |                             |   CURBE_Length
-    //    |  |    |  |                             |   |   block_width
-    //    |  |    |  |                             |   |   |    block_height
-    //    |  |    |  |                             |   |   |    |   blocks_x
-    //    |  |    |  |                             |   |   |    |   |   blocks_y
-    //    |  |    |  |                             |   |   |    |   |   |*/
-        { 0, 0 ,  0, VP_USE_MEDIA_THREADS_MAX,  0,  0,   0,  0,  0,  0 },    // RESERVED
-        { 4, 34,  0, VP_USE_MEDIA_THREADS_MAX,  0,  2,  64,  8,  1,  1 },    // UPDATEDNSTATE
-};
 
 MOS_STATUS VpPlatformInterfaceG12Tgllp::InitVpVeboxSfcHwCaps(VP_VEBOX_ENTRY_REC *veboxHwEntry, uint32_t veboxEntryCount,
                                                             VP_SFC_ENTRY_REC *sfcHwEntry, uint32_t sfcEntryCount)
 {
+    VP_FUNC_CALL();
+
     if (veboxEntryCount < Format_Count || sfcEntryCount < Format_Count ||
         nullptr == veboxHwEntry || nullptr == sfcHwEntry)
     {
@@ -72,6 +58,8 @@ MOS_STATUS VpPlatformInterfaceG12Tgllp::InitVpVeboxSfcHwCaps(VP_VEBOX_ENTRY_REC 
 
 MOS_STATUS VpPlatformInterfaceG12Tgllp::InitVpRenderHwCaps()
 {
+    VP_FUNC_CALL();
+
     m_modifyKdllFunctionPointers = nullptr;
 #if defined(ENABLE_KERNELS)
     InitVPFCKernels(
@@ -88,21 +76,29 @@ MOS_STATUS VpPlatformInterfaceG12Tgllp::InitVpRenderHwCaps()
 
 VPFeatureManager *VpPlatformInterfaceG12Tgllp::CreateFeatureChecker(_VP_MHWINTERFACE *hwInterface)
 {
+    VP_FUNC_CALL();
+
     return MOS_New(VPFeatureManagerM12_0, hwInterface);
 }
 
 VpCmdPacket *VpPlatformInterfaceG12Tgllp::CreateVeboxPacket(MediaTask * task, _VP_MHWINTERFACE *hwInterface, VpAllocator *&allocator, VPMediaMemComp *mmc)
 {
+    VP_FUNC_CALL();
+
     return MOS_New(VpVeboxCmdPacketG12, task, hwInterface, allocator, mmc);
 }
 
 VpCmdPacket *VpPlatformInterfaceG12Tgllp::CreateRenderPacket(MediaTask * task, _VP_MHWINTERFACE *hwInterface, VpAllocator *&allocator, VPMediaMemComp *mmc, VpKernelSet* kernel)
 {
+    VP_FUNC_CALL();
+
     return nullptr;
 }
 
 MOS_STATUS VpPlatformInterfaceG12Tgllp::CreateSfcRender(SfcRenderBase *&sfcRender, VP_MHWINTERFACE &vpMhwinterface, PVpAllocator allocator)
 {
+    VP_FUNC_CALL();
+
     VP_PUBLIC_CHK_NULL_RETURN(allocator);
 
     sfcRender = MOS_New(SfcRenderM12,
@@ -126,21 +122,6 @@ MOS_STATUS VpPlatformInterfaceG12Tgllp::CreateSfcRender(SfcRenderBase *&sfcRende
     }
 
     return MOS_STATUS_SUCCESS;
-}
-
-RENDERHAL_KERNEL_PARAM VpPlatformInterfaceG12Tgllp::GetVeboxKernelSettings(uint32_t iKDTIndex)
-{
-    RENDERHAL_KERNEL_PARAM kernelParam;
-    MOS_ZeroMemory(&kernelParam, sizeof(RENDERHAL_KERNEL_PARAM));
-    if (iKDTIndex < VEBOX_KERNEL_BASE_MAX_G12)
-    {
-        kernelParam = g_Vebox_KernelParam_m12[iKDTIndex];
-    }
-    else
-    {
-        VP_PUBLIC_ASSERTMESSAGE("not support in Vebox Kernels");
-    }
-    return kernelParam;
 }
 
 //!
@@ -195,13 +176,15 @@ RENDERHAL_KERNEL_PARAM VpPlatformInterfaceG12Tgllp::GetVeboxKernelSettings(uint3
 //! \return   MOS_STATUS
 //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
 //!
-MOS_STATUS vp::VpPlatformInterfaceG12Tgllp::VeboxQueryStatLayout(VEBOX_STAT_QUERY_TYPE QueryType, uint32_t* pQuery)
+MOS_STATUS vp::VpPlatformInterfaceG12Tgllp::VeboxQueryStatLayout(VEBOX_STAT_QUERY_TYPE queryType, uint32_t* pQuery)
 {
+    VP_FUNC_CALL();
+
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
     VPHAL_RENDER_ASSERT(pQuery);
 
-    switch (QueryType)
+    switch (queryType)
     {
     case VEBOX_STAT_QUERY_GNE_OFFEST:
         *pQuery = VP_VEBOX_STATISTICS_SURFACE_GNE_OFFSET_G12;
@@ -220,10 +203,18 @@ MOS_STATUS vp::VpPlatformInterfaceG12Tgllp::VeboxQueryStatLayout(VEBOX_STAT_QUER
         break;
 
     default:
-        VPHAL_RENDER_ASSERTMESSAGE("Vebox Statistics Layout Query, type ('%d') is not implemented.", QueryType);
+        VPHAL_RENDER_ASSERTMESSAGE("Vebox Statistics Layout Query, type ('%d') is not implemented.", queryType);
         eStatus = MOS_STATUS_UNKNOWN;
         break;
     }
 
     return eStatus;
+}
+
+VpKernelConfig &VpPlatformInterfaceG12Tgllp::GetKernelConfig()
+{
+    VP_FUNC_CALL();
+
+    static VpKernelConfigM12_Base kernelConfig;
+    return kernelConfig;
 }
