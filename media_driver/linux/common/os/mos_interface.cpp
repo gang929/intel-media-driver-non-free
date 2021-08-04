@@ -1279,7 +1279,7 @@ uint8_t MosInterface::GetCachePolicyL1Config(
     return 0;
 }
 
-MOS_STATUS MosInterface::GetReservedFromResouce(MOS_RESOURCE_HANDLE resource, uint32_t &val)
+MOS_STATUS MosInterface::GetReservedFromResource(MOS_RESOURCE_HANDLE resource, uint32_t &val)
 {
     return MOS_STATUS_UNIMPLEMENTED;
 }
@@ -1406,6 +1406,9 @@ MOS_STATUS MosInterface::ConvertResourceFromDdi(
             resource->Format = Format_Y216;
             break;
         case Media_Format_AYUV:
+#if VA_CHECK_VERSION(1, 13, 0)
+        case Media_Format_XYUV:
+#endif
             resource->Format = Format_AYUV;
             break;
         case Media_Format_Y410:

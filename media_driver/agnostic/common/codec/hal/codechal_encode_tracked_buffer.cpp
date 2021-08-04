@@ -398,6 +398,32 @@ MOS_STATUS CodechalEncodeTrackedBuffer::AllocateSurfaceCsc()
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS CodechalEncodeTrackedBuffer::AllocateSurfaceCopy(MOS_FORMAT format, uint32_t cp_tag)
+{
+    // update the last 3 buffer index, find a new slot for current frame
+    m_cscBufAnteIdx = m_cscBufPenuIdx;
+    m_cscBufPenuIdx = m_cscBufCurrIdx;
+    m_cscBufCurrIdx = LookUpBufIndexCsc();
+
+    CODECHAL_ENCODE_CHK_COND_RETURN(m_cscBufCurrIdx >= CODEC_NUM_TRACKED_BUFFERS, "No Copy buffer is available!");
+
+    if ((m_trackedBufCurrCsc = (MOS_SURFACE *)m_allocator->GetResource(m_standard, cscSurface, m_cscBufCurrIdx)))
+    {
+        return MOS_STATUS_SUCCESS;
+    }
+
+    // allocating csc surface for copy
+    CODECHAL_ENCODE_CHK_NULL_RETURN(m_trackedBufCurrCsc = (MOS_SURFACE *)m_allocator->AllocateResource(
+                                        m_standard, m_encoder->m_frameWidth, m_encoder->m_frameHeight,
+                                        cscSurface, "cscSurface", m_cscBufCurrIdx, false, format, MOS_TILE_Y));
+
+    m_trackedBufCurrCsc->OsResource.pGmmResInfo->GetSetCpSurfTag(true, cp_tag);
+
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(CodecHalGetResourceInfo(m_osInterface, m_trackedBufCurrCsc));
+
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS CodechalEncodeTrackedBuffer::ResizeSurfaceDS() {
 
     CODECHAL_ENCODE_FUNCTION_ENTER;

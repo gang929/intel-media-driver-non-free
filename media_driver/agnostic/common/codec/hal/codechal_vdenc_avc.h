@@ -642,7 +642,7 @@ public:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
-    MOS_STATUS HuCBrcInitReset();
+    virtual MOS_STATUS HuCBrcInitReset();
 
     //!
     //! \brief    VDENC BRC Update HuC FW Cmd.
@@ -650,7 +650,7 @@ public:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
-    MOS_STATUS HuCBrcUpdate();
+    virtual MOS_STATUS HuCBrcUpdate();
 
     //!
     //! \brief    VDENC Loads Cost According To CodingType & QP.
@@ -1485,10 +1485,10 @@ MOS_STATUS CodechalVdencAvcState::SetDmemHuCBrcUpdateImpl(CODECHAL_VDENC_AVC_BRC
     hucVDEncBrcDmem->UPD_ROISource_U8 = 0;
     if (avcPicParams->NumROI)
     {
-        CODECHAL_ENCODE_CHK_COND_RETURN(m_avcPicParam->NumROI > sizeof(hucVDEncBrcDmem->UPD_ROIQpDelta_I8) - 1, "Number of ROI is greater that dmem roi array size");
+        CODECHAL_ENCODE_CHK_COND_RETURN(m_avcPicParam->NumROIDistinctDeltaQp > sizeof(hucVDEncBrcDmem->UPD_ROIQpDelta_I8) - 1, "Number of different ROI delta QP is greater that dmem roi array size");
 
         hucVDEncBrcDmem->UPD_RoiQpViaForceQp_U8 = avcPicParams->bNativeROI ? 0 : 1;
-        for (uint8_t i = 0; i < m_avcPicParam->NumROI; i++)
+        for (uint8_t i = 0; i < m_avcPicParam->NumROIDistinctDeltaQp; i++)
         {
             hucVDEncBrcDmem->UPD_ROIQpDelta_I8[i + 1] = m_avcPicParam->ROIDistinctDeltaQp[i];
         }

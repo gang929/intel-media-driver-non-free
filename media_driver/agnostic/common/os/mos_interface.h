@@ -747,6 +747,19 @@ public:
         MOS_STREAM_HANDLE   streamState);
 
     //!
+    //! \brief    Is Device Async or not
+    //! \details  Is Device Async or not.
+    //!
+    //! \param    [in] streamStateDst
+    //!           Handle of Os Stream State.
+    //!
+    //! \return   bool
+    //!           Return true if is async, otherwise false
+    //!
+    static bool IsAsyncDevice(
+        MOS_STREAM_HANDLE streamState);
+
+    //!
     //! \brief    Setup VE Attribute Buffer
     //! \details  [Cmd Buffer Interface] Setup VE Attribute Buffer into cmd buffer.
     //! \details  Caller: MHW only
@@ -844,7 +857,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    static MOS_STATUS GetReservedFromResouce(MOS_RESOURCE_HANDLE resource, uint32_t &val);
+    static MOS_STATUS GetReservedFromResource(MOS_RESOURCE_HANDLE resource, uint32_t &val);
 
     //!
     //! \brief    Get Reserved info from Stream
@@ -983,7 +996,7 @@ public:
     //!           bit definition in MOS_GFXRES_FREE_FLAGS
     //!
     //! \return   uint32_t
-    //!           OS resouce deallc flags
+    //!           OS resource deallc flags
     //!
     static uint32_t ConvertHalFreeFlagsToOsFreeFlags(
         uint32_t halFreeFlag

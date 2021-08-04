@@ -33,6 +33,7 @@
 #include "media_interfaces_mhw.h"
 #include "hal_oca_interface.h"
 
+#define OutputSurfaceWidthRatio 1
 extern const SURFACE_STATE_TOKEN_COMMON g_cInit_SURFACE_STATE_TOKEN_COMMON =
 {
     // DWORD 0
@@ -89,7 +90,11 @@ const MHW_PIPE_CONTROL_PARAMS  g_cRenderHal_InitPipeControlParams =
     false,                          // bInvalidateInstructionCache
     true,                           // bFlushRenderTargetCache
     false,                          // bTlbInvalidate
-    false                           // bInvalidateTextureCache
+    false,                          // bInvalidateTextureCache
+    false,                          // bGenericMediaStateClear
+    false,                          // bIndirectStatePointersDisable
+    false,                          // bHdcPipelineFlush
+    false,                          // bKernelFenceEnabled
 };
 
 extern const RENDERHAL_SURFACE_STATE_ENTRY g_cInitSurfaceStateEntry =
@@ -3752,6 +3757,14 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
             {
                 dwSurfaceWidth = dwSurfaceWidth << 1;
             }
+            else if (MEDIA_IS_SKU(pRenderHal->pSkuTable, FtrDisableRenderTargetWidthAdjust) &&
+                     (PlaneDefinition == RENDERHAL_PLANES_NV12_2PLANES                    ||
+                      PlaneDefinition == RENDERHAL_PLANES_P010                            ||
+                      PlaneDefinition == RENDERHAL_PLANES_YUY2_2PLANES                    ||
+                      PlaneDefinition == RENDERHAL_PLANES_YUY2))
+            {
+                dwSurfaceWidth = dwSurfaceWidth / OutputSurfaceWidthRatio;
+            }
             else
             {
                 dwSurfaceWidth = (dwSurfaceWidth + pPlane->ui8PixelsPerDword - 1) /
@@ -7229,6 +7242,12 @@ MOS_STATUS RenderHal_SetBufferSurfaceForHwAccess(
     if (pSurfaceParams == nullptr)
     {
         MOS_ZeroMemory(&SurfaceParam, sizeof(SurfaceParam));
+
+        //set mem object control for cache
+        SurfaceParam.MemObjCtl = (pRenderHal->pOsInterface->pfnCachePolicyGetMemoryObject(
+            MOS_MP_RESOURCE_USAGE_DEFAULT,
+            pRenderHal->pOsInterface->pfnGetGmmClientContext(pRenderHal->pOsInterface))).DwordValue;
+
         pSurfaceParams = &SurfaceParam;
     }
 
