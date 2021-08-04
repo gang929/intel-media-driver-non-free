@@ -1,3 +1,9 @@
+intel-media-driver-non-free (21.3.0+ds1-1) experimental; urgency=medium
+
+  * New upstream release
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Wed, 04 Aug 2021 23:00:19 +0200
+
 intel-media-driver-non-free (21.2.2+ds1-1) experimental; urgency=medium
 
   * New upstream release
