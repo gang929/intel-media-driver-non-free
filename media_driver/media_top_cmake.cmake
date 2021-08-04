@@ -62,9 +62,15 @@ set(SOURCES_ "")
 # add source
 media_include_subdirectory(agnostic)
 media_include_subdirectory(linux)
+media_include_subdirectory(media_softlet)
 media_include_subdirectory(media_interface)
-media_include_subdirectory(${MEDIA_EXT}/media_driver_next)
+media_include_subdirectory(../media_common/agnostic)
+media_include_subdirectory(../media_common/linux)
+media_include_subdirectory(../media_softlet/agnostic)
+media_include_subdirectory(../media_softlet/linux)
+
 include(${MEDIA_EXT}/media_srcs_ext.cmake OPTIONAL)
+include(${MEDIA_SOFTLET_EXT}/media_srcs_ext.cmake OPTIONAL)
 
 include(${MEDIA_DRIVER_CMAKE}/media_include_paths.cmake)
 
@@ -114,7 +120,7 @@ MediaAddCommonTargetDefines(${LIB_NAME_OBJ})
 bs_ufo_link_libraries_noBsymbolic(
     ${LIB_NAME}
     "${INCLUDED_LIBS}"
-    "${PKG_PCIACCESS_LIBRARIES} m pthread dl rt"
+    "${PKG_PCIACCESS_LIBRARIES} m pthread dl"
 )
 
 if (NOT DEFINED INCLUDED_LIBS OR "${INCLUDED_LIBS}" STREQUAL "")
@@ -145,5 +151,5 @@ bs_set_post_target()
 
 if(MEDIA_RUN_TEST_SUITE AND ENABLE_KERNELS AND ENABLE_NONFREE_KERNELS)
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/linux/ult)
-    include(${MEDIA_EXT}/media_driver_next/ult/ult_top_cmake.cmake OPTIONAL)
+    include(${MEDIA_EXT}/media_softlet/ult/ult_top_cmake.cmake OPTIONAL)
 endif()

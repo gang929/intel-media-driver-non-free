@@ -29,6 +29,7 @@
 
 #include "media_interfaces.h"
 #include "media_interfaces_hwinfo.h"
+#include "igfxfmid.h"
 
 #define IP_VERSION_UNKNOW 0
 
@@ -61,7 +62,7 @@ public:
     //!
     virtual MOS_STATUS Initialize(PLATFORM platform)
     {
-        m_hwInfo.SetDeviceInfo("IP_VERSION_UNKNOW", 0);
+        m_hwInfo.SetDeviceInfo(IP_VERSION_UNKNOW, 0);
         return MOS_STATUS_SUCCESS;
     };
 

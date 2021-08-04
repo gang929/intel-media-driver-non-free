@@ -35,6 +35,7 @@ MhwSfcInterface::MhwSfcInterface(PMOS_INTERFACE pOsInterface)
     MOS_ZeroMemory(&m_outputSurfCtrl, sizeof(m_outputSurfCtrl));
     MOS_ZeroMemory(&m_avsLineBufferCtrl, sizeof(m_avsLineBufferCtrl));
     MOS_ZeroMemory(&m_iefLineBufferCtrl, sizeof(m_iefLineBufferCtrl));
+    MOS_ZeroMemory(&m_sfdLineBufferCtrl, sizeof(m_sfdLineBufferCtrl));
     pfnAddResourceToCmd = nullptr;
     m_scalingMode       = MHW_SCALING_AVS;
 
@@ -395,7 +396,8 @@ MOS_STATUS MhwSfcInterface::GetInputFrameWidthHeightAlignUnit(uint32_t &widthAli
     if (bVdbox)
     {
         if (CODECHAL_JPEG == codecStandard &&( jpegYUV400 == jpegChromaType ||
-            jpegYUV444 == jpegChromaType || jpegYUV422H2Y == jpegChromaType))
+            jpegYUV444 == jpegChromaType || jpegYUV422H2Y == jpegChromaType) ||
+            jpegBGR == jpegChromaType || jpegRGB == jpegChromaType)
         {
             widthAlignUnit = 8;
             heightAlignUnit = 8;

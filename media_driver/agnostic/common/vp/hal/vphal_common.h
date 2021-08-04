@@ -105,6 +105,14 @@ extern "C" {
      ((rect1).right >= (rect2).right) && ((rect1).bottom >= (rect2).bottom))
 
 //!
+//! \def RECT1_CONTAINS_RECT2_ONEPIXELBIAS(rect1, rect2)
+//! Compare if rectangle \a rect1 contains rectangle \a rect2 in coordinate, One pixel bias is allowed
+//!
+#define RECT1_CONTAINS_RECT2_ONEPIXELBIAS(rect1, rect2)                                    \
+    (((rect1).left  <= ((rect2).left + 1))  && ((rect1).top    <= ((rect2).top + 1)) &&  \
+     (((rect1).right + 1) >= (rect2).right) && (((rect1).bottom + 1) >= (rect2).bottom))
+
+//!
 //! \def RECT1_OUTSIDE_RECT2(rect1, rect2)
 //! Compare if the rectangle \a rect1 is outside the rectangle \a rect2 at least partly in coordinate
 //!
@@ -546,7 +554,7 @@ C_ASSERT(VPHAL_SCALING_ADV_QUALITY == 3);   //!< When adding, update assert & vp
 
 typedef enum _VPHAL_SCALING_PREFERENCE
 {
-    VPHAL_SCALING_PREFER_SFC,          // SFC is default
+    VPHAL_SCALING_PREFER_SFC = 0,      // SFC is default
     VPHAL_SCALING_PREFER_COMP,         // For Gen9/10, Composition AVS get better quality than SFC AVS
     VPHAL_SCALING_PREFER_SFC_FOR_VEBOX // if VEBOX is required, use VEBOX + SFC, otherwise use Composistion
 } VPHAL_SCALING_PREFERENCE;
@@ -1113,6 +1121,8 @@ typedef struct _VPHAL_COLORFILL_PARAMS
     bool                bYCbCr;
     uint32_t            Color;
     VPHAL_CSPACE        CSpace;
+    bool                bDisableColorfillinSFC;
+    bool                bOnePixelBiasinSFC;
 } VPHAL_COLORFILL_PARAMS, *PVPHAL_COLORFILL_PARAMS;
 
 //!

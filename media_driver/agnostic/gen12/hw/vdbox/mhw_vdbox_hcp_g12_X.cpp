@@ -1997,6 +1997,13 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpPipeBufAddrCmd(
 
             resourceParams.dwSharedMocsOffset = 53 - resourceParams.dwLocationInCmd; // Common Prodected Data bit is in DW53
 
+            MOS_GPU_CONTEXT gpuContext = m_osInterface->pfnGetGpuContext(m_osInterface);
+            m_osInterface->pfnSyncOnResource(
+                m_osInterface,
+                params->presReferences[i],
+                gpuContext,
+                false);
+
             MHW_MI_CHK_STATUS(pfnAddResourceToCmd(
                 m_osInterface,
                 cmdBuffer,
@@ -2004,9 +2011,19 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpPipeBufAddrCmd(
         }
     }
 
-    // Same MMC status for deblock and ref surfaces
-    cmd.ReferencePictureBaseAddressMemoryAddressAttributes.DW0.BaseAddressMemoryCompressionEnable = cmd.DecodedPictureMemoryAddressAttributes.DW0.BaseAddressMemoryCompressionEnable;
-    cmd.ReferencePictureBaseAddressMemoryAddressAttributes.DW0.CompressionType = cmd.DecodedPictureMemoryAddressAttributes.DW0.CompressionType;
+    auto paramsG12 = dynamic_cast<PMHW_VDBOX_PIPE_BUF_ADDR_PARAMS_G12>(params);
+    MHW_CHK_NULL_RETURN(paramsG12);
+    if (paramsG12->bSpecificReferencedMmcRequired)
+    {
+        cmd.ReferencePictureBaseAddressMemoryAddressAttributes.DW0.BaseAddressMemoryCompressionEnable = MmcEnable(paramsG12->ReferencesMmcState) ? 1 : 0;
+        cmd.ReferencePictureBaseAddressMemoryAddressAttributes.DW0.CompressionType                    = MmcIsRc(paramsG12->ReferencesMmcState) ? 1 : 0;;
+    }
+    else
+    {
+        // Same MMC status for deblock and ref surfaces
+        cmd.ReferencePictureBaseAddressMemoryAddressAttributes.DW0.BaseAddressMemoryCompressionEnable = cmd.DecodedPictureMemoryAddressAttributes.DW0.BaseAddressMemoryCompressionEnable;
+        cmd.ReferencePictureBaseAddressMemoryAddressAttributes.DW0.CompressionType                    = cmd.DecodedPictureMemoryAddressAttributes.DW0.CompressionType;
+    }
 
     // Reset dwSharedMocsOffset
     resourceParams.dwSharedMocsOffset = 0;
@@ -2276,10 +2293,7 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpPipeBufAddrCmd(
             &resourceParams));
     }
 
-    //Gen11 new added buffer
-    auto paramsG12 = dynamic_cast<PMHW_VDBOX_PIPE_BUF_ADDR_PARAMS_G12>(params);
-    MHW_CHK_NULL_RETURN(paramsG12);
-
+    // Gen12 new added buffer
     // Slice state stream out buffer
     if (paramsG12->presSliceStateStreamOutBuffer != nullptr)
     {
@@ -2742,6 +2756,7 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpEncodePicStateCmd(
     cmd.DW4.TransquantBypassEnableFlag              = hevcPicParams->transquant_bypass_enabled_flag;
     cmd.DW4.StrongIntraSmoothingEnableFlag          = hevcSeqParams->strong_intra_smoothing_enable_flag;
     cmd.DW4.CuPacketStructure                       = 0; // output from HW VME, 1/2 CL per CU
+    cmd.DW4.ConstrainedIntraPredFlag                = hevcPicParams->constrained_intra_pred_flag;
 
     cmd.DW5.PicCbQpOffset                           = hevcPicParams->pps_cb_qp_offset & 0x1f;
     cmd.DW5.PicCrQpOffset                           = hevcPicParams->pps_cr_qp_offset & 0x1f;
