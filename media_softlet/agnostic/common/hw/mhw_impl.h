@@ -37,141 +37,135 @@
 //              only used by other    |   _DECL: declaration
 //              macros                |   _DEF : definition
 
-#define _MHW_CMD_T(CMD)      CMD##_CMD         // MHW command type
-#define __MHW_CMD_PAR_M(CMD) m_##CMD##_Params  // member which is a pointer to MHW command parameters
+#define __MHW_CMD_T(CMD) CMD##_CMD  // MHW command type
 
-#define __MHW_CMD_SET_F(CMD) SetCmd_##CMD  // function name to set command data
+// MHW command parameters and data
+#define __MHW_CMDINFO_T(CMD) std::pair<_MHW_PAR_T(CMD), typename cmd_t::__MHW_CMD_T(CMD)>
+
+#define __MHW_CMDINFO_M(CMD) m_##CMD##_Info
+
+#define __MHW_GETPAR_DEF(CMD)                     \
+    __MHW_GETPAR_DECL(CMD) override               \
+    {                                             \
+        return this->__MHW_CMDINFO_M(CMD)->first; \
+    }
+
+#define __MHW_GETSIZE_DEF(CMD)                           \
+    __MHW_GETSIZE_DECL(CMD) override                     \
+    {                                                    \
+        return sizeof(typename cmd_t::__MHW_CMD_T(CMD)); \
+    }
 
 #if MHW_HWCMDPARSER_ENABLED
-#define __MHW_CMD_SET_DECL(CMD) MOS_STATUS __MHW_CMD_SET_F(CMD)(void *cmdData, const std::string &cmdName = #CMD)
+#define MHW_HWCMDPARSER_INITCMDNAME(CMD) this->m_currentCmdName = #CMD
 #else
-#define __MHW_CMD_SET_DECL(CMD) MOS_STATUS __MHW_CMD_SET_F(CMD)(void *cmdData)
+#define MHW_HWCMDPARSER_INITCMDNAME(CMD)
 #endif
 
-#define _MHW_CMD_SET_DECL_OVERRIDE(CMD) __MHW_CMD_SET_DECL(CMD) override
-
-#define __MHW_CMD_PAR_GET_DEF(CMD)              \
-    __MHW_CMD_PAR_GET_DECL(CMD) override        \
-    {                                           \
-        if (reset)                              \
-        {                                       \
-            *(this->__MHW_CMD_PAR_M(CMD)) = {}; \
-        }                                       \
-        return this->__MHW_CMD_PAR_M(CMD);      \
+#define __MHW_ADDCMD_DEF(CMD)                                             \
+    __MHW_ADDCMD_DECL(CMD) override                                       \
+    {                                                                     \
+        MHW_FUNCTION_ENTER;                                               \
+        MHW_HWCMDPARSER_INITCMDNAME(CMD);                                 \
+        return this->AddCmd(cmdBuf,                                       \
+            batchBuf,                                                     \
+            this->__MHW_CMDINFO_M(CMD)->second,                           \
+            [=]() -> MOS_STATUS { return this->__MHW_SETCMD_F(CMD)(); }); \
     }
 
-#define __MHW_CMD_BYTE_SIZE_GET_DEF(CMD)                \
-    __MHW_CMD_BYTE_SIZE_GET_DECL(CMD) override          \
-    {                                                   \
-        return sizeof(typename cmd_t::_MHW_CMD_T(CMD)); \
-    }
+#if __cplusplus < 201402L
+#define __MHW_CMDINFO_DEF(CMD) std::unique_ptr<__MHW_CMDINFO_T(CMD)> \
+    __MHW_CMDINFO_M(CMD) = std::unique_ptr<__MHW_CMDINFO_T(CMD)>(new __MHW_CMDINFO_T(CMD)())
+#else
+#define __MHW_CMDINFO_DEF(CMD) std::unique_ptr<__MHW_CMDINFO_T(CMD)> \
+    __MHW_CMDINFO_M(CMD) = std::make_unique<__MHW_CMDINFO_T(CMD)>()
+#endif
 
-#define __MHW_CMD_ADD_DEF(CMD)                                                                        \
-    __MHW_CMD_ADD_DECL(CMD) override                                                                  \
-    {                                                                                                 \
-        MHW_FUNCTION_ENTER;                                                                           \
-        this->m_currentCmdBuf   = cmdBuf;                                                             \
-        this->m_currentBatchBuf = batchBuf;                                                           \
-        typename cmd_t::_MHW_CMD_T(CMD) cmdData;                                                      \
-        MHW_CHK_STATUS_RETURN(this->__MHW_CMD_SET_F(CMD)(&cmdData));                                  \
-        MHW_HWCMDPARSER_PARSECMD(#CMD,                                                                \
-            reinterpret_cast<uint32_t*>(&cmdData),                                                    \
-            sizeof(cmdData) / sizeof(uint32_t));                                                      \
-        MHW_CHK_STATUS_RETURN(Mhw_AddCommandCmdOrBB(cmdBuf, batchBuf, &cmdData, sizeof(cmdData)));    \
-        if (extraData && extraDataSize > 0)                                                           \
-        {                                                                                             \
-            MHW_CHK_STATUS_RETURN(Mhw_AddCommandCmdOrBB(cmdBuf, batchBuf, extraData, extraDataSize)); \
-        }                                                                                             \
-        return MOS_STATUS_SUCCESS;                                                                    \
-    }
+#define _MHW_CMD_ALL_DEF_FOR_IMPL(CMD) \
+public:                                \
+    __MHW_GETPAR_DEF(CMD);             \
+    __MHW_GETSIZE_DEF(CMD);            \
+    __MHW_ADDCMD_DEF(CMD)              \
+protected:                             \
+    __MHW_CMDINFO_DEF(CMD)
 
-#define _MHW_CMD_ALL_DEF_FOR_IMPL(CMD)                             \
-public:                                                            \
-    __MHW_CMD_PAR_GET_DEF(CMD);                                    \
-protected:                                                         \
-    virtual __MHW_CMD_SET_DECL(CMD) { return MOS_STATUS_SUCCESS; } \
-    mhw::Pointer<_MHW_CMD_PAR_T(CMD)> __MHW_CMD_PAR_M(CMD) = mhw::MakePointer<_MHW_CMD_PAR_T(CMD)>()
+#define _MHW_SETCMD_OVERRIDE_DECL(CMD) __MHW_SETCMD_DECL(CMD) override
 
-#define _MHW_CMD_ALL_DEF_FOR_IMPL_GENERIC(CMD) \
-public:                                        \
-    __MHW_CMD_BYTE_SIZE_GET_DEF(CMD);          \
-    __MHW_CMD_ADD_DEF(CMD)
-
-#define _MHW_CMDSET_GETCMDPARAMS_AND_CALLBASE(CMD)                                     \
-    MHW_FUNCTION_ENTER;                                                                \
-    auto        cmd    = reinterpret_cast<typename cmd_t::_MHW_CMD_T(CMD) *>(cmdData); \
-    const auto &params = this->__MHW_CMD_PAR_M(CMD);                                   \
-    base_t::__MHW_CMD_SET_F(CMD)(cmd)
+#define _MHW_SETCMD_CALLBASE(CMD)                            \
+    MHW_FUNCTION_ENTER;                                      \
+    const auto &params = this->__MHW_CMDINFO_M(CMD)->first;  \
+    auto &      cmd    = this->__MHW_CMDINFO_M(CMD)->second; \
+    MHW_CHK_STATUS_RETURN(base_t::__MHW_SETCMD_F(CMD)())
 
 // DWORD location of a command field
 #define _MHW_CMD_DW_LOCATION(field) \
-    static_cast<uint32_t>((reinterpret_cast<uint32_t *>(&(cmd->field)) - reinterpret_cast<uint32_t *>(&(*cmd))))
+    static_cast<uint32_t>((reinterpret_cast<uint32_t *>(&(cmd.field)) - reinterpret_cast<uint32_t *>(&cmd)))
 
-#define _MHW_CMD_ASSIGN_FIELD(dw, field, value) cmd->dw.field = (value)
+#define _MHW_CMD_ASSIGN_FIELD(dw, field, value) cmd.dw.field = (value)
 
 namespace mhw
 {
-inline int32_t Clip3(int32_t x, int32_t y, int32_t z)
-{
-    int32_t ret = 0;
-
-    if (z < x)
-    {
-        ret = x;
-    }
-    else if (z > y)
-    {
-        ret = y;
-    }
-    else
-    {
-        ret = z;
-    }
-
-    return ret;
-}
-
-inline bool MmcEnabled(MOS_MEMCOMP_STATE state)
-{
-    return state == MOS_MEMCOMP_RC || state == MOS_MEMCOMP_MC;
-}
-
-inline bool MmcRcEnabled(MOS_MEMCOMP_STATE state)
-{
-    return state == MOS_MEMCOMP_RC;
-}
-
-inline uint32_t GetHwTileType(MOS_TILE_TYPE tileType, MOS_TILE_MODE_GMM tileModeGMM, bool gmmTileEnabled)
-{
-    uint32_t tileMode = 0;
-
-    if (gmmTileEnabled)
-    {
-        return tileModeGMM;
-    }
-
-    switch (tileType)
-    {
-    case MOS_TILE_LINEAR:
-        tileMode = 0;
-        break;
-    case MOS_TILE_YS:
-        tileMode = 1;
-        break;
-    case MOS_TILE_X:
-        tileMode = 2;
-        break;
-    default:
-        tileMode = 3;
-        break;
-    }
-
-    return tileMode;
-}
-
 class Impl
 {
 protected:
+    static int32_t Clip3(int32_t x, int32_t y, int32_t z)
+    {
+        int32_t ret = 0;
+
+        if (z < x)
+        {
+            ret = x;
+        }
+        else if (z > y)
+        {
+            ret = y;
+        }
+        else
+        {
+            ret = z;
+        }
+
+        return ret;
+    }
+
+    static bool MmcEnabled(MOS_MEMCOMP_STATE state)
+    {
+        return state == MOS_MEMCOMP_RC || state == MOS_MEMCOMP_MC;
+    }
+
+    static bool MmcRcEnabled(MOS_MEMCOMP_STATE state)
+    {
+        return state == MOS_MEMCOMP_RC;
+    }
+
+    static uint32_t GetHwTileType(MOS_TILE_TYPE tileType, MOS_TILE_MODE_GMM tileModeGMM, bool gmmTileEnabled)
+    {
+        uint32_t tileMode = 0;
+
+        if (gmmTileEnabled)
+        {
+            return tileModeGMM;
+        }
+
+        switch (tileType)
+        {
+        case MOS_TILE_LINEAR:
+            tileMode = 0;
+            break;
+        case MOS_TILE_YS:
+            tileMode = 1;
+            break;
+        case MOS_TILE_X:
+            tileMode = 2;
+            break;
+        default:
+            tileMode = 3;
+            break;
+        }
+
+        return tileMode;
+    }
+
     Impl(PMOS_INTERFACE osItf)
     {
         MHW_FUNCTION_ENTER;
@@ -187,9 +181,49 @@ protected:
         {
             AddResourceToCmd = Mhw_AddResourceToCmd_PatchList;
         }
+
+    #if MHW_HWCMDPARSER_ENABLED
+        mhw::HwcmdParser::InitInstance(osItf);
+
+        m_hwcmdParser = mhw::HwcmdParser::GetInstance();
+        MHW_CHK_NULL_NO_STATUS_RETURN(m_hwcmdParser);
+
+        m_parseFieldsLayout = m_hwcmdParser->ParseFieldsLayoutEn();
+    #endif
     }
 
-    virtual ~Impl() = default;
+    virtual ~Impl()
+    {
+        MHW_FUNCTION_ENTER;
+
+    #if MHW_HWCMDPARSER_ENABLED
+        mhw::HwcmdParser::DestroyInstance();
+    #endif
+    }
+
+    template <typename Cmd, typename CmdSetting>
+    MOS_STATUS AddCmd(PMOS_COMMAND_BUFFER cmdBuf,
+        PMHW_BATCH_BUFFER                 batchBuf,
+        Cmd &                             cmd,
+        const CmdSetting &                setting)
+    {
+        this->m_currentCmdBuf   = cmdBuf;
+        this->m_currentBatchBuf = batchBuf;
+
+        // set MHW cmd
+        cmd = {};
+        MHW_CHK_STATUS_RETURN(setting());
+
+        // call MHW cmd parser
+    #if MHW_HWCMDPARSER_ENABLED
+        this->m_hwcmdParser->ParseCmd(this->m_currentCmdName,
+            reinterpret_cast<uint32_t *>(&cmd),
+            sizeof(cmd) / sizeof(uint32_t));
+    #endif
+
+        // add cmd to cmd buffer
+        return Mhw_AddCommandCmdOrBB(cmdBuf, batchBuf, &cmd, sizeof(cmd));
+    }
 
 protected:
     MOS_STATUS(*AddResourceToCmd)
@@ -200,8 +234,9 @@ protected:
     PMHW_BATCH_BUFFER   m_currentBatchBuf = nullptr;
 
 #if MHW_HWCMDPARSER_ENABLED
-    std::shared_ptr<HwcmdParser> m_hwcmdParser       = mhw::HwcmdParser::GetInstance();
-    bool                         m_parseFieldsLayout = m_hwcmdParser->ParseFieldsLayoutEn();
+    std::string                  m_currentCmdName;
+    std::shared_ptr<HwcmdParser> m_hwcmdParser       = nullptr;
+    bool                         m_parseFieldsLayout = false;
 #endif  // MHW_HWCMDPARSER_ENABLED
 };
 }  // namespace mhw
