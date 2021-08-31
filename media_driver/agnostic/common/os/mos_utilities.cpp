@@ -3858,7 +3858,7 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         MOS_USER_FEATURE_VALUE_TYPE_BOOL,
         "0",
         "TRUE for Enabling KMD Virtual Engine Debug Override. (Default FALSE: not override"),
-    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_ENABLE_HCP_SCALABILITY_DECODE_ID,
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_ENABLE_HCP_SCALABILITY_DECODE_ID,
         "Enable HCP Scalability Decode",
         __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
         __MEDIA_USER_FEATURE_SUBKEY_REPORT,
@@ -4039,6 +4039,15 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         "0",
         "Reports out whether indirect state heap invalid. This key is not valid on Linux."),
 #if (_DEBUG || _RELEASE_INTERNAL)
+    MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_FORCE_TO_DISABLE_SR_ID,
+        "ForceToDisableSR",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        "MOS",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_UINT32,
+        "0",
+        "Force to disable SR 1."),
     MOS_DECLARE_UF_KEY(__MEDIA_USER_FEATURE_VALUE_INIT_CP_OUTPUT_SURFACE_ID,
         "Init CP Output Surface",
         __MEDIA_USER_FEATURE_SUBKEY_PERMANENT,
@@ -4342,6 +4351,15 @@ static MOS_USER_FEATURE_VALUE MOSUserFeatureDescFields[__MOS_USER_FEATURE_KEY_MA
         "0",
         "Sfc Linear Output Surface In Use. 1: used, 0: not used."),
 #endif
+    MOS_DECLARE_UF_KEY_DBGONLY(__MEDIA_USER_FEATURE_VALUE_PROTECT_MODE_ENABLE_ID,
+        "Protect Mode Enable",
+        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
+        __MEDIA_USER_FEATURE_SUBKEY_REPORT,
+        "MOS",
+        MOS_USER_FEATURE_TYPE_USER,
+        MOS_USER_FEATURE_VALUE_TYPE_INT32,
+        "0",
+        "Enable protect Mode. 1: enable, 0: disable."),
 };
 
 PMOS_USER_FEATURE_VALUE const MosUtilities::m_mosUserFeatureDescFields = MOSUserFeatureDescFields;

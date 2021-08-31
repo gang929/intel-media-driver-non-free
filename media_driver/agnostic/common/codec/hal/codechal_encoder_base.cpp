@@ -191,7 +191,8 @@ MOS_STATUS CodechalEncoderState::CreateGpuContexts()
             m_computeContextEnabled = false;
         }
 
-        if (m_osInterface->osCpInterface->IsHMEnabled() && MEDIA_IS_SKU(m_skuTable, FtrRAMode))
+        if (m_osInterface->osCpInterface->IsHMEnabled() &&
+            (MEDIA_IS_SKU(m_skuTable, FtrRAMode) || MEDIA_IS_SKU(m_skuTable, FtrProtectedEnableBitRequired)))
         {
             if (m_computeContextEnabled)
             {
@@ -203,7 +204,8 @@ MOS_STATUS CodechalEncoderState::CreateGpuContexts()
                 gpuContext          = MOS_GPU_CONTEXT_RENDER_RA;
                 renderGpuNode       = MOS_GPU_NODE_3D;
             }
-            createOption.RAMode     = 1;
+            createOption.RAMode     = MEDIA_IS_SKU(m_skuTable, FtrRAMode);
+            createOption.ProtectMode = MEDIA_IS_SKU(m_skuTable, FtrProtectedEnableBitRequired);
         }
         else
         {
@@ -218,6 +220,7 @@ MOS_STATUS CodechalEncoderState::CreateGpuContexts()
                 renderGpuNode = MOS_GPU_NODE_3D;
             }
             createOption.RAMode = 0;
+            createOption.ProtectMode = 0;
         }
 
         if (m_hwInterface->m_slicePowerGate)
@@ -964,6 +967,11 @@ MOS_STATUS CodechalEncoderState::Initialize(
         {
             m_inlineEncodeStatusUpdate = m_osInterface->bInlineCodecStatusUpdate ? true: false;
         }
+    }
+
+    if (m_standard == CODECHAL_AVC)
+    {
+        m_bRenderOcaEnabled = true;
     }
 
     // Disable SHME and UHME if HME is disabled
@@ -2016,6 +2024,9 @@ MOS_STATUS CodechalEncoderState::ExecuteMeKernel(
         &walkerParams,
         &walkerCodecParams));
 
+    HalOcaInterface::TraceMessage(cmdBuffer, *m_osInterface->pOsContext, __FUNCTION__, sizeof(__FUNCTION__));
+    HalOcaInterface::OnDispatch(cmdBuffer, *m_osInterface->pOsContext, *m_miInterface, *m_renderEngineInterface->GetMmioRegisters());
+
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_renderEngineInterface->AddMediaObjectWalkerCmd(
         &cmdBuffer,
         &walkerParams));
@@ -2582,8 +2593,7 @@ MOS_STATUS CodechalEncoderState::AddMediaVfeCmd(
 
 MOS_STATUS CodechalEncoderState::SendGenericKernelCmds(
     PMOS_COMMAND_BUFFER cmdBuffer,
-    SendKernelCmdsParams *params,
-    bool bEnableRenderOCA)
+    SendKernelCmdsParams *params)
 {
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
@@ -2606,7 +2616,7 @@ MOS_STATUS CodechalEncoderState::SendGenericKernelCmds(
 
         // Send command buffer header at the beginning (OS dependent)
         CODECHAL_ENCODE_CHK_STATUS_RETURN(
-            SendPrologWithFrameTracking(cmdBuffer, requestFrameTracking, bEnableRenderOCA ? m_renderEngineInterface->GetMmioRegisters() : nullptr));
+            SendPrologWithFrameTracking(cmdBuffer, requestFrameTracking, m_bRenderOcaEnabled ? m_renderEngineInterface->GetMmioRegisters() : nullptr));
 
         m_firstTaskInPhase = false;
     }
