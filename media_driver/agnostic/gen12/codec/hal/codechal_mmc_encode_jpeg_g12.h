@@ -20,36 +20,34 @@
 * OTHER DEALINGS IN THE SOFTWARE.
 */
 //!
-//! \file     vp_kernel_config.cpp
-//! \brief    vp kernel config
-//! \details  vp kernel config
+//! \file     codechal_mmc_encode_jpeg_g12.h
+//! \brief    Defines the public interface for CodecHal Media Memory Compression
 //!
+#pragma once
 
-#include "vp_kernel_config.h"
-#include "vp_utils.h"
+#include "codechal_mmc_g12.h"
 
-using namespace vp;
-
-VpKernelConfig::VpKernelConfig()
+//! \class CodechalMmcEncodeJpegG12
+//! \brief Media memory compression encode JPEG state for Gen12. This class defines the member fields
+//!        functions etc used by encode JPEG memory compression.
+//!
+class CodechalMmcEncodeJpegG12 : public CodecHalMmcStateG12
 {
-}
+public:
 
-VpKernelConfig::~VpKernelConfig()
-{
-}
+    //!
+    //! \brief    Constructor
+    //!
+    CodechalMmcEncodeJpegG12(
+        CodechalHwInterface *hwInterface,
+        void                *encoderState);
 
-MOS_STATUS VpKernelConfig::GetKernelParam(VpKernelID kernelId, RENDERHAL_KERNEL_PARAM &param)
-{
-    VP_FUNC_CALL();
+    //!
+    //! \brief    Destructor
+    //!
+    virtual ~CodechalMmcEncodeJpegG12() {}
 
-    auto it = m_kernelParams.find(kernelId);
-    if (it == m_kernelParams.end())
-    {
-        VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
-    }
-
-    // CURBE_Length in param here is 32 aligned with 5 bits right shift.
-    param = (*it).second;
-
-    return MOS_STATUS_SUCCESS;
-}
+    MOS_STATUS SetPipeBufAddr(
+        PMHW_VDBOX_PIPE_BUF_ADDR_PARAMS pipeBufAddrParams,
+        PMOS_COMMAND_BUFFER             cmdBuffer = nullptr) override;
+};

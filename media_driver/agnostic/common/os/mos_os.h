@@ -507,6 +507,7 @@ struct _MOS_GPUCTX_CREATOPTIONS
 {
     uint32_t CmdBufferNumScale;
     uint32_t RAMode;
+    uint32_t ProtectMode;
     uint32_t gpuNode;
     //For slice shutdown
     union
@@ -524,6 +525,7 @@ struct _MOS_GPUCTX_CREATOPTIONS
 
     _MOS_GPUCTX_CREATOPTIONS() : CmdBufferNumScale(MOS_GPU_CONTEXT_CREATE_DEFAULT),
         RAMode(0),
+        ProtectMode(0),
         gpuNode(0),
         SSEUValue(0){}
 
@@ -1407,9 +1409,10 @@ typedef struct _MOS_INTERFACE
 #endif // MOS_MEDIASOLO_SUPPORTED
     bool                            VEEnable;
     bool                            bCanEnableSecureRt;
+
+    int32_t                         bHcpDecScalabilityMode;                       //!< enable scalability decode {mode: default, user force, false}
 #if (_DEBUG || _RELEASE_INTERNAL)
     MOS_FORCE_VEBOX                 eForceVebox;                                  //!< Force select Vebox
-    int32_t                         bHcpDecScalabilityMode;                       //!< enable scalability decode {mode: default, user force, false}
     int32_t                         bEnableDbgOvrdInVE;                           //!< It is for all scalable engines: used together with KMD VE for UMD to specify an engine directly
     int32_t                         bSoftReset;                                   //!< trigger soft reset
 #endif // (_DEBUG || _RELEASE_INTERNAL)
