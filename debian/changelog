@@ -1,3 +1,16 @@
+intel-media-driver-non-free (21.3.3+ds1-1) unstable; urgency=medium
+
+  [ Debian Janitor ]
+  * Set upstream metadata fields: Bug-Database, Bug-Submit.
+
+  [ Sebastian Ramacher ]
+  * New upstream release
+  * debian/control:
+    - Bump libva B-D
+    - Bump Standards-Version
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Sun, 05 Sep 2021 21:35:42 +0200
+
 intel-media-driver-non-free (21.3.2+ds1-1) unstable; urgency=medium
 
   * New upstream release
