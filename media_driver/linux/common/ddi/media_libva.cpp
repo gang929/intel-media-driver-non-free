@@ -63,6 +63,7 @@
 #include "media_libva_interface.h"
 #include "media_libva_interface_next.h"
 #include "media_libva_apo_decision.h"
+#include "mos_oca_interface_specific.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -1318,10 +1319,12 @@ VAStatus DdiMedia_MediaMemoryDecompress(PDDI_MEDIA_CONTEXT mediaCtx, DDI_MEDIA_S
         else
         {
             DdiMediaUtil_LockMutex(&mediaCtx->SurfaceMutex);
+            DdiMediaUtil_LockMutex(&mediaCtx->MemDecompMutex);
 
             DdiMedia_MediaSurfaceToMosResource(mediaSurface, &surface);
             DdiMedia_MediaMemoryDecompressInternal(&mosCtx, &surface);
 
+            DdiMediaUtil_UnLockMutex(&mediaCtx->MemDecompMutex);
             DdiMediaUtil_UnLockMutex(&mediaCtx->SurfaceMutex);
 
             if (pCpDdiInterface)
@@ -1667,6 +1670,7 @@ VAStatus DdiMedia_InitMediaContext (
         mosCtx.m_apoMosEnabled = mediaCtx->m_apoMosEnabled;
 
         MosInterface::InitOsUtilities(&mosCtx);
+        MosOcaInterfaceSpecific::InitInterface();
 
         mediaCtx->pGtSystemInfo = (MEDIA_SYSTEM_INFO *)MOS_AllocAndZeroMemory(sizeof(MEDIA_SYSTEM_INFO));
         if (nullptr == mediaCtx->pGtSystemInfo)

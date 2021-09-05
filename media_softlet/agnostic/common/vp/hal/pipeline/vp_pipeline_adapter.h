@@ -26,7 +26,7 @@
 #include "vp_pipeline.h"
 #include "vp_pipeline_common.h"
 
-class VpPipelineAdapter
+class VpPipelineAdapter : public VpPipelineAdapterBase
 {
 public:
     VpPipelineAdapter(
@@ -94,7 +94,7 @@ public:
     //! \return MOS_STATUS
     //!         MOS_STATUS_SUCCESS if success, else fail reason
     //!
-    virtual MOS_STATUS Execute(PVP_PIPELINE_PARAMS params);
+    virtual MOS_STATUS Execute(PVP_PIPELINE_PARAMS params) = 0;
 
     virtual void Destroy();
 
@@ -110,14 +110,22 @@ protected:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     virtual MOS_STATUS Init(
-      const VphalSettings *pVpHalSettings, VphalState &vphalState);
+      const VphalSettings *pVpHalSettings, VP_MHWINTERFACE vpMhwinterface);
+
+    //!
+    //! \brief  Finish the execution for each frame
+    //! \details Finish the execution for each frame
+    //! \param  [in] params
+    //!         Pointer to PVP_PIPELINE_PARAMS
+    //! \return MOS_STATUS
+    //!         MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS Execute(PVP_PIPELINE_PARAMS params, PRENDERHAL_INTERFACE renderHal);
 
     std::shared_ptr<vp::VpPipeline>    m_vpPipeline = {};
 
     VP_PIPELINE_PARAMS                 m_vpPipelineParams = {};   //!< vp Pipeline params
     bool                               m_bApgEnabled = false;    //!< VP APG path enabled
-    vp::VpPlatformInterface            &m_vpPlatformInterface; //!< vp platform interface. Should be destroyed during deconstruction.
-
 };
 #endif // !__VP_PIPELINE_ADAPTER_H__
 

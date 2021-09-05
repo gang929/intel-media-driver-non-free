@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2020, Intel Corporation
+# Copyright (c) 2017-2021, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -22,11 +22,6 @@
 set(TMP_SOURCES_ "")
 
 set(TMP_HEADERS_ "")
-
-set(TMP_HEADERS_
-    ${TMP_HEADERS_}
-    ${CMAKE_CURRENT_LIST_DIR}/codec_def_common_av1.h
-)
 
 if( ${AV1_Decode_Supported} STREQUAL "yes" )
     set(TMP_HEADERS_
