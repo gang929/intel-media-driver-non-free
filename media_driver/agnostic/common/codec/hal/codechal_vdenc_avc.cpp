@@ -5816,7 +5816,7 @@ MOS_STATUS CodechalVdencAvcState::ExecutePictureLevel()
         frameType = 'P';
         break;
     case B_TYPE:
-        frameType = 'B';
+        frameType = m_avcPicParam->RefPicFlag ? 'B' : 'b';
         break;
     }
 
@@ -6507,6 +6507,13 @@ MOS_STATUS CodechalVdencAvcState::ExecuteSliceLevel()
             &cmdBuffer,
             m_currPass));
     }
+
+#if USE_CODECHAL_DEBUG_TOOL
+    if (m_vdencBrcEnabled && m_enableFakeHrdSize)
+    {
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(ModifyEncodedFrameSizeWithFakeHeaderSize( &cmdBuffer));
+    }
+#endif
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(EndStatusReport(&cmdBuffer, CODECHAL_NUM_MEDIA_STATES));
 
@@ -9032,4 +9039,10 @@ MOS_STATUS CodechalVdencAvcState::DumpSeqParFile()
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS CodechalVdencAvcState::ModifyEncodedFrameSizeWithFakeHeaderSize( PMOS_COMMAND_BUFFER /*cmdBuffer*/)
+{
+    CODECHAL_ENCODE_FUNCTION_ENTER;
+
+    return MOS_STATUS_SUCCESS;
+}
 #endif
