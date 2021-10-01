@@ -84,14 +84,16 @@ const uint32_t MediaLibvaCaps::m_vpSurfaceAttr[m_numVpSurfaceAttr] =
     VA_FOURCC('R', 'G', 'B', 'P'),
     VA_FOURCC('R', 'G', 'B', 'X'),
     VA_FOURCC('P', '0', '1', '0'),
-    VA_FOURCC('R','G','2', '4'),
+    VA_FOURCC('R', 'G', '2', '4'),
     VA_FOURCC_ARGB,
     VA_FOURCC_ABGR,
     VA_FOURCC_A2R10G10B10,
     VA_FOURCC_A2B10G10R10,
     VA_FOURCC_X2R10G10B10,
     VA_FOURCC_X2B10G10R10,
-    VA_FOURCC_AYUV
+    VA_FOURCC_AYUV,
+    VA_FOURCC_Y210,
+    VA_FOURCC_Y410
 };
 
 const uint32_t MediaLibvaCaps::m_jpegSurfaceAttr[m_numJpegSurfaceAttr] =
@@ -3073,6 +3075,45 @@ VAStatus MediaLibvaCaps::QuerySurfaceAttributes(
     MOS_FreeMemory(attribs);
     return status;
 }
+    
+VAStatus MediaLibvaCaps::QueryDisplayAttributes(
+            VADisplayAttribute *attribList,
+            int32_t *numAttribs)
+{
+    DDI_CHK_NULL(attribList, "Null attribList", VA_STATUS_ERROR_INVALID_PARAMETER);
+    DDI_CHK_NULL(numAttribs, "Null num_attribs", VA_STATUS_ERROR_INVALID_PARAMETER);
+    *numAttribs = 0;
+
+    attribList->type = VADisplayAttribCopy;
+    (*numAttribs) ++;
+
+    return GetDisplayAttributes(attribList, *numAttribs);
+}
+
+VAStatus MediaLibvaCaps::GetDisplayAttributes(
+            VADisplayAttribute *attribList,
+            int32_t numAttribs)
+{
+    DDI_CHK_NULL(attribList, "Null attribList", VA_STATUS_ERROR_INVALID_PARAMETER);
+    for(auto i = 0; i < numAttribs; i ++)
+    {
+        switch(attribList->type)
+        {
+            case VADisplayAttribCopy:
+                attribList->min_value = attribList->value = attribList->max_value = 0;
+                attribList->flags = VA_DISPLAY_ATTRIB_GETTABLE;
+                break;
+            default:
+                attribList->min_value = VA_ATTRIB_NOT_SUPPORTED;
+                attribList->max_value = VA_ATTRIB_NOT_SUPPORTED;
+                attribList->value = VA_ATTRIB_NOT_SUPPORTED;
+                attribList->flags = VA_DISPLAY_ATTRIB_NOT_SUPPORTED;
+                break;
+        }
+        attribList ++;
+    }
+    return VA_STATUS_SUCCESS;
+}
 
 bool MediaLibvaCaps::IsVc1Profile(VAProfile profile)
 {
@@ -3444,7 +3485,9 @@ GMM_RESOURCE_FORMAT MediaLibvaCaps::ConvertMediaFmtToGmmFmt(
         case Media_Format_P010       : return GMM_FORMAT_P010_TYPE;
         case Media_Format_P012       : return GMM_FORMAT_P016_TYPE;
         case Media_Format_P016       : return GMM_FORMAT_P016_TYPE;
+        case Media_Format_Y210       : return GMM_FORMAT_Y210_TYPE;
         case Media_Format_Y216       : return GMM_FORMAT_Y216_TYPE;
+        case Media_Format_Y410       : return GMM_FORMAT_Y410_TYPE;
         case Media_Format_Y416       : return GMM_FORMAT_Y416_TYPE;
         case Media_Format_R10G10B10A2: return GMM_FORMAT_R10G10B10A2_UNORM_TYPE;
         case Media_Format_B10G10R10A2: return GMM_FORMAT_B10G10R10A2_UNORM_TYPE;
@@ -3672,17 +3715,53 @@ VAStatus MediaLibvaCaps::GetSurfaceModifier(DDI_MEDIA_SURFACE* mediaSurface, uin
     DDI_CHK_NULL(mediaSurface,                   "nullptr mediaSurface",                   VA_STATUS_ERROR_INVALID_SURFACE);
     DDI_CHK_NULL(mediaSurface->bo,               "nullptr mediaSurface->bo",               VA_STATUS_ERROR_INVALID_SURFACE);
     DDI_CHK_NULL(mediaSurface->pGmmResourceInfo, "nullptr mediaSurface->pGmmResourceInfo", VA_STATUS_ERROR_INVALID_SURFACE);
-    GMM_TILE_TYPE gmmTileType = mediaSurface->pGmmResourceInfo->GetTileType();
+    GMM_TILE_TYPE  gmmTileType = mediaSurface->pGmmResourceInfo->GetTileType();
+    GMM_RESOURCE_FLAG       GmmFlags    = {0};
+    GmmFlags = mediaSurface->pGmmResourceInfo->GetResFlags();
+
+    bool                    bMmcEnabled = false;
+    if ((GmmFlags.Gpu.MMC               ||
+        GmmFlags.Gpu.CCS)               &&
+        (GmmFlags.Info.MediaCompressed ||
+         GmmFlags.Info.RenderCompressed))
+    {
+        bMmcEnabled = true;
+    }
+    else
+    {
+        bMmcEnabled = false;
+    }
+
     switch(gmmTileType)
     {
         case GMM_TILED_Y:
-            modifier = I915_FORMAT_MOD_Y_TILED;
+            if (m_mediaCtx->m_auxTableMgr && bMmcEnabled)
+            {
+                modifier = GmmFlags.Info.MediaCompressed ? I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS :
+-                 (GmmFlags.Info.RenderCompressed ? I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS : I915_FORMAT_MOD_Y_TILED);
+            }
+            else
+            {
+                modifier = I915_FORMAT_MOD_Y_TILED;
+            }
             break;
         case GMM_TILED_X:
             modifier = I915_FORMAT_MOD_X_TILED;
             break;
-        default:
+        case GMM_NOT_TILED:
             modifier = DRM_FORMAT_MOD_NONE;
+            break;
+        default:
+            //handle other possible tile format
+            if(I915_TILING_Y == mediaSurface->TileType)
+            {
+                modifier = GmmFlags.Info.MediaCompressed ? I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS :
+-                 (GmmFlags.Info.RenderCompressed ? I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS : I915_FORMAT_MOD_Y_TILED);
+            }
+            else
+            {
+                modifier = DRM_FORMAT_MOD_NONE;
+            }
             break;
 
     }

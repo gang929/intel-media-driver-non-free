@@ -365,6 +365,11 @@ public:
     //!
     static void InitOcaErrorHandler();
 
+    bool IsOcaEnabled()
+    {
+         return m_isOcaEnabled;
+    }
+
     static MosOcaInterface& GetInstance();
     
     static uint32_t IncreaseSize(uint32_t cmdBufSize);
@@ -391,10 +396,7 @@ private:
     //! \brief  Oca Interface uninitialize.
     //!
     void Uninitialize();
-    bool IsOcaEnabled()
-    {
-         return m_isOcaEnabled;
-    }
+
     MosOcaInterfaceSpecific();
     MosOcaInterfaceSpecific(MosOcaInterfaceSpecific &);
     MosOcaInterfaceSpecific& operator= (MosOcaInterfaceSpecific &);
@@ -412,5 +414,6 @@ private:
     static MOS_STATUS               s_ocaStatus;                    //!< The status for first oca error encounterred.
     static uint32_t                 s_lineNumForOcaErr;             //!< The line number for first oca error encounterred.
     static bool                     s_bOcaStatusExistInReg;         //!< ture if "Oca Status" already being added to reg.
+    static int32_t                  s_refCount;
 };
 #endif  // __MOS_OCA_INTERFACE_SPECIFIC_H__

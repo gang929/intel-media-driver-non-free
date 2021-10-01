@@ -2037,6 +2037,7 @@ VAStatus DdiMedia_Terminate (
         MosInterface::DestroyOsDeviceContext(mediaCtx->m_osDeviceContext);
         mediaCtx->m_osDeviceContext = MOS_INVALID_HANDLE;
         MOS_FreeMemory(mediaCtx->pGtSystemInfo);
+        MosOcaInterfaceSpecific::UninitInterface();
         MosInterface::CloseOsUtilities(nullptr);
     }
     else if (mediaCtx->modularizedGpuCtxEnabled)
@@ -5738,15 +5739,16 @@ VAStatus DdiMedia_QueryDisplayAttributes(
     VADisplayAttribute *attr_list,
     int32_t            *num_attributes)
 {
-    DDI_UNUSED(ctx);
-    DDI_UNUSED(attr_list);
-
     DDI_FUNCTION_ENTER();
 
-    if (num_attributes)
-        *num_attributes = 0;
+    PDDI_MEDIA_CONTEXT mediaCtx = DdiMedia_GetMediaContext(ctx);
+    DDI_CHK_NULL(mediaCtx, "nullptr mediaCtx", VA_STATUS_ERROR_INVALID_CONTEXT);
+    DDI_CHK_NULL(mediaCtx->m_caps, "nullptr m_caps", VA_STATUS_ERROR_INVALID_CONTEXT);
 
-    return VA_STATUS_SUCCESS;
+    DDI_CHK_NULL(attr_list, "nullptr attr_list", VA_STATUS_ERROR_INVALID_PARAMETER);
+    DDI_CHK_NULL(num_attributes, "nullptr num_attributes", VA_STATUS_ERROR_INVALID_PARAMETER);
+
+    return mediaCtx->m_caps->QueryDisplayAttributes(attr_list, num_attributes);
 }
 
 //!
@@ -5770,13 +5772,15 @@ VAStatus DdiMedia_GetDisplayAttributes(
     VADisplayAttribute *attr_list,
     int32_t             num_attributes)
 {
-    DDI_UNUSED(ctx);
-    DDI_UNUSED(attr_list);
-    DDI_UNUSED(num_attributes);
-
     DDI_FUNCTION_ENTER();
 
-    return VA_STATUS_ERROR_UNIMPLEMENTED;
+    PDDI_MEDIA_CONTEXT mediaCtx = DdiMedia_GetMediaContext(ctx);
+    DDI_CHK_NULL(mediaCtx, "nullptr mediaCtx", VA_STATUS_ERROR_INVALID_CONTEXT);
+    DDI_CHK_NULL(mediaCtx->m_caps, "nullptr m_caps", VA_STATUS_ERROR_INVALID_CONTEXT);
+
+    DDI_CHK_NULL(attr_list, "nullptr attr_list", VA_STATUS_ERROR_INVALID_PARAMETER);
+
+    return mediaCtx->m_caps->GetDisplayAttributes(attr_list, num_attributes);
 }
 
 //!
@@ -6919,22 +6923,6 @@ VAStatus DdiMedia_ExportSurfaceHandle(
     desc->objects[0].fd   = mediaSurface->name;
     desc->objects[0].size = mediaSurface->pGmmResourceInfo->GetSizeSurface();
 
-    // Prepare Compression info for export surface handle
-    GMM_RESOURCE_FLAG       GmmFlags    = {0};
-    bool                    bMmcEnabled = false;
-    GmmFlags = mediaSurface->pGmmResourceInfo->GetResFlags();
-
-    if ((GmmFlags.Gpu.MMC               ||
-        GmmFlags.Gpu.CCS)               &&
-        (GmmFlags.Info.MediaCompressed ||
-         GmmFlags.Info.RenderCompressed))
-    {
-        bMmcEnabled = true;
-    }
-    else
-    {
-        bMmcEnabled = false;
-    }
     DDI_CHK_NULL(mediaCtx->m_caps, "nullptr m_caps", VA_STATUS_ERROR_INVALID_CONTEXT);
 
     if(VA_STATUS_SUCCESS != mediaCtx->m_caps->GetSurfaceModifier(mediaSurface, desc->objects[0].drm_format_modifier))

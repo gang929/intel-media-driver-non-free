@@ -261,11 +261,14 @@ VPHAL_SCALING_MODE MediaVdboxSfcRender::GetScalingMode(CODECHAL_SCALING_MODE sca
 bool MediaVdboxSfcRender::IsVdboxSfcFormatSupported(
     CODECHAL_STANDARD           codecStandard,
     MOS_FORMAT                  inputFormat,
-    MOS_FORMAT                  outputFormat)
+    MOS_FORMAT                  outputFormat,
+    MOS_TILE_TYPE               tileType)
 {
     if (nullptr == m_sfcRender)
     {
         return false;
     }
-    return m_sfcRender->IsVdboxSfcFormatSupported(codecStandard, inputFormat, outputFormat);
+
+    return (m_sfcRender->IsVdboxSfcInputFormatSupported(codecStandard, inputFormat) &&
+            m_sfcRender->IsVdboxSfcOutputFormatSupported(codecStandard, outputFormat, tileType));
 }
