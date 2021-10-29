@@ -21,19 +21,18 @@
 */
 
 //!
-//! \file     media_capstable_linux.cpp
-//! \brief    implemantation of media caps table class on linux
+//! \file     media_capstable_specific.cpp
+//! \brief    implemantation of media caps table class on specific os
 //!
 
-#include "media_capstable_linux.h"
+#include "media_capstable_specific.h"
 #include "media_libva_common.h"
 #include "media_libva_util.h"
 #include "media_libva.h"
 #include "hwinfo_linux.h"
 #include "linux_system_info.h"
 #include "media_libva_caps_factory.h"
-
-template<> typename MediaCapsTable<CapsData>::OsCapsTable MediaCapsTable<CapsData>::m_pltCaps = {};
+#include "caps_register_specific.h"
 
 MediaCapsTableSpecific::MediaCapsTableSpecific(HwDeviceInfo &deviceInfo)
 {
@@ -132,7 +131,7 @@ AttribList* MediaCapsTableSpecific::QuerySupportedAttrib(
     return m_profileMap->at(profile)->at(entrypoint)->attribList;
 }
 
-std::vector<ConfigLinux>* MediaCapsTableSpecific::GetConfigList()
+ConfigList* MediaCapsTableSpecific::GetConfigList()
 {
     DDI_FUNCTION_ENTER();
 

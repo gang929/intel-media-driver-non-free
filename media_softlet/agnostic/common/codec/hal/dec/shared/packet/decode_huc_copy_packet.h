@@ -32,20 +32,13 @@
 #include "media_pipeline.h"
 #include "codechal_hw.h"
 #include "decode_utils.h"
+#include "decode_huc_copy_packet_itf.h"
 
 namespace decode
 {
-class HucCopyPkt : public DecodeHucBasic_G12_Base
+class HucCopyPkt : public DecodeHucBasic_G12_Base, public HucCopyPktItf
     {
     public:
-        struct HucCopyParams
-        {
-            PMOS_RESOURCE       srcBuffer;
-            uint32_t            srcOffset;
-            PMOS_RESOURCE       destBuffer;
-            uint32_t            destOffset;
-            uint32_t            copyLength;
-        };
 
         HucCopyPkt(MediaPipeline *pipeline, MediaTask *task, CodechalHwInterface *hwInterface)
             : DecodeHucBasic_G12_Base(pipeline, task, hwInterface)
@@ -54,7 +47,7 @@ class HucCopyPkt : public DecodeHucBasic_G12_Base
 
         virtual ~HucCopyPkt() { m_copyParamsList.clear(); }
 
-        virtual MOS_STATUS PushCopyParams(HucCopyParams &copyParams);
+        virtual MOS_STATUS PushCopyParams(HucCopyParams &copyParams) override;
 
         MOS_STATUS Submit(MOS_COMMAND_BUFFER *commandBuffer, uint8_t packetPhase = otherPacket) override;
 

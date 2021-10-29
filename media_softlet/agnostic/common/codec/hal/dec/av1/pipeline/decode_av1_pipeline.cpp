@@ -28,6 +28,7 @@
 #include "media_user_settings_mgr_g12.h"
 #include "codechal_setting.h"
 #include "decode_av1_feature_manager.h"
+#include "decode_huc_packet_creator_base.h"
 
 namespace decode {
 
@@ -44,10 +45,14 @@ MOS_STATUS Av1Pipeline::Initialize(void *settings)
     DECODE_FUNC_CALL();
     DECODE_CHK_STATUS(DecodePipeline::Initialize(settings));
 
-    m_cdfCopyPkt = MOS_New(HucCopyPkt, this, m_task, m_hwInterface);
+    HucPacketCreatorBase *hucPktCreator = dynamic_cast<HucPacketCreatorBase *>(this);
+    DECODE_CHK_NULL(hucPktCreator);
+    m_cdfCopyPkt = hucPktCreator->CreateHucCopyPkt(this, m_task, m_hwInterface); 
     DECODE_CHK_NULL(m_cdfCopyPkt);
-    DECODE_CHK_STATUS(RegisterPacket(DecodePacketId(this, defaultCdfBufCopyPacketId), m_cdfCopyPkt));
-    DECODE_CHK_STATUS(m_cdfCopyPkt->Init());
+    MediaPacket *packet = dynamic_cast<MediaPacket *>(m_cdfCopyPkt);
+    DECODE_CHK_NULL(packet);
+    DECODE_CHK_STATUS(RegisterPacket(DecodePacketId(this, defaultCdfBufCopyPacketId), packet));
+    DECODE_CHK_STATUS(packet->Init());
 
     auto *codecSettings = (CodechalSetting*)settings;
     DECODE_CHK_NULL(codecSettings);
@@ -81,7 +86,7 @@ MOS_STATUS Av1Pipeline::Prepare(void *params)
     {
         for (uint8_t i = 0; i < basicFeature->av1DefaultCdfTableNum; i++)
         {
-            HucCopyPkt::HucCopyParams copyParams = {};
+            HucCopyPktItf::HucCopyParams copyParams = {};
             copyParams.srcBuffer  = &(basicFeature->m_tmpCdfBuffers[i]->OsResource);
             copyParams.srcOffset  = 0;
             copyParams.destBuffer = &(basicFeature->m_defaultCdfBuffers[i]->OsResource);
@@ -157,6 +162,15 @@ MOS_STATUS Av1Pipeline::CreateFeatureManager()
     DECODE_FUNC_CALL();
     m_featureManager = MOS_New(DecodeAv1FeatureManager, m_allocator, m_hwInterface);
     DECODE_CHK_NULL(m_featureManager);
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS Av1Pipeline::CreateSubPackets(DecodeSubPacketManager &subPacketManager, CodechalSetting &codecSettings)
+{
+    DECODE_FUNC_CALL();
+
+    DECODE_CHK_STATUS(DecodePipeline::CreateSubPackets(subPacketManager, codecSettings));
+
     return MOS_STATUS_SUCCESS;
 }
 

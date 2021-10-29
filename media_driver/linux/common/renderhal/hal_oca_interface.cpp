@@ -82,9 +82,10 @@ void HalOcaInterface::On1stLevelBBStart(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTE
         return;
     }
     ocaBufHandle = GetOcaBufferHandle(cmdBuffer, mosContext);
-    if (ocaBufHandle)
+    if (ocaBufHandle != MOS_OCA_INVALID_BUFFER_HANDLE)
     {
-        OnOcaError(&mosContext, status, __FUNCTION__, __LINE__);
+        // will come here when On1stLevelBBStart being called twice without On1stLevelBBEnd being called.
+        OnOcaError(&mosContext, MOS_STATUS_INVALID_PARAMETER, __FUNCTION__, __LINE__);
         return;
     }
     else
@@ -92,7 +93,7 @@ void HalOcaInterface::On1stLevelBBStart(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTE
         ocaBufHandle = pOcaInterface->LockOcaBufAvailable(&mosContext, gpuContextHandle);
         if (MOS_OCA_INVALID_BUFFER_HANDLE == ocaBufHandle)
         {
-            OnOcaError(&mosContext, MOS_STATUS_UNKNOWN, __FUNCTION__, __LINE__);
+            OnOcaError(&mosContext, MOS_STATUS_INVALID_HANDLE, __FUNCTION__, __LINE__);
             return;
         }
         MosOcaAutoLock autoLock(mutex);
@@ -169,9 +170,14 @@ void HalOcaInterface::On1stLevelBBEnd(MOS_COMMAND_BUFFER &cmdBuffer, MOS_INTERFA
     MOS_OCA_BUFFER_HANDLE   ocaBufHandle   = 0;
     MOS_STATUS              status         = MOS_STATUS_SUCCESS;
 
-    if (nullptr == pOcaInterface || !((MosOcaInterfaceSpecific*)pOcaInterface)->IsOcaEnabled() || (ocaBufHandle = GetOcaBufferHandle(cmdBuffer, mosContext)) >= MAX_NUM_OF_OCA_BUF_CONTEXT)
+    if (nullptr == pOcaInterface || !((MosOcaInterfaceSpecific*)pOcaInterface)->IsOcaEnabled())
     {
         // Will come here for UMD_OCA not being enabled case.
+        return;
+    }
+    if ((ocaBufHandle = GetOcaBufferHandle(cmdBuffer, mosContext)) == MOS_OCA_INVALID_BUFFER_HANDLE)
+    {
+        // May come here for workloads not enabling UMD_OCA.
         return;
     }
 
@@ -273,8 +279,13 @@ void HalOcaInterface::TraceMessage(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTEXT &m
     MOS_OCA_BUFFER_HANDLE   ocaBufHandle    = 0;
     MOS_STATUS              status          = MOS_STATUS_SUCCESS;
     
-    if (nullptr == pOcaInterface || !((MosOcaInterfaceSpecific*)pOcaInterface)->IsOcaEnabled() || (ocaBufHandle = GetOcaBufferHandle(cmdBuffer, mosContext)) >= MAX_NUM_OF_OCA_BUF_CONTEXT)
+    if (nullptr == pOcaInterface || !((MosOcaInterfaceSpecific*)pOcaInterface)->IsOcaEnabled())
     {
+        return;
+    }
+    if ((ocaBufHandle = GetOcaBufferHandle(cmdBuffer, mosContext)) == MOS_OCA_INVALID_BUFFER_HANDLE)
+    {
+        // May come here for workloads not enabling UMD_OCA.
         return;
     }
 
@@ -315,8 +326,14 @@ void HalOcaInterface::DumpResourceInfo(MOS_COMMAND_BUFFER &cmdBuffer, MOS_INTERF
     MOS_STATUS              status          = MOS_STATUS_SUCCESS;
     MOS_OCA_BUFFER_HANDLE   ocaBufHandle    = 0;
 
-    if (nullptr == pOcaInterface || !((MosOcaInterfaceSpecific*)pOcaInterface)->IsOcaEnabled() || (ocaBufHandle = GetOcaBufferHandle(cmdBuffer, mosContext)) >= MAX_NUM_OF_OCA_BUF_CONTEXT)
+    if (nullptr == pOcaInterface || !((MosOcaInterfaceSpecific*)pOcaInterface)->IsOcaEnabled())
     {
+        return;
+    }
+
+    if ((ocaBufHandle = GetOcaBufferHandle(cmdBuffer, mosContext)) == MOS_OCA_INVALID_BUFFER_HANDLE)
+    {
+        // May come here for workloads not enabling UMD_OCA.
         return;
     }
 
@@ -368,8 +385,14 @@ void HalOcaInterface::DumpVpKernelInfo(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTEX
     MOS_OCA_BUFFER_HANDLE   ocaBufHandle    = 0;
     uint32_t                updateSize      = 0;
 
-    if (nullptr == pOcaInterface || !((MosOcaInterfaceSpecific*)pOcaInterface)->IsOcaEnabled() || (ocaBufHandle = GetOcaBufferHandle(cmdBuffer, mosContext)) >= MAX_NUM_OF_OCA_BUF_CONTEXT)
+    if (nullptr == pOcaInterface || !((MosOcaInterfaceSpecific*)pOcaInterface)->IsOcaEnabled())
     {
+        return;
+    }
+
+    if ((ocaBufHandle = GetOcaBufferHandle(cmdBuffer, mosContext)) == MOS_OCA_INVALID_BUFFER_HANDLE)
+    {
+        // May come here for workloads not enabling UMD_OCA.
         return;
     }
 
@@ -414,9 +437,15 @@ void HalOcaInterface::DumpVphalParam(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTEXT 
     MOS_OCA_BUFFER_HANDLE ocaBufHandle   = 0;
     uint32_t updateSize                  = 0;
 
-    if (nullptr == pOcaInterface || !((MosOcaInterfaceSpecific*)pOcaInterface)->IsOcaEnabled() || (ocaBufHandle = GetOcaBufferHandle(cmdBuffer, mosContext)) >= MAX_NUM_OF_OCA_BUF_CONTEXT ||
+    if (nullptr == pOcaInterface                                   || 
+        !((MosOcaInterfaceSpecific*)pOcaInterface)->IsOcaEnabled() ||
         nullptr == pVphalDumper)
     {
+        return;
+    }
+    if ((ocaBufHandle = GetOcaBufferHandle(cmdBuffer, mosContext)) == MOS_OCA_INVALID_BUFFER_HANDLE)
+    {
+        // May come here for workloads not enabling UMD_OCA.
         return;
     }
 
@@ -448,21 +477,30 @@ void HalOcaInterface::OnOcaError(PMOS_CONTEXT mosCtx, MOS_STATUS status, const c
 
 MOS_OCA_BUFFER_HANDLE HalOcaInterface::GetOcaBufferHandle(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTEXT &mosContext)
 {
-    MosOcaInterface *pOcaInterface       = &MosOcaInterfaceSpecific::GetInstance();
+    MosOcaInterface *pOcaInterface = &MosOcaInterfaceSpecific::GetInstance();
     if(pOcaInterface == nullptr)
     {
         OnOcaError(&mosContext, MOS_STATUS_NULL_POINTER, __FUNCTION__, __LINE__);
-        return -1;
+        return MOS_OCA_INVALID_BUFFER_HANDLE;
     }
-    PMOS_MUTEX      mutex = pOcaInterface->GetMutex();
+    PMOS_MUTEX mutex = pOcaInterface->GetMutex();
     if (mutex == nullptr)
     {
-        OnOcaError(&mosContext, MOS_STATUS_INVALID_PARAMETER, __FUNCTION__, __LINE__);
-        return -1;
+        return MOS_OCA_INVALID_BUFFER_HANDLE;
     }
     MosOcaAutoLock autoLock(mutex);
     std::map<uint32_t*, MOS_OCA_BUFFER_HANDLE>::iterator it = s_hOcaMap.find(cmdBuffer.pCmdBase);
-    return it == s_hOcaMap.end() ? 0 : it->second;
+    if (it == s_hOcaMap.end())
+    {
+        // May come here for workloads not enabling UMD_OCA.
+        return MOS_OCA_INVALID_BUFFER_HANDLE;
+    }
+    if (it->second >= MAX_NUM_OF_OCA_BUF_CONTEXT || it->second < 0)
+    {
+        OnOcaError(&mosContext, MOS_STATUS_NULL_POINTER, __FUNCTION__, __LINE__);
+        return MOS_OCA_INVALID_BUFFER_HANDLE;
+    }
+    return it->second;
 }
 
 void HalOcaInterface::RemoveOcaBufferHandle(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTEXT &mosContext)
