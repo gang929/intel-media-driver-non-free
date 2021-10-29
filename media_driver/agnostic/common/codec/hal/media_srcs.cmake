@@ -20,7 +20,6 @@
 
 # common
 set(TMP_1_SOURCES_
-    ${CMAKE_CURRENT_LIST_DIR}/codechal.cpp
     ${CMAKE_CURRENT_LIST_DIR}/codechal_hw.cpp
     ${CMAKE_CURRENT_LIST_DIR}/codechal_utilities.cpp
     ${CMAKE_CURRENT_LIST_DIR}/codechal_mmc.cpp
@@ -51,15 +50,8 @@ if(${MMC_Supported} STREQUAL "yes")
     )
 endif()
 
-if(NOT "${Media_Reserved}" STREQUAL "yes")
-    set(TMP_1_SOURCES_
-            ${TMP_1_SOURCES_}
-            ${CMAKE_CURRENT_LIST_DIR}/codechal_setting.cpp
-       )
-endif()
 set(TMP_1_HEADERS_
         ${TMP_1_HEADERS_}
-        ${CMAKE_CURRENT_LIST_DIR}/codechal_setting.h
 )
 
 #decode

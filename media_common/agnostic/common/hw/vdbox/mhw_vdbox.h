@@ -36,7 +36,6 @@
 #include "codec_def_decode_hevc.h"
 #include "mos_os.h"
 #include "mhw_utilities.h"
-#include "mhw_cp_interface.h"
 
 #define MHW_VDBOX_VC1_BITPLANE_BUFFER_PITCH_SMALL         64
 #define MHW_VDBOX_VC1_BITPLANE_BUFFER_PITCH_LARGE         128
@@ -505,13 +504,13 @@ typedef struct _MHW_VDBOX_HCP_BSD_PARAMS
 
 typedef struct _MHW_VDBOX_ROWSTORE_PARAMS
 {
-    uint32_t   Mode;
-    uint32_t   dwPicWidth;
-    uint32_t   bMbaff;
-    bool       bIsFrame;
-    uint8_t    ucBitDepthMinus8;
-    uint8_t    ucChromaFormat;
-    uint8_t    ucLCUSize;
+    uint32_t   Mode = 0;
+    uint32_t   dwPicWidth = 0;
+    uint32_t   bMbaff = 0;
+    bool       bIsFrame = false;
+    uint8_t    ucBitDepthMinus8 = 0;
+    uint8_t    ucChromaFormat = 0;
+    uint8_t    ucLCUSize = 0;
 } MHW_VDBOX_ROWSTORE_PARAMS, *PMHW_VDBOX_ROWSTORE_PARAMS;
 
 typedef struct _MHW_VDBOX_ROWSTORE_CACHE

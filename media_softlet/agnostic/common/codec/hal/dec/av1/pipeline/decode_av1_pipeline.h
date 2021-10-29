@@ -111,6 +111,15 @@ protected:
     //!
     virtual MOS_STATUS CreateFeatureManager() override;
 
+    //!
+    //! \brief  Create sub packets
+    //! \param  [in] codecSettings
+    //!         Point to codechal settings
+    //! \return MOS_STATUS
+    //!         MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS CreateSubPackets(DecodeSubPacketManager &subPacketManager, CodechalSetting &codecSettings) override;
+
 #if USE_CODECHAL_DEBUG_TOOL
         //! \brief    Dump the parameters
         //!
@@ -141,7 +150,7 @@ protected:
 #endif
 
 protected:
-    HucCopyPkt    *m_cdfCopyPkt       = nullptr;          //!< Update default cdf buffer with huc stream out packet
+    HucCopyPktItf  *m_cdfCopyPkt       = nullptr;          //!< Update default cdf buffer with huc stream out packet
     Av1DecodeMode  m_decodeMode       = baseDecodeMode;   //!< Decode mode
     uint16_t       m_passNum          = 1;                //!< Decode pass number
     bool           m_isFirstTileInFrm = true;             //!< First tile in the first frame

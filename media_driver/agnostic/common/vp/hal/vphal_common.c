@@ -133,7 +133,7 @@ bool VpHal_CSC(
                 break;
 
             default:
-                VPHAL_PUBLIC_ASSERTMESSAGE("Unsupported Output ColorSpace.");
+                VPHAL_PUBLIC_NORMALMESSAGE("Unsupported Output ColorSpace %d.", (uint32_t)dstCspace);
                 bResult = false;
                 break;
         }
@@ -275,7 +275,7 @@ void VpHal_GetCscMatrix(
             break;
 
         default:
-            VPHAL_PUBLIC_ASSERTMESSAGE("Unsupported Input ColorSpace for Vebox.");
+            VPHAL_PUBLIC_NORMALMESSAGE("Unsupported Input ColorSpace for Vebox %d.", (uint32_t)SrcCspace);
     }
 
     // Get the output offsets
@@ -331,7 +331,7 @@ void VpHal_GetCscMatrix(
             break;
 
         default:
-            VPHAL_PUBLIC_ASSERTMESSAGE("Unsupported Output ColorSpace for Vebox.");
+            VPHAL_PUBLIC_NORMALMESSAGE("Unsupported Output ColorSpace for Vebox %d.", (uint32_t)DstCspace);
     }
 }
 
@@ -381,7 +381,7 @@ float VpHal_Lanczos(float x, uint32_t dwNumEntries, float fLanczosT)
     return VpHal_Sinc(x) * VpHal_Sinc(x / fLanczosT);
 }
 
-bool isSyncFreeNeededForMMCSurface(PVPHAL_SURFACE pSurface, PMOS_INTERFACE pOsInterface)
+bool IsSyncFreeNeededForMMCSurface(PVPHAL_SURFACE pSurface, PMOS_INTERFACE pOsInterface)
 {
     if (nullptr == pSurface || nullptr == pOsInterface)
     {
@@ -508,7 +508,7 @@ MOS_STATUS VpHal_ReAllocateSurface(
 
     // Delete resource if already allocated
     //if free the compressed surface, need set the sync dealloc flag as 1 for sync dealloc for aux table update
-    if (isSyncFreeNeededForMMCSurface(pSurface, pOsInterface))
+    if (IsSyncFreeNeededForMMCSurface(pSurface, pOsInterface))
     {
         resFreeFlags.SynchronousDestroy = 1;
         VPHAL_PUBLIC_NORMALMESSAGE("Set SynchronousDestroy flag for compressed resource %s", pSurfaceName);
@@ -530,6 +530,10 @@ MOS_STATUS VpHal_ReAllocateSurface(
     VPHAL_PUBLIC_CHK_STATUS(VpHal_GetSurfaceInfo(pOsInterface, &Info, pSurface));
 
     *pbAllocated     = true;
+
+    MT_LOG7(MT_VP_HAL_REALLOC_SURF, MT_NORMAL, MT_VP_INTERNAL_SURF_TYPE, pSurfaceName ? *((int64_t*)pSurfaceName) : 0,
+        MT_SURF_WIDTH, dwWidth, MT_SURF_HEIGHT, dwHeight, MT_SURF_MOS_FORMAT, Format, MT_SURF_TILE_TYPE, pSurface->TileModeGMM,
+        MT_SURF_COMP_ABLE, pSurface->bCompressible, MT_SURF_COMP_MODE, pSurface->CompressionMode);
 
 finish:
     VPHAL_PUBLIC_ASSERT(eStatus == MOS_STATUS_SUCCESS);
