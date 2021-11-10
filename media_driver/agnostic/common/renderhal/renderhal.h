@@ -1129,6 +1129,7 @@ typedef struct _RENDERHAL_SETMARKER_SETTINGS
 } RENDERHAL_SETMARKER_SETTINGS;
 
 typedef MhwMiInterface *PMHW_MI_INTERFACE;
+
 //!
 // \brief   Hardware dependent render engine interface
 //!
@@ -1264,7 +1265,8 @@ typedef struct _RENDERHAL_INTERFACE
     bool                        isMMCEnabled;
 
     MediaPerfProfiler               *pPerfProfiler = nullptr;  //!< Performance data profiler
-    int32_t                          iSourceCount  = 0;
+    bool                            eufusionBypass = false;
+
     //---------------------------
     // HW interface functions
     //---------------------------
@@ -1734,7 +1736,6 @@ typedef struct _RENDERHAL_INTERFACE
     //-----------------------------
     //Platform related interface
     XRenderHal_Platform_Interface           *pRenderHalPltInterface;
-
 } RENDERHAL_INTERFACE;
 
 //!

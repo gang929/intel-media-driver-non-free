@@ -34,6 +34,7 @@ class MhwCpInterface;
 #include "mhw_utilities.h"
 #include "mhw_cp_interface.h"
 #include "mhw_mmio.h"
+#include "mhw_mi_itf.h"
 
 #define MHW_MI_WATCHDOG_ENABLE_COUNTER                  0x0
 #define MHW_MI_WATCHDOG_DISABLE_COUNTER                 0x1
@@ -308,6 +309,16 @@ typedef struct _MHW_MI_FORCE_WAKEUP_PARAMS
     uint32_t               Reserved31_26                   : 6; //!< Reserved Mask
 } MHW_MI_FORCE_WAKEUP_PARAMS, *PMHW_MI_FORCE_WAKEUP_PARAMS;
 
+typedef struct _MHW_MI_VD_CONTROL_STATE_PARAMS
+{
+    bool    vdencEnabled;
+    bool    avpEnabled;
+    bool    initialization;
+    bool    vdencInitialization;
+    bool    scalableModePipeLock;
+    bool    scalableModePipeUnlock;
+    bool    memoryImplicitFlush;
+} MHW_MI_VD_CONTROL_STATE_PARAMS, *PMHW_MI_VD_CONTROL_STATE_PARAMS;
 
 class MhwMiInterface
 {
@@ -707,6 +718,32 @@ public:
     //!
     virtual MOS_STATUS AddWatchdogTimerStopCmd(PMOS_COMMAND_BUFFER cmdBuffer) = 0;
 
+    //!
+    //! \brief    Adds Mi Vd control state cmd in command buffer
+    //!
+    //! \param    [in] cmdBuffer
+    //!           Command buffer to which HW command is added
+    //! \param    [in] params
+    //!           Params structure used to populate the HW command
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS AddMiVdControlStateCmd(
+        PMOS_COMMAND_BUFFER                 cmdBuffer,
+        PMHW_MI_VD_CONTROL_STATE_PARAMS     params)
+    {
+        return MOS_STATUS_SUCCESS;
+    };
+
+    //!
+    //! \brief    Get new render interface, temporal solution before switching from
+    //!           old interface to new one
+    //!
+    //! \return   pointer to new render interface
+    //!
+    virtual std::shared_ptr<mhw::mi::Itf> GetNewMiInterface() { return nullptr; }
+
 protected:
     //!
     //! \brief    Initializes the MI interface
@@ -773,6 +810,7 @@ protected:
     //! \brief Mmio registers address
     MHW_MI_MMIOREGISTERS       m_mmioRegisters = {};  //!< mfx mmio registers
 
+    std::shared_ptr<mhw::mi::Itf> m_miItfNew = nullptr;
 };
 
 #endif // __MHW_MI_H__
