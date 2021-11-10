@@ -34,6 +34,26 @@
 class MediaLibvaInterfaceNext
 {
 public:
+
+    //!
+    //! \brief  Init component list
+    //!
+    //! \param  [in] mediaCtx
+    //!         Pointer to ddi media context
+    //!
+    //! \return VAStatus
+    //!     VA_STATUS_SUCCESS if success, else fail reason
+    //!
+    static VAStatus InitCompList(PDDI_MEDIA_CONTEXT mediaCtx);
+
+    //!
+    //! \brief  Release component list
+    //!
+    //! \param  [in] mediaCtx
+    //!         Pointer to ddi media context
+    //!
+    static void ReleaseCompList(PDDI_MEDIA_CONTEXT mediaCtx);
+
     //!
     //! \brief  Initialize
     //!
@@ -393,6 +413,228 @@ public:
         int32_t          *numFormats);
 
     //!
+    //! \brief  Set image palette
+    //! 
+    //! \param  [in] ctx
+    //!         Pointer to VA driver context
+    //! \param  [in] image
+    //!         VA image ID
+    //! \param  [in] palette
+    //!         Palette
+    //!
+    //! \return VAStatus
+    //!     VA_STATUS_ERROR_UNIMPLEMENTED if call success, else fail reason
+    //!
+    static VAStatus SetImagePalette(
+        VADriverContextP ctx,
+        VAImageID        image,
+        unsigned char   *palette);
+
+    //!
+    //! \brief  Query subpicture formats
+    //! 
+    //! \param  [in] ctx
+    //!         Pointer to VA driver context
+    //! \param  [in] format_list
+    //!         VA image format
+    //! \param  [in] flags
+    //!         Flags
+    //! \param  [in] num_formats
+    //!         Number of formats
+    //!
+    //! \return VAStatus
+    //!     VA_STATUS_SUCCESS if success, else fail reason
+    //!
+    static VAStatus QuerySubpictureFormats(
+        VADriverContextP ctx,
+        VAImageFormat   *format_list,
+        uint32_t        *flags,
+        uint32_t        *num_formats);
+    
+    //!
+    //! \brief  Create subpicture
+    //! 
+    //! \param  [in] ctx
+    //!         Pointer to VA driver context
+    //! \param  [in] image
+    //!         VA image ID
+    //! \param  [out] subpicture
+    //!         VA subpicture ID
+    //!
+    //! \return VAStatus
+    //!     VA_STATUS_ERROR_UNIMPLEMENTED
+    //!
+    static VAStatus CreateSubpicture(
+        VADriverContextP ctx,
+        VAImageID        image,
+        VASubpictureID  *subpicture);
+    
+    //!
+    //! \brief  Destroy subpicture
+    //! 
+    //! \param  [in] ctx
+    //!         Pointer to VA driver context
+    //! \param  [in] subpicture
+    //!         VA subpicture ID
+    //!
+    //! \return VAStatus
+    //!     VA_STATUS_ERROR_UNIMPLEMENTED
+    //!
+    static VAStatus DestroySubpicture(
+        VADriverContextP ctx,
+        VASubpictureID   subpicture);
+    
+    //!
+    //! \brief  Set subpicture image
+    //! 
+    //! \param  [in] ctx
+    //!         Pointer to VA driver context
+    //! \param  [in] subpicture
+    //!         VA subpicture ID
+    //! \param  [in] image
+    //!         VA image ID
+    //!
+    //! \return VAStatus
+    //!     VA_STATUS_ERROR_UNIMPLEMENTED
+    //!
+    static VAStatus SetSubpictureImage(
+        VADriverContextP ctx,
+        VASubpictureID   subpicture,
+        VAImageID        image);
+    
+    //!
+    //! \brief  Set subpicture chrome key
+    //! 
+    //! \param  [in] ctx
+    //!         Pointer to VA driver context
+    //! \param  [in] subpicture
+    //!         VA subpicture ID
+    //! \param  [in] chromakey_min
+    //!         Minimum chroma key
+    //! \param  [in] chromakey_max
+    //!         Maximum chroma key
+    //! \param  [in] chromakey_mask
+    //!         Chromakey mask
+    //!
+    //! \return VAStatus
+    //!     VA_STATUS_ERROR_UNIMPLEMENTED
+    //!
+    static VAStatus SetSubpictureChromakey(
+        VADriverContextP ctx,
+        VASubpictureID   subpicture,
+        uint32_t         chromakey_min,
+        uint32_t         chromakey_max,
+        uint32_t         chromakey_mask);
+    
+    //!
+    //! \brief  set subpicture global alpha
+    //! 
+    //! \param  [in] ctx
+    //!         Pointer to VA driver context
+    //! \param  [in] subpicture
+    //!         VA subpicture ID
+    //! \param  [in] global_alpha
+    //!         Global alpha
+    //!
+    //! \return VAStatus
+    //!     VA_STATUS_ERROR_UNIMPLEMENTED
+    //!
+    static VAStatus SetSubpictureGlobalAlpha(
+        VADriverContextP ctx,
+        VASubpictureID   subpicture,
+        float            global_alpha);
+    
+    //!
+    //! \brief  Associate subpicture
+    //! 
+    //! \param  [in] ctx
+    //!         Pointer to VA driver context
+    //! \param  [in] subpicture
+    //!         VA subpicture ID
+    //! \param  [in] target_surfaces
+    //!         VA surface ID
+    //! \param  [in] num_surfaces
+    //!         Number of surfaces
+    //! \param  [in] src_x
+    //!         Source x of the region
+    //! \param  [in] src_y
+    //!         Source y of the region
+    //! \param  [in] src_width
+    //!         Source width of the region
+    //! \param  [in] src_height
+    //!         Source height of the region
+    //! \param  [in] dest_x
+    //!         Destination x
+    //! \param  [in] dest_y
+    //!         Destination y
+    //! \param  [in] dest_width
+    //!         Destination width
+    //! \param  [in] dest_height
+    //!         Destination height
+    //! \param  [in] flags
+    //!         Flags
+    //!
+    //! \return VAStatus
+    //!     VA_STATUS_ERROR_UNIMPLEMENTED
+    //!
+    static VAStatus AssociateSubpicture(
+        VADriverContextP ctx,
+        VASubpictureID   subpicture,
+        VASurfaceID     *target_surfaces,
+        int32_t          num_surfaces,
+        int16_t          src_x,  /* upper left offset in subpicture */
+        int16_t          src_y,
+        uint16_t         src_width,
+        uint16_t         src_height,
+        int16_t          dest_x, /* upper left offset in surface */
+        int16_t          dest_y,
+        uint16_t         dest_width,
+        uint16_t         dest_height,
+        uint32_t         flags);
+    
+    //!
+    //! \brief  Deassociate subpicture
+    //! 
+    //! \param  [in] ctx
+    //!         Pointer to VA driver context
+    //! \param  [in] subpicture
+    //!         VA subpicture ID
+    //! \param  [in] target_surfaces
+    //!         VA surface ID
+    //! \param  [in] num_surfaces
+    //!         Number of surfaces
+    //!
+    //! \return VAStatus
+    //!     VA_STATUS_ERROR_UNIMPLEMENTED
+    //!
+    static VAStatus DeassociateSubpicture(
+        VADriverContextP ctx,
+        VASubpictureID   subpicture,
+        VASurfaceID     *target_surfaces,
+        int32_t          num_surfaces);
+    
+    //!
+    //! \brief  Set display attributes
+    //! \details    Only attributes returned with VA_DISPLAY_ATTRIB_SETTABLE set in the "flags" field
+    //!         from vaQueryDisplayAttributes() can be set.  If the attribute is not settable or
+    //!         the value is out of range, the function returns VA_STATUS_ERROR_ATTR_NOT_SUPPORTED
+    //! 
+    //! \param  [in] ctx
+    //!         Pointer to VA driver context
+    //! \param  [in] attr_list
+    //!         VA display attribute
+    //! \param  [in] num_attributes
+    //!         Number of attributes
+    //!
+    //! \return VAStatus
+    //!     VA_STATUS_ERROR_UNIMPLEMENTED
+    //!
+    static VAStatus SetDisplayAttributes(
+        VADriverContextP    ctx,
+        VADisplayAttribute *attr_list,
+        int32_t             num_attributes);
+
+    //!
     //! \brief    Get process rate for a given config ID
     //!
     //! \param    [in] ctx
@@ -486,6 +728,36 @@ public:
         VAProcPipelineCaps  *pipelineCaps
     );
 
+#ifdef MEDIA_SOFTLET
+    //!
+    //! \brief  Create surfaces
+    //!
+    //! \param  [in] ctx
+    //!         Pointer to VA driver context
+    //! \param  [in] width
+    //!         Surface width
+    //! \param  [in] height
+    //!         Surface height
+    //! \param  [in] format
+    //!         Surface format
+    //! \param  [in] surfacesName
+    //!         Number of surfaces
+    //! \param  [out] surfaces
+    //!         VA created surfaces
+    //!
+    //! \return VAStatus
+    //!     VA_STATUS_SUCCESS if success, else fail reason
+    //!
+    static VAStatus CreateSurfaces (
+        VADriverContextP  ctx,
+        int32_t           width,
+        int32_t           height,
+        int32_t           format,
+        int32_t           surfacesName,
+        VASurfaceID       *surfaces
+    );
+#endif
+
 #if VA_CHECK_VERSION(1,11,0)
 
     //!
@@ -576,7 +848,6 @@ public:
         VAProtectedSessionID  protectedSession,
         VABufferID            data
     );
-
 #endif
 
 private:
@@ -599,25 +870,6 @@ private:
     //! \return CompType
     //!
     static CompType MapComponentFromCtxType(uint32_t ctxType);
-
-    //!
-    //! \brief  Init component list
-    //!
-    //! \param  [in] mediaCtx
-    //!         Pointer to ddi media context
-    //!
-    //! \return VAStatus
-    //!     VA_STATUS_SUCCESS if success, else fail reason
-    //!
-    static VAStatus InitCompList(PDDI_MEDIA_CONTEXT mediaCtx);
-
-    //!
-    //! \brief  Release component list
-    //!
-    //! \param  [in] mediaCtx
-    //!         Pointer to ddi media context
-    //!
-    static void ReleaseCompList(PDDI_MEDIA_CONTEXT mediaCtx);
 
     //!
     //! \brief  Load DDI function pointer
@@ -921,6 +1173,50 @@ private:
     static VAStatus DestroyContextCM(
         VADriverContextP ctx,
         VAContextID      ctxID);
+
+#ifdef MEDIA_SOFTLET
+    //!
+    //! \brief  Convert Os format to media format
+    //!
+    //! \param  [in] fourcc
+    //!         FourCC
+    //! \param  [in] rtformatType
+    //!         Rt format type
+    //!
+    //! \return DDI_MEDIA_FORMAT
+    //!     Ddi media format
+    //!
+    static DDI_MEDIA_FORMAT OsFormatToMediaFormat(int32_t fourcc, int32_t rtformatType);
+
+    //!
+    //! \brief  create render target
+    //!
+    //! \param  [in] mediaDrvCtx
+    //!         Pointer to media context
+    //! \param  [in] mediaFormat
+    //!         media format
+    //! \param  [in] width
+    //!         width
+    //! \param  [in] height
+    //!         height
+    //! \param  [in] surfDesc
+    //!         media surface descriptor
+    //! \param  [in] surfaceUsageHint
+    //!         surface usage hint
+    //! \param  [in] memType
+    //!         memory type
+    //! \return uint_32
+    //!     surface ID
+    //!
+    static uint32_t CreateRenderTarget(
+        PDDI_MEDIA_CONTEXT            mediaDrvCtx,
+        DDI_MEDIA_FORMAT              mediaFormat,
+        uint32_t                      width,
+        uint32_t                      height,
+        DDI_MEDIA_SURFACE_DESCRIPTOR *surfDesc,
+        uint32_t                      surfaceUsageHint,
+        int                           memType);
+#endif
 
 public:
     // Global mutex

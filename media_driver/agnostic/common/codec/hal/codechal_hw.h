@@ -42,10 +42,15 @@
 #include "mhw_vdbox_avp_interface.h"
 #include "mhw_vdbox_huc_interface.h"
 #include "mhw_vdbox_vdenc_interface.h"
+#include "mhw_vdbox_hcp_itf.h"
 
 #include "media_interfaces_mhw.h"
 
 #include "gfxmacro.h"
+
+#ifdef IGFX_MHW_INTERFACES_NEXT_SUPPORT
+#include "codec_hw_next.h"
+#endif
 
 //------------------------------------------------------------------------------
 // Macros specific to MOS_CODEC_SUBCOMP_HW sub-comp
@@ -380,6 +385,8 @@ protected:
     MhwVdboxAvpInterface            *m_avpInterface = nullptr;        //!< Pointer to Mhw avp interface
     MhwVdboxHucInterface            *m_hucInterface = nullptr;        //!< Pointer to Mhw huc interface
     MhwVdboxVdencInterface          *m_vdencInterface = nullptr;      //!< Pointer to Mhw vdenc interface
+    std::shared_ptr<mhw::vdbox::hcp::Itf>   m_hcpItf   = nullptr;
+    std::shared_ptr<mhw::vdbox::vdenc::Itf> m_vdencItf = nullptr;
 
     CODECHAL_SSEU_SETTING const         *m_ssEuTable = nullptr;       //!< Pointer to the default SSEU settings table
     uint16_t                            m_numMediaStates = CODECHAL_NUM_MEDIA_STATES;  //!< number of media states
@@ -457,6 +464,32 @@ public:
         CODECHAL_FUNCTION codecFunction,
         MhwInterfaces     *mhwInterfaces,
         bool              disableScalability = false);
+
+#ifdef IGFX_MHW_INTERFACES_NEXT_SUPPORT
+    CodechalHwInterface(
+        PMOS_INTERFACE    osInterface,
+        CODECHAL_FUNCTION codecFunction,
+        MhwInterfacesNext *mhwInterfacesNext,
+        bool              disableScalability = false);
+
+    //!
+    //! \brief    Get avp interface
+    //! \details  Get avp interface in codechal hw interface next
+    //!
+    //! \return    pointer to new AVP interface
+    //!
+    inline std::shared_ptr<mhw::vdbox::avp::Itf> GetAvpInterfaceNext()
+    {
+        if (m_hwInterfaceNext)
+        {
+            return m_hwInterfaceNext->GetAvpInterfaceNext();
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
+#endif
 
     //!
     //! \brief    Copy constructor
@@ -538,6 +571,13 @@ public:
             MOS_Delete(m_sfcInterface);
             m_sfcInterface = nullptr;
         }
+#ifdef IGFX_MHW_INTERFACES_NEXT_SUPPORT
+        if (m_hwInterfaceNext)
+        {
+            MOS_Delete(m_hwInterfaceNext);
+            m_hwInterfaceNext = nullptr;
+        }
+#endif
 
     #if MHW_HWCMDPARSER_ENABLED
         mhw::HwcmdParser::DestroyInstance();
@@ -1659,6 +1699,10 @@ public:
     
     //! \brief    default disable the get vdbox node by UMD, decided by MHW and MOS
     bool m_getVdboxNodeByUMD = false;
+
+#ifdef IGFX_MHW_INTERFACES_NEXT_SUPPORT
+    CodechalHwInterfaceNext *m_hwInterfaceNext = nullptr;
+#endif
 };
 
 extern const MOS_SYNC_PARAMS                        g_cInitSyncParams;

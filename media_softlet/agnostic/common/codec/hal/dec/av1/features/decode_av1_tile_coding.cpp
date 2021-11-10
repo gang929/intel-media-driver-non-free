@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, Intel Corporation
+* Copyright (c) 2019-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -37,7 +37,7 @@ namespace decode
         // tile descriptors
         if (m_tileDesc)
         {
-            delete m_tileDesc;
+            free(m_tileDesc);
             m_tileDesc = nullptr;
         }
     }
@@ -67,6 +67,7 @@ namespace decode
             m_firstTileInTg     = 0;
             m_tileGroupId       = -1;
             m_isTruncatedTile   = false;
+            m_decPassNum        = 1;
         }
 
         if (m_numTiles > av1MaxTileNum)
@@ -85,7 +86,7 @@ namespace decode
         if (nullptr != m_tileDesc &&
             (m_prevFrmTileNum < tileNumLimit))
         {
-            delete m_tileDesc;
+            free(m_tileDesc);
             m_tileDesc = nullptr;
         }
         if (nullptr == m_tileDesc)
@@ -101,6 +102,32 @@ namespace decode
         //Calculate tile info for max tile
         DECODE_CHK_STATUS(CalcTileInfoMaxTile(picParams));
 
+        return MOS_STATUS_SUCCESS;
+    }
+
+    MOS_STATUS Av1DecodeTile::ErrorDetectAndConceal()
+    {
+        DECODE_FUNC_CALL()
+        DECODE_CHK_NULL(m_tileDesc);
+
+        // Error Concealment for Tile size
+        // m_numTiles means the total number of tile, m_lastTileId means the last tile index
+        for (uint32_t i = 0; i < m_numTiles; i++)
+        {
+            if (m_tileDesc[i].m_size + m_tileDesc[i].m_offset > m_basicFeature->m_dataSize)
+            {
+                if (i == m_lastTileId)
+                {
+                    DECODE_ASSERTMESSAGE("The last tile size is oversize!");
+                    m_tileDesc[i].m_size = m_basicFeature->m_dataSize - m_tileDesc[i].m_offset;
+                }
+                else
+                {
+                    DECODE_ASSERTMESSAGE("The non-last tile size is oversize! Skip Frame!");
+                    return MOS_STATUS_INVALID_PARAMETER;
+                }
+            }
+        }
         return MOS_STATUS_SUCCESS;
     }
 
@@ -169,6 +196,9 @@ namespace decode
             m_newFrameStart = false;
         }
 
+        // Do error detection and concealment
+        DECODE_CHK_STATUS(ErrorDetectAndConceal());
+
         return MOS_STATUS_SUCCESS;
     }
 
@@ -230,27 +260,28 @@ namespace decode
         return MOS_STATUS_SUCCESS;
     }
 
-    uint16_t Av1DecodeTile::CalcNumPass(const CodecAv1PicParams &picParams, CodecAv1TileParams *tileParams)
+    MOS_STATUS Av1DecodeTile::CalcNumPass(const CodecAv1PicParams &picParams, CodecAv1TileParams *tileParams)
     {
         DECODE_FUNC_CALL();
 
-        uint16_t m_passNum;
+        uint16_t passNum;
         uint16_t startTile = m_lastTileId + 1;//record before parsing new bitstream portion
 
         DECODE_CHK_STATUS(ParseTileInfo(picParams, tileParams));
 
         if (picParams.m_picInfoFlags.m_fields.m_largeScaleTile)
         {
-            m_passNum = picParams.m_tileCountMinus1 + 1;
+            passNum   = picParams.m_tileCountMinus1 + 1;
             m_curTile = 0;
         }
         else
         {
-            m_passNum = m_lastTileId - startTile + 1;
+            passNum   = m_lastTileId - startTile + 1;
             m_curTile = startTile;
         }
 
-        return m_passNum;
+        m_decPassNum = passNum;
+        return MOS_STATUS_SUCCESS;
     }
 
     void Av1DecodeTile::GetUpscaleConvolveStepX0(const CodecAv1PicParams &picParams, bool isChroma)

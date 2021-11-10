@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, Intel Corporation
+* Copyright (c) 2019-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -68,7 +68,7 @@ namespace decode
         bool            m_newFrameStart          = true;         //!< flag to indicate a new frame is coming, which means m_lastTileId should be reset to -1.
         uint32_t        m_numTiles               = 0;            //!< Num of tiles
         uint32_t        m_totalTileNum           = 0;            //!< Total tile number in the frame.
-
+        uint16_t         m_decPassNum            = 1;            //!< Total decode number pass in the frame.
         //Used to calc tile width/height
         uint16_t        m_miCols                 = 0;            //!< frame width in MI units (4x4)
         uint16_t        m_miRows                 = 0;            //!< frame height in MI units (4x4)
@@ -117,18 +117,29 @@ namespace decode
                                CodecAv1TileParams *tileParams);
 
         //!
+        //! \brief  Detect conformance conflict and do error concealment
+        //! \return MOS_STATUS
+        //!         MOS_STATUS_SUCCESS if success, else fail reason
+        //!
+        MOS_STATUS ErrorDetectAndConceal();
+
+        //!
         //! \brief    Calculate decode pass number
         //! \return   MOS_STATUS
         //!           MOS_STATUS_SUCCESS if success, else fail reason
         //!
-        uint16_t CalcNumPass(const CodecAv1PicParams& picParams, CodecAv1TileParams* tileParams);
-
+        MOS_STATUS CalcNumPass(const CodecAv1PicParams &picParams, CodecAv1TileParams *tileParams);
         //!
         //! \brief    Calculate upscaled Convolve Step and offset
         //! \return   MOS_STATUS
         //!           MOS_STATUS_SUCCESS if success, else fail reason
         //!
         void GetUpscaleConvolveStepX0(const CodecAv1PicParams &picParams, bool isChroma);
+
+        //!
+        //! \brief  Get Decode pass number
+        //! \return uint16_t
+        uint16_t GetNumPass() { return m_decPassNum; }
 
     protected:
         //!

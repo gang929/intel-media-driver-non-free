@@ -648,6 +648,11 @@ CodechalVdencAvcStateG12::~CodechalVdencAvcStateG12()
         MOS_FreeMemAndSetNull(m_sinlgePipeVeState);
     }
 
+    if (m_pMBQPShadowBuffer)
+    {
+        MOS_SafeFreeMemory(m_pMBQPShadowBuffer);
+    }
+
     CODECHAL_DEBUG_TOOL(
         DestroyAvcPar();
         MOS_Delete(m_encodeParState);
@@ -778,13 +783,26 @@ MOS_STATUS CodechalVdencAvcStateG12::SetupMBQPStreamIn(
     MOS_ZeroMemory(&lockFlagsReadOnly, sizeof(MOS_LOCK_PARAMS));
     lockFlagsReadOnly.ReadOnly = true;
 
-    auto pInputData = (uint8_t*)m_osInterface->pfnLockResource(
+    auto pMBQPBuffer = (uint8_t*)m_osInterface->pfnLockResource(
         m_osInterface,
         &(m_encodeParams.psMbQpDataSurface->OsResource),
         &lockFlagsReadOnly);
-    CODECHAL_ENCODE_CHK_NULL_RETURN(pInputData);
+    CODECHAL_ENCODE_CHK_NULL_RETURN(pMBQPBuffer);
 
-    CopyMBQPDataToStreamIn(pData, pInputData);
+    MOS_SURFACE surfInfo;
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnGetResourceInfo(m_osInterface,
+                                        &(m_encodeParams.psMbQpDataSurface->OsResource),
+                                        &surfInfo));
+    uint32_t uiSize = surfInfo.dwSize;
+    if (uiSize > m_uiMBQPShadowBufferSize)
+    {
+        m_uiMBQPShadowBufferSize = uiSize;
+        m_pMBQPShadowBuffer = (uint8_t*)MOS_ReallocMemory(m_pMBQPShadowBuffer, uiSize);
+    }
+    CODECHAL_ENCODE_CHK_NULL_RETURN(m_pMBQPShadowBuffer);
+    MOS_SecureMemcpy(m_pMBQPShadowBuffer, uiSize, pMBQPBuffer, uiSize);
+
+    CopyMBQPDataToStreamIn(pData, m_pMBQPShadowBuffer);
 
     m_osInterface->pfnUnlockResource(
         m_osInterface,
@@ -1037,8 +1055,11 @@ MOS_STATUS CodechalVdencAvcStateG12::SetDmemHuCBrcInitReset()
 
     SetDmemHuCBrcInitResetImpl<BrcInitDmem>(hucVDEncBrcInitDmem);
 
-    // fractional QP enable for extended rho domain
+    // enable fractional QP by extended rho domain setting
     hucVDEncBrcInitDmem->INIT_FracQPEnable_U8 = (uint8_t)m_vdencInterface->IsRhoDomainStatsEnabled();
+    // enable fractional QP for TCBRC
+    if ((m_avcPicParam->TargetFrameSize > 0) && (m_lookaheadDepth == 0))
+        hucVDEncBrcInitDmem->INIT_FracQPEnable_U8 = 1;
 
     hucVDEncBrcInitDmem->INIT_SinglePassOnly = m_vdencSinglePassEnable ? true : false;
 
