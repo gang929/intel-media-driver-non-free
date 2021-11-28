@@ -19,23 +19,13 @@
 * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 * OTHER DEALINGS IN THE SOFTWARE.
 */
+
 //!
-//! \file     media_libva_register.h
-//! \brief    libva component register head file
+//! \file     media_class_trace.h
+//! \brief    Define the MARCO ADD_CLASS_TRACE
+//! \details  Define the MARCO ADD_CLASS_TRACE.
 //!
-
-#ifndef __MEDIA_LIBVA_REGISTER_H__
-#define __MEDIA_LIBVA_REGISTER_H__
-
-#include "ddi_cp_functions.h"
-#include "ddi_decode_functions.h"
-#include "ddi_encode_functions.h"
-#include "ddi_vp_functions.h"
-
-static const bool registeredMedia  = FunctionsFactory::Register<DdiMediaFunctions>((CompCommon));
-static const bool registeredEncode = FunctionsFactory::Register<DdiEncodeFunctions>((CompEncode));
-static const bool registeredDecode = FunctionsFactory::Register<DdiDecodeFunctions>((CompDecode));
-static const bool registeredCp     = FunctionsFactory::Register<DdiCpFunctions>((CompCp));
-static const bool registeredVp     = FunctionsFactory::Register<DdiVpFunctions>((CompVp));
-
-#endif //__MEDIA_LIBVA_REGISTER_H__
+#ifndef __MEDIA_CLASS_TRACE_H__
+#define __MEDIA_CLASS_TRACE_H__
+#define ADD_CLASS_TRACE(class_name)
+#endif //__MEDIA_CLASS_TRACE_H__
