@@ -170,6 +170,14 @@ MOS_STATUS VpFeatureManagerNext::RegisterFeatures()
     VP_PUBLIC_CHK_NULL_RETURN(p);
     m_featureHandler.insert(std::make_pair(FeatureTypeDi, p));
 
+    p = MOS_New(SwFilterLumakeyHandler, m_vpInterface, FeatureTypeLumakey);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_featureHandler.insert(std::make_pair(FeatureTypeLumakey, p));
+
+    p = MOS_New(SwFilterBlendingHandler, m_vpInterface, FeatureTypeBlending);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_featureHandler.insert(std::make_pair(FeatureTypeBlending, p));
+
     p = MOS_New(SwFilterColorFillHandler, m_vpInterface, FeatureTypeColorFill);
     VP_PUBLIC_CHK_NULL_RETURN(p);
     m_featureHandler.insert(std::make_pair(FeatureTypeColorFill, p));
@@ -214,9 +222,17 @@ MOS_STATUS VPFeatureManager::CheckFeatures(void * params, bool &bApgFuncSupporte
     VP_FUNC_CALL();
 
     VP_PUBLIC_CHK_NULL_RETURN(params);
+    VP_PUBLIC_CHK_NULL_RETURN(m_hwInterface);
+    VP_PUBLIC_CHK_NULL_RETURN(m_hwInterface->m_osInterface);
 
     PVP_PIPELINE_PARAMS pvpParams = (PVP_PIPELINE_PARAMS)params;
     bApgFuncSupported = false;
+
+    if (!m_hwInterface->m_osInterface->apoMosEnabled)
+    {
+        VP_PUBLIC_NORMALMESSAGE("Fallback to legacy since APO mos not enabled.");
+        return MOS_STATUS_SUCCESS;
+    }
 
     // APG only support single frame input/output
     if (pvpParams->uSrcCount != 1 ||

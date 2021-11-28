@@ -31,6 +31,7 @@ media_include_subdirectory(mmc)
 media_include_subdirectory(bufferMgr)
 media_include_subdirectory(mediacopy)
 media_include_subdirectory(media_sfc_interface)
+media_include_subdirectory(classtrace)
 
 set(TMP_HEADERS_
     ${TMP_HEADERS_}

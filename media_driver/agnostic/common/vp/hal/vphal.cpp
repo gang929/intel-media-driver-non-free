@@ -415,6 +415,7 @@ static MOS_STATUS VpHal_RenderWithAvsForMultiStreams(
                 eStatus             = eStatusSingleRender;
                 bHasNonAvsSubstream = false;
                 VPHAL_PUBLIC_ASSERTMESSAGE("Failed to create intermediate surface, eStatus: %d.\n", eStatus);
+                MT_ERR1(MT_VP_HAL_REALLOC_SURF, MT_CODE_LINE, __LINE__);
             }
         }
     } 
@@ -471,6 +472,7 @@ static MOS_STATUS VpHal_RenderWithAvsForMultiStreams(
             {
                 eStatus = eStatusSingleRender;
                 VPHAL_PUBLIC_ASSERTMESSAGE("Failed to redner for primary streams, eStatus: %d.\n", eStatus);
+                MT_ERR2(MT_VP_HAL_RENDER, MT_ERROR_CODE, eStatus, MT_CODE_LINE, __LINE__);
             }
         }
     }
@@ -505,6 +507,7 @@ static MOS_STATUS VpHal_RenderWithAvsForMultiStreams(
         {
             eStatus = eStatusSingleRender;
             VPHAL_PUBLIC_ASSERTMESSAGE("Failed to redner for substreams, eStatus: %d.\n", eStatus);
+            MT_ERR2(MT_VP_HAL_RENDER, MT_ERROR_CODE, eStatus, MT_CODE_LINE, __LINE__);
         }
 
         //Free the temporary surface
@@ -602,6 +605,12 @@ VphalState::VphalState(
 
     VPHAL_PUBLIC_CHK_NULL(m_osInterface);
 
+    // For some cases, current GPUContexts will be created from both the legacy path and the Apo path;
+    // In Apo path, in order to make sure the GPUContext will be successfully created in switchcontext, it sets the GpuContextHandle to invalid before calling the create func,
+    // which overwrites the corresponding GpuContextHandle value and causes memory leak if the original GpuContextHandle is non-invalid.
+    // Setting this flag here is to avoid the GpuContextHandle overwrite in Apo path.
+    m_osInterface->bSetHandleInvalid = false;
+
     // Initialize platform, sku, wa tables
     m_osInterface->pfnGetPlatform(m_osInterface, &m_platform);
     m_skuTable = m_osInterface->pfnGetSkuTable(m_osInterface);
@@ -639,6 +648,7 @@ VphalState::VphalState(
         {
             VPHAL_DEBUG_ASSERTMESSAGE("Allocate MhwInterfaces failed");
             eStatus = MOS_STATUS_NO_SPACE;
+            MT_ERR1(MT_VP_HAL_INIT, MT_CODE_LINE, __LINE__);
         }
     }
 
@@ -673,6 +683,7 @@ VphalState::~VphalState()
             if (eStatus != MOS_STATUS_SUCCESS)
             {
                 VPHAL_PUBLIC_ASSERTMESSAGE("Failed to destroy RenderHal, eStatus:%d.\n", eStatus);
+                MT_ERR1(MT_VP_HAL_DESTROY, MT_CODE_LINE, __LINE__);
             }
         }
         MOS_FreeMemory(m_renderHal);
@@ -698,6 +709,7 @@ VphalState::~VphalState()
         if (eStatus != MOS_STATUS_SUCCESS)
         {
             VPHAL_PUBLIC_ASSERTMESSAGE("Failed to destroy Vebox Interface, eStatus:%d.\n", eStatus);
+            MT_ERR1(MT_VP_HAL_DESTROY, MT_CODE_LINE, __LINE__);
         }
     }
 

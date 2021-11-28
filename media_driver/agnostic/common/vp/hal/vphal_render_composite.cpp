@@ -1392,6 +1392,81 @@ finish:
     return Temp_ColorSpace;
 }
 
+MOS_STATUS CompositeState::IntermediateAllocation(PVPHAL_SURFACE &pIntermediate,
+    PMOS_INTERFACE                   pOsInterface,
+    uint32_t                         dwTempWidth,
+    uint32_t                         dwTempHeight,
+    PVPHAL_SURFACE                   pTarget)
+{
+    MOS_RESOURCE            OsResource  = {};
+    MOS_ALLOC_GFXRES_PARAMS AllocParams = {};
+    VPHAL_GET_SURFACE_INFO  Info        = {};
+    // Allocate/Reallocate temporary output
+    if (dwTempWidth > pIntermediate->dwWidth ||
+        dwTempHeight > pIntermediate->dwHeight)
+    {
+        // Get max values
+        dwTempWidth  = MOS_MAX(dwTempWidth, pIntermediate->dwWidth);
+        dwTempHeight = MOS_MAX(dwTempHeight, pIntermediate->dwHeight);
+
+        // Allocate buffer in fixed increments
+        dwTempWidth  = MOS_ALIGN_CEIL(dwTempWidth, VPHAL_BUFFER_SIZE_INCREMENT);
+        dwTempHeight = MOS_ALIGN_CEIL(dwTempHeight, VPHAL_BUFFER_SIZE_INCREMENT);
+
+        MOS_ZeroMemory(&AllocParams, sizeof(MOS_ALLOC_GFXRES_PARAMS));
+        MOS_ZeroMemory(&OsResource, sizeof(MOS_RESOURCE));
+
+        AllocParams.Type         = MOS_GFXRES_2D;
+        AllocParams.TileType     = MOS_TILE_Y;
+        AllocParams.dwWidth      = dwTempWidth;
+        AllocParams.dwHeight     = dwTempHeight;
+        AllocParams.Format       = Format_A8R8G8B8;
+        AllocParams.ResUsageType = MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_WRITE_RENDER;
+
+        pOsInterface->pfnAllocateResource(
+            pOsInterface,
+            &AllocParams,
+            &OsResource);
+
+        // Get Allocation index of source for rendering
+        pOsInterface->pfnRegisterResource(
+            pOsInterface,
+            &OsResource,
+            false,
+            true);
+
+        if (!Mos_ResourceIsNull(&OsResource))
+        {
+            // Deallocate old resource
+            pOsInterface->pfnFreeResource(pOsInterface,
+                &pIntermediate->OsResource);
+
+            // Set new resource
+            pIntermediate->OsResource = OsResource;
+
+            // Get resource info (width, height, pitch, tiling, etc)
+            MOS_ZeroMemory(&Info, sizeof(VPHAL_GET_SURFACE_INFO));
+
+            VpHal_GetSurfaceInfo(
+                pOsInterface,
+                &Info,
+                pIntermediate);
+        }
+    }
+
+    // Set output parameters
+    pIntermediate->SurfType      = SURF_IN_PRIMARY;
+    pIntermediate->SampleType    = SAMPLE_PROGRESSIVE;
+    pIntermediate->ColorSpace    = pTarget->ColorSpace;
+    pIntermediate->ExtendedGamut = pTarget->ExtendedGamut;
+    pIntermediate->rcSrc         = pTarget->rcSrc;
+    pIntermediate->rcDst         = pTarget->rcDst;
+    pIntermediate->ScalingMode   = VPHAL_SCALING_BILINEAR;
+    pIntermediate->bIEF          = false;
+
+    return MOS_STATUS_SUCCESS;
+}
+
 //!
 //! \brief    Prepare phases for composite and allocate intermediate buffer for rendering
 //! \param    [in] pcRenderParams
@@ -1410,15 +1485,15 @@ bool CompositeState::PreparePhases(
 {
     PMOS_INTERFACE          pOsInterface;
     VPHAL_COMPOSITE_PARAMS  Composite;
-    MOS_RESOURCE            OsResource;
+    MOS_RESOURCE            OsResource = {};
     uint32_t                dwTempWidth;    // Temporary surface width
     uint32_t                dwTempHeight;   // Temporary surface height
     PVPHAL_SURFACE          pTarget;
     PVPHAL_SURFACE          pIntermediate;
     int32_t                 i;
     bool                    bMultiplePhases;
-    MOS_ALLOC_GFXRES_PARAMS AllocParams;
-    VPHAL_GET_SURFACE_INFO  Info;
+    MOS_ALLOC_GFXRES_PARAMS AllocParams = {};
+    VPHAL_GET_SURFACE_INFO  Info = {};
 
     pTarget = pcRenderParams->pTarget[0];
 
@@ -1465,69 +1540,21 @@ bool CompositeState::PreparePhases(
     {
         pOsInterface  = m_pOsInterface;
         pIntermediate = &m_Intermediate;
-
+        PVPHAL_SURFACE &p = pIntermediate;
         // Allocate/Reallocate temporary output
-        if (dwTempWidth  > pIntermediate->dwWidth ||
-            dwTempHeight > pIntermediate->dwHeight)
-        {
-            // Get max values
-            dwTempWidth  = MOS_MAX(dwTempWidth , pIntermediate->dwWidth);
-            dwTempHeight = MOS_MAX(dwTempHeight, pIntermediate->dwHeight);
+        IntermediateAllocation(p,
+            pOsInterface,
+            dwTempWidth,
+            dwTempHeight,
+            pTarget);
 
-            // Allocate buffer in fixed increments
-            dwTempWidth  = MOS_ALIGN_CEIL(dwTempWidth , VPHAL_BUFFER_SIZE_INCREMENT);
-            dwTempHeight = MOS_ALIGN_CEIL(dwTempHeight, VPHAL_BUFFER_SIZE_INCREMENT);
-
-            MOS_ZeroMemory(&AllocParams, sizeof(MOS_ALLOC_GFXRES_PARAMS));
-            MOS_ZeroMemory(&OsResource, sizeof(MOS_RESOURCE));
-
-            AllocParams.Type     = MOS_GFXRES_2D;
-            AllocParams.TileType = MOS_TILE_Y;
-            AllocParams.dwWidth  = dwTempWidth;
-            AllocParams.dwHeight = dwTempHeight;
-            AllocParams.Format   = Format_A8R8G8B8;
-            AllocParams.ResUsageType = MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_WRITE_RENDER;
-
-            pOsInterface->pfnAllocateResource(
-                pOsInterface,
-                &AllocParams,
-                &OsResource);
-
-            // Get Allocation index of source for rendering
-            pOsInterface->pfnRegisterResource(
-                pOsInterface,
-                &OsResource,
-                false,
-                true);
-
-            if (!Mos_ResourceIsNull(&OsResource))
-            {
-                // Deallocate old resource
-                pOsInterface->pfnFreeResource(pOsInterface,
-                                              &pIntermediate->OsResource);
-
-                // Set new resource
-                pIntermediate->OsResource = OsResource;
-
-                // Get resource info (width, height, pitch, tiling, etc)
-                MOS_ZeroMemory(&Info, sizeof(VPHAL_GET_SURFACE_INFO));
-
-                VpHal_GetSurfaceInfo(
-                    pOsInterface,
-                    &Info,
-                    pIntermediate);
-            }
-        }
-
-        // Set output parameters
-        pIntermediate->SurfType          = SURF_IN_PRIMARY;
-        pIntermediate->SampleType        = SAMPLE_PROGRESSIVE;
-        pIntermediate->ColorSpace        = pTarget->ColorSpace;
-        pIntermediate->ExtendedGamut     = pTarget->ExtendedGamut;
-        pIntermediate->rcSrc             = pTarget->rcSrc;
-        pIntermediate->rcDst             = pTarget->rcDst;
-        pIntermediate->ScalingMode       = VPHAL_SCALING_BILINEAR;
-        pIntermediate->bIEF              = false;
+        pIntermediate = &m_Intermediate1;
+        // Allocate/Reallocate temporary output
+        IntermediateAllocation(p,
+            pOsInterface,
+            dwTempWidth,
+            dwTempHeight,
+            pTarget);
 
         pIntermediate = &m_Intermediate2;
 
@@ -1612,6 +1639,19 @@ void CompositeState::ResetCompParams(
     pComposite->uTargetCount = 1;
 
     pComposite->bAlphaCalculateEnable = false;
+}
+
+//!
+//! \brief    Get intermediate surface output
+//! \param    pOutput
+//!           [in] Pointer to Intermediate Output Surface
+//! \return   PVPHAL_SURFACE
+//!           Return the chose output
+//!
+MOS_STATUS CompositeState::GetIntermediateOutput(PVPHAL_SURFACE &output)
+{
+    output = &m_Intermediate;
+    return MOS_STATUS_SUCCESS;
 }
 
 //!
@@ -1902,6 +1942,7 @@ MOS_STATUS CompositeState::RenderMultiPhase(
                 if (!m_bApplyTwoLayersCompOptimize || (iSources != 2) || (ppSources[1]->Rotation == VPHAL_ROTATION_IDENTITY))
                 {
                     pSrc = pOutput;
+                    GetIntermediateOutput(pOutput);  // this is the virtual function to use the pingpang buffer for corruption fix on some platforms.
                 }
                 else
                 {
@@ -2342,11 +2383,13 @@ MOS_STATUS CompositeState::Render(
         if (KernelDll_IsCspace(ColorSpace, CSpace_RGB))
         {
             pOutput->Format = Format_A8R8G8B8;
+            m_Intermediate1.Format = Format_A8R8G8B8;
             m_Intermediate2.Format = Format_A8R8G8B8;
         }
         else
         {
             pOutput->Format = Format_AYUV;
+            m_Intermediate1.Format = Format_AYUV;
             m_Intermediate2.Format = Format_AYUV;
         }
     }
@@ -3052,6 +3095,7 @@ int32_t CompositeState::SetLayer(
     uint32_t    dwDestRectWidth, dwDestRectHeight;  // Target rectangle Width Height
     float       fOffsetY, fOffsetX;                 // x,y Sr offset
     float       fShiftX , fShiftY;                  // x,y Dst shift + Sampler BOB adj
+    float       oriShiftX, oriShiftY;               // Used to check whether all entries of one layer share same shift.
     float       fDiScaleY;                          // BOB scaling factor for Y
     float       fScaleX, fScaleY;                   // x,y scaling factor
     float       fStepX , fStepY;                    // x,y scaling steps
@@ -3092,6 +3136,8 @@ int32_t CompositeState::SetLayer(
     fOffsetY = 0;
     fShiftX  = 0;
     fShiftY  = 0;
+    oriShiftX = 0.0f;
+    oriShiftY = 0.0f;
 
     // Initialize States
     pRenderHal   = m_pRenderHal;
@@ -3467,6 +3513,20 @@ int32_t CompositeState::SetLayer(
 
                 pSamplerStateParams->Unorm.SamplerFilterMode = MHW_SAMPLER_FILTER_BILINEAR;
             }
+
+            if (MHW_SAMPLER_FILTER_BILINEAR == pSamplerStateParams->Unorm.SamplerFilterMode &&
+                VPHAL_SCALING_BILINEAR != pSource->ScalingMode ||
+                MHW_SAMPLER_FILTER_NEAREST == pSamplerStateParams->Unorm.SamplerFilterMode &&
+                VPHAL_SCALING_NEAREST != pSource->ScalingMode)
+            {
+                VPHAL_RENDER_NORMALMESSAGE("Legacy Check: scaling mode and samplerFilterMode are not aligned.");
+            }
+
+            if (i != 0 && (oriShiftX != fShiftX || oriShiftY != fShiftY))
+            {
+                VPHAL_RENDER_NORMALMESSAGE("Legacy Check: fShiftX/fShiftY of entry %d is not same as previous entry.", i);
+            }
+
             pSamplerStateParams->Unorm.AddressU = MHW_GFX3DSTATE_TEXCOORDMODE_CLAMP;
             pSamplerStateParams->Unorm.AddressV = MHW_GFX3DSTATE_TEXCOORDMODE_CLAMP;
             pSamplerStateParams->Unorm.AddressW = MHW_GFX3DSTATE_TEXCOORDMODE_CLAMP;
@@ -3513,6 +3573,9 @@ int32_t CompositeState::SetLayer(
             // Set HDC Direct Write Flag
             pSamplerStateParams->Avs.bHdcDwEnable = pRenderingData->bHdcDwEnable;
         }
+
+        oriShiftX = fShiftX;
+        oriShiftY = fShiftY;
 
         pSamplerStateParams->bInUse        = true;
 
@@ -7108,9 +7171,6 @@ void CompositeState::Destroy()
     }
 
     // Free intermediate compositing buffer
-    pOsInterface->pfnFreeResource(
-        pOsInterface,
-        &m_Intermediate.OsResource);
 
     if (m_Intermediate2.pBlendingParams)
     {
@@ -7118,13 +7178,24 @@ void CompositeState::Destroy()
         m_Intermediate2.pBlendingParams = nullptr;
     }
 
-    pOsInterface->pfnFreeResource(
-        pOsInterface,
-        &m_Intermediate2.OsResource);
+    if (pOsInterface)
+    {
+        pOsInterface->pfnFreeResource(
+            pOsInterface,
+            &m_Intermediate.OsResource);
 
-    pOsInterface->pfnFreeResource(
-        pOsInterface,
-        &m_CmfcCoeff.OsResource);
+        pOsInterface->pfnFreeResource(
+            pOsInterface,
+            &m_Intermediate1.OsResource);
+
+        pOsInterface->pfnFreeResource(
+            pOsInterface,
+            &m_Intermediate2.OsResource);
+
+        pOsInterface->pfnFreeResource(
+            pOsInterface,
+            &m_CmfcCoeff.OsResource);
+    }
 
     // Destroy sampler 8x8 state table parameters
     VpHal_RndrCommonDestroyAVSParams(&m_AvsParameters);
@@ -7188,6 +7259,7 @@ CompositeState::CompositeState(
     MOS_ZeroMemory(&m_KernelSearch, sizeof(m_KernelSearch));
     MOS_ZeroMemory(&m_KernelParams, sizeof(m_KernelParams));
     MOS_ZeroMemory(&m_Intermediate, sizeof(m_Intermediate));
+    MOS_ZeroMemory(&m_Intermediate1, sizeof(m_Intermediate1));
     MOS_ZeroMemory(&m_Intermediate2, sizeof(m_Intermediate2));
     MOS_ZeroMemory(&m_CmfcCoeff, sizeof(m_CmfcCoeff));
     MOS_ZeroMemory(&m_RenderHalCmfcCoeff, sizeof(m_RenderHalCmfcCoeff));
@@ -7225,6 +7297,7 @@ CompositeState::CompositeState(
     VPHAL_RENDER_CHK_NULL(pOsInterface);
     // Reset Intermediate output surface (multiple phase)
     pOsInterface->pfnResetResourceAllocationIndex(pOsInterface, &m_Intermediate.OsResource);
+    pOsInterface->pfnResetResourceAllocationIndex(pOsInterface, &m_Intermediate1.OsResource);
 
     MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
     MOS_USER_FEATURE_INVALID_KEY_ASSERT(MOS_UserFeature_ReadValue_ID(
