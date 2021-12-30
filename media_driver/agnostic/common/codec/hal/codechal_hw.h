@@ -489,6 +489,77 @@ public:
             return nullptr;
         }
     }
+
+    //!
+    //! \brief    Get vdenc interface
+    //! \details  Get vdenc interface in codechal hw interface next
+    //!
+    //! \return    pointer to new Vdenc interface
+    //!
+    inline std::shared_ptr<mhw::vdbox::vdenc::Itf> GetVdencInterfaceNext()
+    {
+        if (m_hwInterfaceNext)
+        {
+            return m_hwInterfaceNext->GetVdencInterfaceNext();
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
+
+    //! \brief    Get huc interface
+    //! \details  Get huc interface in codechal hw interface next
+    //!
+    //! \return    pointer to new HUC interface
+    //!
+    inline std::shared_ptr<mhw::vdbox::huc::Itf> GetHucInterfaceNext()
+    {
+        if (m_hwInterfaceNext)
+        {
+            return m_hwInterfaceNext->GetHucInterfaceNext();
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
+
+    //!
+    //! \brief    Get mi interface
+    //! \details  Get mi interface in codechal hw interface next
+    //!
+    //! \return    pointer to new MI interface
+    //!
+    inline std::shared_ptr<mhw::mi::Itf> GetMiInterfaceNext()
+    {
+        if (m_hwInterfaceNext)
+        {
+            return m_hwInterfaceNext->GetMiInterfaceNext();
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
+
+    //!
+    //! \brief    Get hcp interface
+    //! \details  Get hcp interface in codechal hw interface next
+    //!
+    //! \return    pointer to new HCP interface
+    //!
+    inline std::shared_ptr<mhw::vdbox::hcp::Itf> GetHcpInterfaceNext()
+    {
+        if (m_hwInterfaceNext)
+        {
+            return m_hwInterfaceNext->GetHcpInterfaceNext();
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
 #endif
 
     //!

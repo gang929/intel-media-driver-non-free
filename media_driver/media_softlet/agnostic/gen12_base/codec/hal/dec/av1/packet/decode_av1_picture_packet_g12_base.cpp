@@ -26,6 +26,7 @@
 #include "codechal_utilities.h"
 #include "decode_av1_picture_packet_g12_base.h"
 #include "codechal_debug.h"
+#include "decode_resource_auto_lock.h"
 
 namespace decode{
     Av1DecodePicPkt_G12_Base::~Av1DecodePicPkt_G12_Base()
@@ -97,6 +98,9 @@ namespace decode{
             m_allocator->Destroy(m_curMvBufferForDummyWL);
             m_allocator->Destroy(m_bwdAdaptCdfBufForDummyWL);
             m_allocator->Destroy(m_resDataBufferForDummyWL);
+#if MOS_EVENT_TRACE_DUMP_SUPPORTED
+            m_allocator->Destroy(m_tempRefSurf);
+#endif
         }
 
         return MOS_STATUS_SUCCESS;
@@ -113,7 +117,7 @@ namespace decode{
         DECODE_CHK_NULL(m_av1Pipeline);
         DECODE_CHK_NULL(m_avpInterface);
 
-        m_av1BasicFeature = dynamic_cast<Av1BasicFeature*>(m_featureManager->GetFeature(FeatureIDs::basicFeature));
+        m_av1BasicFeature = dynamic_cast<Av1BasicFeatureG12*>(m_featureManager->GetFeature(FeatureIDs::basicFeature));
         DECODE_CHK_NULL(m_av1BasicFeature);
 
         m_allocator = m_pipeline ->GetDecodeAllocator();
@@ -1032,7 +1036,7 @@ namespace decode{
             //set for intra frame
             refSurface[0] = m_av1BasicFeature->m_destSurface;
 
-            Av1ReferenceFrames &refFrames = m_av1BasicFeature->m_refFrames;
+            Av1ReferenceFramesG12 &refFrames = m_av1BasicFeature->m_refFrames;
             const std::vector<uint8_t> &activeRefList = refFrames.GetActiveReferenceList(*m_av1PicParams, m_av1BasicFeature->m_av1TileParams[m_av1BasicFeature->m_tileCoding.m_curTile]);
             for (uint8_t i = 0; i < activeRefList.size(); i++)
             {
@@ -1198,7 +1202,7 @@ namespace decode{
         DECODE_CHK_NULL(curMvBuffer);
         pipeBufAddrParams.m_curMvTemporalBuffer = &(curMvBuffer->OsResource);
 
-        Av1ReferenceFrames &refFrames = m_av1BasicFeature->m_refFrames;
+        Av1ReferenceFramesG12 &refFrames = m_av1BasicFeature->m_refFrames;
         uint8_t prevFrameIdx = refFrames.GetPrimaryRefIdx();
 
         if (m_av1PicParams->m_picInfoFlags.m_fields.m_frameType != keyFrame)
@@ -1253,6 +1257,20 @@ namespace decode{
         }
 
         CODECHAL_DEBUG_TOOL(DumpResources(pipeBufAddrParams));
+
+#if MOS_EVENT_TRACE_DUMP_SUPPORTED
+        if (MOS_GetTraceEventKeyword() & EVENT_DECODE_BUFFER_KEYWORD)
+        {
+            TraceDataDumpInternalBuffers(pipeBufAddrParams);
+        }
+#endif
+
+#if MOS_EVENT_TRACE_DUMP_SUPPORTED
+        if (MOS_GetTraceEventKeyword() & EVENT_DECODE_REFYUV_KEYWORD)
+        {
+            TraceDataDumpReferences(pipeBufAddrParams);
+        }
+#endif
 
         return MOS_STATUS_SUCCESS;
     }
@@ -1531,7 +1549,7 @@ namespace decode{
         int32_t curFrameOffset = m_av1PicParams->m_orderHint;
         int32_t refFrameOffset[2] = { -1, 0x7fffffff };
         int32_t refIdx[2] = { -1, -1 };
-        Av1ReferenceFrames &refFrames = m_av1BasicFeature->m_refFrames;
+        Av1ReferenceFramesG12 &refFrames = m_av1BasicFeature->m_refFrames;
         DECODE_CHK_STATUS(refFrames.Identify1stNearRef(*m_av1PicParams, curFrameOffset, refFrameOffset, refIdx));
 
         if (refIdx[0] != -1 && refIdx[1] != -1)
@@ -1642,6 +1660,127 @@ namespace decode{
             m_av1BasicFeature->m_dataSize,
             m_av1BasicFeature->m_dataOffset,
             CODECHAL_NUM_MEDIA_STATES));
+
+        return MOS_STATUS_SUCCESS;
+    }
+#endif
+
+#if MOS_EVENT_TRACE_DUMP_SUPPORTED
+    MOS_STATUS Av1DecodePicPkt_G12_Base::TraceDataDumpInternalBuffers(MhwVdboxAvpPipeBufAddrParams &pipeBufAddrParams)
+    {
+        if (m_av1BasicFeature->m_tileCoding.m_curTile == 0)
+        {
+            m_osInterface->pfnDumpTraceGpuData(
+                m_osInterface,
+                "Decode_Av1CdfTableInitBuffer",
+                0,
+                pipeBufAddrParams.m_cdfTableInitializationBuffer,
+                m_av1BasicFeature->m_cdfMaxNumBytes);
+
+            if (pipeBufAddrParams.m_segmentIdReadBuffer != nullptr &&
+                !m_allocator->ResourceIsNull(pipeBufAddrParams.m_segmentIdReadBuffer))
+            {
+                m_osInterface->pfnDumpTraceGpuData(
+                    m_osInterface,
+                    "Decode_Av1SegmentIdReadBuffer",
+                    0,
+                    pipeBufAddrParams.m_segmentIdReadBuffer,
+                    m_widthInSb * m_heightInSb * CODECHAL_CACHELINE_SIZE);
+            }
+        }
+
+        return MOS_STATUS_SUCCESS;
+    }
+
+    MOS_STATUS Av1DecodePicPkt_G12_Base::TraceDataDumpReferences(MhwVdboxAvpPipeBufAddrParams &pipeBufAddrParams)
+    {
+        bool bReport = false;
+
+        if (m_av1BasicFeature->m_tileCoding.m_curTile == 0)
+        {
+            if (m_av1PicParams->m_picInfoFlags.m_fields.m_frameType != keyFrame)
+            {
+                for (auto n = 1; n < av1TotalRefsPerFrame; n++)
+                {
+                    bool        bAllocate = false;
+                    MOS_SURFACE dstSurface;
+                    MOS_ZeroMemory(&dstSurface, sizeof(MOS_SURFACE));
+                    dstSurface.OsResource = *(pipeBufAddrParams.m_references[n]);
+                    DECODE_CHK_STATUS(m_allocator->GetSurfaceInfo(&dstSurface));
+
+                    if (bReport)
+                    {
+                        DECODE_EVENTDATA_YUV_SURFACE_INFO eventData =
+                        {
+                            PICTURE_FRAME,
+                            dstSurface.dwOffset,
+                            dstSurface.YPlaneOffset.iYOffset,
+                            dstSurface.dwPitch,
+                            dstSurface.dwWidth,
+                            dstSurface.dwHeight,
+                            (uint32_t)dstSurface.Format,
+                            dstSurface.UPlaneOffset.iLockSurfaceOffset,
+                            dstSurface.VPlaneOffset.iLockSurfaceOffset,
+                            dstSurface.UPlaneOffset.iSurfaceOffset,
+                            dstSurface.VPlaneOffset.iSurfaceOffset,
+                        };
+                        MOS_TraceEvent(EVENT_DECODE_SURFACE_DUMPINFO, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0);
+                    
+                        bReport = true;
+                    }
+
+                    if (!m_allocator->ResourceIsNull(&dstSurface.OsResource))
+                    {
+                        if (m_tempRefSurf == nullptr || m_allocator->ResourceIsNull(&m_tempRefSurf->OsResource))
+                        {
+                            bAllocate = true;
+                        }
+                        else if (m_tempRefSurf->dwWidth < dstSurface.dwWidth ||
+                                 m_tempRefSurf->dwHeight < dstSurface.dwHeight)
+                        {
+                            bAllocate = true;
+                        }
+                        else
+                        {
+                            bAllocate = false;
+                        }
+
+                        if (bAllocate)
+                        {
+                            if (!m_allocator->ResourceIsNull(&m_tempRefSurf->OsResource))
+                            {
+                                m_allocator->Destroy(m_tempRefSurf);
+                            }
+
+                            m_tempRefSurf = m_allocator->AllocateLinearSurface(
+                                dstSurface.dwWidth,
+                                dstSurface.dwHeight,
+                                "Decode Ref Surf",
+                                dstSurface.Format,
+                                dstSurface.bIsCompressed,
+                                resourceInputReference,
+                                lockableSystemMem,
+                                MOS_TILE_LINEAR_GMM);
+                        }
+
+                        DECODE_CHK_STATUS(m_osInterface->pfnDoubleBufferCopyResource(
+                            m_osInterface,
+                            &dstSurface.OsResource,
+                            &m_tempRefSurf->OsResource,
+                            false));
+
+                        ResourceAutoLock resLock(m_allocator, &m_tempRefSurf->OsResource);
+                        auto             pData = (uint8_t *)resLock.LockResourceForRead();
+
+                        MOS_TraceDataDump(
+                            "Decode_AV1RefSurf",
+                            n,
+                            pData,
+                            (uint32_t)m_tempRefSurf->OsResource.pGmmResInfo->GetSizeMainSurface());
+                    }
+                }
+            }
+        }
 
         return MOS_STATUS_SUCCESS;
     }

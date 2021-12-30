@@ -32,6 +32,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "mhw_vdbox_g12_X.h"
 #include "mhw_mmio_g12.h"
 #include "mhw_sfc_g12_X.h"
+#include "mos_interface.h"
 
 static uint16_t RDOQLamdas8bits[2][2][2][52] = //[Intra Slice/Inter Slice][Intra/Inter][Luma/Chroma][QP]
 {
@@ -1452,6 +1453,21 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpPipeModeSelectCmd(
         cmd.DW1.PrefetchDisable = 1;
     }
 
+#if MOS_EVENT_TRACE_DUMP_SUPPORTED
+    if (m_decodeInUse)
+    {
+        if (cmd.DW1.PipeWorkingMode == MHW_VDBOX_HCP_PIPE_WORK_MODE_CABAC_FE ||
+            cmd.DW1.PipeWorkingMode == MHW_VDBOX_HCP_PIPE_WORK_MODE_CODEC_BE)
+        {
+            MOS_TraceEvent(EVENT_DECODE_FEATURE_VT_SCALABILITY, EVENT_TYPE_INFO, NULL, 0, NULL, 0);
+        }
+        else if (cmd.DW1.PipeWorkingMode == MHW_VDBOX_HCP_PIPE_WORK_MODE_CABAC_REAL_TILE)
+        {
+            MOS_TraceEvent(EVENT_DECODE_FEATURE_RT_SCALABILITY, EVENT_TYPE_INFO, NULL, 0, NULL, 0);
+        }
+    }
+#endif
+
     MHW_MI_CHK_STATUS(Mhw_AddCommandCmdOrBB(cmdBuffer, params->pBatchBuffer, &cmd, sizeof(cmd)));
 
     // for Gen11+, we need to add MFX wait for both KIN and VRT before and after HCP Pipemode select...
@@ -2399,6 +2415,17 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpPipeBufAddrCmd(
             &resourceParams));
     }
 
+#if MOS_EVENT_TRACE_DUMP_SUPPORTED
+    if (m_decodeInUse)
+    {
+        if (cmd.DecodedPictureMemoryAddressAttributes.DW0.BaseAddressMemoryCompressionEnable && !bMMCReported)
+        {
+            MOS_TraceEvent(EVENT_DECODE_FEATURE_MMC, EVENT_TYPE_INFO, NULL, 0, NULL, 0);
+            bMMCReported = true;
+        }
+    }
+#endif
+
     MHW_MI_CHK_STATUS(Mos_AddCommand(cmdBuffer, &cmd, sizeof(cmd)));
 
     return eStatus;
@@ -2659,7 +2686,7 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpDecodePicStateCmd(
     }
 
     cmd->DW5.BitDepthChromaMinus8 = hevcPicParams->bit_depth_chroma_minus8;
-    cmd->DW5.BitDepthLumaMinus8 = hevcPicParams->bit_depth_luma_minus8;
+    cmd->DW5.BitDepthLumaMinus8   = hevcPicParams->bit_depth_luma_minus8;
 
     if (hevcSccPicParams)
     {
@@ -2692,7 +2719,7 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpDecodePicStateCmd(
         cmd->DW36.FrameCrcEnable                             = 1;
         cmd->DW36.FrameCrcType                               = 0;
     }
-    
+
     return eStatus;
 }
 

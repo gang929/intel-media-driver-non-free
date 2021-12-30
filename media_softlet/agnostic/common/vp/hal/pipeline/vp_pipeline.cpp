@@ -308,6 +308,7 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
 
     VP_PUBLIC_CHK_STATUS_RETURN(CreateSwFilterPipe(m_pvpParams, swFilterPipes));
     // Notify resourceManager for start of new frame processing.
+    MT_LOG1(MT_VP_HAL_ONNEWFRAME_PROC_START, MT_NORMAL, MT_VP_HAL_ONNEWFRAME_COUNTER, m_frameCounter);
     VP_PUBLIC_CHK_STATUS_RETURN(m_resourceManager->OnNewFrameProcessStart(*swFilterPipes[0]));
 
     for (auto &pipe : swFilterPipes)
@@ -343,6 +344,7 @@ finish:
     m_statusReport->UpdateStatusTableAfterSubmit(eStatus);
     // Notify resourceManager for end of new frame processing.
     m_resourceManager->OnNewFrameProcessEnd();
+    MT_LOG1(MT_VP_HAL_ONNEWFRAME_PROC_END, MT_NORMAL, MT_VP_HAL_ONNEWFRAME_COUNTER, m_frameCounter);
     m_frameCounter++;
     return eStatus;
 }
@@ -744,23 +746,6 @@ MOS_STATUS VpPipeline::PrepareVpPipelineParams(PVP_PIPELINE_PARAMS params)
     PMOS_RESOURCE ppSource[VPHAL_MAX_SOURCES] = {nullptr};
     PMOS_RESOURCE ppTarget[VPHAL_MAX_TARGETS] = {nullptr};
 
-    if (!params->pSrc[0])
-    {
-        VP_PUBLIC_NORMALMESSAGE("Not support no source case in APG now \n");
-
-        if (m_currentFrameAPGEnabled)
-        {
-            params->bAPGWorkloadEnable = true;
-            m_currentFrameAPGEnabled = false;
-        }
-        else
-        {
-            params->bAPGWorkloadEnable = false;
-        }
-
-        return MOS_STATUS_UNIMPLEMENTED;
-    }
-
     VP_PUBLIC_CHK_NULL_RETURN(params->pTarget[0]);
     VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
     VP_PUBLIC_CHK_NULL_RETURN(m_featureManager);
@@ -780,18 +765,21 @@ MOS_STATUS VpPipeline::PrepareVpPipelineParams(PVP_PIPELINE_PARAMS params)
         params->pTarget[0],
         info));
 
-    if (params->pSrc[0]->pBwdRef)
+    if (params->uSrcCount>0)
     {
-        MOS_ZeroMemory(&info, sizeof(VPHAL_GET_SURFACE_INFO));
+        if (params->pSrc[0]->pBwdRef)
+        {
+            MOS_ZeroMemory(&info, sizeof(VPHAL_GET_SURFACE_INFO));
 
-        VP_PUBLIC_CHK_STATUS_RETURN(m_allocator->GetSurfaceInfo(
-            params->pSrc[0]->pBwdRef,
-            info));
-    }
+            VP_PUBLIC_CHK_STATUS_RETURN(m_allocator->GetSurfaceInfo(
+                params->pSrc[0]->pBwdRef,
+                info));
+        }
 
-    if (!RECT1_CONTAINS_RECT2(params->pSrc[0]->rcMaxSrc, params->pSrc[0]->rcSrc))
-    {
-        params->pSrc[0]->rcMaxSrc = params->pSrc[0]->rcSrc;
+        if (!RECT1_CONTAINS_RECT2(params->pSrc[0]->rcMaxSrc, params->pSrc[0]->rcSrc))
+        {
+            params->pSrc[0]->rcMaxSrc = params->pSrc[0]->rcSrc;
+        }
     }
 
     bool bApgFuncSupported = false;
@@ -852,7 +840,12 @@ MOS_STATUS VpPipeline::PrepareVpPipelineScalabilityParams(PVP_PIPELINE_PARAMS pa
 {
     VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(params);
-    VP_PUBLIC_CHK_NULL_RETURN(params->pSrc[0]);
+    if (params->pSrc[0] == nullptr)
+    {
+        VP_PUBLIC_NORMALMESSAGE("No input will not need scalability! ");
+        return MOS_STATUS_SUCCESS;
+    }
+
     VP_PUBLIC_CHK_NULL_RETURN(params->pTarget[0]);
 
     // Disable vesfc scalability when reg key "Enable Vebox Scalability" was set to zero

@@ -174,7 +174,7 @@ MOS_STATUS MediaContext::SwitchContext(MediaFunction func, ContextRequirement *r
         {
             MOS_OS_NORMALMESSAGE("request protect mode context for protected render workload");
             WriteUserFeature(__MEDIA_USER_FEATURE_VALUE_PROTECT_MODE_ENABLE_ID, 1, m_osInterface->pOsContext);
-        }        
+        }
     }
 
     uint32_t index = m_invalidContextAttribute;
@@ -192,6 +192,7 @@ MOS_STATUS MediaContext::SwitchContext(MediaFunction func, ContextRequirement *r
     // Be compatible to legacy MOS
     MOS_OS_CHK_STATUS_RETURN(m_osInterface->pfnSetGpuContext(m_osInterface, m_gpuContextAttributeTable[index].ctxForLegacyMos));
     veStateProvided = m_gpuContextAttributeTable[index].scalabilityState;
+    MOS_OS_NORMALMESSAGE("Switched to GpuContext %d, index %d", m_gpuContextAttributeTable[index].ctxForLegacyMos, index);
 
     if (requirement->IsEnc)
     {
@@ -202,7 +203,10 @@ MOS_STATUS MediaContext::SwitchContext(MediaFunction func, ContextRequirement *r
         m_osInterface->pfnSetEncodePakContext(m_osInterface, m_gpuContextAttributeTable[index].ctxForLegacyMos);
     }
 
-    m_osInterface->pfnResetOsStates(m_osInterface);
+    if (!requirement->IsContextSwitchBack)
+    {
+        m_osInterface->pfnResetOsStates(m_osInterface);
+    }
 
     *scalabilityState = veStateProvided;
 
@@ -236,9 +240,11 @@ MOS_STATUS MediaContext::SearchContext(MediaFunction func, T params, uint32_t& i
                 m_osInterface->pVEInterf = curAttribute.scalabilityState->m_veInterface;
                 if (m_osInterface->apoMosEnabled)
                 {
-                    MOS_OS_CHK_NULL_RETURN(curAttribute.scalabilityState->m_veState);
-                    MOS_OS_CHK_STATUS_RETURN(MosInterface::SetVirtualEngineState(
-                        m_osInterface->osStreamState, curAttribute.scalabilityState->m_veState));
+                    if (curAttribute.scalabilityState->m_veState)
+                    {
+                        MOS_OS_CHK_STATUS_RETURN(MosInterface::SetVirtualEngineState(
+                            m_osInterface->osStreamState, curAttribute.scalabilityState->m_veState));
+                    }
                 }
                 break;
             }
@@ -294,16 +300,72 @@ MOS_STATUS MediaContext::CreateContext(MediaFunction func, T params, uint32_t& i
 
     if(m_osInterface->bSetHandleInvalid)
     {
+        MOS_OS_NORMALMESSAGE("Force set INVALID_HANDLE for GpuContext %d", newAttr.ctxForLegacyMos);
         MOS_OS_CHK_STATUS_RETURN(m_osInterface->pfnSetGpuContextHandle(m_osInterface, MOS_GPU_CONTEXT_INVALID_HANDLE, newAttr.ctxForLegacyMos));
     }
 
     MOS_OS_CHK_STATUS_RETURN(m_osInterface->pfnCreateGpuContext(m_osInterface, newAttr.ctxForLegacyMos, node, &option));
     m_osInterface->pfnSetGpuContext(m_osInterface, newAttr.ctxForLegacyMos);
     newAttr.gpuContext = m_osInterface->CurrentGpuContextHandle;
+    MOS_OS_NORMALMESSAGE("Create GpuContext %d, node %d, handle 0x%x, protectMode %d, raMode %d",
+        newAttr.ctxForLegacyMos, node, newAttr.gpuContext, option.ProtectMode, option.RAMode);
 
     // Add entry to the table
     indexReturn = m_gpuContextAttributeTable.size();
     m_gpuContextAttributeTable.push_back(newAttr);
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS MediaContext::SwitchContext(
+    MediaFunction func,
+    MediaScalabilityOption &scalabilityOption,
+    MediaScalability **scalabilityState,
+    bool isEnc,
+    bool isPak)
+{
+    MOS_OS_FUNCTION_ENTER;
+
+    MOS_OS_CHK_NULL_RETURN(m_osInterface);
+    MOS_OS_CHK_NULL_RETURN(m_osInterface->pOsContext);
+    MOS_OS_CHK_NULL_RETURN(scalabilityState);
+
+    if (func >= INVALID_MEDIA_FUNCTION)
+    {
+        MOS_OS_ASSERTMESSAGE("Func required is invalid");
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
+
+    MediaScalability * veStateProvided = nullptr;
+
+    uint32_t index = m_invalidContextAttribute;
+    MOS_OS_CHK_STATUS_RETURN(SearchContext<MediaScalabilityOption&>(func, scalabilityOption, index));
+    if (index == m_invalidContextAttribute)
+    {
+        MOS_OS_CHK_STATUS_RETURN(CreateContext<MediaScalabilityOption *>(func, &scalabilityOption, index));
+    }
+    if (index == m_invalidContextAttribute || index >= m_gpuContextAttributeTable.size())
+    {
+        MOS_OS_ASSERTMESSAGE("Incorrect index get from Context attribute table");
+        return MOS_STATUS_UNKNOWN;
+    }
+
+    // Be compatible to legacy MOS
+    MOS_OS_CHK_STATUS_RETURN(m_osInterface->pfnSetGpuContext(m_osInterface, m_gpuContextAttributeTable[index].ctxForLegacyMos));
+    veStateProvided = m_gpuContextAttributeTable[index].scalabilityState;
+
+    if (isEnc)
+    {
+        m_osInterface->pfnSetEncodeEncContext(m_osInterface, m_gpuContextAttributeTable[index].ctxForLegacyMos);
+    }
+    if (isPak)
+    {
+        m_osInterface->pfnSetEncodePakContext(m_osInterface, m_gpuContextAttributeTable[index].ctxForLegacyMos);
+    }
+
+    m_osInterface->pfnResetOsStates(m_osInterface);
+
+    *scalabilityState = veStateProvided;
 
     return MOS_STATUS_SUCCESS;
 }
@@ -324,19 +386,19 @@ MOS_STATUS MediaContext::FunctionToNode(MediaFunction func, const MOS_GPUCTX_CRE
     case RenderGenericFunc:
         node = MOS_GPU_NODE_3D;
         break;
+    case VdboxEncodeFunc:
     case VdboxDecodeFunc:
         if (option.LRCACount >= 2)
         {
-            node = MOS_GPU_NODE_VIDEO; // multiple pipe decode always using VIDEO node
+            node = MOS_GPU_NODE_VIDEO; // multiple pipe decode or encode always using VIDEO node
         }
         else
         {
-            MOS_OS_CHK_STATUS_RETURN(FunctionToNodeDecode(node));
+            MOS_OS_CHK_STATUS_RETURN(FunctionToNodeCodec(node));
         }
         break;
     case VdboxDecodeWaFunc:
     case VdboxDecrpytFunc:
-    case VdboxEncodeFunc:
     case VdboxCpFunc:
         node = MOS_GPU_NODE_VIDEO;
         break;
@@ -357,7 +419,7 @@ MOS_STATUS MediaContext::FunctionToNode(MediaFunction func, const MOS_GPUCTX_CRE
     return status;
 }
 
-MOS_STATUS MediaContext::FunctionToNodeDecode(MOS_GPU_NODE& node)
+MOS_STATUS MediaContext::FunctionToNodeCodec(MOS_GPU_NODE& node)
 {
     CodechalHwInterface *hwInterface = static_cast<CodechalHwInterface *>(m_hwInterface);
     MhwVdboxMfxInterface *mfxInterface = hwInterface->GetMfxInterface();
@@ -398,10 +460,10 @@ MOS_STATUS MediaContext::FunctionToGpuContext(MediaFunction func, const MOS_GPUC
         ctx = MOS_GPU_CONTEXT_VEBOX;
         break;
     case RenderGenericFunc:
-        ctx = MOS_GPU_CONTEXT_RENDER;
+        ctx = option.RAMode ? MOS_GPU_CONTEXT_RENDER_RA : MOS_GPU_CONTEXT_RENDER;
         break;
     case ComputeVppFunc:
-        ctx = MOS_GPU_CONTEXT_COMPUTE;
+        ctx = option.RAMode ? MOS_GPU_CONTEXT_COMPUTE_RA : MOS_GPU_CONTEXT_COMPUTE;
         break;
     case ComputeMdfFunc:
         ctx = MOS_GPU_CONTEXT_CM_COMPUTE;

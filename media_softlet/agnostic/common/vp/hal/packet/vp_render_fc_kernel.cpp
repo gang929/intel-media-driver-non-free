@@ -1,4 +1,4 @@
-/*
+﻿/*
 * Copyright (c) 2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
@@ -1132,7 +1132,7 @@ MOS_STATUS VpRenderFcKernel::GetKernelEntry(Kdll_CacheEntry &entry)
         auto matrixId = (uint8_t)DL_CSC_DISABLED == pCscParams->MatrixID[CoeffID_0] ?
             pCscParams->MatrixID[CoeffID_1] : pCscParams->MatrixID[CoeffID_0];
 
-        if ((uint8_t)DL_CSC_DISABLED != matrixId)
+        if ((uint8_t)DL_CSC_DISABLED != matrixId && matrixId >= 0 && matrixId < DL_CSC_MAX)
         {
             auto pMatrix    = &pCscParams->Matrix[matrixId];
             kernelDllState->colorfill_cspace = kernelEntry->colorfill_cspace;
@@ -1142,6 +1142,10 @@ MOS_STATUS VpRenderFcKernel::GetKernelEntry(Kdll_CacheEntry &entry)
             {
                 kernelEntryUpdate = (m_Procamp[pMatrix->iProcampID].iProcampVersion != pMatrix->iProcampVersion) ? true : false;
             }
+        }
+        else
+        {
+            VPHAL_RENDER_NORMALMESSAGE("Array Index Out of Bounds.");
         }
     }
 
@@ -1357,6 +1361,8 @@ MOS_STATUS Set3DSamplerStatus(
         VP_RENDER_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
     }
 
+    // When the bit being set to 1, the items of samplerIndex 4, 5, 6 will be used, otherwise
+    // the items of samplerIndex 1, 2, 3 will be used.
     if (VPHAL_SCALING_BILINEAR == layer.scalingMode)
     {
         curbeData.DW14.Sampler3DStateSetSelection |= (1 << layer.layerID);
@@ -1421,6 +1427,9 @@ MOS_STATUS VpRenderFcKernel::InitCscInCurbeData()
 
 MOS_STATUS VpRenderFcKernel::InitLayerInCurbeData(VP_FC_LAYER *layer)
 {
+    VP_PUBLIC_CHK_NULL_RETURN(layer);
+    VP_RENDER_CHK_NULL_RETURN(layer->surfaceEntries[0]);
+
     float   horizgap = 0;
     float   vertgap = 0;
     uint32_t bitDepth = 0;
@@ -1447,6 +1456,16 @@ MOS_STATUS VpRenderFcKernel::InitLayerInCurbeData(VP_FC_LAYER *layer)
         // set mono-chroma XOR composite specific curbe data. re-calculate fStep due to 1 bit = 1 pixel.
         m_curbeData.DW10.MonoXORCompositeMask = layer->surf->rcDst.left & 0x7;
     }
+
+    VP_RENDER_NORMALMESSAGE("Scaling Info: layer %d, width %d, height, %d, rotation %d, alpha %d, shiftX %f, shiftY %f, scaleX %f, scaleY %f, offsetX %f, offsetY %f, stepX %f, stepY %f, originX %f, originY %f",
+        layer->layerID, layer->surfaceEntries[0]->dwWidth, layer->surfaceEntries[0]->dwHeight, layer->rotation, alpha, layer->calculatedParams.fShiftX, layer->calculatedParams.fShiftY,
+         layer->calculatedParams.fScaleX, layer->calculatedParams.fScaleY, layer->calculatedParams.fOffsetX, layer->calculatedParams.fOffsetY, fStepX, fStepY, fOriginX, fOriginY);
+
+    VP_RENDER_NORMALMESSAGE("Scaling Info: layer %d, DestXTopLeft %d, DestYTopLeft %d, DestXBottomRight %d, DestYBottomRight %d",
+        layer->layerID, clipedDstRect.left, clipedDstRect.top, clipedDstRect.right - 1, clipedDstRect.bottom - 1);
+
+    VP_RENDER_NORMALMESSAGE("Scaling Info: layer %d, chromaSitingEnabled %d, isChromaUpSamplingNeeded %d, isChromaDownSamplingNeeded %d",
+        layer->layerID, layer->calculatedParams.chromaSitingEnabled, layer->calculatedParams.isChromaUpSamplingNeeded, layer->calculatedParams.isChromaDownSamplingNeeded);
 
     switch (layer->layerID)
     {
@@ -1482,6 +1501,9 @@ MOS_STATUS VpRenderFcKernel::InitLayerInCurbeData(VP_FC_LAYER *layer)
             m_curbeData.DW11.ChromasitingUOffset = (float)((1.0f / (layer->surf->osSurface->dwWidth)) - horizgap);
             m_curbeData.DW12.ChromasitingVOffset = (float)((0.5f / (layer->surf->osSurface->dwHeight)) - vertgap);
         }
+
+        VP_RENDER_NORMALMESSAGE("Scaling Info: layer 0, ChromasitingUOffset %f, ChromasitingVOffset %f",
+            m_curbeData.DW11.ChromasitingUOffset, m_curbeData.DW12.ChromasitingVOffset);
 
         // Set output depth.
         bitDepth = VpHal_GetSurfaceBitDepth(layer->surf->osSurface->Format);
@@ -1708,6 +1730,7 @@ MOS_STATUS VpRenderFcKernel::InitFcCurbeData()
                 (uint16_t)compParams.target[0].surf->rcDst.top;
     }
 
+    PrintCurbeData(m_curbeData);
     return MOS_STATUS_SUCCESS;
 }
 
@@ -2187,6 +2210,300 @@ bool VpRenderFcKernel::IsEufusionBypassed()
     return false;
 }
 
+void VpRenderFcKernel::PrintCurbeData(VP_FC_CURBE_DATA &curbeData)
+{
+#if (_DEBUG || _RELEASE_INTERNAL)
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW00.Value = %x", curbeData.DW00.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     CscConstantC0 = %x, CscConstantC1 = %x, LocalDifferenceThresholdU = %x, LocalDifferenceThresholdV = %x, SobelEdgeThresholdU = %x, SobelEdgeThresholdV = %x",
+        curbeData.DW00.CscConstantC0,
+        curbeData.DW00.CscConstantC1,
+        curbeData.DW00.LocalDifferenceThresholdU,
+        curbeData.DW00.LocalDifferenceThresholdV,
+        curbeData.DW00.SobelEdgeThresholdU,
+        curbeData.DW00.SobelEdgeThresholdV);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW01.Value = %x", curbeData.DW01.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     CscConstantC2 = %x, CscConstantC3 = %x, HistoryInitialValueU = %x, HistoryInitialValueV = %x, HistoryMaxU = %x, HistoryMaxV = %x",
+        curbeData.DW01.CscConstantC2,
+        curbeData.DW01.CscConstantC3,
+        curbeData.DW01.HistoryInitialValueU,
+        curbeData.DW01.HistoryInitialValueV,
+        curbeData.DW01.HistoryMaxU,
+        curbeData.DW01.HistoryMaxV);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW02.Value = %x", curbeData.DW02.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     CscConstantC4 = %x, CscConstantC5 = %x, HistoryDeltaU = %x, HistoryDeltaV = %x, NSADThresholdU = %x, DNSADThresholdV = %x",
+        curbeData.DW02.CscConstantC4,
+        curbeData.DW02.CscConstantC5,
+        curbeData.DW02.HistoryDeltaU,
+        curbeData.DW02.HistoryDeltaV,
+        curbeData.DW02.DNSADThresholdU,
+        curbeData.DW02.DNSADThresholdV);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW03.Value = %x", curbeData.DW03.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     CscConstantC6 = %x, CscConstantC7 = %x, DNTDThresholdU = %x, HistoryDeltaV = %x, DNLTDThresholdU = %x, DNLTDThresholdV = %x",
+        curbeData.DW03.CscConstantC6,
+        curbeData.DW03.CscConstantC7,
+        curbeData.DW03.DNTDThresholdU,
+        curbeData.DW03.DNTDThresholdV,
+        curbeData.DW03.DNLTDThresholdU,
+        curbeData.DW03.DNLTDThresholdV);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW04.Value = %x", curbeData.DW04.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     CscConstantC8 = %x, CscConstantC9 = %x",
+        curbeData.DW04.CscConstantC8,
+        curbeData.DW04.CscConstantC9);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW05.Value = %x", curbeData.DW05.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     CscConstantC10 = %x, CscConstantC11 = %x",
+        curbeData.DW05.CscConstantC10,
+        curbeData.DW05.CscConstantC11);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW06.Value = %x", curbeData.DW06.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     ConstantBlendingAlphaLayer1 = %d, ConstantBlendingAlphaLayer2 = %d, ConstantBlendingAlphaLayer3 = %d, ConstantBlendingAlphaLayer4 = %d, HalfStatisticsSurfacePitch = %d, StatisticsSurfaceHeight = %d",
+        curbeData.DW06.ConstantBlendingAlphaLayer1,
+        curbeData.DW06.ConstantBlendingAlphaLayer2,
+        curbeData.DW06.ConstantBlendingAlphaLayer3,
+        curbeData.DW06.ConstantBlendingAlphaLayer4,
+        curbeData.DW06.HalfStatisticsSurfacePitch,
+        curbeData.DW06.StatisticsSurfaceHeight);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW07.Value = %x", curbeData.DW07.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     ConstantBlendingAlphaLayer5 = %d, ConstantBlendingAlphaLayer6 = %d, ConstantBlendingAlphaLayer7 = %d, PointerToInlineParameters = %d, ConstantBlendingAlphaLayer51 = %d, ConstantBlendingAlphaLayer61 = %d, ConstantBlendingAlphaLayer71 = %d, OutputDepth = %d, TopFieldFirst = %d",
+        curbeData.DW07.ConstantBlendingAlphaLayer5,
+        curbeData.DW07.ConstantBlendingAlphaLayer6,
+        curbeData.DW07.ConstantBlendingAlphaLayer7,
+        curbeData.DW07.PointerToInlineParameters,
+        curbeData.DW07.ConstantBlendingAlphaLayer51,
+        curbeData.DW07.ConstantBlendingAlphaLayer61,
+        curbeData.DW07.ConstantBlendingAlphaLayer71,
+        curbeData.DW07.OutputDepth,
+        curbeData.DW07.TopFieldFirst);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW08.Value = %x", curbeData.DW08.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestinationRectangleWidth = %d, DestinationRectangleHeight = %d",
+        curbeData.DW08.DestinationRectangleWidth,
+        curbeData.DW08.DestinationRectangleHeight);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW09.Value = %x", curbeData.DW09.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     RotationMirrorMode = %d, RotationMirrorAllLayer = %d, DualOutputMode = %d, ChannelSwap = %d",
+        curbeData.DW09.RotationMirrorMode,
+        curbeData.DW09.RotationMirrorAllLayer,
+        curbeData.DW09.DualOutputMode,
+        curbeData.DW09.ChannelSwap);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW10.Value = %x", curbeData.DW10.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     ChromaSitingLocation = %d",
+        curbeData.DW10.ChromaSitingLocation);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW11.Value = %x", curbeData.DW11.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW12.Value = %x", curbeData.DW12.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     ColorProcessingEnable = %d, MessageFormat = %d, ColorProcessingStatePointer = %x",
+        curbeData.DW12.ColorProcessingEnable,
+        curbeData.DW12.MessageFormat,
+        curbeData.DW12.ColorProcessingStatePointer);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW13.Value = %x", curbeData.DW13.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     ColorFill_R = %x, ColorFill_G = %x, ColorFill_B = %x, ColorFill_A = %x, ColorFill_V = %x, ColorFill_Y = %x, ColorFill_U = %x",
+        curbeData.DW13.ColorFill_R,
+        curbeData.DW13.ColorFill_G,
+        curbeData.DW13.ColorFill_B,
+        curbeData.DW13.ColorFill_A,
+        curbeData.DW13.ColorFill_V,
+        curbeData.DW13.ColorFill_Y,
+        curbeData.DW13.ColorFill_U);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW14.Value = %x", curbeData.DW14.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     LumakeyLowThreshold = %x, LumakeyHighThreshold = %x, NLASEnable = %d, Reserved = %d",
+        curbeData.DW14.LumakeyLowThreshold,
+        curbeData.DW14.LumakeyHighThreshold,
+        curbeData.DW14.NLASEnable,
+        curbeData.DW14.Sampler3DStateSetSelection);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW15.Value = %x", curbeData.DW15.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestinationPackedYOffset = %d, DestinationPackedUOffset = %d, DestinationPackedVOffset = %d, DestinationRGBFormat = %d",
+        curbeData.DW15.DestinationPackedYOffset,
+        curbeData.DW15.DestinationPackedUOffset,
+        curbeData.DW15.DestinationPackedVOffset,
+        curbeData.DW15.DestinationRGBFormat);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW16.Value = %x", curbeData.DW16.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalScalingStepRatioLayer0 = 0x%x",
+        curbeData.DW16.HorizontalScalingStepRatioLayer0);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW17.Value = %x", curbeData.DW17.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalScalingStepRatioLayer1 = 0x%x",
+        curbeData.DW17.HorizontalScalingStepRatioLayer1);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW18.Value = %x", curbeData.DW18.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalScalingStepRatioLayer2 = 0x%x",
+        curbeData.DW18.HorizontalScalingStepRatioLayer2);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW19.Value = %x", curbeData.DW19.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalScalingStepRatioLayer3 = 0x%x",
+        curbeData.DW19.HorizontalScalingStepRatioLayer3);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW20.Value = %x", curbeData.DW20.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalScalingStepRatioLayer4 = 0x%x",
+        curbeData.DW20.HorizontalScalingStepRatioLayer4);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW21.Value = %x", curbeData.DW21.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalScalingStepRatioLayer5 = 0x%x",
+        curbeData.DW21.HorizontalScalingStepRatioLayer5);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW22.Value = %x", curbeData.DW22.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalScalingStepRatioLayer6 = 0x%x",
+        curbeData.DW22.HorizontalScalingStepRatioLayer6);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW23.Value = %x", curbeData.DW23.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:    HorizontalScalingStepRatioLayer7 = 0x%x",
+        curbeData.DW23.HorizontalScalingStepRatioLayer7);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW24.Value = %x", curbeData.DW24.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalScalingStepRatioLayer0 = 0x%x, SourcePackedYOffset = %d, SourcePackedUOffset = %d, SourcePackedVOffset = %d, Reserved = %d",
+        curbeData.DW24.VerticalScalingStepRatioLayer0,
+        curbeData.DW24.SourcePackedYOffset,
+        curbeData.DW24.SourcePackedUOffset,
+        curbeData.DW24.SourcePackedVOffset,
+        curbeData.DW24.Reserved);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW25.Value = %x", curbeData.DW25.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalScalingStepRatioLayer1 = 0x%x",
+        curbeData.DW25.VerticalScalingStepRatioLayer1);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW26.Value = %x", curbeData.DW26.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalScalingStepRatioLayer2 = 0x%x, HorizontalFrameOriginOffset = %d, VerticalFrameOriginOffset = %d",
+        curbeData.DW26.VerticalScalingStepRatioLayer2,
+        curbeData.DW26.HorizontalFrameOriginOffset,
+        curbeData.DW26.VerticalFrameOriginOffset);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW27.Value = %x", curbeData.DW27.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalScalingStepRatioLayer3 = 0x%x",
+        curbeData.DW27.VerticalScalingStepRatioLayer3);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW28.Value = %x", curbeData.DW28.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalScalingStepRatioLayer4 = 0x%x",
+        curbeData.DW28.VerticalScalingStepRatioLayer4);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW29.Value = %x", curbeData.DW29.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalScalingStepRatioLayer5 = 0x%x",
+        curbeData.DW29.VerticalScalingStepRatioLayer5);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW30.Value = %x", curbeData.DW30.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalScalingStepRatioLayer6 = 0x%x",
+        curbeData.DW30.VerticalScalingStepRatioLayer6);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW31.Value = %x", curbeData.DW31.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalScalingStepRatioLayer7 = 0x%x",
+        curbeData.DW31.VerticalScalingStepRatioLayer7);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW32.Value = %x", curbeData.DW32.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalFrameOriginLayer0 = 0x%x",
+        curbeData.DW32.VerticalFrameOriginLayer0);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW33.Value = %x", curbeData.DW33.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalFrameOriginLayer1 = 0x%x",
+        curbeData.DW33.VerticalFrameOriginLayer1);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW34.Value = %x", curbeData.DW34.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalFrameOriginLayer2 = 0x%x",
+        curbeData.DW34.VerticalFrameOriginLayer2);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW35.Value = %x", curbeData.DW35.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalFrameOriginLayer3 = 0x%x",
+        curbeData.DW35.VerticalFrameOriginLayer3);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW36.Value = %x", curbeData.DW36.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalFrameOriginLayer4 = 0x%x",
+        curbeData.DW36.VerticalFrameOriginLayer4);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW37.Value = %x", curbeData.DW37.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalFrameOriginLayer5 = 0x%x",
+        curbeData.DW37.VerticalFrameOriginLayer5);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW38.Value = %x", curbeData.DW38.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalFrameOriginLayer6 = 0x%x",
+        curbeData.DW38.VerticalFrameOriginLayer6);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW39.Value = %x", curbeData.DW39.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VerticalFrameOriginLayer7 = 0x%x",
+        curbeData.DW39.VerticalFrameOriginLayer7);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW40.Value = %x", curbeData.DW40.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalFrameOriginLayer0 = 0x%x",
+        curbeData.DW40.HorizontalFrameOriginLayer0);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW41.Value = %x", curbeData.DW41.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalFrameOriginLayer1 = 0x%x",
+        curbeData.DW41.HorizontalFrameOriginLayer1);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW42.Value = %x", curbeData.DW42.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalFrameOriginLayer2 = 0x%x",
+        curbeData.DW42.HorizontalFrameOriginLayer2);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW43.Value = %x", curbeData.DW43.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalFrameOriginLayer3 = 0x%x",
+        curbeData.DW43.HorizontalFrameOriginLayer3);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW44.Value = %x", curbeData.DW44.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalFrameOriginLayer4 = 0x%x",
+        curbeData.DW44.HorizontalFrameOriginLayer4);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW45.Value = %x", curbeData.DW45.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalFrameOriginLayer5 = 0x%x",
+        curbeData.DW45.HorizontalFrameOriginLayer5);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW46.Value = %x", curbeData.DW46.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalFrameOriginLayer6 = 0x%x",
+        curbeData.DW46.HorizontalFrameOriginLayer6);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW47.Value = %x", curbeData.DW47.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     HorizontalFrameOriginLayer7 = 0x%x",
+        curbeData.DW47.HorizontalFrameOriginLayer7);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW48.Value = %x", curbeData.DW48.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXTopLeftLayer0 = %d, DestYTopLeftLayer0 = %d",
+        curbeData.DW48.DestXTopLeftLayer0,
+        curbeData.DW48.DestYTopLeftLayer0);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW49.Value = %x", curbeData.DW49.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXTopLeftLayer1 = %d, DestYTopLeftLayer1 = %d",
+        curbeData.DW49.DestXTopLeftLayer1,
+        curbeData.DW49.DestYTopLeftLayer1);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW50.Value = %x", curbeData.DW50.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXTopLeftLayer2 = %d, DestYTopLeftLayer2 = %d",
+        curbeData.DW50.DestXTopLeftLayer2,
+        curbeData.DW50.DestYTopLeftLayer2);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW51.Value = %x", curbeData.DW51.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXTopLeftLayer3 = %d, DestYTopLeftLayer3 = %d",
+        curbeData.DW51.DestXTopLeftLayer3,
+        curbeData.DW51.DestYTopLeftLayer3);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW52.Value = %x", curbeData.DW52.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXTopLeftLayer4 = %d, DestYTopLeftLayer4 = %d",
+        curbeData.DW52.DestXTopLeftLayer4,
+        curbeData.DW52.DestYTopLeftLayer4);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW53.Value = %x", curbeData.DW53.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXTopLeftLayer5 = %d, DestYTopLeftLayer5 = %d",
+        curbeData.DW53.DestXTopLeftLayer5,
+        curbeData.DW53.DestYTopLeftLayer5);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW54.Value = %x", curbeData.DW54.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXTopLeftLayer6 = %d, DestYTopLeftLayer6 = %d",
+        curbeData.DW54.DestXTopLeftLayer6,
+        curbeData.DW54.DestYTopLeftLayer6);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW55.Value = %x", curbeData.DW55.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXTopLeftLayer7 = %d, DestYTopLeftLaye7 = %d",
+        curbeData.DW55.DestXTopLeftLayer7,
+        curbeData.DW55.DestYTopLeftLayer7);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW56.Value = %x", curbeData.DW56.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXBottomRightLayer0 = %d, DestXBottomRightLayer0 = %d",
+        curbeData.DW56.DestXBottomRightLayer0,
+        curbeData.DW56.DestXBottomRightLayer0);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW57.Value = %x", curbeData.DW57.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXBottomRightLayer1 = %d, DestXBottomRightLayer1 = %d",
+        curbeData.DW57.DestXBottomRightLayer1,
+        curbeData.DW57.DestXBottomRightLayer1);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW58.Value = %x", curbeData.DW58.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXBottomRightLayer2 = %d, DestXBottomRightLayer2 = %d",
+        curbeData.DW58.DestXBottomRightLayer2,
+        curbeData.DW58.DestXBottomRightLayer2);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW59.Value = %x", curbeData.DW59.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXBottomRightLayer3 = %d, DestXBottomRightLayer3 = %d",
+        curbeData.DW59.DestXBottomRightLayer3,
+        curbeData.DW59.DestXBottomRightLayer3);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW60.Value = %x", curbeData.DW60.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXBottomRightLayer4 = %d, DestXBottomRightLayer4 = %d",
+        curbeData.DW60.DestXBottomRightLayer4,
+        curbeData.DW60.DestXBottomRightLayer4);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW61.Value = %x", curbeData.DW61.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXBottomRightLayer5 = %d, DestXBottomRightLayer5 = %d",
+        curbeData.DW61.DestXBottomRightLayer5,
+        curbeData.DW61.DestXBottomRightLayer5);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW62.Value = %x", curbeData.DW62.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXBottomRightLayer6 = %d, DestXBottomRightLayer6 = %d",
+        curbeData.DW62.DestXBottomRightLayer6,
+        curbeData.DW62.DestXBottomRightLayer6);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW63.Value = %x", curbeData.DW63.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestXBottomRightLayer7 = %d, DestXBottomRightLayer7 = %d",
+        curbeData.DW63.DestXBottomRightLayer7,
+        curbeData.DW63.DestXBottomRightLayer7);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW64.Value = %x", curbeData.DW64.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     MainVideoXScalingStepLeft = %x",
+        curbeData.DW64.MainVideoXScalingStepLeft);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW65.Value = %x", curbeData.DW65.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     VideoStepDeltaForNonLinearRegion = %x",
+        curbeData.DW65.VideoStepDeltaForNonLinearRegion);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW66.Value = %x", curbeData.DW66.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     StartofLinearScalingInPixelPositionC0 = %x, StartofRHSNonLinearScalingInPixelPositionC1 = %x",
+        curbeData.DW66.StartofLinearScalingInPixelPositionC0,
+        curbeData.DW66.StartofRHSNonLinearScalingInPixelPositionC1);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW67.Value = %x", curbeData.DW67.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     MainVideoXScalingStepCenter = %x",
+        curbeData.DW67.MainVideoXScalingStepCenter);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW68.Value = %x", curbeData.DW68.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     MainVideoXScalingStepRight = %x",
+        curbeData.DW68.MainVideoXScalingStepRight);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: DW69.Value = %x", curbeData.DW69.Value);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData:     DestHorizontalBlockOrigin = %x, DestVerticalBlockOrigin = %x",
+        curbeData.DW69.DestHorizontalBlockOrigin,
+        curbeData.DW69.DestVerticalBlockOrigin);
+    VP_RENDER_VERBOSEMESSAGE("CurbeData: dwPad[0] = %x, dwPad[1] = %x",
+        curbeData.dwPad[0],
+        curbeData.dwPad[1]);
+#endif
+}
+
 MOS_STATUS VpRenderFcKernel::UpdateCompParams()
 {
     VP_COMPOSITE_PARAMS &compParams = m_fcParams->compParams;
@@ -2279,6 +2596,9 @@ MOS_STATUS VpRenderFcKernel::SetSamplerStates(KERNEL_SAMPLER_STATE_GROUP& sample
             VP_RENDER_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
         }
 
+        VP_RENDER_CHK_NULL_RETURN(layer.surf);
+        VP_RENDER_CHK_NULL_RETURN(layer.surf->osSurface);
+
         for (uint32_t entryIndex = 0; entryIndex < layer.numOfSurfaceEntries; ++entryIndex)
         {
             int32_t                         samplerIndex        = 0;
@@ -2307,6 +2627,11 @@ MOS_STATUS VpRenderFcKernel::SetSamplerStates(KERNEL_SAMPLER_STATE_GROUP& sample
             samplerStateParam.Unorm.AddressW            = MHW_GFX3DSTATE_TEXCOORDMODE_CLAMP;
 
             samplerStateGroup.insert(std::make_pair(samplerIndex, samplerStateParam));
+
+            VP_RENDER_NORMALMESSAGE("Scaling Info: layer %d, layerOrigin %d, entry %d, format %d, scalingMode %d, samplerType %d, samplerFilterMode %d, samplerIndex %d, yuvPlane %d",
+                layer.layerID, layer.layerIDOrigin, entryIndex, layer.surf->osSurface->Format, layer.scalingMode, samplerType, samplerStateParam.Unorm.SamplerFilterMode, samplerIndex, entry->YUVPlane);
+            MT_LOG7(MT_VP_HAL_FC_SCALINGINFO, MT_NORMAL, MT_VP_HAL_FC_LAYER, layer.layerID, MT_VP_HAL_FC_LAYER_SURFENTRY, entryIndex, MT_SURF_MOS_FORMAT, layer.surf->osSurface->Format,
+                MT_VP_HAL_SCALING_MODE, layer.scalingMode, MT_VP_HAL_SAMPLER_TYPE, samplerType, MT_VP_HAL_SAMPLER_FILTERMODE, samplerStateParam.Unorm.SamplerFilterMode, MT_VP_HAL_SAMPLER_INDEX, samplerIndex);
         }
     }
 
@@ -2321,6 +2646,7 @@ MOS_STATUS VpRenderFcKernel::SetKernelConfigs(KERNEL_CONFIGS &kernelConfigs)
     {
         m_fcParams = (PRENDER_FC_PARAMS)MOS_AllocAndZeroMemory(sizeof(RENDER_FC_PARAMS));
     }
+    VP_RENDER_CHK_NULL_RETURN(m_fcParams);
 
     PRENDER_FC_PARAMS fcParams = nullptr;
     if (kernelConfigs.find(m_kernelId) != kernelConfigs.end())

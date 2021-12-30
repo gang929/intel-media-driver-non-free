@@ -15,14 +15,20 @@ def chk_ADD_TRACE(file_path, class_info):
         #print(file_path)
         lines = fh.readlines()
         for line in lines:
-            if line.find('ADD_CLASS_TRACE') > -1:
-                class_name = line.split('ADD_CLASS_TRACE')[1][1:-2]
+            if line.find('MEDIA_CLASS_DEFINE_END') > -1:
+                class_name = line.split('MEDIA_CLASS_DEFINE_END')[1][1:-2]
                 if class_name not in class_info:
                     class_info[class_name] = [file_path]
                 else:
                     class_info[class_name].append(file_path)
 
 def genHeaderFile(top, offset_head_file):
+    with open(offset_head_file, 'r') as fh:
+        lines = fh.readlines()
+        #the head file is not the origin/empty file, already has the offset info and do not need re-generate.
+        if str(lines).count('#define OFFSET_') > 0:
+            return
+
     files = find_files(top, ('.h'))
     files.sort()
 
@@ -52,4 +58,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     time_start = time.time()
     genHeaderFile(args.workspace, args.headfile)
-    print(time.time() - time_start)
+    print("generate offset spend %0.4f s"%(time.time() - time_start))

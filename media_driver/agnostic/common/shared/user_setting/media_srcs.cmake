@@ -25,30 +25,14 @@ set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/media_user_setting.cpp
 )
 
-set(TMP_HEADERS_
-    ${CMAKE_CURRENT_LIST_DIR}/media_user_setting_value.h
-    ${CMAKE_CURRENT_LIST_DIR}/media_user_setting_configure.h
-    ${CMAKE_CURRENT_LIST_DIR}/media_user_setting_definition.h
-    ${CMAKE_CURRENT_LIST_DIR}/media_user_setting.h
-)
-
 set(SOURCES_
     ${SOURCES_}
     ${TMP_SOURCES_}
 )
 
-set(HEADERS_
-    ${HEADERS_}
-    ${TMP_HEADERS_}
-)
-
 set(COMMON_SOURCES_
     ${COMMON_SOURCES_}
     ${TMP_SOURCES_})
-
-set(COMMON_HEADERS_
-    ${COMMON_HEADERS_}
-    ${TMP_HEADERS_})
 
 source_group( "Common Files" FILES ${TMP_SOURCES_} ${TMP_HEADERS_} )
 

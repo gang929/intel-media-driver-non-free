@@ -61,12 +61,15 @@ set(LIB_NAME_STATIC "${LIB_NAME}_STATIC")
 set(SOURCES_ "")
 
 # add source
+# first
+media_include_subdirectory(../media_common/agnostic)
+media_include_subdirectory(../media_common/linux)
+
+# second
 media_include_subdirectory(agnostic)
 media_include_subdirectory(linux)
 media_include_subdirectory(media_softlet)
 media_include_subdirectory(media_interface)
-media_include_subdirectory(../media_common/agnostic)
-media_include_subdirectory(../media_common/linux)
 media_include_subdirectory(../media_softlet/agnostic)
 media_include_subdirectory(../media_softlet/linux)
 
@@ -142,16 +145,12 @@ if (NOT DEFINED INCLUDED_LIBS OR "${INCLUDED_LIBS}" STREQUAL "")
     endif()
 
     target_compile_options( ${LIB_NAME} PUBLIC ${LIBGMM_CFLAGS_OTHER})
-    target_link_libraries ( ${LIB_NAME} ${LIBGMM_LIBRARIES})
+    target_link_libraries ( ${LIB_NAME} ${LIBGMM_LIBRARIES} drm)
 
     include(${MEDIA_EXT_CMAKE}/ext/media_feature_include_ext.cmake OPTIONAL)
 
 endif(NOT DEFINED INCLUDED_LIBS OR "${INCLUDED_LIBS}" STREQUAL "")
 
-if (${CLASS_TRACE} EQUAL 1)
-    message("start to generate media_trace_offset.h")
-    execute_process(COMMAND python3 ${BS_DIR_MEDIA}/Tools/MediaDriverTools/MediaClassTrace/gen_ClassTraceOffset.py -w ${BS_DIR_MEDIA} -f ${MEDIA_SOFTLET_EXT}/agnostic/common/shared/classtrace/media_trace_offset.h)
-endif ()
 # post target attributes
 bs_set_post_target()
 
@@ -159,3 +158,12 @@ if(MEDIA_RUN_TEST_SUITE AND ENABLE_KERNELS AND ENABLE_NONFREE_KERNELS)
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/linux/ult)
     include(${MEDIA_EXT}/media_softlet/ult/ult_top_cmake.cmake OPTIONAL)
 endif()
+
+if (${CLASS_TRACE} EQUAL 1)
+    message("start to generate media_trace_offset.h in media_top_cmake.cmake")
+    add_dependencies(${LIB_NAME} generate_classtrace)
+    add_dependencies(${LIB_NAME_OBJ} generate_classtrace)
+    add_dependencies(${LIB_NAME_STATIC} generate_classtrace)
+    add_dependencies(${LIB_NAME}_SSE2 generate_classtrace)
+    add_dependencies(${LIB_NAME}_SSE4 generate_classtrace)
+endif ()

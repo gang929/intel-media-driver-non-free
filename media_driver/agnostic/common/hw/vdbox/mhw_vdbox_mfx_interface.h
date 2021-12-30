@@ -629,6 +629,10 @@ protected:
 
     MmioRegistersMfx            m_mmioRegisters[MHW_VDBOX_NODE_MAX] = {};  //!< mfx mmio registers
 
+#if MOS_EVENT_TRACE_DUMP_SUPPORTED
+    bool bMMCReported = false;
+#endif
+
     //!
     //! \brief    Constructor
     //!
@@ -1063,6 +1067,14 @@ public:
     //!           AVC img state size got
     //!
     virtual uint32_t GetAvcImgStateSize() = 0;
+
+    //!
+    //! \brief    get AVC slc state size
+    //!
+    //! \return   uint32_t
+    //!           AVC slc state size got
+    //!
+    virtual uint32_t GetAvcSlcStateSize() = 0;
 
     //!
     //! \brief    Decide Which GPU Node to use for Decode

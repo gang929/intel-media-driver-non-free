@@ -152,6 +152,7 @@ struct _VP_EXECUTE_CAPS
             uint64_t bDV            : 1;
             uint64_t b3DlutOutput   : 1;
             uint64_t bCappipe       : 1;
+            uint64_t bLgca          : 1;
 
             // SFC features
             uint64_t bSfcCsc        : 1;   // Sfc Csc enabled
@@ -198,6 +199,7 @@ typedef struct _VP_EngineEntry
             uint32_t sfc2PassScalingNeededX : 1;
             uint32_t sfc2PassScalingNeededY : 1;
             uint32_t usedForNextPass : 1;       // true if current feature should be bypassed for current pass and be processed during next pass.
+            uint32_t sfcNotSupported : 1;       // true if sfc cannot be selected.
         };
         uint32_t value;
     };

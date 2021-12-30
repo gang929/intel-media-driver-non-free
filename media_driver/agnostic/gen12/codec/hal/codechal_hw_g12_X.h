@@ -30,6 +30,9 @@
 #include "mhw_mi_hwcmd_g12_X.h"
 #include "mhw_render_hwcmd_g12_X.h"
 #include "mhw_vdbox_avp_interface.h"
+#ifdef IGFX_MHW_INTERFACES_NEXT_SUPPORT
+#include "media_interfaces_mhw_next.h"
+#endif
 
 //!
 //! \enum MediaStatesAv1FilmGrain
@@ -63,6 +66,17 @@ public:
         MhwInterfaces     *mhwInterfaces,
         bool              disableScalability = false);
 
+#ifdef IGFX_MHW_INTERFACES_NEXT_SUPPORT
+    //!
+    //! \brief    Constructor
+    //!
+    CodechalHwInterfaceG12(
+        PMOS_INTERFACE    osInterface,
+        CODECHAL_FUNCTION codecFunction,
+        MhwInterfacesNext *mhwInterfacesNext,
+        bool              disableScalability = false);
+#endif
+
     //!
     //! \brief    Copy constructor
     //!
@@ -93,8 +107,8 @@ public:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
-    MOS_STATUS SetCacheabilitySettings(
-        MHW_MEMORY_OBJECT_CONTROL_PARAMS cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_END_CODEC]) override;
+    virtual MOS_STATUS SetCacheabilitySettings(
+            MHW_MEMORY_OBJECT_CONTROL_PARAMS cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_END_CODEC]) override;
 
     //!
     //! \brief    Calculates the maximum size for AVP picture level commands
@@ -190,6 +204,40 @@ public:
     MOS_STATUS Initialize(
         CodechalSetting *settings) override;
 
+#ifdef IGFX_MHW_INTERFACES_NEXT_SUPPORT
+    //!
+    //! \brief    Read AVP status for status report
+    //! \param    vdboxIndex
+    //!           [in] the vdbox index
+    //! \param    params
+    //!           [in] the parameters for AVP status read
+    //! \param    cmdBuffer
+    //!           [in, out] the command buffer
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS ReadAvpStatus(
+        MHW_VDBOX_NODE_IND           vdboxIndex,
+        const EncodeStatusReadParams &params,
+        PMOS_COMMAND_BUFFER          cmdBuffer);
+
+    //!
+    //! \brief    Read AVP specific image status for status report
+    //! \param    vdboxIndex
+    //!           [in] the vdbox index
+    //! \param    params
+    //!           [in] the parameters for AVP IMG status read
+    //! \param    cmdBuffer
+    //!           [in, out] the command buffer
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS ReadImageStatusForAvp(
+        MHW_VDBOX_NODE_IND           vdboxIndex,
+        const EncodeStatusReadParams &params,
+        PMOS_COMMAND_BUFFER          cmdBuffer);
+#endif
+
     //!
     //! \brief    Get film grain kernel info
     //! \details  Get kernel base and size
@@ -206,5 +254,16 @@ public:
     virtual MOS_STATUS GetFilmGrainKernelInfo(
                 uint8_t*    &kernelBase,
                 uint32_t    &kernelSize) override;
+
+private:
+    //!
+    //! \brief    Called by constructor
+    //!
+    void PrepareCmdSize(CODECHAL_FUNCTION codecFunction);
+
+    //!
+    //! \brief    Called by constructor
+    //!
+    void InternalInit(CODECHAL_FUNCTION codecFunction);
 };
 #endif // __CODECHAL_HW_G12_X_H__

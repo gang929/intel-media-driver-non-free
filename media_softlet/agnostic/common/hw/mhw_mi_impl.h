@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, Intel Corporation
+* Copyright (c) 2020-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -257,12 +257,12 @@ protected:
     MHW_MI_MMIOREGISTERS    m_mmioRegisters = {};
     MhwCpInterface          *m_cpInterface  = nullptr;
 
+public:
     Impl(PMOS_INTERFACE osItf) : mhw::Impl(osItf)
     {
         MHW_FUNCTION_ENTER;
     }
 
-public:
     _MHW_SETCMD_OVERRIDE_DECL(MI_SEMAPHORE_WAIT)
     {
         _MHW_SETCMD_CALLBASE(MI_SEMAPHORE_WAIT);
@@ -560,6 +560,59 @@ public:
         return MOS_STATUS_SUCCESS;
     }
 
+    _MHW_SETCMD_OVERRIDE_DECL(MI_COPY_MEM_MEM)
+    {
+        _MHW_SETCMD_CALLBASE(MI_COPY_MEM_MEM);
+
+        MHW_MI_CHK_NULL(this->m_currentCmdBuf);
+        MHW_MI_CHK_NULL(params.presSrc);
+        MHW_MI_CHK_NULL(params.presDst);
+
+        cmd.DW0.UseGlobalGttDestination = IsGlobalGttInUse();
+        cmd.DW0.UseGlobalGttSource      = IsGlobalGttInUse();
+
+        MHW_RESOURCE_PARAMS resourceParams = {};
+        resourceParams.presResource     = params.presDst;
+        resourceParams.dwOffset         = params.dwDstOffset;
+        resourceParams.pdwCmd           = cmd.DW1_2.Value;
+        resourceParams.dwLocationInCmd  = _MHW_CMD_DW_LOCATION(DW1_2.Value);
+        resourceParams.dwLsbNum         = MHW_COMMON_MI_GENERAL_SHIFT;
+        resourceParams.HwCommandType    = MOS_MI_COPY_MEM_MEM;
+        resourceParams.bIsWritable      = true;
+
+        MHW_MI_CHK_STATUS(AddResourceToCmd(
+            this->m_osItf,
+            this->m_currentCmdBuf,
+            &resourceParams));
+
+        resourceParams = {};
+        resourceParams.presResource     = params.presSrc;
+        resourceParams.dwOffset         = params.dwSrcOffset;
+        resourceParams.pdwCmd           = cmd.DW3_4.Value;
+        resourceParams.dwLocationInCmd  = _MHW_CMD_DW_LOCATION(DW3_4.Value);
+        resourceParams.dwLsbNum         = MHW_COMMON_MI_GENERAL_SHIFT;
+        resourceParams.HwCommandType    = MOS_MI_COPY_MEM_MEM;
+        resourceParams.bIsWritable      = false;
+
+        MHW_MI_CHK_STATUS(AddResourceToCmd(
+            this->m_osItf,
+            this->m_currentCmdBuf,
+            &resourceParams));
+
+        return MOS_STATUS_SUCCESS;
+    }
+
+    _MHW_SETCMD_OVERRIDE_DECL(MFX_WAIT)
+    {
+        _MHW_SETCMD_CALLBASE(MFX_WAIT);
+
+        cmd.DW0.MfxSyncControlFlag = params.iStallVdboxPipeline;
+
+        // set the protection bit based on CP status
+        MHW_MI_CHK_STATUS(m_cpInterface->SetProtectionSettingsForMfxWait(this->m_osItf, &cmd));
+
+        return MOS_STATUS_SUCCESS;
+    }
 };
 }  // namespace render
 }  // namespace mhw

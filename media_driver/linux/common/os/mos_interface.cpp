@@ -238,7 +238,7 @@ MOS_STATUS MosInterface::CreateOsStreamState(
         NULL,
         __MEDIA_USER_FEATURE_VALUE_ENABLE_GUC_SUBMISSION_ID,
         &userFeatureData,
-    nullptr);
+        (MOS_CONTEXT_HANDLE) nullptr);
     (*streamState)->bGucSubmission = (*streamState)->bGucSubmission && ((uint32_t)userFeatureData.i32Data);
 
     //KMD Virtual Engine DebugOverride
@@ -367,17 +367,9 @@ MOS_STATUS MosInterface::InitStreamParameters(
     context->m_osDeviceContext  = streamState->osDeviceContext;
     context->bSimIsActive       = streamState->simIsActive;
 
-    if (GMM_SUCCESS != OpenGmm(&context->GmmFuncs))
-    {
-        MOS_FreeMemAndSetNull(context);
-
-        MOS_OS_ASSERTMESSAGE("Unable to open gmm");
-        return MOS_STATUS_INVALID_PARAMETER;
-    }
-
     streamState->perStreamParameters = (OS_PER_STREAM_PARAMETERS)context;
 
-    context->pGmmClientContext  = context->GmmFuncs.pfnCreateClientContext((GMM_CLIENT)GMM_LIBVA_LINUX);
+    context->pGmmClientContext  = streamState->osDeviceContext->GetGmmClientContext();;
 
     context->bufmgr             = bufMgr;
     context->m_gpuContextMgr    = osDeviceContext->GetGpuContextMgr();
@@ -604,6 +596,28 @@ MOS_STATUS MosInterface::CreateGpuContext(
     MOS_OS_CHK_STATUS_RETURN(gpuContextSpecific->Init(gpuContextMgr->GetOsContext(), streamState, &createOption));
 
     gpuContextHandle = gpuContextSpecific->GetGpuContextHandle();
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS MosInterface::GetAdapterBDF(PMOS_CONTEXT mosCtx, ADAPTER_BDF *adapterBDF)
+{
+    MOS_OS_FUNCTION_ENTER;
+
+    drmDevicePtr device;
+    
+    MOS_OS_CHK_NULL_RETURN(mosCtx);
+    if (drmGetDevice(mosCtx->fd, &device) == 0)
+    {
+        adapterBDF->Bus      = device->businfo.pci->bus;
+        adapterBDF->Device   = device->businfo.pci->dev;
+        adapterBDF->Function = device->businfo.pci->func;
+        drmFreeDevice(&device);
+    }
+    else
+    {
+        adapterBDF->Data = 0;
+    }
 
     return MOS_STATUS_SUCCESS;
 }
@@ -1711,7 +1725,7 @@ MOS_STATUS MosInterface::GetResourceInfo(
     GMM_RESOURCE_FLAG   gmmFlags = {};
     MOS_STATUS          eStatus = MOS_STATUS_SUCCESS;
 
-    MOS_OS_CHK_NULL_RETURN(streamState);
+    MOS_UNUSED(streamState);
     MOS_OS_CHK_NULL_RETURN(resource);
 
     // Get Gmm resource info
@@ -1969,6 +1983,21 @@ uint64_t MosInterface::GetResourceGfxAddress(
         mos_bo_set_softpin(resource->bo);
     }
     return resource->bo->offset64;
+}
+
+uint32_t MosInterface::GetResourceAllocationHandle(
+    MOS_RESOURCE_HANDLE resource)
+{
+    MOS_OS_FUNCTION_ENTER;
+
+    if (resource && resource->bo)
+    {
+        return resource->bo->handle;
+    }
+    else
+    {
+        return 0;
+    }
 }
 
 uint32_t MosInterface::GetResourceAllocationIndex(
@@ -2878,6 +2907,11 @@ PMOS_RESOURCE MosInterface::GetMarkerResource(
     return nullptr;
 }
 
+int MosInterface::GetPlaneSurfaceOffset(const MOS_PLANE_OFFSET &planeOffset)
+{
+    return planeOffset.iSurfaceOffset;
+}
+
 #if MOS_COMMAND_BUFFER_DUMP_SUPPORTED
 MOS_STATUS MosInterface::DumpCommandBufferInit(
     MOS_STREAM_HANDLE streamState)
@@ -2895,7 +2929,7 @@ MOS_STATUS MosInterface::DumpCommandBufferInit(
         nullptr,
         __MEDIA_USER_FEATURE_VALUE_DUMP_COMMAND_BUFFER_ENABLE_ID,
         &UserFeatureData,
-        nullptr);
+        (MOS_CONTEXT_HANDLE)streamState->perStreamParameters);
     streamState->dumpCommandBuffer            = (UserFeatureData.i32Data != 0);
     streamState->dumpCommandBufferToFile      = ((UserFeatureData.i32Data & 1) != 0);
     streamState->dumpCommandBufferAsMessages  = ((UserFeatureData.i32Data & 2) != 0);

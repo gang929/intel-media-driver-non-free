@@ -606,7 +606,11 @@ MOS_STATUS VpResourceManager::GetResourceHint(std::vector<FeatureType> &featureP
     SwFilterSubPipe *inputPipe = executedFilters.GetSwFilterSubPipe(true, index);
 
     // only process Primary surface
-    VP_PUBLIC_CHK_NULL_RETURN(inputPipe);
+    if (inputPipe == nullptr)
+    {
+        VP_PUBLIC_NORMALMESSAGE("No inputPipe, so there is no hint message!");
+        return MOS_STATUS_SUCCESS;
+    }
     for (auto filterID : featurePool)
     {
         SwFilter* feature = (SwFilter*)inputPipe->GetSwFilter(FeatureType(filterID));
@@ -620,24 +624,84 @@ MOS_STATUS VpResourceManager::GetResourceHint(std::vector<FeatureType> &featureP
 
 struct VP_SURFACE_PARAMS
 {
-    uint32_t                width;
-    uint32_t                height;
-    MOS_FORMAT              format;
-    MOS_TILE_TYPE           tileType;
+    uint32_t                width               = 0;
+    uint32_t                height              = 0;
+    MOS_FORMAT              format              = Format_None;
+    MOS_TILE_TYPE           tileType            = MOS_TILE_X;
     MOS_RESOURCE_MMC_MODE   surfCompressionMode = MOS_MMC_DISABLED;
-    bool                    surfCompressible   = false;
-    VPHAL_CSPACE            colorSpace;
-    RECT                    rcSrc;              //!< Source rectangle
-    RECT                    rcDst;              //!< Destination rectangle
-    RECT                    rcMaxSrc;           //!< Max source rectangle
-    VPHAL_SAMPLE_TYPE       sampleType;
+    bool                    surfCompressible    = false;
+    VPHAL_CSPACE            colorSpace          = CSpace_None;
+    RECT                    rcSrc               = {0, 0, 0, 0};  //!< Source rectangle
+    RECT                    rcDst               = {0, 0, 0, 0};  //!< Destination rectangle
+    RECT                    rcMaxSrc            = {0, 0, 0, 0};  //!< Max source rectangle
+    VPHAL_SAMPLE_TYPE       sampleType          = SAMPLE_PROGRESSIVE;
 };
+MOS_STATUS VpResourceManager::Get3DLutOutputColorAndFormat(VPHAL_CSPACE &colorSpace, MOS_FORMAT &format, SwFilterPipe &executedFilters)
+{
+    SwFilterHdr *hdr = dynamic_cast<SwFilterHdr *>(executedFilters.GetSwFilter(true, 0, FeatureType::FeatureTypeHdr));
+    if (hdr)
+    {
+        colorSpace = hdr->GetSwFilterParams().dstColorSpace;
+        format     = hdr->GetSwFilterParams().formatOutput;
+    }
+    else
+    {   // caps.b3DlutOutput =1, in hdr tests hdr flag should not be false.
+        VP_PUBLIC_ASSERTMESSAGE("It is unexcepted for HDR case with caps.b3DlutOutput as true, return INVALID_PARAMETER");
+        VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
+
+    }
+    return MOS_STATUS_SUCCESS;
+}
+MOS_STATUS VpResourceManager::GetIntermediaOutputSurfaceColorAndFormat(VP_EXECUTE_CAPS &caps, SwFilterPipe &executedFilters, MOS_FORMAT &format, VPHAL_CSPACE &colorSpace)
+{
+    VP_SURFACE *inputSurface = executedFilters.GetSurface(true, 0);
+    VP_PUBLIC_CHK_NULL_RETURN(inputSurface);
+    if (caps.bRender)
+    {
+        SwFilterCsc *csc = dynamic_cast<SwFilterCsc *>(executedFilters.GetSwFilter(true, 0, FeatureType::FeatureTypeCscOnRender));
+        if (csc)
+        {
+            format            = csc->GetSwFilterParams().formatOutput;
+            colorSpace        = csc->GetSwFilterParams().output.colorSpace;
+            return MOS_STATUS_SUCCESS;
+        }
+
+    }
+    else if (caps.bSFC)
+    {
+        SwFilterCsc *csc = dynamic_cast<SwFilterCsc *>(executedFilters.GetSwFilter(true, 0, FeatureType::FeatureTypeCscOnSfc));
+        if (csc)
+        {
+            format            = csc->GetSwFilterParams().formatOutput;
+            colorSpace        = csc->GetSwFilterParams().output.colorSpace;
+            return MOS_STATUS_SUCCESS;
+        }
+    }
+    else if (caps.b3DlutOutput)
+    {
+        VP_PUBLIC_CHK_STATUS_RETURN(Get3DLutOutputColorAndFormat(colorSpace, format, executedFilters));
+        return MOS_STATUS_SUCCESS;
+    }
+    else if (caps.bVebox)
+    {
+        SwFilterCsc *csc = dynamic_cast<SwFilterCsc *>(executedFilters.GetSwFilter(true, 0, FeatureType::FeatureTypeCscOnVebox));
+        if (csc)
+        {
+            format            = csc->GetSwFilterParams().formatOutput;
+            colorSpace        = csc->GetSwFilterParams().output.colorSpace;
+            return MOS_STATUS_SUCCESS;
+        }
+    }
+
+    format            = inputSurface->osSurface->Format;
+    colorSpace        = inputSurface->ColorSpace;
+    return MOS_STATUS_SUCCESS;
+}
 
 MOS_STATUS VpResourceManager::GetIntermediaOutputSurfaceParams(VP_EXECUTE_CAPS& caps, VP_SURFACE_PARAMS &params, SwFilterPipe &executedFilters)
 {
     VP_FUNC_CALL();
 
-    SwFilterCsc *csc = dynamic_cast<SwFilterCsc *>(executedFilters.GetSwFilter(true, 0, FeatureType::FeatureTypeCsc));
     SwFilterScaling *scaling = dynamic_cast<SwFilterScaling *>(executedFilters.GetSwFilter(true, 0, FeatureType::FeatureTypeScaling));
     SwFilterRotMir *rotMir = dynamic_cast<SwFilterRotMir *>(executedFilters.GetSwFilter(true, 0, FeatureType::FeatureTypeRotMir));
     SwFilterDeinterlace *di = dynamic_cast<SwFilterDeinterlace *>(executedFilters.GetSwFilter(true, 0, FeatureType::FeatureTypeDi));
@@ -681,16 +745,8 @@ MOS_STATUS VpResourceManager::GetIntermediaOutputSurfaceParams(VP_EXECUTE_CAPS& 
         RECT_ROTATE(params.rcMaxSrc, tmp);
     }
 
-    if (csc)
-    {
-        params.format = csc->GetSwFilterParams().formatOutput;
-        params.colorSpace = csc->GetSwFilterParams().output.colorSpace;
-    }
-    else
-    {
-        params.format = inputSurface->osSurface->Format;
-        params.colorSpace = inputSurface->ColorSpace;
-    }
+    VP_PUBLIC_CHK_STATUS_RETURN(GetIntermediaOutputSurfaceColorAndFormat(caps, executedFilters, params.format, params.colorSpace));
+
     params.tileType = MOS_TILE_Y;
     params.surfCompressionMode = caps.bRender ? MOS_MMC_RC : MOS_MMC_MC;
     params.surfCompressible = true;

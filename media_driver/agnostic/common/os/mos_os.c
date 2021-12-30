@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2019, Intel Corporation
+* Copyright (c) 2009-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -438,7 +438,7 @@ MOS_STATUS Mos_DumpCommandBuffer(
             MOS_DIR_SEPERATOR, MOS_COMMAND_BUFFER_OUT_FILE, dwCommandBufferNumber);
 
         // Write the output buffer to file.
-        MOS_OS_CHK_STATUS(MOS_WriteFileFromPtr((const char *)sFileName, pOutputBuffer, dwBytesWritten));
+        MOS_OS_CHK_STATUS(MosUtilities::MosWriteFileFromPtr((const char *)sFileName, pOutputBuffer, dwBytesWritten));
     }
 
     if (pOsInterface->bDumpCommandBufferAsMessages)
@@ -463,7 +463,7 @@ MOS_STATUS Mos_DumpCommandBuffer(
         {
             if (pOsInterface->bDumpCommandBufferToFile)
             {
-                MOS_OS_CHK_STATUS(MOS_AppendFileFromPtr((const char *)sFileName, pOutputBuffer, dwBytesWritten));
+                MOS_OS_CHK_STATUS(MosUtilities::MosAppendFileFromPtr((const char *)sFileName, pOutputBuffer, dwBytesWritten));
             }
             if (pOsInterface->bDumpCommandBufferAsMessages)
             {
@@ -477,7 +477,7 @@ MOS_STATUS Mos_DumpCommandBuffer(
 
     if (pOsInterface->bDumpCommandBufferToFile)
     {
-        MOS_OS_CHK_STATUS(MOS_AppendFileFromPtr((const char *)sFileName, pOutputBuffer, dwBytesWritten));
+        MOS_OS_CHK_STATUS(MosUtilities::MosAppendFileFromPtr((const char *)sFileName, pOutputBuffer, dwBytesWritten));
     }
 
     if (pOsInterface->bDumpCommandBufferAsMessages)
@@ -548,7 +548,7 @@ MOS_STATUS Mos_DumpCommandBufferInit(
             "%c%s",
             MOS_DIR_SEPERATOR, MOS_COMMAND_BUFFER_OUT_DIR);
 
-        eStatus = MOS_CreateDirectory(sFileName);
+        eStatus = MosUtilities::MosCreateDirectory(sFileName);
         if (eStatus != MOS_STATUS_SUCCESS)
         {
             MOS_OS_NORMALMESSAGE("Failed to create output directory. Status = %d", eStatus);
@@ -618,7 +618,7 @@ GpuCmdResInfoDump::GpuCmdResInfoDump(PMOS_CONTEXT mosCtx)
     {
         tmpPath += '/';
     }
-    m_path = tmpPath + "gpuCmdResInfo_" + std::to_string(MOS_GetPid()) + ".txt";
+    m_path = tmpPath + "gpuCmdResInfo_" + std::to_string(MosUtilities::MosGetPid()) + ".txt";
 }
 
 void GpuCmdResInfoDump::Dump(PMOS_INTERFACE pOsInterface) const

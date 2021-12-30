@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2020, Intel Corporation
+# Copyright (c) 2017-2021, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -26,8 +26,6 @@ set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/media_user_settings_mgr.cpp
     ${CMAKE_CURRENT_LIST_DIR}/memory_policy_manager.cpp
     ${CMAKE_CURRENT_LIST_DIR}/null_hardware.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/media_debug_interface.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/media_debug_config_manager.cpp
 )
 
 set(TMP_HEADERS_
@@ -35,10 +33,6 @@ set(TMP_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/media_perf_profiler.h
     ${CMAKE_CURRENT_LIST_DIR}/media_user_settings_mgr.h
     ${CMAKE_CURRENT_LIST_DIR}/memory_policy_manager.h
-    ${CMAKE_CURRENT_LIST_DIR}/null_hardware.h
-    ${CMAKE_CURRENT_LIST_DIR}/media_debug_interface.h
-    ${CMAKE_CURRENT_LIST_DIR}/media_debug_config_manager.h
-    ${CMAKE_CURRENT_LIST_DIR}/media_debug_utils.h
 )
 
 set(SOURCES_
