@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, Intel Corporation
+* Copyright (c) 2019-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -58,7 +58,7 @@ double MosUtilities::MosGetTime()
 }
 
 //!
-//! \brief Linux specific user feature define, used in MOS_UserFeature_ParsePath
+//! \brief Linux specific user feature define, used in MosUtilities::MosUserFeatureParsePath
 //!        They can be unified with the win definitions, since they are identical.
 //!
 #define MOS_UF_SEPARATOR  "\\"
@@ -70,6 +70,7 @@ double MosUtilities::MosGetTime()
 //!
 const char *const MosUtilitiesSpecificNext::m_mosTracePath  = "/sys/kernel/debug/tracing/trace_marker_raw";
 int32_t           MosUtilitiesSpecificNext::m_mosTraceFd    = -1;
+MosMutex          MosUtilitiesSpecificNext::m_userSettingMutex;
 
 std::map<std::string, std::map<std::string, std::string>> MosUtilitiesSpecificNext::m_regBuffer;
 
@@ -609,21 +610,24 @@ MOS_STATUS MosUtilitiesSpecificNext::UserFeatureSet(MOS_PUF_KEYLIST *pKeyList, M
     {
          return MOS_STATUS_NO_SPACE;
     }
-    MOS_AtomicIncrement(&MosUtilities::m_mosMemAllocFakeCounter);  //ulValueBuf does not count it, because it is freed after the MEMNJA final report.
+    MosUtilities::MosAtomicIncrement(&MosUtilities::m_mosMemAllocFakeCounter);  //ulValueBuf does not count it, because it is freed after the MEMNJA final report.
     MOS_OS_NORMALMESSAGE("ulValueBuf %p for key %s", ulValueBuf, NewKey.pValueArray[0].pcValueName);
 
-    if ( (iPos = UserFeatureFindValue(*Key, NewKey.pValueArray[0].pcValueName)) == NOT_FOUND)
+    m_userSettingMutex.Lock();
+    if ((iPos = UserFeatureFindValue(*Key, NewKey.pValueArray[0].pcValueName)) == NOT_FOUND)
     {
         //not found, add a new value to key struct.
         //reallocate memory for appending this value.
-        iPos = MOS_AtomicIncrement(&Key->valueNum);
+        iPos = MosUtilities::MosAtomicIncrement(&Key->valueNum);
+        iPos = iPos - 1;
         if (iPos >= UF_CAPABILITY)
         {
-            MOS_OS_ASSERTMESSAGE("user setting value icount %d must less than UF_CAPABILITY(64)", iPos);
-
+            MOS_OS_ASSERTMESSAGE("user setting requires iPos (%d) < UF_CAPABILITY(64)", iPos);
+            Key->valueNum = UF_CAPABILITY;
+            MOS_SafeFreeMemory(ulValueBuf);
+            m_userSettingMutex.Unlock();
             return MOS_STATUS_USER_FEATURE_KEY_READ_FAILED;
         }
-
         MosUtilities::MosSecureStrcpy(Key->pValueArray[iPos].pcValueName,
             MAX_USERFEATURE_LINE_LENGTH,
             NewKey.pValueArray[0].pcValueName);
@@ -632,7 +636,7 @@ MOS_STATUS MosUtilitiesSpecificNext::UserFeatureSet(MOS_PUF_KEYLIST *pKeyList, M
     {
         //if found, the previous value buffer needs to be freed before reallocating
         MOS_FreeMemory(Key->pValueArray[iPos].ulValueBuf);
-        MOS_AtomicDecrement(&MosUtilities::m_mosMemAllocFakeCounter);
+        MosUtilities::MosAtomicDecrement(&MosUtilities::m_mosMemAllocFakeCounter);
         MOS_OS_NORMALMESSAGE("ulValueBuf %p for key %s", ulValueBuf, NewKey.pValueArray[0].pcValueName);
     }
 
@@ -647,6 +651,7 @@ MOS_STATUS MosUtilitiesSpecificNext::UserFeatureSet(MOS_PUF_KEYLIST *pKeyList, M
                      NewKey.pValueArray[0].ulValueBuf,
                      NewKey.pValueArray[0].ulValueLen);
 
+    m_userSettingMutex.Unlock();
     return MOS_STATUS_SUCCESS;
 }
 
@@ -1363,6 +1368,7 @@ MOS_STATUS MosUtilities::MosOsUtilitiesClose(MOS_CONTEXT_HANDLE mosCtx)
     if (m_mosUtilInitCount == 0)
     {
         MosTraceEventClose();
+        DestroyMediaUserSetting();
         m_mosMemAllocCounter -= m_mosMemAllocFakeCounter;
         MemoryCounter = m_mosMemAllocCounter + m_mosMemAllocCounterGfx;
         m_mosMemAllocCounterNoUserFeature    = m_mosMemAllocCounter;
@@ -1633,6 +1639,32 @@ MOS_STATUS MosUtilities::MosCloseRegKey(
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS MosUtilities::MosReadEnvVariable(
+    UFKEY_NEXT keyHandle,
+    const std::string &valueName,
+    uint32_t *type,
+    std::string &data,
+    uint32_t *size)
+{
+    MOS_OS_CHK_NULL_RETURN(size);
+    MOS_UNUSED(type);
+
+    MOS_STATUS status = MOS_STATUS_SUCCESS;
+
+    std::string name = valueName;
+    std::replace(name.begin(), name.end(), ' ', '_');
+    char *retVal = getenv(name.c_str());
+    if (retVal != nullptr)
+    {
+        std::string strData = retVal;
+        *size               = strData.length();
+        data                = strData;
+        return MOS_STATUS_SUCCESS;
+    }
+
+    return MOS_STATUS_INVALID_PARAMETER;
+}
+
 MOS_STATUS MosUtilities::MosGetRegValue(
     UFKEY_NEXT keyHandle,
     const std::string &valueName,
@@ -1654,18 +1686,6 @@ MOS_STATUS MosUtilities::MosGetRegValue(
 
     try
     {
-        // Read the value from ENV. variable as first
-        std::string name = valueName;
-        std::replace(name.begin(),name.end(),' ','_');
-        char* retVal = getenv(name.c_str());
-        if (retVal != nullptr)
-        {
-            std::string strData = retVal;
-            *size = strData.length();
-            data = strData;
-            return MOS_STATUS_SUCCESS;
-        }
-
         auto keys = util::m_regBuffer[keyHandle];
         auto it = keys.find(valueName);
         if (it == keys.end())
@@ -1928,66 +1948,40 @@ MOS_STATUS MosUtilities::MosReadApoDdiEnabledUserFeature(uint32_t &userfeatureVa
 MOS_STATUS MosUtilities::MosReadApoMosEnabledUserFeature(uint32_t &userfeatureValue, char *path)
 {
     MOS_STATUS eStatus  = MOS_STATUS_SUCCESS;
-    void *     UFKey    = nullptr;
-    uint32_t   dwUFSize = 0;
-    uint32_t   data     = 0;
+    MOS_USER_FEATURE_VALUE_DATA userFeatureData     = {};
     MOS_UNUSED(path);
-
-#if (_DEBUG || _RELEASE_INTERNAL)
-    eStatus = MosGetApoMosEnabledUserFeatureFile();
-#endif
-
-    eStatus = MosUserFeatureOpen(
-        MOS_USER_FEATURE_TYPE_USER,
-        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
-        KEY_READ,
-        &UFKey,
-        nullptr);
-
-    if (eStatus != MOS_STATUS_SUCCESS)
-    {
-        MOS_OS_NORMALMESSAGE("Failed to open ApoMosEnable user feature key , error status %d.", eStatus);
-        return eStatus;
-    }
 
     //If apo mos enabled, to check if media solo is enabled. Disable apo mos if media solo is enabled.
 #if MOS_MEDIASOLO_SUPPORTED
-    eStatus = MosUserFeatureGetValue(
-        UFKey,
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_ENABLE,
-        RRF_RT_UF_DWORD,
-        nullptr,
-        &data,
-        &dwUFSize);
+    eStatus = MosUtilities::MosUserFeatureReadValueID(
+            nullptr,
+            __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_ENABLE_ID,
+            &userFeatureData,
+            (MOS_CONTEXT_HANDLE) nullptr);
 
     //If media solo is enabled, disable apogeios.
-    if (eStatus == MOS_STATUS_SUCCESS && data > 0)
+    if (eStatus == MOS_STATUS_SUCCESS && userFeatureData.i32Data != 0)
     {
         // This error case can be hit if the user feature key does not exist.
         MOS_OS_NORMALMESSAGE("Solo is enabled, disable apo mos");
         userfeatureValue = 0;
-        MosUserFeatureCloseKey(UFKey);  // Closes the key if not nullptr
         return MOS_STATUS_SUCCESS;
     }
 #endif
 
-    eStatus = MosUserFeatureGetValue(
-        UFKey,
-        nullptr,
-        "ApoMosEnable",
-        RRF_RT_UF_DWORD,
-        nullptr,
-        &userfeatureValue,
-        &dwUFSize);
+    MosUtilities::MosZeroMemory(&userFeatureData, sizeof(userFeatureData));
+    eStatus = MosUtilities::MosUserFeatureReadValueID(
+            nullptr,
+            __MEDIA_USER_FEATURE_VALUE_APO_MOS_PATH_ENABLE_ID,
+            &userFeatureData,
+            (MOS_CONTEXT_HANDLE) nullptr);
 
     if (eStatus != MOS_STATUS_SUCCESS)
     {
-        // This error case can be hit if the user feature key does not exist.
+        // It could be there is no this use feature key.
         MOS_OS_NORMALMESSAGE("Failed to read ApoMosEnable  user feature key value, error status %d", eStatus);
     }
-
-    MosUserFeatureCloseKey(UFKey);  // Closes the key if not nullptr
+    userfeatureValue = userFeatureData.u32Data ? true : false;
     return eStatus;
 }
 
@@ -2285,13 +2279,13 @@ uint32_t MosUtilities::MosWaitForMultipleObjects(
 int32_t MosUtilities::MosAtomicIncrement(
     int32_t *pValue)
 {
-    return __sync_fetch_and_add(pValue, 1);
+    return __sync_add_and_fetch(pValue, 1);
 }
 
 int32_t MosUtilities::MosAtomicDecrement(
     int32_t *pValue)
 {
-    return __sync_fetch_and_sub(pValue, 1);
+    return __sync_sub_and_fetch(pValue, 1);
 }
 
 VAStatus MosUtilities::MosStatusToOsResult(
@@ -2369,6 +2363,11 @@ void MosUtilities::MosTraceEventClose()
 void MosUtilities::MosTraceSetupInfo(uint32_t DrvVer, uint32_t PlatFamily, uint32_t RenderFamily, uint32_t DeviceID)
 {
     // not implemented
+}
+
+uint64_t MosUtilities::GetTraceEventKeyword()
+{
+    return 0;
 }
 
 #define TRACE_EVENT_MAX_SIZE    (1024)

@@ -62,7 +62,7 @@ MOS_STATUS VpParameterDumper::SkuWa_DumpToXML(
     VPHAL_DEBUG_CHK_STATUS(VpDumperTool::AppendString(true, &pcOutContents, "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"));
     VPHAL_DEBUG_CHK_STATUS(VpDumperTool::AppendString(false, &pcOutContents, "\n"));
 
-    VPHAL_DEBUG_CHK_STATUS(VpDumperTool::AppendString(false, &pcOutContents, "\t<ID>%d</ID>\n", MOS_GetPid()));
+    VPHAL_DEBUG_CHK_STATUS(VpDumperTool::AppendString(false, &pcOutContents, "\t<ID>%d</ID>\n", MosUtilities::MosGetPid()));
 
     VPHAL_DEBUG_CHK_STATUS(VpDumperTool::AppendString(false, &pcOutContents, "\t<!-- SkuTable infomation -->\n"));
     VPHAL_DEBUG_CHK_STATUS(VpDumperTool::AppendString(false, &pcOutContents, "\t<SkuTable>\n"));
@@ -88,7 +88,7 @@ MOS_STATUS VpParameterDumper::SkuWa_DumpToXML(
 
     MOS_SecureStringPrint(sPath, MAX_PATH, MAX_PATH, "%s%c%s.xml", pParamsDumpSpec->outFileLocation, MOS_DIR_SEPERATOR, SkuWatableFileName.c_str());
     VpDumperTool::GetOsFilePath(sPath, sOsPath);
-    VPHAL_DEBUG_CHK_STATUS(MOS_WriteFileFromPtr(sOsPath, pcOutContents, strlen(pcOutContents)));
+    VPHAL_DEBUG_CHK_STATUS(MosUtilities::MosWriteFileFromPtr(sOsPath, pcOutContents, strlen(pcOutContents)));
 
 finish:
     if (pcOutContents)

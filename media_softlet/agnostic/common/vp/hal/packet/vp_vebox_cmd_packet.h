@@ -938,6 +938,14 @@ protected:
     virtual MOS_STATUS AddVeboxIECPState();
 
     //!
+    //! \brief    Add vebox Hdr state
+    //! \details  Add vebox Hdr state
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS AddVeboxHdrState() { return MOS_STATUS_SUCCESS; }
+
+    //!
     //! \brief    Add vebox Gamut state
     //! \details  Add vebox Gamut state
     //! \return   MOS_STATUS
@@ -1059,6 +1067,7 @@ protected:
     bool                        m_useKernelResource        = false;               //!< Use Vebox Kernel Resource 
     uint32_t                    m_inputDepth               = 0;
 
+MEDIA_CLASS_DEFINE_END(VpVeboxCmdPacket)
 };
 
 }

@@ -185,6 +185,7 @@ MOS_STATUS SwFilterPipe::Initialize(VP_PIPELINE_PARAMS &params, FeatureRule &fea
         if (nullptr == surf)
         {
             Clean();
+            MT_ERR2(MT_VP_HAL_SWWFILTER, MT_CODE_LINE, __LINE__, MT_ERROR_CODE, MOS_STATUS_NULL_POINTER);
             return MOS_STATUS_NULL_POINTER;
         }
 
@@ -228,6 +229,7 @@ MOS_STATUS SwFilterPipe::Initialize(VP_PIPELINE_PARAMS &params, FeatureRule &fea
         if (nullptr == surf)
         {
             Clean();
+            MT_ERR2(MT_VP_HAL_SWWFILTER, MT_CODE_LINE, __LINE__, MT_ERROR_CODE, MOS_STATUS_NULL_POINTER);
             return MOS_STATUS_NULL_POINTER;
         }
         m_OutputSurfaces.push_back(surf);
@@ -480,6 +482,8 @@ MOS_STATUS SwFilterPipe::ConfigFeaturesToPipe(VP_PIPELINE_PARAMS &params, Featur
             if (swFilter)
             {
                 VP_PUBLIC_CHK_STATUS_RETURN(AddSwFilterUnordered(swFilter, isInputPipe, pipeIndex));
+                MT_LOG4(MT_VP_HAL_SWWFILTER_ADD, MT_NORMAL, MT_VP_HAL_PIPE_ISINPUT, isInputPipe, MT_VP_HAL_PIPE_INDEX, pipeIndex, 
+                    MT_VP_HAL_FEATUERTYPE, swFilter->GetFeatureType(), MT_VP_HAL_ENGINECAPS, swFilter->GetFilterEngineCaps().value);
             }
         }
     }
@@ -565,6 +569,7 @@ MOS_STATUS SwFilterPipe::UpdateFeatures(bool isInputPipe, uint32_t pipeIndex, VP
             if (nullptr == inputPipe->GetSwFilter(FeatureTypeCsc))
             {
                 auto handler = m_vpInterface.GetSwFilterHandler(FeatureTypeCsc);
+                VP_PUBLIC_CHK_NULL_RETURN(handler);
                 SwFilterCsc* swfilter = dynamic_cast<SwFilterCsc *>(handler->CreateSwFilter());
                 swfilter->Configure(inputSurf, outputSurf, *caps);
                 inputPipe->AddSwFilterUnordered(swfilter);
@@ -1026,9 +1031,11 @@ MOS_STATUS SwFilterPipe::RemoveUnusedLayers(bool bUpdateInput)
 
     std::vector<uint32_t> indexForRemove;
     uint32_t i = 0;
+    bool isInputNullValid = (!bUpdateInput && pipes.size()>0 && !pipes[0]->IsEmpty());
+
     for (i = 0; i < surfaces1.size(); ++i)
     {
-        if (nullptr == surfaces1[i] || 0 == surfaces2.size() ||
+        if (nullptr == surfaces1[i] || (!isInputNullValid && 0 == surfaces2.size()) ||
             1 == surfaces2.size() && nullptr == surfaces2[0])
         {
             indexForRemove.push_back(i);
@@ -1046,6 +1053,7 @@ MOS_STATUS SwFilterPipe::RemoveUnusedLayers(bool bUpdateInput)
         // Keep m_linkedLayerIndex same size as m_InputSurfaces.
         VP_PUBLIC_CHK_STATUS_RETURN(::RemoveUnusedLayers(indexForRemove, m_linkedLayerIndex));
     }
+
     VP_PUBLIC_CHK_STATUS_RETURN(::RemoveUnusedLayers(indexForRemove, pipes, true));
 
     return MOS_STATUS_SUCCESS;

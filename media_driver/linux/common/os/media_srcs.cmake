@@ -19,8 +19,9 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 
 media_include_subdirectory(i915)
+
 if(ENABLE_PRODUCTION_KMD)
-media_include_subdirectory(i915_production)
+    media_include_subdirectory(i915_production)
 endif()
 
 set(TMP_SOURCES_
@@ -46,12 +47,8 @@ set(TMP_SOURCES_
 set(TMP_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/hwinfo_linux.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_context_specific.h
-    ${CMAKE_CURRENT_LIST_DIR}/media_skuwa_specific.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_graphicsresource_specific.h
-    ${CMAKE_CURRENT_LIST_DIR}/mos_os_specific.h
-    ${CMAKE_CURRENT_LIST_DIR}/mos_util_user_feature_keys_specific.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_util_devult_specific.h
-    ${CMAKE_CURRENT_LIST_DIR}/mos_utilities_specific.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_commandbuffer_specific.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_gpucontext_specific.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_auxtable_mgr.h
@@ -72,7 +69,6 @@ set(TMP_HEADERS_
     ${TMP_HEADERS_}
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_virtualengine_scalability_specific.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_virtualengine_singlepipe_specific.h
-    ${CMAKE_CURRENT_LIST_DIR}/mos_os_virtualengine_specific.h
 )
 
 endif()

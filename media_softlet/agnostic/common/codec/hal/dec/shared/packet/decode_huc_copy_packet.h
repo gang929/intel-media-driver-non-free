@@ -28,21 +28,28 @@
 #define __CODECHAL_HUC_COPY_PACKET_H__
 
 #include "media_cmd_packet.h"
-#include "decode_huc_g12_base.h"
+#include "decode_huc.h"
 #include "media_pipeline.h"
 #include "codechal_hw.h"
 #include "decode_utils.h"
 #include "decode_huc_copy_packet_itf.h"
+#include "mhw_vdbox_huc_cmdpar.h"
+#include "mhw_vdbox_huc_itf.h"
+#include "mhw_cmdpar.h"
 
 namespace decode
 {
-class HucCopyPkt : public DecodeHucBasic_G12_Base, public HucCopyPktItf
-    {
+class HucCopyPkt : public DecodeHucBasic, public HucCopyPktItf, public mhw::vdbox::huc::Itf::ParSetting
+{
     public:
 
         HucCopyPkt(MediaPipeline *pipeline, MediaTask *task, CodechalHwInterface *hwInterface)
-            : DecodeHucBasic_G12_Base(pipeline, task, hwInterface)
+            : DecodeHucBasic(pipeline, task, hwInterface)
         {
+            if (m_hucInterface != nullptr)
+            {                
+                m_hucItf = std::static_pointer_cast<mhw::vdbox::huc::Itf>(m_hucInterface->GetNewHucInterface());
+            }
         }
 
         virtual ~HucCopyPkt() { m_copyParamsList.clear(); }
@@ -76,31 +83,17 @@ class HucCopyPkt : public DecodeHucBasic_G12_Base, public HucCopyPktItf
 
     protected:
         virtual MOS_STATUS Execute(MOS_COMMAND_BUFFER& cmdBuffer, bool prologNeeded) override;
-
-        virtual void       SetImemParameters(MHW_VDBOX_HUC_IMEM_STATE_PARAMS &imemParams) override;
-        virtual MOS_STATUS AddHucImem(MOS_COMMAND_BUFFER &cmdBuffer) override;
-
-        virtual void       SetHucPipeModeSelectParameters(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS &pipeModeSelectParams) override;
-        virtual MOS_STATUS AddHucPipeModeSelect(MOS_COMMAND_BUFFER &cmdBuffer) override;
-
-        virtual void       SetDmemParameters(MHW_VDBOX_HUC_DMEM_STATE_PARAMS &dmemParams) override;
-        virtual MOS_STATUS AddHucDmem(MOS_COMMAND_BUFFER &cmdBuffer) override;
-
-        virtual void       SetRegionParameters(MHW_VDBOX_HUC_VIRTUAL_ADDR_PARAMS &virtualAddrParams) override;
-        virtual MOS_STATUS AddHucRegion(MOS_COMMAND_BUFFER &cmdBuffer) override;
-
-        virtual void       SetIndObjParameters(MHW_VDBOX_IND_OBJ_BASE_ADDR_PARAMS &indObjParams) override;
-        virtual MOS_STATUS AddHucIndObj(MOS_COMMAND_BUFFER &cmdBuffer) override;
-
-        virtual void       SetStreamObjectParameters(MHW_VDBOX_HUC_STREAM_OBJ_PARAMS &streamObjParams,
-                                                     CODEC_HEVC_SLICE_PARAMS &sliceParams) override;
-        virtual MOS_STATUS AddHucStreamObject(MOS_COMMAND_BUFFER &cmdBuffer,
-                                              CODEC_HEVC_SLICE_PARAMS &sliceParams) override;
-
         void SetPerfTag();
+        virtual MOS_STATUS AddCmd_HUC_PIPE_MODE_SELECT(MOS_COMMAND_BUFFER &cmdBuffer);
+        virtual MOS_STATUS AddHucIndState(MOS_COMMAND_BUFFER &cmdBuffer);
+        virtual MHW_SETPAR_DECL_HDR(HUC_IND_OBJ_BASE_ADDR_STATE);
+        virtual MHW_SETPAR_DECL_HDR(HUC_STREAM_OBJECT);
 
         std::vector<HucCopyParams> m_copyParamsList; //!< Copy parameters list
         uint32_t                   m_copyParamsIdx = 0; //!< Copy parameters index
+
+        std::shared_ptr<mhw::vdbox::huc::Itf> m_hucItf        = nullptr;
+
     };
 
 }  // namespace decode

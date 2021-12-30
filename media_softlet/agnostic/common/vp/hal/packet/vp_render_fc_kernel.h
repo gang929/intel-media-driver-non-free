@@ -94,6 +94,7 @@ protected:
 
     MOS_STATUS InitLayerInCurbeData(VP_FC_LAYER *layer);
     bool IsEufusionBypassed();
+    void PrintCurbeData(VP_FC_CURBE_DATA &curbeData);
 
     VP_EXECUTE_CAPS     m_executeCaps       = {};
     Kdll_FilterDesc     m_searchFilter      = {};
@@ -125,6 +126,8 @@ protected:
     VPHAL_COMPOSITE_CACHE_CNTL m_surfMemCacheCtl = {};
 
     static const int32_t s_bindingTableIndex[];
+
+MEDIA_CLASS_DEFINE_END(VpRenderFcKernel)
 };
 }
 

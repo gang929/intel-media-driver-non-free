@@ -2671,9 +2671,12 @@ MOS_STATUS CodechalVdencHevcStateG12::ExecutePictureLevel()
     if (m_vdencHucUsed && IsFirstPipe())
     {
         // STF: HuC+VDEnc+PAK single BB, non-STF: HuC Init/HuC Update/(VDEnc+PAK) in separate BBs
-        perfTag.CallType = m_singleTaskPhaseSupported ? CODECHAL_ENCODE_PERFTAG_CALL_PAK_ENGINE :
-            CODECHAL_ENCODE_PERFTAG_CALL_BRC_INIT_RESET;
-        CODECHAL_ENCODE_SET_PERFTAG_INFO(perfTag, perfTag.CallType);
+        uint16_t callType = CODECHAL_ENCODE_PERFTAG_CALL_BRC_INIT_RESET;
+        if (m_singleTaskPhaseSupported)
+        {
+            perfTag.CallType = IsFirstPass() ? CODECHAL_ENCODE_PERFTAG_CALL_PAK_ENGINE : CODECHAL_ENCODE_PERFTAG_CALL_PAK_ENGINE_SECOND_PASS;
+        }
+        CODECHAL_ENCODE_SET_PERFTAG_INFO(perfTag, callType);
 
         m_resVdencBrcUpdateDmemBufferPtr[0] = (MOS_RESOURCE*)m_allocator->GetResource(m_standard, pakInfo);
 
@@ -2926,7 +2929,7 @@ MOS_STATUS CodechalVdencHevcStateG12::ExecutePictureLevel()
     SetVdencPipeModeSelectParams(*pipeModeSelectParams);
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_vdencInterface->AddVdencPipeModeSelectCmd(&cmdBuffer, pipeModeSelectParams));
 
-    MHW_VDBOX_SURFACE_PARAMS dsSurfaceParams[2];
+    MHW_VDBOX_SURFACE_PARAMS dsSurfaceParams[2] = {};
     SetVdencSurfaceStateParams(srcSurfaceParams, reconSurfaceParams, dsSurfaceParams[0], dsSurfaceParams[1]);
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_vdencInterface->AddVdencSrcSurfaceStateCmd(&cmdBuffer, &srcSurfaceParams));
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_vdencInterface->AddVdencRefSurfaceStateCmd(&cmdBuffer, &reconSurfaceParams));

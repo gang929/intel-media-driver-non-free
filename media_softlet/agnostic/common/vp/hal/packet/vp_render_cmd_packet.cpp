@@ -194,7 +194,9 @@ MOS_STATUS VpRenderCmdPacket::Prepare()
                 m_renderData.KernelParam.Thread_Count,
                 m_renderData.iCurbeLength,
                 m_renderData.iInlineLength,
-                nullptr));
+                m_renderData.scoreboardParams));
+
+            m_kernelRenderData.insert(std::make_pair(it->first, m_renderData));
         }
     }
     else if (m_submissionMode == MULTI_KERNELS_WITH_ONE_MEDIA_STATE)
@@ -243,7 +245,7 @@ MOS_STATUS VpRenderCmdPacket::Prepare()
             RENDERHAL_USE_MEDIA_THREADS_MAX,
             m_totalCurbeSize,
             m_totoalInlineSize,
-            nullptr));
+            m_renderData.scoreboardParams));
     }
     else
     {
@@ -512,6 +514,8 @@ MOS_STATUS VpRenderCmdPacket::KernelStateSetup()
     m_renderData.iInlineLength = (int32_t)m_kernel->GetInlineDataSize();
     m_totoalInlineSize += m_renderData.iInlineLength;
 
+    VP_RENDER_CHK_STATUS_RETURN(m_kernel->GetScoreboardParams(m_renderData.scoreboardParams));
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -654,7 +658,9 @@ MOS_STATUS VpRenderCmdPacket::SetupCurbeState()
     // set the Curbe Data length
     void *   curbeData   = nullptr;
     uint32_t curbeLength = 0;
-    VP_RENDER_CHK_STATUS_RETURN(m_kernel->GetCurbeState(curbeData, curbeLength));
+    uint32_t curbeLengthAligned = 0;
+
+    VP_RENDER_CHK_STATUS_RETURN(m_kernel->GetCurbeState(curbeData, curbeLength, curbeLengthAligned, m_renderData.KernelParam, m_renderHal->dwCurbeBlockAlign));
 
     m_renderData.iCurbeOffset = m_renderHal->pfnLoadCurbeData(
         m_renderHal,
@@ -668,7 +674,8 @@ MOS_STATUS VpRenderCmdPacket::SetupCurbeState()
         return MOS_STATUS_UNKNOWN;
     }
 
-    m_renderData.iCurbeLength = MOS_ALIGN_CEIL(curbeLength, m_renderHal->dwCurbeBlockAlign);
+    m_renderData.iCurbeLength = curbeLengthAligned;
+ 
     m_totalCurbeSize += m_renderData.iCurbeLength;
 
     m_kernel->FreeCurbe(curbeData);
@@ -1284,7 +1291,7 @@ MOS_STATUS VpRenderCmdPacket::CalcPolyphaseTablesUV(
         for (j = 0; j < MHW_SCALER_UV_WIN_SIZE; ++j)
         {
             pos           = base + (double)j;
-            phaseCoefs[j] = MOS_Lanczos((float)(pos * sf), MHW_SCALER_UV_WIN_SIZE, fLanczosT);
+            phaseCoefs[j] = MosUtilities::MosLanczos((float)(pos * sf), MHW_SCALER_UV_WIN_SIZE, fLanczosT);
             sumCoefs += phaseCoefs[j];
         }
         // Normalize coefs and save
@@ -1397,11 +1404,11 @@ MOS_STATUS VpRenderCmdPacket::CalcPolyphaseTablesY(
 
             if (bUse8x8Filter)
             {
-                fPhaseCoefs[j] = fPhaseCoefsCopy[j] = MOS_Lanczos(fPos * fScaleFactor, dwNumEntries, fLanczosT);
+                fPhaseCoefs[j] = fPhaseCoefsCopy[j] = MosUtilities::MosLanczos(fPos * fScaleFactor, dwNumEntries, fLanczosT);
             }
             else
             {
-                fPhaseCoefs[j] = fPhaseCoefsCopy[j] = MOS_Lanczos_g(fPos * fScaleFactor, NUM_POLYPHASE_5x5_Y_ENTRIES, fLanczosT);
+                fPhaseCoefs[j] = fPhaseCoefsCopy[j] = MosUtilities::MosLanczosG(fPos * fScaleFactor, NUM_POLYPHASE_5x5_Y_ENTRIES, fLanczosT);
             }
 
             fSumCoefs += fPhaseCoefs[j];
@@ -1418,7 +1425,7 @@ MOS_STATUS VpRenderCmdPacket::CalcPolyphaseTablesY(
             {
                 fHPHalfPhase = (float)(NUM_POLYPHASE_TABLES - i) / (float)NUM_POLYPHASE_TABLES;
             }
-            fHPFilter[0] = fHPFilter[2] = -fHPStrength * MOS_Sinc(fHPHalfPhase * MOS_PI);
+            fHPFilter[0] = fHPFilter[2] = -fHPStrength * MosUtilities::MosSinc(fHPHalfPhase * MOS_PI);
             fHPFilter[1]                = 1.0F + 2.0F * fHPStrength;
 
             for (j = 0; j < dwNumEntries; j++)
@@ -1504,7 +1511,7 @@ MOS_STATUS VpRenderCmdPacket::CalcPolyphaseTablesUVOffset(
         for (j = 0; j < MHW_SCALER_UV_WIN_SIZE; ++j)
         {
             pos           = base + (double)j;
-            phaseCoefs[j] = MOS_Lanczos((float)(pos * sf), 6 /*MHW_SCALER_UV_WIN_SIZE*/, fLanczosT);
+            phaseCoefs[j] = MosUtilities::MosLanczos((float)(pos * sf), 6 /*MHW_SCALER_UV_WIN_SIZE*/, fLanczosT);
             sumCoefs += phaseCoefs[j];
         }
         // Normalize coefs and save
@@ -1688,6 +1695,42 @@ MOS_STATUS VpRenderCmdPacket::DumpOutput()
     return MOS_STATUS_SUCCESS;
 }
 
+void VpRenderCmdPacket::PrintWalkerParas(MHW_WALKER_PARAMS &WalkerParams)
+{
+#if (_DEBUG || _RELEASE_INTERNAL)
+    VP_RENDER_VERBOSEMESSAGE("WalkerParams: InterfaceDescriptorOffset = %x, CmWalkerEnable = %x, ColorCountMinusOne = %x, UseScoreboard = %x, ScoreboardMask = %x, MidLoopUnitX = %x, MidLoopUnitY = %x, MiddleLoopExtraSteps = %x",
+        WalkerParams.InterfaceDescriptorOffset,
+        WalkerParams.CmWalkerEnable,
+        WalkerParams.ColorCountMinusOne,
+        WalkerParams.UseScoreboard,
+        WalkerParams.ScoreboardMask,
+        WalkerParams.MidLoopUnitX,
+        WalkerParams.MidLoopUnitY,
+        WalkerParams.MiddleLoopExtraSteps);
+    VP_RENDER_VERBOSEMESSAGE("WalkerParams: GroupIdLoopSelect = %x, InlineDataLength = %x, pInlineData = %x, dwLocalLoopExecCount = %x, dwGlobalLoopExecCount = %x, WalkerMode = %x, BlockResolution = %x, LocalStart = %x",
+        WalkerParams.GroupIdLoopSelect,
+        WalkerParams.InlineDataLength,
+        WalkerParams.pInlineData,
+        WalkerParams.dwLocalLoopExecCount,
+        WalkerParams.dwGlobalLoopExecCount,
+        WalkerParams.WalkerMode,
+        WalkerParams.BlockResolution,
+        WalkerParams.LocalStart);
+    VP_RENDER_VERBOSEMESSAGE("WalkerParams: LocalEnd = %x, LocalOutLoopStride = %x, LocalInnerLoopUnit = %x, GlobalResolution = %x, GlobalStart = %x, GlobalOutlerLoopStride = %x, GlobalInnerLoopUnit = %x, bAddMediaFlush = %x, bRequestSingleSlice = %x, IndirectDataLength = %x, IndirectDataStartAddress = %x",
+        WalkerParams.LocalEnd,
+        WalkerParams.LocalOutLoopStride,
+        WalkerParams.LocalInnerLoopUnit,
+        WalkerParams.GlobalResolution,
+        WalkerParams.GlobalStart,
+        WalkerParams.GlobalOutlerLoopStride,
+        WalkerParams.GlobalInnerLoopUnit,
+        WalkerParams.bAddMediaFlush,
+        WalkerParams.bRequestSingleSlice,
+        WalkerParams.IndirectDataLength,
+        WalkerParams.IndirectDataStartAddress);
+#endif
+}
+
 MOS_STATUS VpRenderCmdPacket::SendMediaStates(
     PRENDERHAL_INTERFACE pRenderHal,
     PMOS_COMMAND_BUFFER  pCmdBuffer)
@@ -1821,6 +1864,8 @@ MOS_STATUS VpRenderCmdPacket::SendMediaStates(
             MHW_RENDERHAL_CHK_STATUS(pMhwRender->AddMediaObjectWalkerCmd(
                 pCmdBuffer,
                 &m_mediaWalkerParams));
+
+            PrintWalkerParas(m_mediaWalkerParams);
         }
         else if (m_walkerType == WALKER_TYPE_COMPUTE)
         {
@@ -1832,6 +1877,8 @@ MOS_STATUS VpRenderCmdPacket::SendMediaStates(
                 pRenderHal,
                 pCmdBuffer,
                 &m_gpgpuWalkerParams));
+
+             PrintWalkerParas(m_mediaWalkerParams);
         }
         else
         {

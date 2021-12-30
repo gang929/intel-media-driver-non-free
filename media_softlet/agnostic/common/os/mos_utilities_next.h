@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, Intel Corporation
+* Copyright (c) 2019-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -177,6 +177,14 @@ public:
     //!           else MOS_STATUS_SUCCESS
     //!
     static MOS_STATUS MosUtilitiesClose(MOS_CONTEXT_HANDLE mosCtx);
+    //!
+    //! \brief    Close MediaUserSetting context
+    //! \details  througt MediaUserSetting's destroy method reset ptr
+    //! \return   MOS_STATUS
+    //!           Returns one of the MOS_STATUS error codes if failed,
+    //!           else MOS_STATUS_SUCCESS
+    //!
+    static MOS_STATUS DestroyMediaUserSetting();
 
 private:
     //!
@@ -579,6 +587,16 @@ public:
     //!
     static int32_t MosCloseHandle(
         HANDLE           hObject);
+
+    //!
+    //! \brief    Link the m_mosUserFeatureDescFields table items to MosUtilUserInterface::m_userFeatureKeyMap
+    //! \details  Link the m_mosUserFeatureDescFields table items to MosUtilUserInterface::m_userFeatureKeyMap
+    //!           according to ID sequence and do some post processing such as malloc related memory
+    //! \return   MOS_STATUS
+    //!           Returns one of the MOS_STATUS error codes if failed,
+    //!           else MOS_STATUS_SUCCESS
+    //!
+    static MOS_STATUS MosDeclareUserFeatureKeysForAllDescFields();
 
     //!
     //! \brief    Appends at the end of File
@@ -988,11 +1006,11 @@ public:
     //! \param    [in/out] strToken
     //!           String containing token or tokens
     //!           Pass nullptr for this parameter in subsequent calls
-    //!           to MOS_SecureStrtok to find the remaining tokens
+    //!           to MosSecureStrtok to find the remaining tokens
     //! \param    [in] strDelimit
     //!           Set of delimiter characters
     //! \param    [in/out] contex
-    //!           Used to store position information between calls to MOS_SecureStrtok
+    //!           Used to store position information between calls to MosSecureStrtok
     //! \return   char *
     //!           Returns tokens else nullptr
     //!
@@ -1293,6 +1311,32 @@ public:
     //!
     static MOS_STATUS MosCloseRegKey(
         UFKEY_NEXT keyHandle);
+
+    //!
+    //! \brief    Retrieves the type and data for the specified env variable.
+    //! \details  Retrieves the type and data for the specified env variable.
+    //! \param    [in] keyHandle
+    //!           A handle to an open reg key.
+    //! \param    [in] valueName
+    //!           The name of the reg value.
+    //! \param    [in] type
+    //!           A pointer to a variable that receives a code indicating the
+    //!           type of data stored in the specified value.
+    //! \param    [out] data
+    //!           Buffer that receives the value's data.
+    //! \param    [out] size
+    //!           A pointer to a variable that specifies the size of the buffer
+    //!           pointed to by the data parameter, in bytes.
+    //! \return   MOS_STATUS
+    //!           If the function succeeds, the return value is MOS_STATUS_SUCCESS.
+    //!           If the function fails, the return value is a error code.
+    //!
+    static MOS_STATUS MosReadEnvVariable(
+        UFKEY_NEXT keyHandle,
+        const std::string &valueName,
+        uint32_t *type,
+        std::string &data,
+        uint32_t *size);
 
     //!
     //! \brief    Retrieves the type and data for the specified reg value.
@@ -1614,7 +1658,7 @@ public:
     //! \return   uint32_t
     //!           Return the current thread id
     //!
-    uint32_t MosGetCurrentThreadId();
+    static uint32_t MosGetCurrentThreadId();
 
     //!
     //! \brief    Wait for thread to terminate
@@ -1808,7 +1852,7 @@ public:
     //!
     //! \brief    Lanczos
     //! \details  Calculate lanczos(x)
-    //!           Basic formula is:  lanczos(x)= MOS_Sinc(x) * MOS_Sinc(x / fLanczosT)
+    //!           Basic formula is:  lanczos(x)= MosSinc(x) * MosSinc(x / fLanczosT)
     //! \param    [in] x
     //!           float
     //! \param    [in] dwNumEntries
@@ -1826,7 +1870,7 @@ public:
     //!
     //! \brief    General Lanczos
     //! \details  Calculate lanczos(x)  with odd entry num support
-    //!           Basic formula is:  lanczos(x)= MOS_Sinc(x) * MOS_Sinc(x / fLanczosT)
+    //!           Basic formula is:  lanczos(x)= MosSinc(x) * MosSinc(x / fLanczosT)
     //! \param    [in] x
     //!           float
     //! \param    [in] dwNumEntries
@@ -1957,6 +2001,14 @@ public:
     //! \return   void
     //!
     static void MosTraceSetupInfo(uint32_t DrvVer, uint32_t PlatFamily, uint32_t RenderFamily, uint32_t DeviceID);
+
+    //!
+    //! \brief    Get Event Trace Keyword.
+    //! \details  Determines by the print level, component and sub-component IDs
+    //!           whether the debug message should be printed.
+    //! \return   uint64_t
+    //!
+    static uint64_t GetTraceEventKeyword();
 
     //!
     //! \brief    MOS log trace event
@@ -2196,16 +2248,6 @@ private:
     //!           else MOS_STATUS_SUCCESS
     //!
     static MOS_STATUS MosWriteOneUserFeatureGroupToXML(MOS_USER_FEATURE_VALUE   UserFeatureFilter);
-
-    //!
-    //! \brief    Link the m_mosUserFeatureDescFields table items to MosUtilUserInterface::m_userFeatureKeyMap
-    //! \details  Link the m_mosUserFeatureDescFields table items to MosUtilUserInterface::m_userFeatureKeyMap
-    //!           according to ID sequence and do some post processing such as malloc related memory
-    //! \return   MOS_STATUS
-    //!           Returns one of the MOS_STATUS error codes if failed,
-    //!           else MOS_STATUS_SUCCESS
-    //!
-    static MOS_STATUS MosDeclareUserFeatureKeysForAllDescFields();
 
     //!
     //! \brief    Read Single Value from User Feature based on value of enum type in MOS_USER_FEATURE_VALUE_TYPE with specified map table
@@ -2655,10 +2697,10 @@ public:
 
     static bool                         m_enableAddressDump;
 
+    static PMOS_USER_FEATURE_VALUE const m_mosUserFeatureDescFields;
 private:
     static MosMutex                     m_mutexLock;
     static char                         m_xmlFilePath[MOS_USER_CONTROL_MAX_DATA_SIZE];
-    static PMOS_USER_FEATURE_VALUE const m_mosUserFeatureDescFields;
     static uint32_t                     m_mosUtilInitCount; // number count of mos utilities init
 #if _MEDIA_RESERVED
     static MediaUserSettingsMgr*        m_codecUserFeatureExt;

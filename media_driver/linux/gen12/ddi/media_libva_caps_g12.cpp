@@ -36,6 +36,7 @@
 #include "media_ddi_encode_const.h"
 #include "media_ddi_decode_const_g12.h"
 #include "mos_bufmgr_priv.h"
+#include "drm_fourcc.h"
 
 
 #ifndef VA_CENC_TYPE_NONE
@@ -46,6 +47,15 @@
 #define VA_ENCRYPTION_TYPE_NONE 0x00000000
 #endif
 
+#ifndef I915_FORMAT_MOD_F_TILED
+#define I915_FORMAT_MOD_F_TILED         fourcc_mod_code(INTEL, 12)
+#endif
+#ifndef I915_FORMAT_MOD_F_TILED_DG2_MC_CCS
+#define I915_FORMAT_MOD_F_TILED_DG2_MC_CCS fourcc_mod_code(INTEL, 10)
+#endif
+#ifndef I915_FORMAT_MOD_F_TILED_DG2_RC_CCS_CC
+#define I915_FORMAT_MOD_F_TILED_DG2_RC_CCS_CC fourcc_mod_code(INTEL, 11)
+#endif
 const VAImageFormat m_supportedImageformatsG12[] =
 {   {VA_FOURCC_BGRA,           VA_LSB_FIRST,   32, 32, 0x0000ff00, 0x00ff0000, 0xff000000,  0x000000ff}, /* [31:0] B:G:R:A 8:8:8:8 little endian */
     {VA_FOURCC_ARGB,           VA_LSB_FIRST,   32, 32, 0x00ff0000, 0x0000ff00, 0x000000ff,  0xff000000}, /* [31:0] A:R:G:B 8:8:8:8 little endian */
@@ -511,6 +521,68 @@ VAStatus MediaLibvaCapsG12::GetPlatformSpecificAttrib(VAProfile profile,
             *value = VA_PREDICTION_DIRECTION_PREVIOUS | VA_PREDICTION_DIRECTION_FUTURE | VA_PREDICTION_DIRECTION_BI_NOT_EMPTY;
             break;
         }
+#if VA_CHECK_VERSION(1, 12, 0)
+        case VAConfigAttribEncHEVCFeatures:
+        {
+            if ((entrypoint == VAEntrypointEncSlice || entrypoint == VAEntrypointEncSliceLP) && IsHevcProfile(profile))
+            {
+                VAConfigAttribValEncHEVCFeatures hevcFeatures = {0};
+                hevcFeatures.bits.separate_colour_planes = VA_FEATURE_NOT_SUPPORTED;
+                hevcFeatures.bits.scaling_lists = VA_FEATURE_SUPPORTED;
+                hevcFeatures.bits.amp = VA_FEATURE_REQUIRED;
+                hevcFeatures.bits.sao = VA_FEATURE_SUPPORTED;
+                hevcFeatures.bits.pcm = VA_FEATURE_NOT_SUPPORTED;
+                hevcFeatures.bits.temporal_mvp = VA_FEATURE_SUPPORTED;
+                hevcFeatures.bits.strong_intra_smoothing = VA_FEATURE_NOT_SUPPORTED;
+                hevcFeatures.bits.dependent_slices = VA_FEATURE_NOT_SUPPORTED;
+                hevcFeatures.bits.sign_data_hiding = VA_FEATURE_NOT_SUPPORTED;
+                hevcFeatures.bits.constrained_intra_pred = VA_FEATURE_NOT_SUPPORTED;
+                hevcFeatures.bits.transform_skip = VA_FEATURE_SUPPORTED;
+                hevcFeatures.bits.cu_qp_delta = VA_FEATURE_REQUIRED;
+                hevcFeatures.bits.weighted_prediction = VA_FEATURE_SUPPORTED;
+                hevcFeatures.bits.transquant_bypass = VA_FEATURE_NOT_SUPPORTED;
+                hevcFeatures.bits.deblocking_filter_disable = VA_FEATURE_NOT_SUPPORTED;
+                *value = hevcFeatures.value;
+            }
+            break;
+        }
+        case VAConfigAttribEncHEVCBlockSizes:
+        {
+            if (entrypoint == VAEntrypointEncSlice && IsHevcProfile(profile))
+            {
+                VAConfigAttribValEncHEVCBlockSizes hevcBlockSize = {0};
+                hevcBlockSize.bits.log2_max_coding_tree_block_size_minus3     = 2;
+                hevcBlockSize.bits.log2_min_coding_tree_block_size_minus3     = 1;
+                hevcBlockSize.bits.log2_min_luma_coding_block_size_minus3     = 0;
+                hevcBlockSize.bits.log2_max_luma_transform_block_size_minus2  = 3;
+                hevcBlockSize.bits.log2_min_luma_transform_block_size_minus2  = 0;
+                hevcBlockSize.bits.max_max_transform_hierarchy_depth_inter    = 2;
+                hevcBlockSize.bits.min_max_transform_hierarchy_depth_inter    = 0;
+                hevcBlockSize.bits.max_max_transform_hierarchy_depth_intra    = 2;
+                hevcBlockSize.bits.min_max_transform_hierarchy_depth_intra    = 0;
+                hevcBlockSize.bits.log2_max_pcm_coding_block_size_minus3      = 0;
+                hevcBlockSize.bits.log2_min_pcm_coding_block_size_minus3      = 0;
+                *value = hevcBlockSize.value;
+            }
+            if (entrypoint == VAEntrypointEncSliceLP && IsHevcProfile(profile))
+            {
+                VAConfigAttribValEncHEVCBlockSizes hevcBlockSize = {0};
+                hevcBlockSize.bits.log2_max_coding_tree_block_size_minus3     = 3;
+                hevcBlockSize.bits.log2_min_coding_tree_block_size_minus3     = 3;
+                hevcBlockSize.bits.log2_min_luma_coding_block_size_minus3     = 0;
+                hevcBlockSize.bits.log2_max_luma_transform_block_size_minus2  = 3;
+                hevcBlockSize.bits.log2_min_luma_transform_block_size_minus2  = 0;
+                hevcBlockSize.bits.max_max_transform_hierarchy_depth_inter    = 2;
+                hevcBlockSize.bits.min_max_transform_hierarchy_depth_inter    = 0;
+                hevcBlockSize.bits.max_max_transform_hierarchy_depth_intra    = 2;
+                hevcBlockSize.bits.min_max_transform_hierarchy_depth_intra    = 0;
+                hevcBlockSize.bits.log2_max_pcm_coding_block_size_minus3      = 0;
+                hevcBlockSize.bits.log2_min_pcm_coding_block_size_minus3      = 0;
+                *value = hevcBlockSize.value;
+            }
+            break;
+        }
+#endif
         default:
             status = VA_STATUS_ERROR_INVALID_PARAMETER;
             break;
@@ -1860,7 +1932,7 @@ VAStatus MediaLibvaCapsG12::CreateEncAttributes(
         else
         {
             attrib.value = VA_ENC_SLICE_STRUCTURE_EQUAL_ROWS | VA_ENC_SLICE_STRUCTURE_MAX_SLICE_SIZE |
-                       VA_ENC_SLICE_STRUCTURE_EQUAL_MULTI_ROWS;
+                       VA_ENC_SLICE_STRUCTURE_EQUAL_MULTI_ROWS | VA_ENC_SLICE_STRUCTURE_ARBITRARY_ROWS;
         }
     }
     else
@@ -2026,6 +2098,16 @@ VAStatus MediaLibvaCapsG12::CreateEncAttributes(
         attrib.type = (VAConfigAttribType) VAConfigAttribPredictionDirection;
         attrib.value = VA_PREDICTION_DIRECTION_PREVIOUS | VA_PREDICTION_DIRECTION_FUTURE | VA_PREDICTION_DIRECTION_BI_NOT_EMPTY;
         (*attribList)[attrib.type] = attrib.value;
+#if VA_CHECK_VERSION(1, 12, 0)
+        attrib.type = (VAConfigAttribType)VAConfigAttribEncHEVCFeatures;
+        GetPlatformSpecificAttrib(profile, entrypoint,
+                (VAConfigAttribType)VAConfigAttribEncHEVCFeatures, &attrib.value);
+        (*attribList)[attrib.type] = attrib.value;
+        attrib.type = (VAConfigAttribType)VAConfigAttribEncHEVCBlockSizes;
+        GetPlatformSpecificAttrib(profile, entrypoint,
+                (VAConfigAttribType)VAConfigAttribEncHEVCBlockSizes, &attrib.value);
+        (*attribList)[attrib.type] = attrib.value;
+#endif
     }
 
     return status;
@@ -2390,8 +2472,7 @@ VAStatus MediaLibvaCapsG12::LoadAv1DecProfileEntrypoints()
 #if _AV1_DECODE_SUPPORTED
     AttribMap *attributeList = nullptr;
     if ((MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrIntelAV1VLDDecoding8bit420)
-        ||MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrIntelAV1VLDDecoding10bit420))
-        && m_mediaCtx->pDrmBufMgr->has_full_vd)
+        ||MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrIntelAV1VLDDecoding10bit420)))
     {
         status = CreateDecAttributes((VAProfile) VAProfileAV1Profile0, VAEntrypointVLD, &attributeList);
         DDI_CHK_RET(status, "Failed to initialize Caps!");
@@ -2627,7 +2708,84 @@ VAStatus MediaLibvaCapsG12::GetDisplayAttributes(
     return VA_STATUS_SUCCESS;
 }
 
+VAStatus MediaLibvaCapsG12::GetSurfaceModifier(DDI_MEDIA_SURFACE* mediaSurface, uint64_t &modifier)
+{
+    DDI_CHK_NULL(mediaSurface,                   "nullptr mediaSurface",                   VA_STATUS_ERROR_INVALID_SURFACE);
+    DDI_CHK_NULL(mediaSurface->bo,               "nullptr mediaSurface->bo",               VA_STATUS_ERROR_INVALID_SURFACE);
+    DDI_CHK_NULL(mediaSurface->pGmmResourceInfo, "nullptr mediaSurface->pGmmResourceInfo", VA_STATUS_ERROR_INVALID_SURFACE);
+    GMM_TILE_TYPE gmmTileType = mediaSurface->pGmmResourceInfo->GetTileType();
+    GMM_RESOURCE_FLAG       GmmFlags    = {0};
+    GmmFlags = mediaSurface->pGmmResourceInfo->GetResFlags();
 
+    bool                    bMmcEnabled = false;
+    if ((GmmFlags.Gpu.MMC               ||
+        GmmFlags.Gpu.CCS)               &&
+        (GmmFlags.Info.MediaCompressed ||
+         GmmFlags.Info.RenderCompressed))
+    {
+        bMmcEnabled = true;
+    }
+    else
+    {
+        bMmcEnabled = false;
+    }
+
+    if(GMM_TILED_4 == gmmTileType && MEDIA_IS_SKU(&m_mediaCtx->SkuTable, FtrLocalMemory))
+    {
+        if(m_mediaCtx->m_auxTableMgr && bMmcEnabled)
+        {
+            modifier = GmmFlags.Info.MediaCompressed ? I915_FORMAT_MOD_F_TILED_DG2_MC_CCS :
+-                 (GmmFlags.Info.RenderCompressed ? I915_FORMAT_MOD_F_TILED_DG2_RC_CCS_CC : I915_FORMAT_MOD_F_TILED);
+        }
+        else
+        {
+            modifier = I915_FORMAT_MOD_F_TILED;
+        }
+        return VA_STATUS_SUCCESS;
+    }
+    else
+    {
+        return MediaLibvaCaps::GetSurfaceModifier(mediaSurface, modifier);
+    }
+}
+
+VAStatus MediaLibvaCapsG12::SetExternalSurfaceTileFormat(DDI_MEDIA_SURFACE* mediaSurface, uint32_t &tileformat, bool &bMemCompEnable, bool &bMemCompRC)
+{
+    DDI_CHK_NULL(mediaSurface,                     "nullptr mediaSurface",                     VA_STATUS_ERROR_INVALID_SURFACE);
+    DDI_CHK_NULL(mediaSurface->pSurfDesc,          "nullptr mediaSurface->pSurfDesc",          VA_STATUS_ERROR_INVALID_SURFACE);
+
+    switch (mediaSurface->pSurfDesc->modifier)
+    {
+        case DRM_FORMAT_MOD_LINEAR:
+            tileformat = I915_TILING_NONE;
+            bMemCompEnable = false;
+            break;
+        case I915_FORMAT_MOD_X_TILED:
+            tileformat = I915_TILING_X;
+            bMemCompEnable = false;
+            break;
+        case I915_FORMAT_MOD_F_TILED:
+        case I915_FORMAT_MOD_Yf_TILED:
+        case I915_FORMAT_MOD_Y_TILED:
+            tileformat = I915_TILING_Y;
+            bMemCompEnable = false;
+            break;
+        case I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS:
+            tileformat = I915_TILING_Y;
+            bMemCompEnable = true;
+            bMemCompRC = true;
+            break;
+        case I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS:
+            tileformat = I915_TILING_Y;
+            bMemCompEnable = true;
+            bMemCompRC = false;
+            break;
+        default:
+            return VA_STATUS_ERROR_INVALID_SURFACE;
+    }
+
+    return VA_STATUS_SUCCESS;
+}
 
 extern template class MediaLibvaCapsFactory<MediaLibvaCaps, DDI_MEDIA_CONTEXT>;
 

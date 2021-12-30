@@ -34,25 +34,8 @@ class CpStreamOutInterface
 {
 public:
     virtual ~CpStreamOutInterface() {}
+
+MEDIA_CLASS_DEFINE_END(CpStreamOutInterface)
 };
-
-
-//!
-//! \brief    Create CpStreamOutInterface Object
-//!
-//! \return   Return CP Wrapper Object if CPLIB not loaded
-//
-CpStreamOutInterface *Create_CpStreamOutInterface(
-    MediaPipeline *pipeline,
-    MediaTask *task,
-    CodechalHwInterface *hwInterface);
-
-//!
-//! \brief    Delete the CpStreamOutInterface Object
-//!
-//! \param    [in] *pCpStreamOutInterface
-//!           CpStreamOutInterface
-//!
-void Delete_CpStreamOutInterface(CpStreamOutInterface *pCpStreamOutInterface);
 
 #endif

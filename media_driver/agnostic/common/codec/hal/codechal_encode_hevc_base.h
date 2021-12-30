@@ -28,9 +28,11 @@
 #define __CODECHAL_ENCODE_HEVC_BASE_H__
 
 #include "codechal_encoder_base.h"
+
 #if USE_CODECHAL_DEBUG_TOOL
 #include "codechal_debug_encode_par.h"
 #endif
+
 //*------------------------------------------------------------------------------
 //* Codec Definitions
 //*------------------------------------------------------------------------------
@@ -39,7 +41,6 @@
 #define CODECHAL_VDENC_HEVC_MAX_SLICE_NUM   70
 
 #define CODECHAL_HEVC_MAX_LCU_SIZE_G9          32
-#define CODECHAL_HEVC_MAX_LCU_SIZE_G10         64
 #define CODECHAL_HEVC_MIN_LCU_SIZE             16
 #define CODECHAL_HEVC_MIN_CU_SIZE              8
 #define CODECHAL_HEVC_MIN_TILE_SIZE            128
@@ -128,8 +129,6 @@
 #define CODECHAL_HEVC_PAK_STREAMOUT_SIZE 0x500000  //size is accounted for 4Kx4K with all 8x8 CU,based on streamout0 and streamout1 requirements
 //(4096*4096)/64 *16 (streamout0) + 1MB(streamout 1). there is scope to reduce streamout1 size. Need to check with HW team.
 // 8K is just an estimation
-#define CODECHAL_HEVC_FRAME_HEADER_SIZE   8192
-
 #define CODECHAL_HEVC_BRC_QP_ADJUST_SIZE    576
 
 #define CODECHAL_ENCODE_HEVC_NUM_MAX_VDENC_L0_REF_G10  3 // multiref, hevc vdenc
@@ -1263,10 +1262,10 @@ using PCODECHAL_ENCODE_HEVC_WALKING_CONTROL_REGION = CODECHAL_ENCODE_HEVC_WALKIN
 //!
 struct CODECHAL_ENCODE_HEVC_REFFRAME_SYNC_OBJ
 {
-    uint32_t                uiSemaphoreObjCount;
-    MOS_RESOURCE            resSyncObject;
-    bool                    bInUsed;
-    CODECHAL_ENCODE_BUFFER  resSemaphoreMem;
+    uint32_t                uiSemaphoreObjCount = 0;
+    MOS_RESOURCE            resSyncObject       = {};
+    bool                    bInUsed             = false;
+    CODECHAL_ENCODE_BUFFER  resSemaphoreMem     = {};
 };
 using PCODECHAL_ENCODE_HEVC_REFFRAME_SYNC_OBJ = CODECHAL_ENCODE_HEVC_REFFRAME_SYNC_OBJ*;
 
@@ -1289,19 +1288,6 @@ struct CODECHAL_ENCODE_HEVC_WALKINGPATTERN_PARAM
     uint32_t                    dwNumUnitsInRegion;
 };
 using PCODECHAL_ENCODE_HEVC_WALKINGPATTERN_PARAM = CODECHAL_ENCODE_HEVC_WALKINGPATTERN_PARAM*;
-
-//!
-//! \struct   HEVC_TILE_STATS_INFO
-//! \brief    HEVC tiles states info
-//!
-struct HEVC_TILE_STATS_INFO
-{
-    uint32_t uiTileSizeRecord;
-    uint32_t uiHevcPakStatistics;
-    uint32_t uiVdencStatistics;
-    uint32_t uiHevcSliceStreamout;
-};
-using PHEVC_TILE_STATS_INFO = HEVC_TILE_STATS_INFO*;
 
 //!
 //! \struct   CODECHAL_ENCODE_HEVC_PAK_STATS_BUFFER
@@ -2674,25 +2660,5 @@ public:
 
 #endif
 };
-
-//!
-//! \brief    Get bitstream buffer size
-//!
-//! \param    [in] frameWidth
-//!           The width of frame
-//! \param    [in] frameHeight
-//!           The height of frame
-//! \param    [in] chromaFormat
-//!           Chroma format
-//! \param    [in] is10Bits
-//!           Check if is 10bits
-//! \return   uint32_t
-//!           Bitstream buffer size
-//!
-uint32_t CodecHalHevcEncode_GetBitstreamBufferSize(
-    uint32_t frameWidth,
-    uint32_t frameHeight,
-    uint8_t  chromaFormat,
-    bool     is10Bits);
 
 #endif  // __CODECHAL_ENCODE_HEVC_BASE_H__

@@ -707,7 +707,7 @@ MOS_STATUS VphalSurfaceDumper::DumpSurfaceToFile(
 
                 VphalDumperTool::GetOsFilePath(sPlanePath, sPlaneOsPath);
 
-                VPHAL_DEBUG_CHK_STATUS(MOS_WriteFileFromPtr(sPlaneOsPath, pDst + dstPlaneOffset[j], dstPlaneOffset[j + 1]));
+                VPHAL_DEBUG_CHK_STATUS(MosUtilities::MosWriteFileFromPtr(sPlaneOsPath, pDst + dstPlaneOffset[j], dstPlaneOffset[j + 1]));
             }
             else
             {
@@ -716,7 +716,7 @@ MOS_STATUS VphalSurfaceDumper::DumpSurfaceToFile(
         }
     }
 
-    VPHAL_DEBUG_CHK_STATUS(MOS_WriteFileFromPtr(sOsPath, pDst, dwSize));
+    VPHAL_DEBUG_CHK_STATUS(MosUtilities::MosWriteFileFromPtr(sOsPath, pDst, dwSize));
 
 #if !EMUL
     // Dump Aux surface data
@@ -776,7 +776,7 @@ MOS_STATUS VphalSurfaceDumper::DumpSurfaceToFile(
             auxDataY,
             auxSizeY);
 
-        VPHAL_DEBUG_CHK_STATUS(MOS_WriteFileFromPtr(sOsPath, pDstAux, auxSizeY));
+        VPHAL_DEBUG_CHK_STATUS(MosUtilities::MosWriteFileFromPtr(sOsPath, pDstAux, auxSizeY));
         MOS_SafeFreeMemory(pDstAux);
 
         if (auxSizeUV && isPlanar)
@@ -804,7 +804,7 @@ MOS_STATUS VphalSurfaceDumper::DumpSurfaceToFile(
                 auxDataUV,
                 auxSizeUV);
 
-            VPHAL_DEBUG_CHK_STATUS(MOS_WriteFileFromPtr(sOsPath, pDstUVAux, auxSizeUV));
+            VPHAL_DEBUG_CHK_STATUS(MosUtilities::MosWriteFileFromPtr(sOsPath, pDstUVAux, auxSizeUV));
             MOS_SafeFreeMemory(pDstUVAux);
         }
     }
@@ -1426,7 +1426,7 @@ MOS_STATUS VphalHwStateDumper::DumpBinaryStruct(
     lSize            = lLastFieldOffset + lLastFieldSize;
 
     VphalDumperTool::GetOsFilePath(pcOutFileName, pcTargetFileName);
-    VPHAL_DEBUG_CHK_STATUS(MOS_WriteFileFromPtr(pcTargetFileName, pvStructToDump, lSize));
+    VPHAL_DEBUG_CHK_STATUS(MosUtilities::MosWriteFileFromPtr(pcTargetFileName, pvStructToDump, lSize));
 
 finish:
     MOS_SafeFreeMemory(pcOutFileName);
@@ -1598,7 +1598,7 @@ MOS_STATUS VphalHwStateDumper::DumpGshBinary(
         goto finish;
     }
     dwSizeMS = (uint32_t)iStrLen;
-    VPHAL_DEBUG_CHK_STATUS(MOS_WriteFileFromPtr(pcTargetFileName,
+    VPHAL_DEBUG_CHK_STATUS(MosUtilities::MosWriteFileFromPtr(pcTargetFileName,
                                                     pcOutContents,
                                                     dwSizeMS));
 
@@ -1680,7 +1680,7 @@ MOS_STATUS VphalHwStateDumper::DumpSshBinary(
         goto finish;
     }
     dwSizeMS = (uint32_t)iStrLen;
-    VPHAL_DEBUG_CHK_STATUS(MOS_WriteFileFromPtr(pcTargetFileName,
+    VPHAL_DEBUG_CHK_STATUS(MosUtilities::MosWriteFileFromPtr(pcTargetFileName,
                                                     pcOutContents,
                                                     dwSizeMS));
 
@@ -3527,7 +3527,7 @@ MOS_STATUS VphalParameterDumper::DumpToXML(
     // Create the root element.
     VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "<VPHAL_SCENARIO>\n"));
     // General infomation
-    VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t<ID>%d</ID>\n", MOS_GetPid()));
+    VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t<ID>%d</ID>\n", MosUtilities::MosGetPid()));
 
     VPHAL_DEBUG_CHK_NULL(pRenderParams->pSrc[0]);
     VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t<DESCRIPTION>%d</DESCRIPTION>\n", pRenderParams->pSrc[0]->FrameID));
@@ -3579,7 +3579,7 @@ MOS_STATUS VphalParameterDumper::DumpToXML(
 
     VphalDumperTool::GetOsFilePath(sPath, sOsPath);
 
-    VPHAL_DEBUG_CHK_STATUS(MOS_WriteFileFromPtr(sOsPath, pcOutContents, strlen(pcOutContents)));
+    VPHAL_DEBUG_CHK_STATUS(MosUtilities::MosWriteFileFromPtr(sOsPath, pcOutContents, strlen(pcOutContents)));
 finish:
     if (pcOutContents)
     {
@@ -4049,7 +4049,7 @@ MOS_STATUS VphalDumperTool::AppendString(
     }
 
     va_start(argList, pcToAppendFmt);
-    MOS_SecureVStringPrint(pcToAppend, ALLOC_GRANULARITY, ALLOC_GRANULARITY, pcToAppendFmt, argList);
+    MosUtilities::MosSecureVStringPrint(pcToAppend, ALLOC_GRANULARITY, ALLOC_GRANULARITY, pcToAppendFmt, argList);
     va_end(argList);
 
     stStrLenToAppend = strlen(pcToAppend);
@@ -4154,7 +4154,7 @@ void VphalDumperTool::WriteFrame(
     // Write the data to file
     if (pSurface->dwPitch == iWidthInBytes)
     {
-        MOS_WriteFileFromPtr((const char *)sOsPath, pData, iSize);
+        MosUtilities::MosWriteFileFromPtr((const char *)sOsPath, pData, iSize);
     }
     else
     {
@@ -4169,7 +4169,7 @@ void VphalDumperTool::WriteFrame(
             pTmpDst += iWidthInBytes;
         }
 
-        MOS_WriteFileFromPtr((const char *)sOsPath, pDst, iSize);
+        MosUtilities::MosWriteFileFromPtr((const char *)sOsPath, pDst, iSize);
     }
 
     if (pDst)
@@ -4559,7 +4559,7 @@ void VphalOcaDumper::SetRenderParam(VPHAL_RENDER_PARAMS *pRenderParams)
         m_pOcaRenderParam->FrameID = pRenderParams->pSrc[0]->FrameID;
     }
 
-    m_pOcaRenderParam->Pid = MOS_GetPid();
+    m_pOcaRenderParam->Pid = MosUtilities::MosGetPid();
 
     m_pOcaRenderParam->uSrcCount = pRenderParams->uSrcCount;
     m_pOcaRenderParam->uDstCount = pRenderParams->uDstCount;

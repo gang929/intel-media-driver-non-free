@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2020, Intel Corporation
+* Copyright (c) 2017-2021, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -111,24 +111,18 @@ const CODECHAL_SSEU_SETTING CodechalHwInterfaceG12::m_defaultSsEuLutG12[CODECHAL
     { 2,        3,        8,         0 },
 };
 
-CodechalHwInterfaceG12::CodechalHwInterfaceG12(
-    PMOS_INTERFACE    osInterface,
-    CODECHAL_FUNCTION codecFunction,
-    MhwInterfaces     *mhwInterfaces,
-    bool              disableScalability)
-    : CodechalHwInterface(osInterface, codecFunction, mhwInterfaces, disableScalability)
+void CodechalHwInterfaceG12::InternalInit(CODECHAL_FUNCTION codecFunction)
 {
-    CODECHAL_HW_FUNCTION_ENTER;
-
-    m_avpInterface = static_cast<MhwInterfacesG12Tgllp*>(mhwInterfaces)->m_avpInterface;
-
     InitCacheabilityControlSettings(codecFunction);
-
     m_isVdencSuperSliceEnabled = true;
-
     m_ssEuTable = m_defaultSsEuLutG12;
     m_numMediaStates = CODECHAL_NUM_MEDIA_STATES_G12;
 
+    PrepareCmdSize(codecFunction);
+}
+
+void CodechalHwInterfaceG12::PrepareCmdSize(CODECHAL_FUNCTION codecFunction)
+{
     // Set platform dependent parameters
     m_sizeOfCmdBatchBufferEnd = mhw_mi_g12_X::MI_BATCH_BUFFER_END_CMD::byteSize;
     m_sizeOfCmdMediaReset = mhw_mi_g12_X::MI_LOAD_REGISTER_IMM_CMD::byteSize * 8;
@@ -197,6 +191,31 @@ CodechalHwInterfaceG12::CodechalHwInterfaceG12(
     m_sizeOfCmdMediaStateFlush = mhw_mi_g12_X::MEDIA_STATE_FLUSH_CMD::byteSize;
 }
 
+CodechalHwInterfaceG12::CodechalHwInterfaceG12(
+    PMOS_INTERFACE    osInterface,
+    CODECHAL_FUNCTION codecFunction,
+    MhwInterfaces     *mhwInterfaces,
+    bool              disableScalability)
+    : CodechalHwInterface(osInterface, codecFunction, mhwInterfaces, disableScalability)
+{
+    CODECHAL_HW_FUNCTION_ENTER;
+    m_avpInterface = static_cast<MhwInterfacesG12Tgllp*>(mhwInterfaces)->m_avpInterface;
+
+    InternalInit(codecFunction);
+}
+#ifdef IGFX_MHW_INTERFACES_NEXT_SUPPORT
+CodechalHwInterfaceG12::CodechalHwInterfaceG12(
+    PMOS_INTERFACE    osInterface,
+    CODECHAL_FUNCTION codecFunction,
+    MhwInterfacesNext *mhwInterfacesNext,
+    bool              disableScalability)
+    : CodechalHwInterface(osInterface, codecFunction, mhwInterfacesNext, disableScalability)
+{
+    CODECHAL_HW_FUNCTION_ENTER;
+
+    InternalInit(codecFunction);
+}
+#endif
 MOS_STATUS CodechalHwInterfaceG12::InitL3CacheSettings()
 {
     // Get default L3 cache settings
@@ -425,6 +444,76 @@ MOS_STATUS CodechalHwInterfaceG12::Initialize(
     }
     return eStatus;
 }
+
+#ifdef IGFX_MHW_INTERFACES_NEXT_SUPPORT
+MOS_STATUS CodechalHwInterfaceG12::ReadAvpStatus(MHW_VDBOX_NODE_IND vdboxIndex, const EncodeStatusReadParams &params, PMOS_COMMAND_BUFFER cmdBuffer)
+{
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+    CODECHAL_HW_FUNCTION_ENTER;
+
+    CODECHAL_HW_CHK_NULL_RETURN(cmdBuffer);
+
+    CODECHAL_HW_CHK_COND_RETURN((vdboxIndex > m_mfxInterface->GetMaxVdboxIndex()),"ERROR - vdbox index exceed the maximum");
+
+    MHW_MI_FLUSH_DW_PARAMS flushDwParams;
+    MOS_ZeroMemory(&flushDwParams, sizeof(flushDwParams));
+    CODECHAL_HW_CHK_STATUS_RETURN(m_miInterface->AddMiFlushDwCmd(cmdBuffer, &flushDwParams));
+
+    std::shared_ptr<mhw::vdbox::avp::Itf> m_avpItf = GetAvpInterfaceNext();
+    CODECHAL_HW_CHK_NULL_RETURN(m_avpItf);
+    auto mmioRegisters = m_avpItf->GetMmioRegisters(vdboxIndex);
+
+    MHW_MI_STORE_REGISTER_MEM_PARAMS miStoreRegMemParams;
+    MOS_ZeroMemory(&miStoreRegMemParams, sizeof(miStoreRegMemParams));
+    miStoreRegMemParams.presStoreBuffer = params.resBitstreamByteCountPerFrame;
+    miStoreRegMemParams.dwOffset        = params.bitstreamByteCountPerFrameOffset;
+    miStoreRegMemParams.dwRegister      = mmioRegisters->avpAv1BitstreamByteCountTileRegOffset;
+    CODECHAL_HW_CHK_STATUS_RETURN(m_miInterface->AddMiStoreRegisterMemCmd(cmdBuffer, &miStoreRegMemParams));
+
+    MOS_ZeroMemory(&miStoreRegMemParams, sizeof(miStoreRegMemParams));
+    miStoreRegMemParams.presStoreBuffer = params.resQpStatusCount;
+    miStoreRegMemParams.dwOffset        = params.qpStatusCountOffset;
+    miStoreRegMemParams.dwRegister      = mmioRegisters->avpAv1QpStatusCountRegOffset;
+    CODECHAL_HW_CHK_STATUS_RETURN(m_miInterface->AddMiStoreRegisterMemCmd(cmdBuffer, &miStoreRegMemParams));
+
+    return eStatus;
+}
+
+MOS_STATUS CodechalHwInterfaceG12::ReadImageStatusForAvp(MHW_VDBOX_NODE_IND vdboxIndex, const EncodeStatusReadParams &params, PMOS_COMMAND_BUFFER cmdBuffer)
+{
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+    CODECHAL_HW_FUNCTION_ENTER;
+
+    CODECHAL_HW_CHK_NULL_RETURN(cmdBuffer);
+
+    CODECHAL_HW_CHK_COND_RETURN((vdboxIndex > m_mfxInterface->GetMaxVdboxIndex()),"ERROR - vdbox index exceed the maximum");
+
+    std::shared_ptr<mhw::vdbox::avp::Itf> m_avpItf = GetAvpInterfaceNext();
+    CODECHAL_HW_CHK_NULL_RETURN(m_avpItf);
+    auto mmioRegisters = GetAvpInterfaceNext()->GetMmioRegisters(vdboxIndex);
+
+    MHW_MI_STORE_REGISTER_MEM_PARAMS miStoreRegMemParams;
+    MOS_ZeroMemory(&miStoreRegMemParams, sizeof(miStoreRegMemParams));
+    miStoreRegMemParams.presStoreBuffer = params.resImageStatusMask;
+    miStoreRegMemParams.dwOffset        = params.imageStatusMaskOffset;
+    miStoreRegMemParams.dwRegister      = mmioRegisters->avpAv1ImageStatusMaskRegOffset;
+    CODECHAL_HW_CHK_STATUS_RETURN(m_miInterface->AddMiStoreRegisterMemCmd(cmdBuffer, &miStoreRegMemParams));
+
+    MOS_ZeroMemory(&miStoreRegMemParams, sizeof(miStoreRegMemParams));
+    miStoreRegMemParams.presStoreBuffer = params.resImageStatusCtrl;
+    miStoreRegMemParams.dwOffset        = params.imageStatusCtrlOffset;
+    miStoreRegMemParams.dwRegister      = mmioRegisters->avpAv1ImageStatusControlRegOffset;
+    CODECHAL_HW_CHK_STATUS_RETURN(m_miInterface->AddMiStoreRegisterMemCmd(cmdBuffer, &miStoreRegMemParams));
+
+    MHW_MI_FLUSH_DW_PARAMS flushDwParams;
+    MOS_ZeroMemory(&flushDwParams, sizeof(flushDwParams));
+    CODECHAL_HW_CHK_STATUS_RETURN(m_miInterface->AddMiFlushDwCmd(cmdBuffer, &flushDwParams));
+
+    return eStatus;
+}
+#endif
 
 CodechalHwInterfaceG12::~CodechalHwInterfaceG12()
 {

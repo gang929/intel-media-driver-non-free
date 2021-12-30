@@ -135,8 +135,8 @@ static bool InitTglMediaSku(struct GfxDeviceInfo *devInfo,
 
         /* HEVC VDENC Main8/10 422/444 Encoding. */
         MEDIA_WR_SKU(skuTable, FtrEncodeHEVCVdencMain444, codecInfo->hevcVdenc);
-        MEDIA_WR_SKU(skuTable, FtrEncodeHEVCVdencMain10, codecInfo->hevcVdenc);
-        MEDIA_WR_SKU(skuTable, FtrEncodeHEVCVdencMain10bit422, codecInfo->hevcVdenc);
+        MEDIA_WR_SKU(skuTable, FtrEncodeHEVCVdencMain422, 0);
+        MEDIA_WR_SKU(skuTable, FtrEncodeHEVCVdencMain10bit422, 0);
         MEDIA_WR_SKU(skuTable, FtrEncodeHEVCVdencMain10bit444, codecInfo->hevcVdenc);
 
         /* HEVC VDENC Main8/10bit-420/422/444 Scc Encoding. */
@@ -232,7 +232,7 @@ static bool InitTglMediaSku(struct GfxDeviceInfo *devInfo,
         nullptr,
         __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE_ID,
         &userFeatureData,
-        nullptr);
+        (MOS_CONTEXT_HANDLE)nullptr);
     if (userFeatureData.i32Data)
     {
         MEDIA_WR_SKU(skuTable, FtrContextBasedScheduling, 1);
@@ -255,7 +255,7 @@ static bool InitTglMediaSku(struct GfxDeviceInfo *devInfo,
         nullptr,
         __MEDIA_USER_FEATURE_VALUE_DISABLE_MMC_ID,
         &userFeatureData,
-        nullptr);
+        (MOS_CONTEXT_HANDLE)nullptr);
     if (userFeatureData.bData)
     {
         disableMMC = true;
@@ -272,7 +272,7 @@ static bool InitTglMediaSku(struct GfxDeviceInfo *devInfo,
         nullptr,
         __MEDIA_USER_FEATURE_VALUE_FORCE_MMC_ON_ID,
         &userFeatureData,
-        nullptr);
+        (MOS_CONTEXT_HANDLE)nullptr);
 
     if (userFeatureData.bData)
     {
@@ -313,7 +313,7 @@ static bool InitTglMediaWa(struct GfxDeviceInfo *devInfo,
         nullptr,
         __MEDIA_USER_FEATURE_VALUE_AUX_TABLE_16K_GRANULAR_ID,
         &userFeatureData,
-        nullptr);
+        (MOS_CONTEXT_HANDLE)nullptr);
 
     MEDIA_WR_WA(waTable, WaDummyReference, 1);
 
@@ -384,7 +384,7 @@ static bool InitDG1MediaSku(struct GfxDeviceInfo *devInfo,
         nullptr,
         __VPHAL_ENABLE_MMC_ID,
         &userFeatureData,
-        nullptr);
+        (MOS_CONTEXT_HANDLE)nullptr);
     if (userFeatureData.bData)
     {
         enableVPMMC = true;
@@ -395,7 +395,7 @@ static bool InitDG1MediaSku(struct GfxDeviceInfo *devInfo,
         nullptr,
         __MEDIA_USER_FEATURE_VALUE_CODEC_MMC_ENABLE_ID,
         &userFeatureData,
-        nullptr);
+        (MOS_CONTEXT_HANDLE)nullptr);
     if (userFeatureData.bData)
     {
         enableCodecMMC = true;
@@ -555,6 +555,7 @@ static bool InitAdlpMediaSku(struct GfxDeviceInfo *devInfo,
     }
 
     MEDIA_WR_SKU(skuTable, FtrAV1VLDLSTDecoding, 1);
+    MEDIA_WR_SKU(skuTable, FtrGucSubmission, 1);
 
     return true;
 }

@@ -29,13 +29,12 @@
 
 namespace decode
 {
-
 MOS_STATUS HucCopyPkt::PushCopyParams(HucCopyParams &copyParams)
 {
     DECODE_CHK_COND(copyParams.copyLength <= 0, "HucCopyPkt: Invalid copy params!");
 
     m_copyParamsList.push_back(copyParams);
-    
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -45,7 +44,7 @@ MOS_STATUS HucCopyPkt::Submit(MOS_COMMAND_BUFFER *commandBuffer, uint8_t packetP
     DECODE_CHK_NULL(commandBuffer);
 
     bool firstTaskInPhase = packetPhase & firstPacket;
-    bool requestProlog = false;
+    bool requestProlog    = false;
 
     if ((!m_pipeline->IsSingleTaskPhaseSupported() || firstTaskInPhase) && (m_pipeline->GetPipeNum() == 1))
     {
@@ -57,7 +56,7 @@ MOS_STATUS HucCopyPkt::Submit(MOS_COMMAND_BUFFER *commandBuffer, uint8_t packetP
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS HucCopyPkt::Execute(MOS_COMMAND_BUFFER& cmdBuffer, bool prologNeeded)
+MOS_STATUS HucCopyPkt::Execute(MOS_COMMAND_BUFFER &cmdBuffer, bool prologNeeded)
 {
     DECODE_FUNC_CALL();
     DECODE_CHK_NULL(m_hucInterface);
@@ -71,10 +70,10 @@ MOS_STATUS HucCopyPkt::Execute(MOS_COMMAND_BUFFER& cmdBuffer, bool prologNeeded)
             DECODE_CHK_STATUS(SendPrologCmds(cmdBuffer));
         }
 
-        DECODE_CHK_STATUS(AddHucPipeModeSelect(cmdBuffer));
-        DECODE_CHK_STATUS(AddHucIndObj(cmdBuffer));
-        CODEC_HEVC_SLICE_PARAMS unused;
-        DECODE_CHK_STATUS(AddHucStreamObject(cmdBuffer, unused));
+        DECODE_CHK_STATUS(AddCmd_HUC_PIPE_MODE_SELECT(cmdBuffer));
+        SETPAR_AND_ADDCMD(HUC_IND_OBJ_BASE_ADDR_STATE, m_hucItf, &cmdBuffer);
+        DECODE_CHK_STATUS(AddHucIndState(cmdBuffer));
+        SETPAR_AND_ADDCMD(HUC_STREAM_OBJECT, m_hucItf, &cmdBuffer);
 
         // Flush the engine to ensure memory written out
         DECODE_CHK_STATUS(MemoryFlush(cmdBuffer));
@@ -89,69 +88,38 @@ MOS_STATUS HucCopyPkt::Execute(MOS_COMMAND_BUFFER& cmdBuffer, bool prologNeeded)
     return MOS_STATUS_SUCCESS;
 }
 
-void HucCopyPkt::SetImemParameters(MHW_VDBOX_HUC_IMEM_STATE_PARAMS &imemParams)
+MOS_STATUS HucCopyPkt::AddCmd_HUC_PIPE_MODE_SELECT(MOS_COMMAND_BUFFER &cmdBuffer)
 {
     DECODE_FUNC_CALL();
-}
-
-MOS_STATUS HucCopyPkt::AddHucImem(MOS_COMMAND_BUFFER &cmdBuffer)
-{
-    DECODE_FUNC_CALL();
+    //for gen 11+, we need to add MFX wait for both KIN and VRT before and after HUC Pipemode select...
+    MHW_MI_CHK_STATUS(m_miInterface->AddMfxWaitCmd(&cmdBuffer, nullptr, true));
+    auto &par = m_hucItf->MHW_GETPAR_F(HUC_PIPE_MODE_SELECT)();
+    par                                     = {};
+    par.mediaSoftResetCounterValue          = 2400;
+    par.streamOutEnabled                    = true;
+    par.disableProtectionSetting            = true;
+    m_hucItf->MHW_ADDCMD_F(HUC_PIPE_MODE_SELECT)(&cmdBuffer);
+    MHW_MI_CHK_STATUS(m_miInterface->AddMfxWaitCmd(&cmdBuffer, nullptr, true));
     return MOS_STATUS_SUCCESS;
 }
 
-void HucCopyPkt::SetHucPipeModeSelectParameters(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS &pipeModeSelectParams)
+MOS_STATUS HucCopyPkt::AddHucIndState(MOS_COMMAND_BUFFER &cmdBuffer)
 {
-    DECODE_FUNC_CALL();
-    pipeModeSelectParams.Mode = m_basicFeature->m_mode;
-    pipeModeSelectParams.dwMediaSoftResetCounterValue = 2400;
-    pipeModeSelectParams.bStreamObjectUsed = true;
-    pipeModeSelectParams.bStreamOutEnabled = true;
-    pipeModeSelectParams.disableProtectionSetting = true;
-}
-
-MOS_STATUS HucCopyPkt::AddHucPipeModeSelect(MOS_COMMAND_BUFFER &cmdBuffer)
-{
-    MHW_VDBOX_PIPE_MODE_SELECT_PARAMS pipeModeSelectParams;
-    SetHucPipeModeSelectParameters(pipeModeSelectParams);
-    DECODE_CHK_STATUS(m_hucInterface->AddHucPipeModeSelectCmd(&cmdBuffer, &pipeModeSelectParams));
     return MOS_STATUS_SUCCESS;
 }
 
-void HucCopyPkt::SetDmemParameters(MHW_VDBOX_HUC_DMEM_STATE_PARAMS &dmemParams)
-{
-    DECODE_FUNC_CALL();
-}
-
-MOS_STATUS HucCopyPkt::AddHucDmem(MOS_COMMAND_BUFFER &cmdBuffer)
-{
-    DECODE_FUNC_CALL();
-    return MOS_STATUS_SUCCESS;
-}
-
-void HucCopyPkt::SetRegionParameters(MHW_VDBOX_HUC_VIRTUAL_ADDR_PARAMS &virtualAddrParams)
-{
-    DECODE_FUNC_CALL();
-}
-
-MOS_STATUS HucCopyPkt::AddHucRegion(MOS_COMMAND_BUFFER &cmdBuffer)
-{
-    DECODE_FUNC_CALL();
-    return MOS_STATUS_SUCCESS;
-}
-
-void HucCopyPkt::SetIndObjParameters(MHW_VDBOX_IND_OBJ_BASE_ADDR_PARAMS &indObjParams)
+MHW_SETPAR_DECL_SRC(HUC_IND_OBJ_BASE_ADDR_STATE, HucCopyPkt)
 {
     DECODE_FUNC_CALL();
 
-    HucCopyParams& copyParams = m_copyParamsList.at(m_copyParamsIdx);
+    const HucCopyParams &copyParams = m_copyParamsList.at(m_copyParamsIdx);
 
-    uint32_t dataSize   = copyParams.srcOffset + copyParams.copyLength;
-    uint32_t dataOffset = MOS_ALIGN_FLOOR(copyParams.srcOffset, MHW_PAGE_SIZE);
-    uint32_t inputRelativeOffset  = copyParams.srcOffset - dataOffset;
+    uint32_t dataSize            = copyParams.srcOffset + copyParams.copyLength;
+    uint32_t dataOffset          = MOS_ALIGN_FLOOR(copyParams.srcOffset, MHW_PAGE_SIZE);
+    uint32_t inputRelativeOffset = copyParams.srcOffset - dataOffset;
 
-    uint32_t destSize   = copyParams.destOffset + copyParams.copyLength;
-    uint32_t destOffset = MOS_ALIGN_FLOOR(copyParams.destOffset, MHW_PAGE_SIZE);
+    uint32_t destSize             = copyParams.destOffset + copyParams.copyLength;
+    uint32_t destOffset           = MOS_ALIGN_FLOOR(copyParams.destOffset, MHW_PAGE_SIZE);
     uint32_t outputRelativeOffset = copyParams.destOffset - destOffset;
 
     // Enlarge the stream in/out data size to avoid upper bound hit assert in HuC
@@ -159,53 +127,36 @@ void HucCopyPkt::SetIndObjParameters(MHW_VDBOX_IND_OBJ_BASE_ADDR_PARAMS &indObjP
     destSize += outputRelativeOffset;
 
     // pass bit-stream buffer by Ind Obj Addr command
-    indObjParams.presDataBuffer = copyParams.srcBuffer;
-    indObjParams.dwDataSize = MOS_ALIGN_CEIL(dataSize, MHW_PAGE_SIZE);
-    indObjParams.dwDataOffset = dataOffset;
-    indObjParams.presStreamOutObjectBuffer = copyParams.destBuffer;
-    indObjParams.dwStreamOutObjectSize = MOS_ALIGN_CEIL(destSize, MHW_PAGE_SIZE);
-    indObjParams.dwStreamOutObjectOffset = destOffset;
-}
+    params.DataBuffer            = copyParams.srcBuffer;
+    params.DataSize              = MOS_ALIGN_CEIL(dataSize, MHW_PAGE_SIZE);
+    params.DataOffset            = dataOffset;
+    params.StreamOutObjectBuffer = copyParams.destBuffer;
+    params.StreamOutObjectSize   = MOS_ALIGN_CEIL(destSize, MHW_PAGE_SIZE);
+    params.StreamOutObjectOffset = destOffset;
 
-MOS_STATUS HucCopyPkt::AddHucIndObj(MOS_COMMAND_BUFFER &cmdBuffer)
-{
-    DECODE_FUNC_CALL();
-    MHW_VDBOX_IND_OBJ_BASE_ADDR_PARAMS indObjParams;
-    MOS_ZeroMemory(&indObjParams, sizeof(indObjParams));
-    SetIndObjParameters(indObjParams);
-    DECODE_CHK_STATUS(m_hucInterface->AddHucIndObjBaseAddrStateCmd(&cmdBuffer, &indObjParams));
     return MOS_STATUS_SUCCESS;
 }
 
-void HucCopyPkt::SetStreamObjectParameters(MHW_VDBOX_HUC_STREAM_OBJ_PARAMS &streamObjParams,
-                                           CODEC_HEVC_SLICE_PARAMS &sliceParams)
+MHW_SETPAR_DECL_SRC(HUC_STREAM_OBJECT, HucCopyPkt)
 {
     DECODE_FUNC_CALL();
 
-    HucCopyParams& copyParams = m_copyParamsList.at(m_copyParamsIdx);
+    const HucCopyParams &copyParams = m_copyParamsList.at(m_copyParamsIdx);
 
-    uint32_t dataOffset = MOS_ALIGN_FLOOR(copyParams.srcOffset, MHW_PAGE_SIZE);
-    uint32_t inputRelativeOffset  = copyParams.srcOffset - dataOffset;
+    uint32_t dataOffset          = MOS_ALIGN_FLOOR(copyParams.srcOffset, MHW_PAGE_SIZE);
+    uint32_t inputRelativeOffset = copyParams.srcOffset - dataOffset;
 
-    uint32_t destOffset = MOS_ALIGN_FLOOR(copyParams.destOffset, MHW_PAGE_SIZE);
+    uint32_t destOffset           = MOS_ALIGN_FLOOR(copyParams.destOffset, MHW_PAGE_SIZE);
     uint32_t outputRelativeOffset = copyParams.destOffset - destOffset;
 
     // set stream object with stream out enabled
-    streamObjParams.dwIndStreamInLength = copyParams.copyLength;
-    streamObjParams.dwIndStreamInStartAddrOffset = inputRelativeOffset;
-    streamObjParams.dwIndStreamOutStartAddrOffset = outputRelativeOffset;
-    streamObjParams.bHucProcessing = true;
-    streamObjParams.bStreamInEnable = true;
-    streamObjParams.bStreamOutEnable = true;
-}
+    params.IndirectStreamInDataLength    = copyParams.copyLength;
+    params.IndirectStreamInStartAddress  = inputRelativeOffset;
+    params.IndirectStreamOutStartAddress = outputRelativeOffset;
+    params.HucProcessing                 = true;
+    params.HucBitstreamEnable            = true;
+    params.StreamOut                     = true;
 
-MOS_STATUS HucCopyPkt::AddHucStreamObject(MOS_COMMAND_BUFFER &cmdBuffer, CODEC_HEVC_SLICE_PARAMS &sliceParams)
-{
-    DECODE_FUNC_CALL();
-    MHW_VDBOX_HUC_STREAM_OBJ_PARAMS streamObjParams;
-    MOS_ZeroMemory(&streamObjParams, sizeof(streamObjParams));
-    SetStreamObjectParameters(streamObjParams, sliceParams);
-    DECODE_CHK_STATUS(m_hucInterface->AddHucStreamObjectCmd(&cmdBuffer, &streamObjParams));
     return MOS_STATUS_SUCCESS;
 }
 
@@ -221,17 +172,17 @@ MOS_STATUS HucCopyPkt::CalculateCommandSize(uint32_t &commandBufferSize, uint32_
 {
     DECODE_FUNC_CALL();
 
-    uint32_t hucCommandsSize = 0;
-    uint32_t hucPatchListSize = 0;
+    uint32_t                       hucCommandsSize  = 0;
+    uint32_t                       hucPatchListSize = 0;
     MHW_VDBOX_STATE_CMDSIZE_PARAMS stateCmdSizeParams;
 
     if (m_hwInterface)
     {
         DECODE_CHK_STATUS(m_hwInterface->GetHucStateCommandSize(
-            m_basicFeature->m_mode, (uint32_t*)&hucCommandsSize, (uint32_t*)&hucPatchListSize, &stateCmdSizeParams));
+            m_basicFeature->m_mode, (uint32_t *)&hucCommandsSize, (uint32_t *)&hucPatchListSize, &stateCmdSizeParams));
     }
 
-    commandBufferSize = hucCommandsSize;
+    commandBufferSize      = hucCommandsSize;
     requestedPatchListSize = m_osInterface->bUsesPatchList ? hucPatchListSize : 0;
 
     // 4K align since allocation is in chunks of 4K bytes.
@@ -240,4 +191,4 @@ MOS_STATUS HucCopyPkt::CalculateCommandSize(uint32_t &commandBufferSize, uint32_
     return MOS_STATUS_SUCCESS;
 }
 
-}
+}  // namespace decode
