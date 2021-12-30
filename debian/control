@@ -8,6 +8,7 @@ Build-Depends:
  debhelper-compat (= 13),
  dh-sequence-libva,
  cmake,
+ libdrm-dev,
  libigdgmm-dev (>= 21.1.1),
  libva-dev (>= 2.12),
  libx11-dev,
