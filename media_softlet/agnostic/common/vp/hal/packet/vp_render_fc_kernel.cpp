@@ -64,6 +64,18 @@ const int32_t VpRenderFcKernel::s_bindingTableIndex[] =
     VP_COMP_BTINDEX_LAYER7
 };
 
+const int32_t VpRenderFcKernel::s_bindingTableIndexField[] =
+{
+    VP_COMP_BTINDEX_L0_FIELD1_DUAL,
+    VP_COMP_BTINDEX_L0_FIELD1_DUAL + 1,
+    VP_COMP_BTINDEX_L0_FIELD1_DUAL + 2,
+    VP_COMP_BTINDEX_L0_FIELD1_DUAL + 3,
+    VP_COMP_BTINDEX_L0_FIELD1_DUAL + 4,
+    VP_COMP_BTINDEX_L0_FIELD1_DUAL + 5,
+    VP_COMP_BTINDEX_L0_FIELD1_DUAL + 6,
+    VP_COMP_BTINDEX_L0_FIELD1_DUAL + 7
+};
+
 VpRenderFcKernel::VpRenderFcKernel(PVP_MHWINTERFACE hwInterface, PVpAllocator allocator) :
     VpRenderKernelObj(hwInterface, allocator)
 {
@@ -239,6 +251,16 @@ MOS_STATUS VpRenderFcKernel::SetupSurfaceState()
 
         //update render GMM resource usage type
         m_allocator->UpdateResourceUsageType(&layer->surf->osSurface->OsResource, MOS_HW_RESOURCE_USAGE_VP_INPUT_PICTURE_RENDER);
+
+        if (layer->surfField)
+        {
+            KERNEL_SURFACE_STATE_PARAM surfParamField = surfParam;
+            surfParamField.surfaceOverwriteParams.bindIndex = s_bindingTableIndexField[layer->layerID];
+            m_surfaceState.insert(std::make_pair(SurfaceType(SurfaceTypeFcInputLayer0Field1Dual + layer->layerID), surfParamField));
+
+            //update render GMM resource usage type
+            m_allocator->UpdateResourceUsageType(&layer->surfField->osSurface->OsResource, MOS_HW_RESOURCE_USAGE_VP_INPUT_PICTURE_RENDER);
+        }
 
         // Ensure the input is ready to be read
         // Currently, mos RegisterResourcere cannot sync the 3d resource.
@@ -2178,11 +2200,13 @@ bool VpRenderFcKernel::IsEufusionBypassed()
 
     if (nullptr == userFeatureControl || !userFeatureControl->IsEufusionBypassWaEnabled())
     {
+        VP_RENDER_NORMALMESSAGE("EufusionBypass is not needed.");
         return false;
     }
 
     if (compParams.sourceCount > 1)
     {
+        VP_RENDER_NORMALMESSAGE("EufusionBypass is needed for multi-layer composition case.");
         return true;
     }
     else if (1 == compParams.sourceCount)
@@ -2193,9 +2217,18 @@ bool VpRenderFcKernel::IsEufusionBypassed()
         if (compParams.pColorFillParams != nullptr)
         {
             // To avoid colorfill + rotation output cropution when Eu fusion is on.
-            bColorFill =  (!RECT1_CONTAINS_RECT2(layer.surf->rcSrc, compParams.target->surf->rcDst)) ? true : false;
+            bColorFill =  (!RECT1_CONTAINS_RECT2(layer.surf->rcDst, compParams.target->surf->rcDst)) ? true : false;
             bRotation = (layer.rotation != VPHAL_ROTATION_IDENTITY) ? true : false;
-            m_renderHal->eufusionBypass = bColorFill && bRotation;
+
+            if (bColorFill && bRotation)
+            {
+                VP_RENDER_NORMALMESSAGE("EufusionBypass is needed for colorfill + rotation case.");
+                return true;
+            }
+            else
+            {
+                return false;
+            }
         }
         else
         {

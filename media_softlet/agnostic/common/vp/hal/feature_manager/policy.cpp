@@ -461,6 +461,8 @@ MOS_STATUS Policy::BuildExecutionEngines(SwFilterPipe &swFilterPipe, bool isInpu
     SwFilter *       feature = nullptr;
     pipe                     = swFilterPipe.GetSwFilterSubPipe(isInputPipe, index);
 
+    VP_PUBLIC_NORMALMESSAGE("isInputPipe %d, index %d", (isInputPipe ? 1 : 0), index);
+
     if (pipe)
     {
         for (auto filterID : m_featurePool)
@@ -744,6 +746,15 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter* feature)
         return MOS_STATUS_SUCCESS;
     }
 
+    // For AVS sampler not enabled case, HQ/Fast scaling should go to SFC.
+    // And Ief should only be done by SFC.
+    if (!m_hwCaps.m_rules.isAvsSamplerSupported &&
+        scalingParams->scalingPreference != VPHAL_SCALING_PREFER_SFC)
+    {
+        VP_PUBLIC_NORMALMESSAGE("Force scalingPreference from %d to SFC");
+        scalingParams->scalingPreference = VPHAL_SCALING_PREFER_SFC;
+    }
+
     if (!m_hwCaps.m_veboxHwEntry[scalingParams->formatInput].inputSupported)
     {
         VP_PUBLIC_NORMALMESSAGE("Input format %d is not support vebox, force to use fc.", scalingParams->formatInput);
@@ -914,6 +925,8 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter* feature)
                 scalingEngine->RenderNeeded = 1;
                 scalingEngine->fcSupported  = 1;
                 scalingEngine->SfcNeeded    = 0;
+                VP_PUBLIC_NORMALMESSAGE("Fc selected. fScaleX %f, fScaleY %f, scalingPreference %d",
+                    fScaleX, fScaleY, scalingParams->scalingPreference);
             }
             // SFC feasible
             else
