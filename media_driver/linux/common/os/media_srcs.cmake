@@ -24,11 +24,13 @@ if(ENABLE_PRODUCTION_KMD)
     media_include_subdirectory(i915_production)
 endif()
 
+# This is to include drm_device.h in cmrtlib, no cpp file needed.
+include_directories(${BS_DIR_MEDIA}/cmrtlib/linux/hardware)
+
 set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/hwinfo_linux.c
     ${CMAKE_CURRENT_LIST_DIR}/mos_context_specific.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_graphicsresource_specific.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/mos_graphicsresource_specific_ext.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_specific.c
     ${CMAKE_CURRENT_LIST_DIR}/mos_util_debug_specific.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_util_devult_specific.cpp

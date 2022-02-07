@@ -27,8 +27,10 @@
 //! \details  The top renderer is responsible for coordinating the sequence of calls to low level renderers, e.g. DNDI or Comp
 //!
 #include "vphal_renderer_xe_hpm.h"
+#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 #include "igvpkrn_xe_hpm.h"
 #include "igvpkrn_xe_hpm_cmfcpatch.h"
+#endif
 #include "vphal_render_vebox_xe_hpm.h"
 #include "vphal_render_composite_xe_xpm.h"
 
@@ -207,10 +209,17 @@ MOS_STATUS VphalRendererXe_Hpm::InitKdllParam()
     if (bEnableCMFC)
     {
         pKernelDllRules  = g_KdllRuleTable_Xe_Hpm;
+#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
         pcKernelBin      = (const void *)IGVPKRN_XE_HPM;
         dwKernelBinSize  = IGVPKRN_XE_HPM_SIZE;
         pcFcPatchBin     = (const void *)IGVPKRN_XE_HPM_CMFCPATCH;
         dwFcPatchBinSize = IGVPKRN_XE_HPM_CMFCPATCH_SIZE;
+#else
+        pcKernelBin      = nullptr;
+        dwKernelBinSize  = 0;
+        pcFcPatchBin     = nullptr;
+        dwFcPatchBinSize = 0;
+#endif
     }
 
     if ((NULL == pcFcPatchBin) || (0 == dwFcPatchBinSize))
@@ -378,9 +387,11 @@ MOS_STATUS VphalRendererXe_Hpm::Render(
             && (pcRenderParams->pSrc[0] != nullptr)
             && (pcRenderParams->pColorFillParams != nullptr))
         {
-            bColorFill =  (!RECT1_CONTAINS_RECT2(pcRenderParams->pSrc[0]->rcSrc, pcRenderParams->pTarget[0]->rcDst)) ? true : false;
+            bColorFill =  (!RECT1_CONTAINS_RECT2(pcRenderParams->pSrc[0]->rcDst, pcRenderParams->pTarget[0]->rcDst)) ? true : false;
             bRotation = (pcRenderParams->pSrc[0]->Rotation != VPHAL_ROTATION_IDENTITY) ? true : false;
             m_pRenderHal->eufusionBypass = bColorFill && bRotation;
+
+            VPHAL_RENDER_NORMALMESSAGE("eufusionBypass = %d", pRenderHal->eufusionBypass ? 1 : 0);
         }
         // for interlaced scaling : two field --> one interleaved mode
         if (pcRenderParams->pSrc[0]->InterlacedScalingType == ISCALING_FIELD_TO_INTERLEAVED)

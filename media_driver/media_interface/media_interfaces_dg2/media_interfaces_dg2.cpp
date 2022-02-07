@@ -28,11 +28,11 @@
 //!
 
 #include "media_interfaces_dg2.h"
+#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 #include "igcodeckrn_g12.h"
-#include "codechal.h"
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
-#include "codechal_debug_xe_hpm_ext.h"
 #endif
+#include "codechal.h"
+#include "codechal_debug_xe_hpm_ext.h"
 #if defined(ENABLE_KERNELS) && defined(IGFX_DG2_ENABLE_NON_UPSTREAM)
 #include "cm_gpucopy_kernel_xe_hpm.h"
 #include "cm_gpuinit_kernel_xe_hpm.h"
@@ -984,7 +984,7 @@ MOS_STATUS CodechalInterfacesXe_Hpm::CreateCodecHalInterface(MhwInterfaces      
         CODECHAL_PUBLIC_ASSERTMESSAGE("hwInterface is not valid!");
         return MOS_STATUS_NO_SPACE;
     }
-#if USE_CODECHAL_DEBUG_TOOL && IGFX_DG2_ENABLE_NON_UPSTREAM
+#if USE_CODECHAL_DEBUG_TOOL
     pDebugInterface = MOS_New(CodechalDebugInterfaceXe_Hpm);
     if (pDebugInterface == nullptr)
     {
@@ -1046,7 +1046,7 @@ MOS_STATUS CodechalInterfacesXe_Hpm::CreateCodecHalInterface(MhwInterfaces      
         CODECHAL_PUBLIC_ASSERTMESSAGE("hwInterface is not valid!");
         return MOS_STATUS_NO_SPACE;
     }
-#if USE_CODECHAL_DEBUG_TOOL && IGFX_DG2_ENABLE_NON_UPSTREAM
+#if USE_CODECHAL_DEBUG_TOOL
     pDebugInterface = MOS_New(CodechalDebugInterfaceXe_Hpm);
     if (pDebugInterface == nullptr)
     {
