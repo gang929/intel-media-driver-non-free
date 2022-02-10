@@ -133,6 +133,7 @@ struct _VP_EXECUTE_CAPS
 
             uint64_t bOutputPipeFeatureInuse : 1; // Output surface of pipeline is in use.
             uint64_t bForceCscToRender : 1; // If true, force to use render for csc.
+            uint64_t bForceProcampToRender : 1;   // If true, force to use render for procamp.
             uint64_t lastSubmission : 1;    // If true, it's the last submission of current DDI.
 
             // Vebox Features
@@ -206,6 +207,8 @@ typedef struct _VP_EngineEntry
             uint32_t sfc2PassScalingNeededY : 1;
             uint32_t usedForNextPass : 1;       // true if current feature should be bypassed for current pass and be processed during next pass.
             uint32_t sfcNotSupported : 1;       // true if sfc cannot be selected.
+            uint32_t veboxNotSupported : 1;     // true if vebox cannot be selected.
+            uint32_t onlyParamCalculation : 1;  // true if the feature is used for parameter calculation.
         };
         uint32_t value;
     };

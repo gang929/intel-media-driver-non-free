@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021, Intel Corporation
+* Copyright (c) 2021-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -312,25 +312,13 @@ static bool InitTglMediaSkuExt(struct GfxDeviceInfo *devInfo,
 
     MEDIA_WR_SKU(skuTable, FtrVeboxScalabilitywith4K, 1);
 
-    // Enable context based scheduling when vebox scalabilitiy enable due to KMD didn't support GUC submission yet
-    MOS_USER_FEATURE_VALUE_DATA userFeatureData;
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE_ID,
-        &userFeatureData,
-        (MOS_CONTEXT_HANDLE)nullptr);
-    if (userFeatureData.i32Data)
-    {
-        MEDIA_WR_SKU(skuTable, FtrContextBasedScheduling, 1);
-    }
-
     MEDIA_WR_SKU(skuTable, FtrTileY, 1);
     MEDIA_WR_SKU(skuTable, FtrE2ECompression, 1);
     MEDIA_WR_SKU(skuTable, FtrLinearCCS, 1);
     MEDIA_WR_SKU(skuTable, FtrFlatPhysCCS, 0);
 
     // Disable MMC for all components if set reg key
+    MOS_USER_FEATURE_VALUE_DATA userFeatureData;
     MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
     MOS_UserFeature_ReadValue_ID(
         nullptr,
@@ -341,6 +329,9 @@ static bool InitTglMediaSkuExt(struct GfxDeviceInfo *devInfo,
     {
         MEDIA_WR_SKU(skuTable, FtrE2ECompression, 0);
     }
+
+    // Create compressible surface by default
+    MEDIA_WR_SKU(skuTable, FtrCompressibleSurfaceDefault, 1);
 
     if (drvInfo->devId == 0xFF20)
     {

@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2020, Intel Corporation
+# Copyright (c) 2022, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -19,18 +19,31 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 
 set(TMP_SOURCES_
-    ${TMP_SOURCES_}
-    ${CMAKE_CURRENT_LIST_DIR}/decode_huc_packet_creator.cpp
-)
-
-set(TMP_SOURCES_
-    ${TMP_SOURCES_}
-    ${CMAKE_CURRENT_LIST_DIR}/huc_streamout_interface.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/media_interfaces_g12_adln.cpp
 )
 
 set(TMP_HEADERS_
+    ${CMAKE_CURRENT_LIST_DIR}/media_interfaces_g12_adln.h
+)
+
+set(SOURCES_
+    ${SOURCES_}
+    ${TMP_SOURCES_}
+)
+
+set(HEADERS_
+    ${HEADERS_}
     ${TMP_HEADERS_}
-    ${CMAKE_CURRENT_LIST_DIR}/decode_huc_packet_creator.h
+)
+
+set(COMMON_SOURCES_
+    ${COMMON_SOURCES_}
+    ${TMP_SOURCES_}
+)
+
+set(COMMON_HEADERS_
+    ${COMMON_HEADERS_}
+    ${TMP_HEADERS_}
 )
 
 media_add_curr_to_include_path()

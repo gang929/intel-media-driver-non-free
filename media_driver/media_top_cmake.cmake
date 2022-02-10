@@ -1,4 +1,4 @@
-# Copyright (c) 2017, Intel Corporation
+# Copyright (c) 2017-2022, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -116,7 +116,13 @@ if(MEDIA_BUILD_FATAL_WARNINGS)
     set_target_properties(${LIB_NAME_OBJ} PROPERTIES COMPILE_FLAGS "-Werror")
 endif()
 
-set_target_properties(${LIB_NAME} PROPERTIES LINK_FLAGS "-Wl,--no-as-needed -Wl,--gc-sections -z relro -z now -fstack-protector -fPIC")
+set(MEDIA_LINK_FLAGS "-Wl,--no-as-needed -Wl,--gc-sections -z relro -z now -fPIC")
+option(MEDIA_BUILD_HARDENING "Enable hardening (stack-protector, fortify source)" ON)
+if(MEDIA_BUILD_HARDENING)
+    set(MEDIA_LINK_FLAGS "${MEDIA_LINK_FLAGS} -fstack-protector")
+endif()
+set_target_properties(${LIB_NAME} PROPERTIES LINK_FLAGS ${MEDIA_LINK_FLAGS})
+
 set_target_properties(${LIB_NAME}        PROPERTIES PREFIX "")
 set_target_properties(${LIB_NAME_STATIC} PROPERTIES PREFIX "")
 
@@ -154,7 +160,7 @@ endif(NOT DEFINED INCLUDED_LIBS OR "${INCLUDED_LIBS}" STREQUAL "")
 # post target attributes
 bs_set_post_target()
 
-if(MEDIA_RUN_TEST_SUITE AND ENABLE_KERNELS AND ENABLE_NONFREE_KERNELS)
+if(MEDIA_RUN_TEST_SUITE AND ENABLE_KERNELS AND ENABLE_NONFREE_KERNELS AND "${CMAKE_BUILD_TYPE}" STREQUAL "ReleaseInternal")
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/linux/ult)
     include(${MEDIA_EXT}/media_softlet/ult/ult_top_cmake.cmake OPTIONAL)
 endif()

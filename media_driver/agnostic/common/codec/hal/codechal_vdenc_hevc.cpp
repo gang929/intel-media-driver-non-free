@@ -792,12 +792,31 @@ MOS_STATUS CodechalVdencHevcState::SetupMbQpStreamIn(PMOS_RESOURCE streamIn)
     auto pInputDataGfx = (uint8_t*)m_osInterface->pfnLockResource(
                                                             m_osInterface, &(m_encodeParams.psMbQpDataSurface->OsResource),
                                                             &LockFlagsReadOnly);
-    CODECHAL_ENCODE_CHK_NULL_RETURN(pInputDataGfx);
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnGetResourceInfo(
-                                                            m_osInterface, &(m_encodeParams.psMbQpDataSurface->OsResource),
-                                                            &surfInfo));
+    if (pInputDataGfx == nullptr)
+    {
+        MOS_SafeFreeMemory(data);
+        CODECHAL_ENCODE_ASSERTMESSAGE("Invalid (nullptr) Pointer from LockResource!");
+        return MOS_STATUS_NULL_POINTER;
+    }
+
+    eStatus = m_osInterface->pfnGetResourceInfo(
+                                        m_osInterface, &(m_encodeParams.psMbQpDataSurface->OsResource),
+                                        &surfInfo);
+    if (eStatus != MOS_STATUS_SUCCESS)
+    {
+        MOS_SafeFreeMemory(data);
+        CODECHAL_ENCODE_ASSERTMESSAGE("Get psMbQpDataSurface ResourceInfo Failed!");
+        return eStatus;
+    }
+
     auto pInputData = (int8_t*)MOS_AllocMemory(surfInfo.dwSize);
-    CODECHAL_ENCODE_CHK_NULL_RETURN(pInputData);
+    if (pInputData == nullptr)
+    {
+        MOS_SafeFreeMemory(data);
+        CODECHAL_ENCODE_ASSERTMESSAGE("Invalid (nullptr) Pointer from MOS_AllocMemory!");
+        return MOS_STATUS_NULL_POINTER;
+    }
+
     MOS_SecureMemcpy(pInputData, surfInfo.dwSize, pInputDataGfx, surfInfo.dwSize);
 
     MHW_VDBOX_VDENC_STREAMIN_STATE_PARAMS streaminDataParams;
@@ -3942,6 +3961,33 @@ MOS_STATUS CodechalVdencHevcState::PrepareHWMetaData(PMOS_COMMAND_BUFFER cmdBuff
         return MOS_STATUS_SUCCESS;
     }
 
+    // Intra/Inter/Skip CU Cnt /SubregionSliceSizeCalc
+    auto xCalAtomic = [&](PMOS_RESOURCE presDst, uint32_t dstOffset, PMOS_RESOURCE presSrc, uint32_t srcOffset, MHW_COMMON_MI_ATOMIC_OPCODE opCode) {
+        auto                            mmioRegistersMfx = m_mfxInterface->GetMmioRegisters(m_vdboxIndex);
+        MHW_MI_LOAD_REGISTER_MEM_PARAMS miLoadRegMemParams;
+        MHW_MI_FLUSH_DW_PARAMS          flushDwParams;
+        MHW_MI_ATOMIC_PARAMS            atomicParams;
+
+        MOS_ZeroMemory(&miLoadRegMemParams, sizeof(miLoadRegMemParams));
+        MOS_ZeroMemory(&flushDwParams, sizeof(flushDwParams));
+        MOS_ZeroMemory(&atomicParams, sizeof(atomicParams));
+
+        miLoadRegMemParams.presStoreBuffer = presSrc;
+        miLoadRegMemParams.dwOffset        = srcOffset;
+        miLoadRegMemParams.dwRegister      = mmioRegistersMfx->generalPurposeRegister0LoOffset;
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiLoadRegisterMemCmd(cmdBuffer, &miLoadRegMemParams));
+
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiFlushDwCmd(cmdBuffer, &flushDwParams));
+
+        atomicParams.pOsResource      = presDst;
+        atomicParams.dwResourceOffset = dstOffset;
+        atomicParams.dwDataSize       = sizeof(uint32_t);
+        atomicParams.Operation        = opCode;
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiAtomicCmd(cmdBuffer, &atomicParams));
+
+        return MOS_STATUS_SUCCESS;
+    };
+
     MHW_MI_STORE_DATA_PARAMS storeDataParams;
     MOS_ZeroMemory(&storeDataParams, sizeof(storeDataParams));
     storeDataParams.pOsResource         = m_presMetadataBuffer;
@@ -3960,7 +4006,7 @@ MOS_STATUS CodechalVdencHevcState::PrepareHWMetaData(PMOS_COMMAND_BUFFER cmdBuff
         uint32_t subRegionSartOffset = m_metaDataOffset.dwMetaDataSize + slcCount*m_metaDataOffset.dwMetaDataSubRegionSize;
 
         storeDataParams.dwResourceOffset    = subRegionSartOffset + m_metaDataOffset.dwbStartOffset;
-        storeDataParams.dwValue             = m_slcData[slcCount].SliceOffset;
+        storeDataParams.dwValue             = 0;
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(cmdBuffer, &storeDataParams));
 
         storeDataParams.dwResourceOffset    = subRegionSartOffset + m_metaDataOffset.dwbHeaderSize;
@@ -3969,11 +4015,15 @@ MOS_STATUS CodechalVdencHevcState::PrepareHWMetaData(PMOS_COMMAND_BUFFER cmdBuff
 
         miCpyMemMemParams.presSrc           = &m_resLcuBaseAddressBuffer;
         miCpyMemMemParams.presDst           = m_presMetadataBuffer;
-        miCpyMemMemParams.dwSrcOffset       = slcCount*2;
+        miCpyMemMemParams.dwSrcOffset       = slcCount * 16 * sizeof(uint32_t); //slice size offset in resLcuBaseAddressBuffer is 16DW
         miCpyMemMemParams.dwDstOffset       = subRegionSartOffset + m_metaDataOffset.dwbSize;
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiCopyMemMemCmd(cmdBuffer,&miCpyMemMemParams));
+        if (slcCount)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(xCalAtomic(m_presMetadataBuffer, subRegionSartOffset + m_metaDataOffset.dwbSize,
+                &m_resLcuBaseAddressBuffer, (slcCount - 1) * 16 * sizeof(uint32_t), MHW_MI_ATOMIC_SUB));
+        }
     }
-
     auto mmioRegisters = m_hcpInterface->GetMmioRegisters(m_vdboxIndex);
     CODECHAL_ENCODE_CHK_NULL_RETURN(mmioRegisters);
     MHW_MI_STORE_REGISTER_MEM_PARAMS miStoreRegMemParams;
@@ -4009,33 +4059,6 @@ MOS_STATUS CodechalVdencHevcState::PrepareHWMetaData(PMOS_COMMAND_BUFFER cmdBuff
         atomicParams.dwOperand1Data[0]      = 0xFF;
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiAtomicCmd(cmdBuffer, &atomicParams));
     }
-
-    // Intra/Inter/Skip CU Cnt
-    auto xCalAtomic = [&](PMOS_RESOURCE presDst, uint32_t dstOffset, PMOS_RESOURCE presSrc, uint32_t srcOffset, MHW_COMMON_MI_ATOMIC_OPCODE opCode){
-        auto                            mmioRegistersMfx = m_mfxInterface->GetMmioRegisters(m_vdboxIndex);
-        MHW_MI_LOAD_REGISTER_MEM_PARAMS miLoadRegMemParams;
-        MHW_MI_FLUSH_DW_PARAMS          flushDwParams;
-        MHW_MI_ATOMIC_PARAMS            atomicParams;
-
-        MOS_ZeroMemory(&miLoadRegMemParams, sizeof(miLoadRegMemParams));
-        MOS_ZeroMemory(&flushDwParams, sizeof(flushDwParams));
-        MOS_ZeroMemory(&atomicParams, sizeof(atomicParams));
-
-        miLoadRegMemParams.presStoreBuffer = presSrc;
-        miLoadRegMemParams.dwOffset        = srcOffset;
-        miLoadRegMemParams.dwRegister      = mmioRegistersMfx->generalPurposeRegister0LoOffset;
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiLoadRegisterMemCmd(cmdBuffer, &miLoadRegMemParams));
-
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiFlushDwCmd(cmdBuffer, &flushDwParams));
-
-        atomicParams.pOsResource        = presDst;
-        atomicParams.dwResourceOffset   = dstOffset;
-        atomicParams.dwDataSize         = sizeof(uint32_t);
-        atomicParams.Operation          = opCode;
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiAtomicCmd(cmdBuffer, &atomicParams));
-
-        return MOS_STATUS_SUCCESS;
-    };
 
     // LCUSkipIn8x8Unit
     miCpyMemMemParams.presSrc           = &m_resFrameStatStreamOutBuffer;
