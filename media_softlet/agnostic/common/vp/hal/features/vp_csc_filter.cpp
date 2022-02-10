@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2021, Intel Corporation
+* Copyright (c) 2018-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -81,6 +81,7 @@ namespace vp {
 #define VP_VEBOX_CHROMA_DOWNSAMPLING_422_TYPE3_VERT_OFFSET           0
 
 MOS_FORMAT GetSfcInputFormat(VP_EXECUTE_CAPS &executeCaps, MOS_FORMAT inputFormat, VPHAL_CSPACE colorSpaceOutput);
+bool IsBeCscNeededForAlphaFill(MOS_FORMAT formatInput, MOS_FORMAT formatOutput, PVPHAL_ALPHA_PARAMS compAlpha);
 
 VpCscFilter::VpCscFilter(PVP_MHWINTERFACE vpMhwInterface) :
     VpFilter(vpMhwInterface)
@@ -217,6 +218,7 @@ MOS_STATUS VpCscFilter::CalculateSfcEngineParams()
     m_sfcCSCParams->inputFormat     = m_cscParams.formatInput;
     m_sfcCSCParams->outputFormat    = m_cscParams.formatOutput;
 
+    // No need to check m_cscParams.pAlphaParams as CalculateVeboxEngineParams does, as alpha is done by scaling filter on SFC.
     if (m_sfcCSCParams->inputColorSpace != m_cscParams.output.colorSpace)
     {
         m_sfcCSCParams->bCSCEnabled = true;
@@ -262,12 +264,15 @@ MOS_STATUS VpCscFilter::CalculateVeboxEngineParams()
         MOS_ZeroMemory(m_veboxCSCParams, sizeof(VEBOX_CSC_PARAMS));
     }
 
+    bool isBeCscNeededForAlphaFill = IsBeCscNeededForAlphaFill(
+        m_cscParams.formatInput, m_cscParams.formatOutput, m_cscParams.pAlphaParams);
+
     m_veboxCSCParams->inputColorSpace   = m_cscParams.input.colorSpace;
     m_veboxCSCParams->outputColorSpace  = m_cscParams.output.colorSpace;
     m_veboxCSCParams->inputFormat       = m_cscParams.formatInput;
     m_veboxCSCParams->outputFormat      = m_cscParams.formatOutput;
 
-    m_veboxCSCParams->bCSCEnabled = (m_cscParams.input.colorSpace != m_cscParams.output.colorSpace);
+    m_veboxCSCParams->bCSCEnabled = (m_cscParams.input.colorSpace != m_cscParams.output.colorSpace || isBeCscNeededForAlphaFill);
     m_veboxCSCParams->alphaParams = m_cscParams.pAlphaParams;
 
     VP_RENDER_CHK_STATUS_RETURN(UpdateChromaSiting(m_executeCaps));
@@ -468,6 +473,10 @@ MOS_STATUS VpCscFilter::SetVeboxCUSChromaParams(VP_EXECUTE_CAPS vpExecuteCaps)
             }
         }
     }
+
+    VP_RENDER_NORMALMESSAGE("bypassCUS %d, chromaUpSamplingHorizontalCoef %d, chromaUpSamplingVerticalCoef %d",
+        m_veboxCSCParams->bypassCUS, m_veboxCSCParams->chromaUpSamplingHorizontalCoef, m_veboxCSCParams->chromaUpSamplingVerticalCoef);
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -575,6 +584,10 @@ MOS_STATUS VpCscFilter::SetVeboxCDSChromaParams(VP_EXECUTE_CAPS vpExecuteCaps)
             }
         }
     }
+
+    VP_RENDER_NORMALMESSAGE("bypassCDS %d, chromaDownSamplingHorizontalCoef %d, chromaDownSamplingVerticalCoef %d",
+        m_veboxCSCParams->bypassCDS, m_veboxCSCParams->chromaDownSamplingHorizontalCoef, m_veboxCSCParams->chromaDownSamplingVerticalCoef);
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -997,5 +1010,59 @@ HwFilterParameter* PolicyVeboxCscHandler::CreateHwFilterParam(VP_EXECUTE_CAPS vp
     {
         return nullptr;
     }
+}
+
+MOS_STATUS PolicyVeboxCscHandler::UpdateFeaturePipe(VP_EXECUTE_CAPS caps, SwFilter &feature, SwFilterPipe &featurePipe, SwFilterPipe &executePipe, bool isInputPipe, int index)
+{
+    VP_FUNC_CALL();
+
+    SwFilterCsc *featureCsc = dynamic_cast<SwFilterCsc *>(&feature);
+    VP_PUBLIC_CHK_NULL_RETURN(featureCsc);
+
+    if (caps.bForceCscToRender)
+    {
+        SwFilterCsc *filter2ndPass = featureCsc;
+        SwFilterCsc *filter1ndPass = (SwFilterCsc *)feature.Clone();
+
+        VP_PUBLIC_CHK_NULL_RETURN(filter1ndPass);
+        VP_PUBLIC_CHK_NULL_RETURN(filter2ndPass);
+
+        filter1ndPass->GetFilterEngineCaps() = filter2ndPass->GetFilterEngineCaps();
+        filter1ndPass->SetFeatureType(filter2ndPass->GetFeatureType());
+
+        FeatureParamCsc &params2ndPass = filter2ndPass->GetSwFilterParams();
+        FeatureParamCsc &params1stPass = filter1ndPass->GetSwFilterParams();
+
+        // No csc in 1st pass.
+        params1stPass.formatOutput = params1stPass.formatInput;
+        params1stPass.output       = params1stPass.input;
+
+        // vebox + render no IEF Params
+        params1stPass.pIEFParams = nullptr;
+        params2ndPass.pIEFParams = nullptr;
+
+        params1stPass.pAlphaParams = nullptr;
+
+        // Clear engine caps for filter in 2nd pass.
+        filter2ndPass->SetFeatureType(FeatureTypeCsc);
+        filter2ndPass->GetFilterEngineCaps().usedForNextPass = 1;
+
+        // Switch to render engine for csc filter.
+        VP_PUBLIC_NORMALMESSAGE("Force csc to render case. VeboxNeeded: %d -> 0, RenderNeeded: %d -> 1",
+            filter2ndPass->GetFilterEngineCaps().VeboxNeeded,
+            filter2ndPass->GetFilterEngineCaps().RenderNeeded);
+        filter2ndPass->GetFilterEngineCaps().bEnabled     = 1;
+        filter2ndPass->GetFilterEngineCaps().VeboxNeeded  = 0;
+        filter2ndPass->GetFilterEngineCaps().RenderNeeded = 1;
+        filter2ndPass->GetFilterEngineCaps().fcSupported  = 1;
+
+        executePipe.AddSwFilterUnordered(filter1ndPass, isInputPipe, index);
+    }
+    else
+    {
+        return PolicyFeatureHandler::UpdateFeaturePipe(caps, feature, featurePipe, executePipe, isInputPipe, index);
+    }
+
+    return MOS_STATUS_SUCCESS;
 }
 }

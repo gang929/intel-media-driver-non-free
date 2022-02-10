@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2021, Intel Corporation
+* Copyright (c) 2019-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -113,6 +113,7 @@ enum FeatureType
     FeatureTypeColorFillOnRender = FeatureTypeColorFill | FEATURE_TYPE_ENGINE_BITS_RENDER,
     FeatureTypeAlpha            = 0x1900,
     FeatureTypeAlphaOnSfc       = FeatureTypeAlpha | FEATURE_TYPE_ENGINE_BITS_SFC,
+    FeatureTypeAlphaOnVebox     = FeatureTypeAlpha | FEATURE_TYPE_ENGINE_BITS_VEBOX,
     FeatureTypeAlphaOnRender    = FeatureTypeAlpha | FEATURE_TYPE_ENGINE_BITS_RENDER,
     FeatureTypeCappipe          = 0x2000,
     FeatureTypeCappipeOnVebox   = FeatureTypeCappipe | FEATURE_TYPE_ENGINE_BITS_VEBOX,
@@ -146,6 +147,7 @@ enum SurfaceType
     SurfaceTypeStatistics,
     SurfaceTypeSkinScore,
     SurfaceType3dLut,
+    SurfaceType1k1dLut,
     SurfaceType1dLutHDR,
     SurfaceTypeAlphaOrVignette,
     SurfaceTypeVeboxStateHeap_Drv,
@@ -381,14 +383,14 @@ struct FeatureParamCsc : public FeatureParam
 {
     struct CSC_PARAMS
     {
-        VPHAL_CSPACE    colorSpace;
-        uint32_t        chromaSiting;
+        VPHAL_CSPACE    colorSpace      = CSpace_None;
+        uint32_t        chromaSiting    = 0;
     };
-    CSC_PARAMS          input;
-    CSC_PARAMS          output;
-    PVPHAL_IEF_PARAMS   pIEFParams;
-    PVPHAL_ALPHA_PARAMS pAlphaParams;
-    FeatureParamCsc     *next;                //!< pointe to new/next generated CSC params
+    CSC_PARAMS          input           = {};
+    CSC_PARAMS          output          = {};
+    PVPHAL_IEF_PARAMS   pIEFParams      = nullptr;
+    PVPHAL_ALPHA_PARAMS pAlphaParams    = nullptr;
+    FeatureParamCsc     *next           = nullptr;                //!< pointe to new/next generated CSC params
 };
 
 class SwFilterCsc : public SwFilter
@@ -569,8 +571,8 @@ MEDIA_CLASS_DEFINE_END(SwFilterDeinterlace)
 
 struct FeatureParamSte : public FeatureParam
 {
-    bool                bEnableSTE;
-    uint32_t            dwSTEFactor;
+    bool       bEnableSTE  = false;
+    uint32_t   dwSTEFactor = 0;
 };
 
 class SwFilterSte : public SwFilter
@@ -622,7 +624,7 @@ MEDIA_CLASS_DEFINE_END(SwFilterTcc)
 
 struct FeatureParamProcamp : public FeatureParam
 {
-    PVPHAL_PROCAMP_PARAMS procampParams;
+    PVPHAL_PROCAMP_PARAMS procampParams = nullptr;
 };
 
 class SwFilterProcamp : public SwFilter
@@ -672,7 +674,7 @@ MEDIA_CLASS_DEFINE_END(SwFilterHdr)
 
 struct FeatureParamLumakey : public FeatureParam
 {
-    PVPHAL_LUMAKEY_PARAMS   lumaKeyParams;
+    PVPHAL_LUMAKEY_PARAMS lumaKeyParams = nullptr;
 };
 
 class SwFilterLumakey : public SwFilter
@@ -695,7 +697,7 @@ MEDIA_CLASS_DEFINE_END(SwFilterLumakey)
 
 struct FeatureParamBlending : public FeatureParam
 {
-    PVPHAL_BLENDING_PARAMS  blendingParams;
+    PVPHAL_BLENDING_PARAMS  blendingParams = nullptr;
 };
 
 class SwFilterBlending : public SwFilter
@@ -718,7 +720,7 @@ MEDIA_CLASS_DEFINE_END(SwFilterBlending)
 
 struct FeatureParamColorFill : public FeatureParam
 {
-    PVPHAL_COLORFILL_PARAMS colorFillParams;     //!< ColorFill - BG only
+    PVPHAL_COLORFILL_PARAMS colorFillParams = nullptr;     //!< ColorFill - BG only
 };
 
 class SwFilterColorFill : public SwFilter

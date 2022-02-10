@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2021, Intel Corporation
+* Copyright (c) 2009-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -1666,7 +1666,8 @@ VAStatus DdiMedia__Initialize (
 #endif
 
     DDI_CHK_NULL(ctx,          "nullptr ctx",       VA_STATUS_ERROR_INVALID_CONTEXT);
-
+    
+    VAStatus status = VA_STATUS_SUCCESS;
     bool    apoDdiEnabled = false;
     int32_t devicefd = 0;
     if(DdiMedia_GetDeviceFD(ctx, &devicefd) != VA_STATUS_SUCCESS)
@@ -1675,9 +1676,13 @@ VAStatus DdiMedia__Initialize (
         return VA_STATUS_ERROR_ALLOCATION_FAILED;
     }
 
-#ifdef _MANUAL_SOFTLET_
-    apoDdiEnabled = MediaLibvaApoDecision::InitDdiApoState(devicefd);
-#endif
+    ctx->pDriverData = nullptr;
+    status           = DdiMedia_InitMediaContext(ctx, devicefd, major_version, minor_version, apoDdiEnabled);
+    if(status != VA_STATUS_SUCCESS)
+    {
+        DDI_ASSERTMESSAGE("Failed to init media context");
+        return status;
+    }
 
     if(!apoDdiEnabled)
     {
@@ -1687,7 +1692,6 @@ VAStatus DdiMedia__Initialize (
             return VA_STATUS_ERROR_ALLOCATION_FAILED;
         }
     }
-
 #ifdef _MANUAL_SOFTLET_
     else
     {
@@ -1699,7 +1703,7 @@ VAStatus DdiMedia__Initialize (
     }
 #endif
 
-    return DdiMedia_InitMediaContext(ctx, devicefd, major_version, minor_version, apoDdiEnabled);
+    return status;
 }
 
 VAStatus DdiMedia_InitMediaContext (
@@ -1707,7 +1711,7 @@ VAStatus DdiMedia_InitMediaContext (
     int32_t          devicefd,
     int32_t          *major_version,
     int32_t          *minor_version,
-    bool             apoDdiEnabled
+    bool             &apoDdiEnabled
 )
 {
     if(major_version)
@@ -2024,10 +2028,14 @@ VAStatus DdiMedia_InitMediaContext (
     ctx->max_image_formats = mediaCtx->m_caps->GetImageFormatsMaxNum();
 
 #ifdef _MANUAL_SOFTLET_
-    if (DdiMedia__InitializeSoftlet(mediaCtx, apoDdiEnabled) != VA_STATUS_SUCCESS)
+    apoDdiEnabled = MediaLibvaApoDecision::InitDdiApoState(devicefd);
+    if(apoDdiEnabled)
     {
-        DDI_ASSERTMESSAGE("Softlet initialize failed");
-        return VA_STATUS_ERROR_ALLOCATION_FAILED;
+        if (DdiMedia__InitializeSoftlet(mediaCtx, apoDdiEnabled) != VA_STATUS_SUCCESS)
+        {
+            DDI_ASSERTMESSAGE("Softlet initialize failed");
+            return VA_STATUS_ERROR_ALLOCATION_FAILED;
+        }
     }
 #endif
 
@@ -2069,7 +2077,6 @@ VAStatus DdiMedia_LoadFuncion (VADriverContextP ctx)
     DDI_CHK_NULL(pVTableProt,  "nullptr pVTableProt",   VA_STATUS_ERROR_INVALID_CONTEXT);
 #endif
 
-    ctx->pDriverData                         = nullptr;
     ctx->version_major                       = VA_MAJOR_VERSION;
     ctx->version_minor                       = VA_MINOR_VERSION;
     ctx->max_profiles                        = DDI_CODEC_GEN_MAX_PROFILES;
@@ -7157,8 +7164,26 @@ VAStatus DdiMedia_ExportSurfaceHandle(
     int composite_object = flags & VA_EXPORT_SURFACE_COMPOSED_LAYERS;
 
     uint32_t formats[4];
-    bool hasAuxPlane = (mediaCtx->m_auxTableMgr)? true: false;
+
+    // Query Aux Plane info form GMM
+    bool hasAuxPlane           = false;
+    GMM_RESOURCE_FLAG GmmFlags = mediaSurface->pGmmResourceInfo->GetResFlags();
+
+    if (((GmmFlags.Gpu.MMC                           ||
+          GmmFlags.Gpu.CCS)                          &&
+         (GmmFlags.Info.MediaCompressed              ||
+          GmmFlags.Info.RenderCompressed)            &&
+          mediaCtx->m_auxTableMgr) )
+          {
+              hasAuxPlane = true;
+          }
+          else
+          {
+              hasAuxPlane = false;
+          }
+
     uint32_t num_planes = DdiMedia_GetPlaneNum(mediaSurface, hasAuxPlane);
+
     if(composite_object)
     {
         formats[0] = DdiMedia_GetDrmFormatOfCompositeObject(desc->fourcc);
@@ -7186,22 +7211,28 @@ VAStatus DdiMedia_ExportSurfaceHandle(
     height = mediaSurface->iRealHeight;
     DdiMedia_GetChromaPitchHeight(desc->fourcc, pitch, height, &chromaPitch, &chromaHeight);
 
-    // Get offset from GMM
+    // Get Yoffset from GMM
     GMM_REQ_OFFSET_INFO reqInfo = {0};
-    reqInfo.Plane = GMM_PLANE_Y;
-    reqInfo.ReqRender = 1;
+    reqInfo.Plane               = GMM_PLANE_Y;
+    reqInfo.ReqRender           = 1;
     mediaSurface->pGmmResourceInfo->GetOffset(reqInfo);
-    uint32_t offsetY = reqInfo.Render.Offset;
+    uint32_t offsetY            = reqInfo.Render.Offset;
+
+    // Get Uoffset from GMM
     MOS_ZeroMemory(&reqInfo, sizeof(GMM_REQ_OFFSET_INFO));
-    reqInfo.Plane = GMM_PLANE_U;
-    reqInfo.ReqRender = 1;
+    reqInfo.Plane               = GMM_PLANE_U;
+    reqInfo.ReqRender           = 1;
     mediaSurface->pGmmResourceInfo->GetOffset(reqInfo);
-    uint32_t offsetU = reqInfo.Render.Offset;
+    uint32_t offsetU            = reqInfo.Render.Offset;
+
+    // Get Voffset from GMM
     MOS_ZeroMemory(&reqInfo, sizeof(GMM_REQ_OFFSET_INFO));
-    reqInfo.Plane = GMM_PLANE_V;
-    reqInfo.ReqRender = 1;
+    reqInfo.Plane               = GMM_PLANE_V;
+    reqInfo.ReqRender           = 1;
     mediaSurface->pGmmResourceInfo->GetOffset(reqInfo);
-    uint32_t offsetV = reqInfo.Render.Offset;
+    uint32_t offsetV            = reqInfo.Render.Offset;
+
+    // Get Aux Plane offset
     uint32_t auxOffsetY = (uint32_t)mediaSurface->pGmmResourceInfo->GetPlanarAuxOffset(0, GMM_AUX_Y_CCS);
     uint32_t auxOffsetUV = (uint32_t)mediaSurface->pGmmResourceInfo->GetPlanarAuxOffset(0, GMM_AUX_UV_CCS);
 
@@ -7209,7 +7240,7 @@ VAStatus DdiMedia_ExportSurfaceHandle(
         desc->num_layers = 1;
         desc->layers[0].drm_format = formats[0];
         desc->layers[0].num_planes = num_planes;
-        if (mediaCtx->m_auxTableMgr)
+        if (hasAuxPlane)
         {
             // For semi-planar formats like NV12, CCS planes follow the Y and UV planes,
             // i.e. planes 0 and 1 are used for Y and UV surfaces, planes 2 and 3 for the respective CCS.
@@ -7277,7 +7308,7 @@ VAStatus DdiMedia_ExportSurfaceHandle(
     }
     else
     {
-        if (mediaCtx->m_auxTableMgr)
+        if (hasAuxPlane)
         {
             desc->num_layers = num_planes / 2;
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2021, Intel Corporation
+* Copyright (c) 2020-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -97,7 +97,7 @@ MOS_STATUS VpFcFilter::InitLayer(VP_FC_LAYER &layer, bool isInputPipe, int index
 
     SwFilterScaling *scaling    = dynamic_cast<SwFilterScaling *>(executedPipe.GetSwFilter(isInputPipe, index, FeatureType::FeatureTypeScaling));
     layer.scalingMode           = scaling ? scaling->GetSwFilterParams().scalingMode : defaultScalingMode;
-    layer.iscalingEnabled       = scaling ? ISCALING_NONE != scaling->GetSwFilterParams().interlacedScalingType : false;
+    layer.iscalingEnabled       = scaling ? ISCALING_INTERLEAVED_TO_INTERLEAVED == scaling->GetSwFilterParams().interlacedScalingType : false;
     layer.fieldWeaving          = scaling ? ISCALING_FIELD_TO_INTERLEAVED == scaling->GetSwFilterParams().interlacedScalingType : false;
 
     SwFilterRotMir *rotation    = dynamic_cast<SwFilterRotMir *>(executedPipe.GetSwFilter(isInputPipe, index, FeatureType::FeatureTypeRotMir));
@@ -687,7 +687,8 @@ MOS_STATUS PolicyFcFeatureHandler::UpdateFeaturePipe(VP_EXECUTE_CAPS caps, SwFil
         FeatureTypeCscOnRender          == type ||
         FeatureTypeScalingOnRender      == type ||
         FeatureTypeRotMirOnRender       == type ||
-        FeatureTypeDiOnRender           == type)
+        FeatureTypeDiOnRender           == type ||
+        FeatureTypeProcampOnRender      == type)
     {
         return PolicyFeatureHandler::UpdateFeaturePipe(caps, feature, featurePipe, executePipe, isInputPipe, index);
     }
@@ -700,6 +701,23 @@ MOS_STATUS PolicyFcFeatureHandler::UpdateFeaturePipe(VP_EXECUTE_CAPS caps, SwFil
     else
     {
         VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
+    }
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS PolicyFcFeatureHandler::UpdateUnusedFeature(VP_EXECUTE_CAPS caps, SwFilter &feature, SwFilterPipe &featurePipe, SwFilterPipe &executePipe, bool isInputPipe, int index)
+{
+    // feature.GetFilterEngineCaps().bEnabled should be used here instead of feature.IsFeatureEnabled(caps)
+    // to ensure the feature does not be enabled.
+    // feature.IsFeatureEnabled(caps) being false means the feature is not being used in current workload,
+    // in which case, the feature itself may be enable and need be processed in following workloads.
+    if (0 == caps.bOutputPipeFeatureInuse &&
+        !feature.GetFilterEngineCaps().bEnabled &&
+        (feature.GetFilterEngineCaps().forceEnableForSfc ||
+         feature.GetFilterEngineCaps().forceEnableForRender))
+    {
+        // To avoid filter being destroyed in Policy::UpdateFeaturePipe.
+        feature.GetFilterEngineCaps().usedForNextPass = 1;
     }
     return MOS_STATUS_SUCCESS;
 }
@@ -822,7 +840,7 @@ static MOS_STATUS Get3DSamplerScalingMode(VPHAL_SCALING_MODE &scalingMode, SwFil
 
     SwFilterScaling *scaling = dynamic_cast<SwFilterScaling *>(pipe.GetSwFilter(FeatureType::FeatureTypeScaling));
 
-    bool iscalingEnabled       = scaling ? ISCALING_NONE != scaling->GetSwFilterParams().interlacedScalingType : false;
+    bool iscalingEnabled       = scaling ? ISCALING_INTERLEAVED_TO_INTERLEAVED == scaling->GetSwFilterParams().interlacedScalingType : false;
     bool fieldWeaving          = scaling ? ISCALING_FIELD_TO_INTERLEAVED == scaling->GetSwFilterParams().interlacedScalingType : false;
 
     if ((input.rcDst.right - input.rcDst.left) == (input.rcSrc.right - input.rcSrc.left)    &&

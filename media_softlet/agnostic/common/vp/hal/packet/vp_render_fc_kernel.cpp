@@ -182,9 +182,23 @@ MOS_STATUS VpRenderFcKernel::SetSurfaceParams(KERNEL_SURFACE_STATE_PARAM &surfPa
         renderSurfParams.bAVS = false;
     }
 
-    // Set interlacing flags
-    switch (layer.surf->SampleType)
+    if (layer.iscalingEnabled)
     {
+        // Top Input Field
+        renderSurfParams.bVertStrideOffs   = false;
+        renderSurfParams.bVertStride       = true;
+    }
+    else if (layer.fieldWeaving)
+    {
+        // Top Input Field
+        renderSurfParams.bVertStrideOffs   = false;
+        renderSurfParams.bVertStride       = false;
+    }
+    else
+    {
+        // Set interlacing flags
+        switch (layer.surf->SampleType)
+        {
         case SAMPLE_INTERLEAVED_EVEN_FIRST_TOP_FIELD:
         case SAMPLE_INTERLEAVED_ODD_FIRST_TOP_FIELD:
             renderSurfParams.bVertStride     = true;
@@ -199,6 +213,7 @@ MOS_STATUS VpRenderFcKernel::SetSurfaceParams(KERNEL_SURFACE_STATE_PARAM &surfPa
             renderSurfParams.bVertStride     = false;
             renderSurfParams.bVertStrideOffs = 0;
             break;
+        }
     }
 
     if (layer.layerID && IsNV12SamplerLumakeyNeeded())
@@ -238,6 +253,11 @@ MOS_STATUS VpRenderFcKernel::SetupSurfaceState()
 
         // Only need to specify binding index in surface parameters.
         surfParam.surfaceOverwriteParams.bindedKernel = true;
+        if (layer->layerID >= VP_COMP_MAX_LAYERS || layer->layerID < 0)
+        {
+            VP_RENDER_ASSERTMESSAGE("layer->layerID = d% is out of range!", layer->layerID);
+            return MOS_STATUS_INVALID_PARAMETER;
+        }
         surfParam.surfaceOverwriteParams.bindIndex = s_bindingTableIndex[layer->layerID];
 
         SetSurfaceParams(surfParam, *layer, false);
@@ -254,7 +274,14 @@ MOS_STATUS VpRenderFcKernel::SetupSurfaceState()
 
         if (layer->surfField)
         {
+            // Configure for Bottom Input Field
             KERNEL_SURFACE_STATE_PARAM surfParamField = surfParam;
+
+            if (layer->iscalingEnabled)
+            {
+                surfParamField.surfaceOverwriteParams.renderSurfaceParams.bVertStrideOffs = true;
+            }
+
             surfParamField.surfaceOverwriteParams.bindIndex = s_bindingTableIndexField[layer->layerID];
             m_surfaceState.insert(std::make_pair(SurfaceType(SurfaceTypeFcInputLayer0Field1Dual + layer->layerID), surfParamField));
 
@@ -1056,7 +1083,8 @@ MOS_STATUS VpRenderFcKernel::BuildFilter(
         pFilter->format == Format_R10G10B10A2 ||
         pFilter->format == Format_B10G10R10A2 ||
         pFilter->format == Format_AYUV        ||
-        pFilter->format == Format_Y416)
+        pFilter->format == Format_Y416        ||
+        pFilter->format == Format_Y410)
     {
         if (compParams->pCompAlpha != nullptr && compParams->sourceCount > 0 &&
             (compParams->pCompAlpha->AlphaMode == VPHAL_ALPHA_FILL_MODE_NONE ||
@@ -1086,6 +1114,9 @@ MOS_STATUS VpRenderFcKernel::BuildFilter(
             }
         }
     }
+
+    VP_RENDER_NORMALMESSAGE("pFilter->bFillOutputAlphaWithConstant = %d",
+        pFilter->bFillOutputAlphaWithConstant ? 1 : 0);
 
     //-------------------------------------------------------
     // Set color fill for RT. Valid for colorfill only cases
@@ -1954,6 +1985,13 @@ MOS_STATUS VpRenderFcKernel::InitOutputFormatInCurbeData()
     }
     else if (filter->bFillOutputAlphaWithConstant && compParams.pCompAlpha != nullptr)
     {
+        if (Format_Y416 == filter->format)
+        {
+            // DestinationRGBFormat is 8 bits while aplha channel of Y416 is 16 bits. High
+            // 8 bits will be ignored for Y416. Support need be added if real use case exists.
+            VP_RENDER_NORMALMESSAGE("Alpha data in high 8 bits will be ignored for Y416.");
+        }
+
         switch (compParams.pCompAlpha->AlphaMode)
         {
             case VPHAL_ALPHA_FILL_MODE_NONE:
@@ -1982,8 +2020,8 @@ MOS_STATUS VpRenderFcKernel::InitOutputFormatInCurbeData()
                 m_curbeData.DW15.DestinationRGBFormat = m_dstColor.A;
                 break;
 
-            // VPHAL_ALPHA_FILL_MODE_SOURCE_STREAM case is hit when the input does not have alpha
-            // So we set Opaque alpha channel.
+            // For VPHAL_ALPHA_FILL_MODE_SOURCE_STREAM, bFillOutputAlphaWithConstant is set to false
+            // during VpRenderFcKernel::BuildFilter.
             case VPHAL_ALPHA_FILL_MODE_SOURCE_STREAM:
             case VPHAL_ALPHA_FILL_MODE_OPAQUE:
             default:

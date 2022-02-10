@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021, Intel Corporation
+* Copyright (c) 2011-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,38 +19,27 @@
 * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 * OTHER DEALINGS IN THE SOFTWARE.
 */
+
 //!
-//! \file     decode_huc_packet_creator.h
+//! \file     media_interfaces_gen12_adln.h
+//! \brief    All interfaces used for Gen12 ADL-N that require factory creation
 //!
 
-#ifndef __CODECHAL_HUC_PACKET_CREATOR_H__
-#define __CODECHAL_HUC_PACKET_CREATOR_H__
-
-#include "decode_huc_packet_creator_base.h"
+#ifndef __MEDIA_INTERFACES_G12_adln_H__
+#define __MEDIA_INTERFACES_G12_adln_H__
 
 
-namespace decode
+#include "media_interfaces_g12_tgllp.h"
+#include "renderhal_g12_base.h"
+
+
+class CMHalInterfacesG12Adln : public CMHalDevice
 {
-class HucPacketCreator : public HucPacketCreatorBase
-{
-public:    
-
-    HucPacketCreator()
-    {
-    }
-
-    virtual ~HucPacketCreator() {}
-
-    virtual HucCopyPktItf *CreateHucCopyPkt(MediaPipeline *pipeline, MediaTask *task, CodechalHwInterface *hwInterface) override;
-    virtual CmdPacket *    CreateProbUpdatePkt(MediaPipeline *pipeline, MediaTask *task, CodechalHwInterface *hwInterface) override;
-
-    virtual HucCopyPktItf *CreateStreamOutInterface(
-        MediaPipeline       *pipeline,
-        MediaTask           *task,
-        CodechalHwInterface *hwInterface) override;
-
-MEDIA_CLASS_DEFINE_END(HucPacketCreator)
+protected:
+    using CMHal = CM_HAL_G12_X;
+    MOS_STATUS Initialize(
+        CM_HAL_STATE *pCmState);
 };
 
-}  // namespace decode
-#endif
+#endif // __MEDIA_INTERFACES_G12_adln_H__
+

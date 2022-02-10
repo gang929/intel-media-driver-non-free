@@ -615,7 +615,7 @@ public:
     //! \return   bool
     //!           true if native ROI, otherwise false
     //!
-    bool ProcessRoiDeltaQp();
+    virtual bool ProcessRoiDeltaQp();
 
     //!
     //! \brief    Add store HUC_ERROR_STATUS register command in the command buffer
@@ -774,6 +774,8 @@ public:
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
     virtual MOS_STATUS ExecuteMeKernel();
+
+    virtual bool IsMBBRCControlEnabled();
 
     MOS_STATUS SetCommonSliceState(
         CODECHAL_ENCODE_AVC_PACK_SLC_HEADER_PARAMS &packSlcHeaderParams,
@@ -951,6 +953,23 @@ protected:
     virtual MOS_STATUS AddVdencBrcImgBuffer(
         PMOS_RESOURCE             vdencBrcImgBuffer,
         PMHW_VDBOX_AVC_IMG_PARAMS params);
+
+    //!
+    //! \brief    Report Slice Size to MetaData buffer
+    //! \details  Report Slice Size to MetaData buffer.
+    //! \param    [in] presMetadataBuffer
+    //!               Pointer to allocated HW MetaData buffer
+    //!           [in] cmdBuffer
+    //!               Pointer to primary cmd buffer
+    //!           [in] slcCount
+    //!               Current slice count
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS ReportSliceSizeMetaData(
+        PMOS_RESOURCE presMetadataBuffer,
+        PMOS_COMMAND_BUFFER cmdBuffer,
+        uint32_t slcCount);
 
     //!
     //! \brief    Add MI_STORE commands in the command buffer to update DMEM from other HW output buffer if needed
@@ -1328,7 +1347,7 @@ MOS_STATUS CodechalVdencAvcState::SetDmemHuCBrcInitResetImpl(CODECHAL_VDENC_AVC_
     hucVDEncBrcInitDmem->INIT_InitQPIP = (uint8_t)initQP;
 
     // MBBRC control
-    if (m_mbBrcEnabled || m_avcPicParam->bNativeROI)
+    if (IsMBBRCControlEnabled())
     {
         hucVDEncBrcInitDmem->INIT_MbQpCtrl_U8 = 1;
         MOS_SecureMemcpy(hucVDEncBrcInitDmem->INIT_DistQPDelta_I8, 4 * sizeof(int8_t), (void*)BRC_INIT_DistQPDelta_I8, 4 * sizeof(int8_t));
