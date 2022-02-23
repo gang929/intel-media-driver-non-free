@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021, Intel Corporation
+* Copyright (c) 2021-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -36,6 +36,7 @@
 #include "mhw_vdbox_huc_itf.h"
 #include "mhw_mi_itf.h"
 #include "mhw_vdbox_hcp_itf.h"
+#include "mhw_vdbox_mfx_itf.h"
 
 // forward declarations
 class MhwCpInterface;
@@ -97,17 +98,17 @@ public:
 
     //! \brief These interfaces are responsible for constructing instructions,
      //!           structures, and registers for hardware.
-    MhwCpInterface *m_cpInterface = nullptr;
-    MhwMiInterface *m_miInterface = nullptr;
-    MhwRenderInterface *m_renderInterface = nullptr;
-    MhwSfcInterface *m_sfcInterface = nullptr;
+    MhwCpInterface            *m_cpInterface        = nullptr;
+    MhwMiInterface            *m_miInterface        = nullptr;
+    MhwRenderInterface        *m_renderInterface    = nullptr;
+    MhwSfcInterface           *m_sfcInterface       = nullptr;
     XMHW_STATE_HEAP_INTERFACE *m_stateHeapInterface = nullptr;
-    MhwVeboxInterface *m_veboxInterface = nullptr;
-    MhwVdboxMfxInterface *m_mfxInterface = nullptr;
-    MhwVdboxHcpInterface *m_hcpInterface = nullptr;
-    MhwVdboxHucInterface *m_hucInterface = nullptr;
-    MhwVdboxVdencInterface *m_vdencInterface = nullptr;
-    MhwBltInterface *m_bltInterface = nullptr;
+    MhwVeboxInterface         *m_veboxInterface     = nullptr;
+    MhwVdboxMfxInterface      *m_mfxInterface       = nullptr;
+    MhwVdboxHcpInterface      *m_hcpInterface       = nullptr;
+    MhwVdboxHucInterface      *m_hucInterface       = nullptr;
+    MhwVdboxVdencInterface    *m_vdencInterface     = nullptr;
+    MhwBltInterface           *m_bltInterface       = nullptr;
 
     /* New mhw sub interfaces*/
     std::shared_ptr<mhw::vdbox::avp::Itf>   m_avpItf   = nullptr;
@@ -115,6 +116,7 @@ public:
     std::shared_ptr<mhw::vdbox::huc::Itf>   m_hucItf   = nullptr;
     std::shared_ptr<mhw::mi::Itf>           m_miItf    = nullptr;
     std::shared_ptr<mhw::vdbox::hcp::Itf>   m_hcpItf   = nullptr;
+    std::shared_ptr<mhw::vdbox::mfx::Itf>   m_mfxItf   = nullptr;
 
     //!
     //! \brief    Calls the factory function to initialize all requested interfaces.

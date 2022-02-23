@@ -385,6 +385,8 @@ public:
         return false;
     }
 
+    virtual MOS_STATUS ValidateHDR3DLutParameters(bool is3DLutTableFilled);
+
     //!
     //! \brief    Setup surface states for Vebox
     //! \details  Setup surface states for use in the current Vebox Operation
@@ -501,10 +503,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetHdrParams(PVEBOX_HDR_PARAMS hdrParams)
-    {
-        return MOS_STATUS_UNIMPLEMENTED;
-    }
+    virtual MOS_STATUS SetHdrParams(PVEBOX_HDR_PARAMS hdrParams);
 
     //!
     //! \brief    Setup TCC Params for Vebox
@@ -943,7 +942,9 @@ protected:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS AddVeboxHdrState() { return MOS_STATUS_SUCCESS; }
+    virtual MOS_STATUS AddVeboxHdrState();
+
+    virtual bool IsVeboxGamutStateNeeded();
 
     //!
     //! \brief    Add vebox Gamut state
@@ -951,7 +952,7 @@ protected:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS AddVeboxGamutState(){return MOS_STATUS_SUCCESS;}
+    virtual MOS_STATUS AddVeboxGamutState();
 
     //!
     //! \brief    Vebox set up vebox state heap
@@ -1002,6 +1003,12 @@ protected:
 
     virtual MHW_CSPACE VpHalCspace2MhwCspace(VPHAL_CSPACE cspace);
 
+    virtual MOS_STATUS SetupHDRLuts(
+        PMHW_VEBOX_STATE_CMD_PARAMS pVeboxStateCmdParams);
+    virtual MOS_STATUS Init3DLutTable(PVP_SURFACE surf3DLut);
+    MOS_STATUS SetupVebox3DLutForHDR(
+        PMHW_VEBOX_STATE_CMD_PARAMS pVeboxStateCmdParams);
+
 private:
 
     //!
@@ -1027,6 +1034,38 @@ private:
     //! \return   MOS_STATUS  MOS_STATUS_SUCCESS if succeeded, otherwise failure
     //!
     MOS_STATUS DumpVeboxStateHeap();
+
+    MOS_STATUS SetVeboxSurfaceControlBits(
+        PMHW_VEBOX_INTERFACE                pVeboxInterface,
+        MHW_VEBOX_SURFACE_CNTL_PARAMS       *pVeboxSurfCntlParams,
+        uint32_t                            *pSurfCtrlBits);
+
+    MOS_STATUS setVeboxProCmd(
+        PMHW_MI_INTERFACE     pMhwMiInterface,
+        PMHW_VEBOX_INTERFACE  pVeboxInterface,
+        MOS_COMMAND_BUFFER*   CmdBuffer);
+
+    MOS_STATUS SetVeboxIndex(
+        PMHW_VEBOX_INTERFACE                pVeboxInterface,
+        uint32_t                            dwVeboxIndex,
+        uint32_t                            dwVeboxCount,
+        uint32_t                            dwUsingSFC);
+
+    MOS_STATUS SetVeboxState(
+        PMHW_VEBOX_INTERFACE        pVeboxInterface,
+        PMOS_COMMAND_BUFFER         pCmdBufferInUse,
+        PMHW_VEBOX_STATE_CMD_PARAMS pVeboxStateCmdParams,
+        bool                        bCmBuffer);
+
+    MOS_STATUS SetVeboxSurfaces(
+        PMHW_VEBOX_INTERFACE                pVeboxInterface,
+        PMOS_COMMAND_BUFFER                 pCmdBufferInUse,
+        PMHW_VEBOX_SURFACE_STATE_CMD_PARAMS pMhwVeboxSurfaceStateCmdParams);
+
+    MOS_STATUS SetVeboxDiIecp(
+        PMHW_VEBOX_INTERFACE               pVeboxInterface,
+        PMOS_COMMAND_BUFFER                pCmdBufferInUse,
+        PMHW_VEBOX_DI_IECP_CMD_PARAMS      pVeboxDiIecpCmdParams);
 
 protected:
 
@@ -1066,6 +1105,7 @@ protected:
     MediaScalability           *m_scalability              = nullptr;            //!< scalability
     bool                        m_useKernelResource        = false;               //!< Use Vebox Kernel Resource 
     uint32_t                    m_inputDepth               = 0;
+    std::shared_ptr<mhw::vebox::Itf> m_veboxItf            = nullptr;
 
 MEDIA_CLASS_DEFINE_END(VpVeboxCmdPacket)
 };

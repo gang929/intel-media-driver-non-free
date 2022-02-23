@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2021, Intel Corporation
+* Copyright (c) 2017-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -64,16 +64,6 @@ typedef enum _MHW_VDBOX_DECODE_VC1_IT_ILDB_EDGE_CONTROL_CHROMA
     MHW_VDBOX_DECODE_VC1_IT_ILDB_EDGE_CONTROL_CHROMA_X1Y1 = 0x00000f0f,
 
 } MHW_VDBOX_DECODE_VC1_IT_ILDB_EDGE_CONTROL_CHROMA;
-
-typedef enum _MHW_VDBOX_DECODE_JPEG_FORMAT_CODE
-{
-    MHW_VDBOX_DECODE_JPEG_FORMAT_SEPARATE_PLANE = 0, // formats of 3 separate plane for Y, U, and V respectively
-    MHW_VDBOX_DECODE_JPEG_FORMAT_NV12 = 1,
-    MHW_VDBOX_DECODE_JPEG_FORMAT_UYVY = 2,
-    MHW_VDBOX_DECODE_JPEG_FORMAT_YUY2 = 3
-} MHW_VDBOX_DECODE_JPEG_FORMAT_CODE;
-
-
 
 typedef struct _MHW_VDBOX_MPEG2_SLICE_STATE
 {
@@ -374,14 +364,6 @@ typedef struct _MHW_VDBOX_BSP_BUF_BASE_ADDR_PARAMS
     PMOS_RESOURCE               presMprRowStoreScratchBuffer;                    // Handle of MPR Row Store Scratch data surface
     PMOS_RESOURCE               presBitplaneBuffer;
 } MHW_VDBOX_BSP_BUF_BASE_ADDR_PARAMS, *PMHW_VDBOX_BSP_BUF_BASE_ADDR_PARAMS;
-
-typedef struct _MHW_VDBOX_GPUNODE_LIMIT
-{
-    bool       bHcpInUse;
-    bool       bHuCInUse;
-    bool       bSfcInUse;
-    uint32_t   dwGpuNodeToUse;
-}MHW_VDBOX_GPUNODE_LIMIT, *PMHW_VDBOX_GPUNODE_LIMIT;
 
 typedef struct _MHW_VDBOX_AVC_IMG_BITRATE_PARAMS
 {

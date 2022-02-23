@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017, Intel Corporation
+* Copyright (c) 2017-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -251,8 +251,18 @@ typedef struct _CODEC_PIC_REORDER
     uint32_t           POC;
     uint8_t            ReorderPicNumIDC;
     uint8_t            DiffPicNumMinus1;
+    uint32_t           LongTermPicNum;
     CODEC_PICTURE      Picture;
 } CODEC_PIC_REORDER, *PCODEC_PIC_REORDER;
+
+typedef struct _CODEC_SLICE_MMCO
+{
+    uint8_t  MmcoIDC;
+    uint32_t DiffPicNumMinus1;
+    uint32_t LongTermPicNum;
+    uint32_t LongTermFrameIdx;
+    uint32_t MaxLongTermFrameIdxPlus1;
+} CODEC_SLICE_MMCO, *PCODEC_SLICE_MMCO;
 
 /*! \brief Provides the sequence-level parameters of a compressed picture for AVC encoding.
 *
@@ -296,9 +306,9 @@ typedef struct _CODEC_AVC_ENCODE_SEQUENCE_PARAMS
     *    \n Programming note: Define the minimum value as indicated above for AVBR accuracy & convergence, clamp any value that is less than the minimum value to the minimum value.  Define the maximum value for AVBR accuracy as 100 (10%) and for AVBR convergence as 500, clamp any value that is greater than the maximum value to the maximum value. The maximum & minimum value may be adjusted when necessary. If bResetBRC is set to 1 for a non-I picture, driver shall not insert SPS into bitstream.  Driver needs to calculate the maximum allowed frame size per profile/level for all RateControlMethod except CQP, and use the calculated value to program kernel for non AVBR modes; for AVBR mode, driver needs to clamp the upper bound of UserMaxFrameSize to the calculated value and use the clamped UserMaxFrameSize to program kernel.  If IWD_VBR is set, driver programs it the same as VBR except not to enable panic mode.
     */
     uint8_t           RateControlMethod;
-    uint32_t          TargetBitRate;      //!< Target bit rate Kbit per second
-    uint32_t          MaxBitRate;         //!< Maximum bit rate Kbit per second
-    /*! \brief Minimun bit rate Kbit per second.
+    uint32_t          TargetBitRate;      //!< Target bit rate in bit per second
+    uint32_t          MaxBitRate;         //!< Maximum bit rate in bit per second
+    /*! \brief Minimun bit rate in bit per second.
     *
     *   This is used in VBR control. For CBR control, this field is ignored.
     */
@@ -593,7 +603,14 @@ typedef struct _CODEC_AVC_ENCODE_USER_FLAGS
             *        \n - 1: Accelerator will just pack coded slice (slice header + data), like in PAK only mode, and the application will pack the rest of the headers.
             */
             uint32_t    bDisableAcceleratorHeaderPacking        : 1;
-            uint32_t                                            : 5;
+            /*! \brief Indicates whether or not the driver will try to introduce reordering.
+            *
+            *   Applies to ENC + PAK mode only. This flag is only valid only when AcceleratorHeaderPacking = 1, and driver does the header packing.
+            *        \n - 0: Accelerator will try to optimize the order of reference frames in the lists and generate ref_pic_list_modification part of slice header if necessary.
+            *        \n - 1: Accelerator will use reference picture list as is (e.g. it can be prepared by the app) to generate ref_pic_list_modification part of slice header if necessary.
+            */
+            uint32_t    bDisableAcceleratorRefPicListReordering : 1;
+            uint32_t                                            : 4;
             uint32_t    bDisableSubMBPartition                  : 1;    //!< Indicates that sub MB partitioning should be disabled.
             /*! \brief Inidicates whether or not emulation byte are inserted.
             *
@@ -1049,7 +1066,7 @@ typedef struct _CODEC_AVC_ENCODE_SLICE_PARAMS
     *
     *    Contains field/frame information concerning the reference in PicFlags. RefPicList[i][j]:
     *        \n - i: the reference picture list (0 or 1)
-    *        \n - j: if the PicFlags are not PICTURE_INVALID, the index variable j is a reference to entry j in teh reference picture list.
+    *        \n - j: if the PicFlags are not PICTURE_INVALID, the index variable j is a reference to entry j in the reference picture list.
     */
     CODEC_PICTURE   RefPicList[CODEC_AVC_NUM_REF_LISTS][CODEC_MAX_NUM_REF_FIELD];
     /*! \brief Specifies the weights and offsets used for explicit mode weighted prediction.
@@ -1112,6 +1129,14 @@ typedef struct _CODEC_AVC_ENCODE_SLICE_PARAMS
     uint8_t                                             : 3;
     uint32_t        MaxFrameNum; //!< Set by the driver: 1 << (pSeqParams[pPicParams->seq_parameter_set_id].log2_max_frame_num_minus4 + 4);
     uint8_t         NumReorder;  //!< Set by the driver
+
+    /*! \brief MMCO can be used when AcceleratorHeaderPacking = 1 i.e. driver does slice header packing.
+    *
+    *    Driver does not generate memory_management_control_operation commands itself but they can be provided by the app.
+    *    If adaptive_ref_pic_marking_mode_flag = 1 these commands will be packed into slice header
+    */
+    CODEC_SLICE_MMCO MMCO[32];
+
 } CODEC_AVC_ENCODE_SLICE_PARAMS, *PCODEC_AVC_ENCODE_SLICE_PARAMS;
 
 // H.264 Inverse Quantization Weight Scale

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2021, Intel Corporation
+* Copyright (c) 2009-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -34,6 +34,7 @@
 #include "mhw_sfc.h"
 #include "vp_pipeline_adapter_base.h"
 #include "vp_feature_report.h"
+#include "vphal_common_hdr.h"
 
 //*-----------------------------------------------------------------------------
 //| DEFINITIONS
@@ -276,6 +277,13 @@ enum VpKernelID
     baseKernelMaxNumID
 };
 
+enum VpKernelIDNext
+{
+    vpKernelIDNextBase  = 0x100,
+    kernelHdr3DLutCalc  = vpKernelIDNextBase,
+    vpKernelIDNextMax
+};
+
 //!
 //! \brief VPHAL SS/EU setting
 //!
@@ -482,7 +490,18 @@ public:
 
         if (m_veboxInterface != nullptr)
         {
-            MOS_STATUS eStatus = m_veboxInterface->DestroyHeap();
+            m_veboxItf = std::static_pointer_cast<mhw::vebox::Itf>(m_veboxInterface->GetNewVeboxInterface());
+            MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+            if (m_veboxItf)
+            {
+                eStatus = m_veboxItf->DestroyHeap();
+            }
+            else
+            {
+                eStatus = m_veboxInterface->DestroyHeap();
+            }
+
             MOS_Delete(m_veboxInterface);
             m_veboxInterface = nullptr;
             if (eStatus != MOS_STATUS_SUCCESS)
@@ -528,6 +547,7 @@ protected:
     MhwCpInterface              *m_cpInterface;
     PMHW_SFC_INTERFACE          m_sfcInterface;
     VphalRenderer               *m_renderer;
+    std::shared_ptr<mhw::vebox::Itf> m_veboxItf = nullptr;
 
     // Render GPU context/node
     MOS_GPU_NODE                m_renderGpuNode;
