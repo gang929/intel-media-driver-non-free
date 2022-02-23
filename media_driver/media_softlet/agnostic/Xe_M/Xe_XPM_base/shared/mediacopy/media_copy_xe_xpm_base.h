@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, Intel Corporation
+* Copyright (c) 2021-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -126,8 +126,8 @@ protected:
 
 protected:
 
-    BltStateXe_Xpm * m_bltState       = nullptr;
-    VeboxCopyState     * m_veboxCopyState = nullptr;
+    BltStateXe_Xpm     *m_bltState       = nullptr;
+    VeboxCopyState     *m_veboxCopyState = nullptr;
 };
 #endif // __MEDIA_COPY_XE_XPM_BASE_H__
 

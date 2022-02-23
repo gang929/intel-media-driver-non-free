@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2021, Intel Corporation
+* Copyright (c) 2019-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -40,6 +40,8 @@
 #include "codechal_user_settings_mgr_ext.h"
 #include "vphal_user_settings_mgr_ext.h"
 #endif // _MEDIA_RESERVED
+#include "media_user_setting.h"
+
 #include <sys/ipc.h>  // System V IPC
 #include <sys/types.h>
 #include <sys/sem.h>
@@ -70,9 +72,24 @@ double MosUtilities::MosGetTime()
 //!
 const char *const MosUtilitiesSpecificNext::m_mosTracePath  = "/sys/kernel/debug/tracing/trace_marker_raw";
 int32_t           MosUtilitiesSpecificNext::m_mosTraceFd    = -1;
+uint64_t          MosUtilitiesSpecificNext::m_traceKeyword  = 0;
 MosMutex          MosUtilitiesSpecificNext::m_userSettingMutex;
 
-std::map<std::string, std::map<std::string, std::string>> MosUtilitiesSpecificNext::m_regBuffer;
+//!
+//! \brief Keyword for GFX tracing
+//!
+#define DATA_DUMP_KEYWORD               0x10000
+#define COMP_CP_KEYWORD                 0x20000
+#define COMP_VP_KEYWORD                 0x40000
+#define COMP_CODEC_KEYWORD              0x80000
+#define COMP_ALL_KEYWORD                0x01000
+
+//!
+//! \brief trace event size definition
+//!
+#define TRACE_EVENT_MAX_SIZE           (1024)
+#define TRACE_EVENT_HEADER_SIZE        (sizeof(uint32_t)*3)
+#define TRACE_EVENT_MAX_DATA_SIZE      (TRACE_EVENT_MAX_SIZE - TRACE_EVENT_HEADER_SIZE - sizeof(uint16_t)) // Trace info data size section is in uint16_t
 
 //!
 //! \brief for int64_t/uint64_t format print warning
@@ -1333,6 +1350,7 @@ MOS_STATUS MosUtilities::MosOsUtilitiesInit(MOS_CONTEXT_HANDLE mosCtx)
     if (m_mosUtilInitCount == 0)
     {
         //Init MOS User Feature Key from mos desc table
+        eStatus = InitMosUserSetting();
         eStatus = MosDeclareUserFeatureKeysForAllDescFields();
         MosUtilitiesSpecificNext::UserFeatureDumpFile(MosUtilitiesSpecificNext::m_szUserFeatureFile, &MosUtilitiesSpecificNext::m_ufKeyList);
 #if _MEDIA_RESERVED
@@ -1368,7 +1386,6 @@ MOS_STATUS MosUtilities::MosOsUtilitiesClose(MOS_CONTEXT_HANDLE mosCtx)
     if (m_mosUtilInitCount == 0)
     {
         MosTraceEventClose();
-        DestroyMediaUserSetting();
         m_mosMemAllocCounter -= m_mosMemAllocFakeCounter;
         MemoryCounter = m_mosMemAllocCounter + m_mosMemAllocCounterGfx;
         m_mosMemAllocCounterNoUserFeature    = m_mosMemAllocCounter;
@@ -1392,6 +1409,8 @@ MOS_STATUS MosUtilities::MosOsUtilitiesClose(MOS_CONTEXT_HANDLE mosCtx)
             m_vpUserFeatureExt = nullptr;
         }
 #endif // _MEDIA_RESERVED
+        DestroyMediaUserSetting();
+
 #if (_DEBUG || _RELEASE_INTERNAL)
         // MOS maintains a reference counter,
         // so if there still is another active lib instance, logs would still be printed.
@@ -1491,19 +1510,17 @@ MOS_STATUS MosUtilities::MosUserFeatureNotifyChangeKeyValue(
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS MosUtilities::MosInitializeReg()
+MOS_STATUS MosUtilities::MosInitializeReg(RegBufferMap &regBufferMap)
 {
     MOS_STATUS status = MOS_STATUS_SUCCESS;
 
     std::ifstream regStream;
-
     try
     {
-        using util = MosUtilitiesSpecificNext;
         regStream.open(USER_FEATURE_FILE_NEXT);
         if (regStream.good())
         {
-            std::string id = "";
+            std::string id       = "";
 
             while(!regStream.eof())
             {
@@ -1535,9 +1552,8 @@ MOS_STATUS MosUtilities::MosInitializeReg()
                     {
                         std::string name = line.substr(0,pos);
                         std::string value = line.substr(pos+1);
-
-                        auto &keys = util::m_regBuffer[id];
-                        keys[name] = value;
+                        auto        &keys  = regBufferMap[id];
+                        keys[name]       = value;
                     }
                 }
             }
@@ -1554,31 +1570,34 @@ MOS_STATUS MosUtilities::MosInitializeReg()
     return status;
 }
 
-MOS_STATUS MosUtilities::MosUninitializeReg()
+MOS_STATUS MosUtilities::MosUninitializeReg(RegBufferMap &regBufferMap)
 {
     MOS_STATUS status = MOS_STATUS_SUCCESS;
+    if (regBufferMap.size() == 0)
+    {
+        return MOS_STATUS_SUCCESS;
+    }
     std::ofstream regStream;
     try
     {
-        using util = MosUtilitiesSpecificNext;
         regStream.open(USER_FEATURE_FILE_NEXT, std::ios::out | std::ios::trunc);
         if (regStream.good())
         {
-            for(auto pair: util::m_regBuffer)
+            for(auto pair: regBufferMap)
             {
-                regStream << pair.first << std::endl;
+                regStream << pair.first << "\n";
 
-                auto &keys = util::m_regBuffer[pair.first];
+                auto &keys = regBufferMap[pair.first];
                 for (auto key: keys)
                 {
                     auto name = key.first;
-                    regStream << key.first << "=" << key.second << std::endl;
+                    regStream << key.first << "=" << key.second << "\n";
                 }
 
                 keys.clear();
+                regStream << std::endl;
             }
-
-            util::m_regBuffer.clear();
+            regBufferMap.clear();
             regStream.flush();
         }
     }
@@ -1595,18 +1614,17 @@ MOS_STATUS MosUtilities::MosCreateRegKey(
     UFKEY_NEXT keyHandle,
     const std::string &subKey,
     uint32_t samDesired,
-    PUFKEY_NEXT key)
+    PUFKEY_NEXT key,
+    RegBufferMap &regBufferMap)
 {
     MOS_UNUSED(keyHandle);
     MOS_UNUSED(samDesired);
+    MOS_OS_CHK_NULL_RETURN(key);
+    auto ret = regBufferMap.find(subKey);
 
-    using util = MosUtilitiesSpecificNext;
-
-    auto ret = util::m_regBuffer.find(subKey);
-
-    if (ret == util::m_regBuffer.end())
+    if (ret == regBufferMap.end())
     {
-        util::m_regBuffer[subKey] = {};
+        regBufferMap[subKey] = {};
     }
 
     *key = subKey;
@@ -1617,9 +1635,11 @@ MOS_STATUS MosUtilities::MosOpenRegKey(
     UFKEY_NEXT keyHandle,
     const std::string &subKey,
     uint32_t samDesired,
-    PUFKEY_NEXT key)
+    PUFKEY_NEXT key,
+    RegBufferMap &regBufferMap)
 {
     std::string tempSubKey = subKey;
+
     if (subKey.find_first_of("\\") != std::string::npos)
     {
         tempSubKey = subKey.substr(1);
@@ -1629,7 +1649,7 @@ MOS_STATUS MosUtilities::MosOpenRegKey(
     {
         tempSubKey = "[" + tempSubKey + "]";
     }
-    return MosCreateRegKey(keyHandle, tempSubKey, samDesired, key);
+    return MosCreateRegKey(keyHandle, tempSubKey, samDesired, key, regBufferMap);
 }
 
 MOS_STATUS MosUtilities::MosCloseRegKey(
@@ -1670,27 +1690,26 @@ MOS_STATUS MosUtilities::MosGetRegValue(
     const std::string &valueName,
     uint32_t *type,
     std::string &data,
-    uint32_t *size)
+    uint32_t *size,
+    RegBufferMap &regBufferMap)
 {
     MOS_OS_CHK_NULL_RETURN(size);
     MOS_UNUSED(type);
 
     MOS_STATUS status = MOS_STATUS_SUCCESS;
 
-    using util = MosUtilitiesSpecificNext;
-
-    if ( util::m_regBuffer.end() == util::m_regBuffer.find(keyHandle))
+    if (regBufferMap.end() == regBufferMap.find(keyHandle))
     {
-        return MOS_STATUS_INVALID_PARAMETER;
+        return MOS_STATUS_USER_FEATURE_KEY_OPEN_FAILED;
     }
 
     try
     {
-        auto keys = util::m_regBuffer[keyHandle];
+        auto keys = regBufferMap[keyHandle];
         auto it = keys.find(valueName);
         if (it == keys.end())
         {
-            return MOS_STATUS_INVALID_PARAMETER;
+            return MOS_STATUS_USER_FEATURE_KEY_OPEN_FAILED;
         }
 
         data = it->second;
@@ -1707,13 +1726,12 @@ MOS_STATUS MosUtilities::MosSetRegValue(
     UFKEY_NEXT keyHandle,
     const std::string &valueName,
     uint32_t type,
-    const std::string &data)
+    const std::string &data,
+    RegBufferMap &regBufferMap)
 {
     MOS_UNUSED(type);
 
-    using util = MosUtilitiesSpecificNext;
-
-    if ( util::m_regBuffer.end() == util::m_regBuffer.find(keyHandle))
+    if (regBufferMap.end() == regBufferMap.find(keyHandle))
     {
         return MOS_STATUS_INVALID_PARAMETER;
     }
@@ -1721,7 +1739,7 @@ MOS_STATUS MosUtilities::MosSetRegValue(
     MOS_STATUS status = MOS_STATUS_SUCCESS;
     try
     {
-        auto &keys = MosUtilitiesSpecificNext::m_regBuffer[keyHandle];
+        auto &keys = regBufferMap[keyHandle];
 
         keys[valueName] = data;
     }
@@ -1899,49 +1917,20 @@ MOS_STATUS MosUtilities::MosReadMediaSoloEnabledUserFeature(bool &mediasoloEnabl
 MOS_STATUS MosUtilities::MosReadApoDdiEnabledUserFeature(uint32_t &userfeatureValue, char *path)
 {
     MOS_STATUS eStatus  = MOS_STATUS_SUCCESS;
-    void *     UFKey    = nullptr;
-    uint32_t   dwUFSize = 0;
-    uint32_t   data     = 0;
     MOS_UNUSED(path);
 
-#if (_DEBUG || _RELEASE_INTERNAL)
-    eStatus = MosGetApoMosEnabledUserFeatureFile();
-    if (eStatus != MOS_STATUS_SUCCESS)
-    {
-        MOS_OS_NORMALMESSAGE("Failed to get user feature file, error status %d.", eStatus);
-        return eStatus;
-    }
-#endif
-
-    eStatus = MosUserFeatureOpen(
-        MOS_USER_FEATURE_TYPE_USER,
-        __MEDIA_USER_FEATURE_SUBKEY_INTERNAL,
-        KEY_READ,
-        &UFKey,
-        nullptr);
-
-    if (eStatus != MOS_STATUS_SUCCESS)
-    {
-        MOS_OS_NORMALMESSAGE("Failed to open ApoDdiEnable user feature key , error status %d.", eStatus);
-        return eStatus;
-    }
-
-    eStatus = MosUserFeatureGetValue(
-        UFKey,
-        nullptr,
+    uint32_t enableApoDdi = 0;
+    eStatus = ReadUserSetting(enableApoDdi,
         "ApoDdiEnable",
-        RRF_RT_UF_DWORD,
-        nullptr,
-        &userfeatureValue,
-        &dwUFSize);
+        MediaUserSetting::Group::Device,
+        (PMOS_CONTEXT)nullptr);
 
     if (eStatus != MOS_STATUS_SUCCESS)
     {
-        // This error case can be hit if the user feature key does not exist.
+        // It could be there is no this use feature key.
         MOS_OS_NORMALMESSAGE("Failed to read ApoDdiEnable user feature key value, error status %d", eStatus);
     }
-
-    MosUserFeatureCloseKey(UFKey);  // Closes the key if not nullptr
+    userfeatureValue = enableApoDdi ? true : false;
     return eStatus;
 }
 
@@ -1969,19 +1958,18 @@ MOS_STATUS MosUtilities::MosReadApoMosEnabledUserFeature(uint32_t &userfeatureVa
     }
 #endif
 
-    MosUtilities::MosZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    eStatus = MosUtilities::MosUserFeatureReadValueID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_APO_MOS_PATH_ENABLE_ID,
-            &userFeatureData,
-            (MOS_CONTEXT_HANDLE) nullptr);
+    uint32_t enableApoMos = 0;
+    eStatus = ReadUserSetting(enableApoMos,
+        "ApoMosEnable",
+        MediaUserSetting::Group::Device,
+        nullptr);
 
     if (eStatus != MOS_STATUS_SUCCESS)
     {
         // It could be there is no this use feature key.
         MOS_OS_NORMALMESSAGE("Failed to read ApoMosEnable  user feature key value, error status %d", eStatus);
     }
-    userfeatureValue = userFeatureData.u32Data ? true : false;
+    userfeatureValue = enableApoMos ? true : false;
     return eStatus;
 }
 
@@ -2340,6 +2328,13 @@ MOS_STATUS MosUtilities::MosGetLocalTime(
 
 void MosUtilities::MosTraceEventInit()
 {
+    char *val = getenv("GFX_MEDIA_TRACE");
+    if (val == nullptr)
+    {
+        return;
+    }
+    char *tmp;
+    MosUtilitiesSpecificNext::m_traceKeyword = strtoll(val, &tmp, 0);
     // close first, if already opened.
     if (MosUtilitiesSpecificNext::m_mosTraceFd >= 0)
     {
@@ -2367,11 +2362,13 @@ void MosUtilities::MosTraceSetupInfo(uint32_t DrvVer, uint32_t PlatFamily, uint3
 
 uint64_t MosUtilities::GetTraceEventKeyword()
 {
+    if (MosUtilitiesSpecificNext::m_mosTraceFd >= 0)
+    {
+        return MosUtilitiesSpecificNext::m_traceKeyword;
+    }
     return 0;
 }
 
-#define TRACE_EVENT_MAX_SIZE    (1024)
-#define TRACE_EVENT_HEADER_SIZE (sizeof(uint32_t)*3)
 void MosUtilities::MosTraceEvent(
     uint16_t         usId,
     uint8_t          ucType,
@@ -2385,6 +2382,21 @@ void MosUtilities::MosTraceEvent(
     {
         uint8_t traceBuf[256];
         uint8_t *pTraceBuf = traceBuf;
+        // special handling for media runtime log, filter by component
+        if (usId == EVENT_MEDIA_LOG && pArg1 != nullptr && dwSize1 >= 2*sizeof(int32_t))
+        {
+            int32_t comp = (*(int32_t*)pArg1) >> 24;
+            int32_t level = *((int32_t*)pArg1 + 1);
+            uint64_t keyword = MosUtilitiesSpecificNext::m_traceKeyword;
+
+            if (((keyword & COMP_ALL_KEYWORD) == 0) &&
+                ((keyword & (1ULL << (comp + 16))) == 0))
+            {
+                // keyword not set for this component, skip it
+                return;
+            }
+        }
+
         if (dwSize1 + dwSize2 + TRACE_EVENT_HEADER_SIZE > sizeof(traceBuf))
         {
             pTraceBuf = (uint8_t *)MOS_AllocAndZeroMemory(TRACE_EVENT_MAX_SIZE);
@@ -2397,7 +2409,7 @@ void MosUtilities::MosTraceEvent(
             uint32_t    nLen = TRACE_EVENT_HEADER_SIZE;
 
             header[0] = 0x494D5445; // IMTE (IntelMediaTraceEvent) as ftrace raw marker tag
-            header[1] = usId << 16 | (dwSize1 + dwSize2);
+            header[1] = (usId << 16) | (dwSize1 + dwSize2);
             header[2] = ucType;
 
             if (pArg1 && dwSize1 > 0)
@@ -2435,6 +2447,54 @@ void MosUtilities::MosTraceDataDump(
     const void *pBuf,
     uint32_t    dwSize)
 {
+    if (MosUtilitiesSpecificNext::m_mosTraceFd >= 0 && pBuf && pcName && (MosUtilitiesSpecificNext::m_traceKeyword & DATA_DUMP_KEYWORD))
+    {
+        uint8_t *pTraceBuf = (uint8_t *)MOS_AllocAndZeroMemory(TRACE_EVENT_MAX_SIZE);
+        size_t writeSize = 0;
+
+        if (pTraceBuf)
+        {
+            // trace header
+            uint32_t *header = (uint32_t *)pTraceBuf;
+            uint32_t    nLen = strlen(pcName) & 0xff;// 255 max pcName length
+
+            header[0] = 0x494D5445; // IMTE (IntelMediaTraceEvent) as ftrace raw marker tag
+            header[1] = (EVENT_DATA_DUMP << 16) | (8 + nLen + 1);
+            header[2] = EVENT_TYPE_START;
+            header[3] = dwSize;
+            header[4] = flags;
+            memcpy(&header[5], pcName, nLen);
+            nLen += TRACE_EVENT_HEADER_SIZE + 8 + 1;
+            writeSize = write(MosUtilitiesSpecificNext::m_mosTraceFd, pTraceBuf, nLen);
+            // send dump data
+            header[2] = EVENT_TYPE_INFO;
+            const uint8_t *pData = static_cast<const uint8_t *>(pBuf);
+            while (dwSize > 0)
+            {
+                uint32_t size = dwSize;
+                if (size > TRACE_EVENT_MAX_DATA_SIZE)
+                {
+                    size = TRACE_EVENT_MAX_DATA_SIZE;
+                }
+                uint16_t len = ((size + 3) & ~3) / sizeof(uint32_t);
+                uint8_t *pDst = (uint8_t *)&header[3];
+
+                header[1] = (EVENT_DATA_DUMP << 16) | (size + sizeof(len));
+                memcpy(pDst, &len, sizeof(len));
+                memcpy(pDst+sizeof(len), pData, size);
+                nLen = TRACE_EVENT_HEADER_SIZE + size + sizeof(len);
+                writeSize = write(MosUtilitiesSpecificNext::m_mosTraceFd, pTraceBuf, nLen);
+                dwSize -= size;
+                pData += size;
+            }
+            // send dump end
+            header[1] = EVENT_DATA_DUMP << 16;
+            header[2] = EVENT_TYPE_END;
+            writeSize = write(MosUtilitiesSpecificNext::m_mosTraceFd, pTraceBuf, TRACE_EVENT_HEADER_SIZE);
+
+            MOS_FreeMemory(pTraceBuf);
+        }
+    }
 }
 
 void MosUtilities::MosTraceDataDictionary(

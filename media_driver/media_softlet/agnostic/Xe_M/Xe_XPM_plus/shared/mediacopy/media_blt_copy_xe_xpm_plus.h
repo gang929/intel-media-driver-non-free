@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021, Intel Corporation
+* Copyright (c) 2021-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -242,7 +242,7 @@ protected:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     virtual MOS_STATUS SubmitCMD(
-        PBLT_STATE_XE_XPM_BASE_PARAM pBltStateParam);
+        PBLT_STATE_PARAM pBltStateParam);
 
 private:
     bool         initialized = false;

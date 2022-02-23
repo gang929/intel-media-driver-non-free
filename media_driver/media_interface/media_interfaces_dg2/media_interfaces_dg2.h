@@ -1,6 +1,6 @@
 /*===================== begin_copyright_notice ==================================
 
-# Copyright (c) 2021, Intel Corporation
+# Copyright (c) 2022, Intel Corporation
 
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -54,13 +54,12 @@
 #include "mhw_vdbox_huc_xe_hpm.h"
 #include "mhw_vdbox_avp_g12_X.h"
 #ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
-#include "mhw_vdbox_vdenc_xe_hpm.h"
 #include "mhw_vdbox_vdenc_xe_hpm_ext.h"
 #else
 #include "mhw_vdbox_vdenc_g12_X.h"
 #endif
 #include "vphal_render_vebox_memdecomp_xe_xpm.h"
-#include "media_copy_xe_xpm_base.h"
+#include "media_copy_xe_hpm.h"
 #include "mhw_blt_xe_hp_base.h"
 
 #include "codechal_hw_xe_hpm.h"
@@ -121,7 +120,7 @@
 #endif
 
 #ifdef _AVC_ENCODE_VDENC_SUPPORTED
-#include "codechal_vdenc_avc_xe_hpm.h"
+#include "codechal_vdenc_avc_xe_hpm_ext.h"
 #endif
 
 #include "codechal_memdecomp_g11_icl.h"
@@ -134,7 +133,6 @@
 #endif
 #endif
 
-#include "codechal_encoder_unsupported.h"
 #endif
 #ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
 #include "cm_hal_xe_xpm.h"
@@ -222,7 +220,7 @@ public:
 class McpyDeviceXe_Hpm : public McpyDevice
 {
 public:
-    using Mcpy  = MediaCopyStateXe_Xpm_Base;
+    using Mcpy  = MediaCopyState_Xe_Hpm;
 
     MOS_STATUS Initialize(
         PMOS_INTERFACE osInterface,
@@ -281,9 +279,6 @@ public:
 #ifdef _JPEG_ENCODE_SUPPORTED
     using Jpeg = CodechalEncodeJpegStateG12;
 #endif
-#ifdef _MPEG2_ENCODE_VME_SUPPORTED
-    using Mpeg2 = CodechalEncoderStateUnsupported;
-#endif
 #ifdef _HEVC_ENCODE_VME_SUPPORTED
     using HevcEnc = CodechalEncHevcStateG12;
     using HevcMbenc = CodecHalHevcMbencXe_Xpm;
@@ -291,11 +286,8 @@ public:
 #ifdef _HEVC_ENCODE_VDENC_SUPPORTED
     using HevcVdenc = EncodeHevcVdencPipelineAdapterXe_Hpm;
 #endif
-#ifdef _AVC_ENCODE_VME_SUPPORTED
-    using AvcEnc = CodechalEncoderStateUnsupported;
-#endif
 #ifdef _AVC_ENCODE_VDENC_SUPPORTED
-    using AvcVdenc = CodechalVdencAvcStateXe_Hpm;
+    using AvcVdenc = CodechalVdencAvcStateXe_HpmExt;
 #endif
 #ifdef _AV1_ENCODE_VDENC_SUPPORTED
     using Av1Vdenc = EncodeAv1VdencPipelineAdapterXe_Hpm;

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2014-2020, Intel Corporation
+* Copyright (c) 2014-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -36,6 +36,23 @@
 #include "codec_def_decode_hevc.h"
 #include "mos_os.h"
 #include "mhw_utilities.h"
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+#define MHW_VDBOX_IS_VDBOX_SPECIFIED(keyval, vdid, shift, mask, useVD) \
+    do                                                                 \
+    {                                                                  \
+        int32_t TmpVal = keyval;                                       \
+        while (TmpVal != 0)                                            \
+        {                                                              \
+            if (((TmpVal) & (mask)) == (vdid))                         \
+            {                                                          \
+                useVD = true;                                          \
+                break;                                                 \
+            }                                                          \
+            TmpVal >>= (shift);                                        \
+        };                                                             \
+    } while (0)
+#endif
 
 #define MHW_VDBOX_VC1_BITPLANE_BUFFER_PITCH_SMALL         64
 #define MHW_VDBOX_VC1_BITPLANE_BUFFER_PITCH_LARGE         128
@@ -588,5 +605,21 @@ typedef struct _MHW_VDBOX_AVC_SLICE_STATE
     bool                                    oneOnOneMapping                         = false;
     bool                                    bFullFrameData                          = false;
 } MHW_VDBOX_AVC_SLICE_STATE, *PMHW_VDBOX_AVC_SLICE_STATE;
+
+typedef enum _MHW_VDBOX_DECODE_JPEG_FORMAT_CODE
+{
+    MHW_VDBOX_DECODE_JPEG_FORMAT_SEPARATE_PLANE = 0,  // formats of 3 separate plane for Y, U, and V respectively
+    MHW_VDBOX_DECODE_JPEG_FORMAT_NV12           = 1,
+    MHW_VDBOX_DECODE_JPEG_FORMAT_UYVY           = 2,
+    MHW_VDBOX_DECODE_JPEG_FORMAT_YUY2           = 3
+} MHW_VDBOX_DECODE_JPEG_FORMAT_CODE;
+
+typedef struct _MHW_VDBOX_GPUNODE_LIMIT
+{
+    bool     bHcpInUse;
+    bool     bHuCInUse;
+    bool     bSfcInUse;
+    uint32_t dwGpuNodeToUse;
+} MHW_VDBOX_GPUNODE_LIMIT, *PMHW_VDBOX_GPUNODE_LIMIT;
 
 #endif

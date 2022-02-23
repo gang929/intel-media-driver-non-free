@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2021, Intel Corporation
+* Copyright (c) 2019-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -80,11 +80,14 @@ protected:
     MOS_STATUS ReleaseHwFilterParam(HW_FILTER_PARAMS &params);
     MOS_STATUS InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engineCapsInputPipe, VP_EngineEntry &engineCapsOutputPipe);
     MOS_STATUS GetExecuteCaps(SwFilterPipe& subSwFilterPipe, HW_FILTER_PARAMS& params);
+    MOS_STATUS Update3DLutoutputColorAndFormat(FeatureParamCsc *cscParams, FeatureParamHdr *hdrParams, MOS_FORMAT Format, VPHAL_CSPACE CSpace);
     MOS_STATUS GetCSCExecutionCapsHdr(SwFilter *hdr, SwFilter *csc);
     MOS_STATUS GetCSCExecutionCapsDi(SwFilter* feature);
     MOS_STATUS GetCSCExecutionCaps(SwFilter* feature);
     bool IsSfcSupported(MOS_FORMAT format);
     MOS_STATUS GetScalingExecutionCaps(SwFilter* feature);
+    MOS_STATUS GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled);
+    MOS_STATUS GetScalingExecutionCapsHdr(SwFilter *feature);
     bool IsSfcRotationSupported(FeatureParamRotMir *rotationParams);
     MOS_STATUS GetRotationExecutionCaps(SwFilter* feature);
     MOS_STATUS GetDenoiseExecutionCaps(SwFilter* feature);
@@ -165,6 +168,10 @@ protected:
 
         return false;
     }
+    virtual bool Is3DLutKernelSupported()
+    {
+        return true;
+    }
 
     std::map<FeatureType, PolicyFeatureHandler*> m_VeboxSfcFeatureHandlers;
     std::map<FeatureType, PolicyFeatureHandler*> m_RenderFeatureHandlers;
@@ -173,6 +180,11 @@ protected:
     VpInterface         &m_vpInterface;
     VP_HW_CAPS          m_hwCaps = {};
     bool                m_initialized = false;
+
+    // HDR 3DLut Parameters
+    uint32_t            m_savedMaxDLL   = 1000;
+    uint32_t            m_savedMaxCLL   = 4000;
+    VPHAL_HDR_MODE      m_savedHdrMode  = VPHAL_HDR_MODE_NONE;
 
     //!
     //! \brief    Check whether Alpha Supported

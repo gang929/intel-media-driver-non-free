@@ -65,7 +65,19 @@ public:
     {
         T ret=T();
 
+        if(m_value.size() > 2 && (m_value.at(0) == '0' && (m_value.at(1) == 'x' || m_value.at(1) == 'X'))) // 0x or 0X
+        {
+            std::string subStr = m_value.substr(2);  //hex
+            if (subStr.find_first_not_of("ABCDEFabcdef0123456789") == std::string::npos)
+            {
+                std::stringstream ssHEX;
+                ssHEX << std::hex << m_value;
+                ssHEX >> ret;
+                return ret;
+            }
+        }
         std::stringstream convert(m_value);
+
         convert >> ret;
 
         return ret;

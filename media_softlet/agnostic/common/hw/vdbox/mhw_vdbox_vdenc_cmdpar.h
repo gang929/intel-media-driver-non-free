@@ -178,18 +178,19 @@ struct _MHW_PAR_T(VDENC_PIPE_MODE_SELECT)
 
 struct _MHW_PAR_T(VDENC_SRC_SURFACE_STATE)
 {
-    uint32_t          width                = 0;
-    uint32_t          height               = 0;
-    uint32_t          pitch                = 0;
-    uint32_t          uOffset              = 0;
-    uint32_t          vOffset              = 0;
-    MOS_TILE_TYPE     tileType             = MOS_TILE_X;
-    MOS_TILE_MODE_GMM tileModeGmm          = MOS_TILE_LINEAR_GMM;
-    MOS_FORMAT        format               = Format_Any;
-    bool              gmmTileEn            = false;
-    bool              colorSpaceSelection  = false;
-    bool              displayFormatSwizzle = false;
-    uint8_t           vDirection           = 0;
+    uint32_t          width                         = 0;
+    uint32_t          height                        = 0;
+    uint32_t          pitch                         = 0;
+    uint32_t          uOffset                       = 0;
+    uint32_t          vOffset                       = 0;
+    MOS_TILE_TYPE     tileType                      = MOS_TILE_X;
+    MOS_TILE_MODE_GMM tileModeGmm                   = MOS_TILE_LINEAR_GMM;
+    MOS_FORMAT        format                        = Format_Any;
+    bool              gmmTileEn                     = false;
+    bool              colorSpaceSelection           = false;
+    bool              displayFormatSwizzle          = false;
+    uint32_t          chromaDownsampleFilterControl = 0;
+    uint8_t           vDirection                    = 0;
 };
 
 struct _MHW_PAR_T(VDENC_REF_SURFACE_STATE)
@@ -291,6 +292,7 @@ struct _MHW_PAR_T(VDENC_HEVC_VP9_TILE_SLICE_STATE)
     uint32_t log2WeightDenomChroma         = 0;
     uint32_t hevcVp9Log2WeightDenomLuma    = 0;
     uint32_t paletteModeEnable             = 0;
+    uint32_t ibcControl                    = 0;
     uint32_t VdencHEVCVP9TileSlicePar0     = 0;
     uint32_t VdencHEVCVP9TileSlicePar1     = 0;
     uint32_t VdencHEVCVP9TileSlicePar2     = 0;
@@ -311,7 +313,6 @@ struct _MHW_PAR_T(VDENC_HEVC_VP9_TILE_SLICE_STATE)
     uint32_t VdencHEVCVP9TileSlicePar17[3] = {};
     bool     VdencHEVCVP9TileSlicePar18    = false;
     uint32_t VdencHEVCVP9TileSlicePar19    = 0;
-    uint32_t VdencHEVCVP9TileSlicePar20    = 0;
     uint32_t VdencHEVCVP9TileSlicePar22    = 0;
     uint32_t VdencHEVCVP9TileSlicePar23    = 0;
 };

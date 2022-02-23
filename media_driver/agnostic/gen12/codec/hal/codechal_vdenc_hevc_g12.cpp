@@ -625,7 +625,6 @@ CodechalVdencHevcStateG12::~CodechalVdencHevcStateG12()
     //Note: virtual engine interface destroy is done in MOS layer
 
     CODECHAL_DEBUG_TOOL(
-        DestroyHevcPar();
         MOS_Delete(m_encodeParState);
     )
 #ifdef _ENCODE_VDENC_RESERVED
@@ -6541,7 +6540,6 @@ CodechalVdencHevcStateG12::CodechalVdencHevcStateG12(
 
     CODECHAL_DEBUG_TOOL(
         CODECHAL_ENCODE_CHK_NULL_NO_STATUS_RETURN(m_encodeParState = MOS_New(CodechalDebugEncodeParG12, this));
-        CreateHevcPar();
     )
 }
 
@@ -6989,6 +6987,8 @@ MOS_STATUS CodechalVdencHevcStateG12::HucPakIntegrate(
     storeRegParams.dwRegister = mmioRegisters->hucStatus2RegOffset;
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreRegisterMemCmd(cmdBuffer, &storeRegParams));
 
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(cmdBuffer));
+
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hwInterface->GetHucInterface()->AddHucStartCmd(cmdBuffer, true));
 
     // wait Huc completion (use HEVC bit for now)
@@ -7084,6 +7084,8 @@ MOS_STATUS CodechalVdencHevcStateG12::HucPakIntegrateStitch(
     storeRegParams.dwOffset = sizeof(uint32_t);
     storeRegParams.dwRegister = mmioRegisters->hucStatus2RegOffset;
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreRegisterMemCmd(cmdBuffer, &storeRegParams));
+
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(cmdBuffer));
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hwInterface->GetHucInterface()->AddHucStartCmd(cmdBuffer, true));
 
@@ -8193,6 +8195,7 @@ MOS_STATUS CodechalVdencHevcStateG12::HuCLookaheadInit()
     dmemParams.dwDmemOffset = HUC_DMEM_OFFSET_RTOS_GEMS;
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucDmemStateCmd(&cmdBuffer, &dmemParams));
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucVirtualAddrStateCmd(&cmdBuffer, &virtualAddrParams));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(&cmdBuffer));
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(&cmdBuffer, true));
 
     // wait Huc completion (use HEVC bit for now)
@@ -8353,6 +8356,7 @@ MOS_STATUS CodechalVdencHevcStateG12::HuCLookaheadUpdate()
     dmemParams.dwDmemOffset = HUC_DMEM_OFFSET_RTOS_GEMS;
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucDmemStateCmd(&cmdBuffer, &dmemParams));
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucVirtualAddrStateCmd(&cmdBuffer, &virtualAddrParams));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(&cmdBuffer));
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(&cmdBuffer, true));
 
     // wait Huc completion (use HEVC bit for now)
@@ -8570,6 +8574,8 @@ MOS_STATUS CodechalVdencHevcStateG12::HuCBrcInitReset()
         CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Register(&cmdBuffer));
     )
 
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(&cmdBuffer));
+
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(&cmdBuffer, true));
 
     // wait Huc completion (use HEVC bit for now)
@@ -8754,6 +8760,8 @@ MOS_STATUS CodechalVdencHevcStateG12::HuCBrcUpdate()
         CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Register(&cmdBuffer));
     )
 
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(&cmdBuffer));
+
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(&cmdBuffer, true));
 
     // wait Huc completion (use HEVC bit for now)
@@ -8878,6 +8886,8 @@ MOS_STATUS CodechalVdencHevcStateG12::HuCBrcTileRowUpdate(PMOS_COMMAND_BUFFER cm
     MHW_VDBOX_HUC_VIRTUAL_ADDR_PARAMS virtualAddrParams;
     CODECHAL_ENCODE_CHK_STATUS_RETURN(SetRegionsHuCTileRowBrcUpdate(&virtualAddrParams));
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucVirtualAddrStateCmd(&tileRowBRCBatchBuf, &virtualAddrParams));
+
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(cmdBuffer));
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(&tileRowBRCBatchBuf, true));
 
@@ -9510,29 +9520,31 @@ MOS_STATUS CodechalVdencHevcStateG12::SetAddCommands(uint32_t commandType, PMOS_
         CODECHAL_ENCODE_CHK_NULL_RETURN(cmd2Params);
 
         // set CMD2 command
-        cmd2Params->Mode = CODECHAL_ENCODE_MODE_HEVC;
-        cmd2Params->pHevcEncSeqParams = m_hevcSeqParams;
-        cmd2Params->pHevcEncPicParams = m_hevcPicParams;
-        cmd2Params->pHevcEncSlcParams = m_hevcSliceParams;
-        cmd2Params->bRoundingEnabled  = m_hevcVdencRoundingEnabled;
+        cmd2Params->Mode                    = CODECHAL_ENCODE_MODE_HEVC;
+        cmd2Params->pHevcEncSeqParams       = m_hevcSeqParams;
+        cmd2Params->pHevcEncPicParams       = m_hevcPicParams;
+        cmd2Params->pHevcEncSlcParams       = m_hevcSliceParams;
+        cmd2Params->bRoundingEnabled        = m_hevcVdencRoundingEnabled;
         cmd2Params->bPakOnlyMultipassEnable = m_pakOnlyPass;
-        cmd2Params->bUseDefaultQpDeltas     = (m_hevcVdencAcqpEnabled && cmd2Params->pHevcEncSeqParams->QpAdjustment ) || 
-                                                      (m_brcEnabled && cmd2Params->pHevcEncSeqParams->MBBRC != mbBrcDisabled);
-        cmd2Params->bPanicEnabled           = (m_brcEnabled) && (m_panicEnable) && (IsLastPass()) && !m_pakOnlyPass;
-        cmd2Params->bStreamInEnabled        = m_vdencStreamInEnabled;
-        cmd2Params->bROIStreamInEnabled     = m_vdencNativeROIEnabled;
-        cmd2Params->bTileReplayEnable       = m_enableTileReplay;
-        cmd2Params->bIsLowDelayB            = isLowDelayB;
-        cmd2Params->bCaptureModeEnable      = m_CaptureModeEnable;
-        cmd2Params->m_WirelessSessionID     = 0;
-        cmd2Params->pRefIdxMapping          = pRefIdxMapping;
-        cmd2Params->recNotFilteredID      = recNotFilteredID;
-        cmd2Params->pInputParams            = pCmdParams;
-        cmd2Params->ucNumRefIdxL0ActiveMinus1 = cmd2Params->pHevcEncSlcParams->num_ref_idx_l0_active_minus1;
+        cmd2Params->bUseDefaultQpDeltas     = (m_hevcVdencAcqpEnabled && cmd2Params->pHevcEncSeqParams->QpAdjustment) ||
+                                          (m_brcEnabled && cmd2Params->pHevcEncSeqParams->MBBRC != mbBrcDisabled);
+        cmd2Params->bPanicEnabled                 = (m_brcEnabled) && (m_panicEnable) && (IsLastPass()) && !m_pakOnlyPass;
+        cmd2Params->bStreamInEnabled              = m_vdencStreamInEnabled;
+        cmd2Params->bROIStreamInEnabled           = m_vdencNativeROIEnabled;
+        cmd2Params->bTileReplayEnable             = m_enableTileReplay;
+        cmd2Params->bIsLowDelayB                  = isLowDelayB;
+        cmd2Params->bCaptureModeEnable            = m_CaptureModeEnable;
+        cmd2Params->m_WirelessSessionID           = 0;
+        cmd2Params->pRefIdxMapping                = pRefIdxMapping;
+        cmd2Params->recNotFilteredID              = recNotFilteredID;
+        cmd2Params->pInputParams                  = pCmdParams;
+        cmd2Params->ucNumRefIdxL0ActiveMinus1     = cmd2Params->pHevcEncSlcParams->num_ref_idx_l0_active_minus1;
         cmd2Params->bHevcVisualQualityImprovement = m_hevcVisualQualityImprovement;
-        cmd2Params->roundInterValue = roundInterValue;
-        cmd2Params->roundIntraValue = roundIntraValue;
-        cmd2Params->bROIStreamInEnabled = m_brcAdaptiveRegionBoostEnable ? true : cmd2Params->bROIStreamInEnabled;
+        cmd2Params->roundInterValue               = roundInterValue;
+        cmd2Params->roundIntraValue               = roundIntraValue;
+        cmd2Params->bROIStreamInEnabled           = m_brcAdaptiveRegionBoostEnable ? true : cmd2Params->bROIStreamInEnabled;
+        cmd2Params->bEnableSubPelMode             = m_encodeParams.bEnableSubPelMode;
+        cmd2Params->SubPelMode                    = m_encodeParams.SubPelMode;
 
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_vdencInterface->AddVdencCmd2Cmd(cmdBuffer, nullptr, cmd2Params));
     }

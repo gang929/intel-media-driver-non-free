@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2021, Intel Corporation
+* Copyright (c) 2017-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -39,6 +39,8 @@
 #include "mhw_mi_g12_X.h"
 #include "mhw_render_g12_X.h"
 #include "codechal_mmc_encode_vp9_g12.h"
+
+#define MAXPATH 512
 
 const uint32_t CodechalVdencVp9StateG12::meCurbeInit[48] =
 {
@@ -4733,6 +4735,43 @@ MOS_STATUS CodechalVdencVp9StateG12::Initialize(CodechalSetting * settings)
     // Get max binding table count
     m_maxBtCount = GetMaxBtCount();    // Need to add the correct BTcount when HME is enabled
 
+#if (_DEBUG || _RELEASE_INTERNAL)
+    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+    MOS_UserFeature_ReadValue_ID(
+        nullptr,
+        __MEDIA_USER_FEATURE_VALUE_VP9_ENCODE_ENABLE_BRC_DLL,
+        &userFeatureData,
+        m_osInterface->pOsContext);
+
+    if (userFeatureData.i32Data)
+    {
+        MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+        MOS_UserFeature_ReadValue_ID(
+            nullptr,
+            __MEDIA_USER_FEATURE_VALUE_VP9_ENCODE_ENABLE_BRC_DLL_CUSTOMPATH,
+            &userFeatureData,
+            m_osInterface->pOsContext);
+
+        if (!userFeatureData.i32Data)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(MosUtilities::MosLoadLibrary(VP9SWBRCLIB, &m_swBrcMode));  // Load Dependency (use on RS1)
+        }
+        else
+        {
+            char path_buffer[MAXPATH];
+            MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+            MOS_ZeroMemory(path_buffer, MAXPATH);
+            userFeatureData.StringData.pStringData = path_buffer;
+            MOS_UserFeature_ReadValue_ID(
+                nullptr,
+                __MEDIA_USER_FEATURE_VALUE_VP9_ENCODE_BRC_DLL_PATH,
+                &userFeatureData,
+                m_osInterface->pOsContext);
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(MosInterface::MosLoadLibrary(m_osInterface->osStreamState, path_buffer, &m_swBrcMode));
+        }
+    }
+#endif  // (_DEBUG || _RELEASE_INTERNAL)
+
     return eStatus;
 }
 
@@ -5020,6 +5059,8 @@ MOS_STATUS CodechalVdencVp9StateG12::HuCVp9PakInt(
     virtualAddrParams.regionParams[15].dwOffset   = 0;
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucVirtualAddrStateCmd(cmdBuffer, &virtualAddrParams));
+
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(cmdBuffer));
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(cmdBuffer, true));
 
@@ -5354,7 +5395,10 @@ MOS_STATUS CodechalVdencVp9StateG12::HuCVp9Prob()
     CODECHAL_DEBUG_TOOL(
         CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Register(&cmdBuffer));
     )
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(&cmdBuffer, true));
+
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(&cmdBuffer));
+
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(&cmdBuffer, true));
 
     // wait Huc completion (use HEVC bit for now)
     MHW_VDBOX_VD_PIPE_FLUSH_PARAMS vdPipeFlushParams;
@@ -5615,7 +5659,9 @@ MOS_STATUS CodechalVdencVp9StateG12::HuCBrcInitReset()
         CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Register(&cmdBuffer));
     )
 
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(&cmdBuffer, true));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(&cmdBuffer));
+
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(&cmdBuffer, true));
 
     // wait Huc completion (use HEVC bit for now)
     MHW_VDBOX_VD_PIPE_FLUSH_PARAMS vdPipeFlushParams;
@@ -5718,7 +5764,7 @@ MOS_STATUS CodechalVdencVp9StateG12::HuCBrcUpdate()
     if (m_swBrcMode)
     {
         CODECHAL_ENCODE_CHK_STATUS_RETURN(SetDmemHuCBrcUpdate());
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(InitBrcConstantBuffer(&m_brcBuffers.resBrcConstantDataBuffer, m_pictureCodingType));
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(InitBrcConstantBuffer(&m_brcBuffers.resBrcConstantDataBuffer[0], m_pictureCodingType));
         // Set region params for dumping only
         MOS_ZeroMemory(&virtualAddrParams, sizeof(virtualAddrParams));
         virtualAddrParams.regionParams[0].presRegion = &m_brcBuffers.resBrcHistoryBuffer;
@@ -5728,7 +5774,7 @@ MOS_STATUS CodechalVdencVp9StateG12::HuCBrcUpdate()
         virtualAddrParams.regionParams[3].presRegion = &m_resVdencPictureState2NdLevelBatchBufferRead[currPass][m_vdencPictureState2ndLevelBBIndex];
         virtualAddrParams.regionParams[4].presRegion = &m_brcBuffers.resBrcHucDataBuffer;
         virtualAddrParams.regionParams[4].isWritable = true;
-        virtualAddrParams.regionParams[5].presRegion = &m_brcBuffers.resBrcConstantDataBuffer;
+        virtualAddrParams.regionParams[5].presRegion = GetBrcConstantBuffer(&m_brcBuffers.resBrcConstantDataBuffer[0], m_pictureCodingType);
         virtualAddrParams.regionParams[6].presRegion = &m_resVdencPictureState2NdLevelBatchBufferWrite[0];
         virtualAddrParams.regionParams[6].isWritable = true;
         virtualAddrParams.regionParams[7].presRegion = &m_brcBuffers.resBrcBitstreamSizeBuffer;
@@ -5745,7 +5791,7 @@ MOS_STATUS CodechalVdencVp9StateG12::HuCBrcUpdate()
 
         CODECHAL_DEBUG_TOOL(
             CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucDmem(
-                &m_resVdencBrcUpdateDmemBuffer[currPass],
+                &m_resVdencBrcUpdateDmemBuffer[currPass][m_currRecycledBufIdx],
                 sizeof(HucBrcUpdateDmem), // Change buffer and size to update dmem
                 currPass,
                 CodechalHucRegionDumpType::hucRegionDumpUpdate));
@@ -5797,7 +5843,7 @@ MOS_STATUS CodechalVdencVp9StateG12::HuCBrcUpdate()
         SetSemaphoreMem(&m_pakIntDoneSemaphoreMem.sResource, &cmdBuffer, 0);
     }
 
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(InitBrcConstantBuffer(&m_brcBuffers.resBrcConstantDataBuffer, m_pictureCodingType));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(InitBrcConstantBuffer(&m_brcBuffers.resBrcConstantDataBuffer[0], m_pictureCodingType));
 
     // load kernel from WOPCM into L2 storage RAM
     MHW_VDBOX_HUC_IMEM_STATE_PARAMS imemParams;
@@ -5815,7 +5861,7 @@ MOS_STATUS CodechalVdencVp9StateG12::HuCBrcUpdate()
     // set HuC DMEM param
     MHW_VDBOX_HUC_DMEM_STATE_PARAMS dmemParams;
     MOS_ZeroMemory(&dmemParams, sizeof(dmemParams));
-    dmemParams.presHucDataSource = &m_resVdencBrcUpdateDmemBuffer[currPass];
+    dmemParams.presHucDataSource = &m_resVdencBrcUpdateDmemBuffer[currPass][m_currRecycledBufIdx];
     dmemParams.dwDataLength = MOS_ALIGN_CEIL(sizeof(HucBrcUpdateDmem), CODECHAL_CACHELINE_SIZE);
     dmemParams.dwDmemOffset = HUC_DMEM_OFFSET_RTOS_GEMS; // how to set?
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucDmemStateCmd(&cmdBuffer, &dmemParams));
@@ -5880,7 +5926,7 @@ MOS_STATUS CodechalVdencVp9StateG12::HuCBrcUpdate()
     virtualAddrParams.regionParams[4].isWritable = true;
 
     // Const Data - IN
-    virtualAddrParams.regionParams[5].presRegion = &m_brcBuffers.resBrcConstantDataBuffer;
+    virtualAddrParams.regionParams[5].presRegion = GetBrcConstantBuffer(&m_brcBuffers.resBrcConstantDataBuffer[0], m_pictureCodingType);
 
     // Output SLBB - OUT
     virtualAddrParams.regionParams[6].presRegion = &m_resVdencPictureState2NdLevelBatchBufferWrite[0];
@@ -5895,6 +5941,8 @@ MOS_STATUS CodechalVdencVp9StateG12::HuCBrcUpdate()
     CODECHAL_DEBUG_TOOL(
         CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Register(&cmdBuffer));
     )
+
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(&cmdBuffer));
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(&cmdBuffer, true));
 
@@ -5960,7 +6008,7 @@ MOS_STATUS CodechalVdencVp9StateG12::HuCBrcUpdate()
 
         CODECHAL_DEBUG_TOOL(
             CODECHAL_ENCODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucDmem(
-                &m_resVdencBrcUpdateDmemBuffer[currPass],
+                &m_resVdencBrcUpdateDmemBuffer[currPass][m_currRecycledBufIdx],
                 sizeof(HucBrcUpdateDmem), // Change buffer and size to update dmem
                 currPass,
                 CodechalHucRegionDumpType::hucRegionDumpUpdate));

@@ -3499,19 +3499,17 @@ mos_gem_bo_set_tiling_internal(struct mos_linux_bo *bo,
         return 0;
 
     memset(&set_tiling, 0, sizeof(set_tiling));
-    do {
-        /* set_tiling is slightly broken and overwrites the
-         * input on the error path, so we have to open code
-         * rmIoctl.
-         */
-        set_tiling.handle = bo_gem->gem_handle;
-        set_tiling.tiling_mode = tiling_mode;
-        set_tiling.stride = stride;
+    /* set_tiling is slightly broken and overwrites the
+     * input on the error path, so we have to open code
+     * rmIoctl.
+     */
+    set_tiling.handle = bo_gem->gem_handle;
+    set_tiling.tiling_mode = tiling_mode;
+    set_tiling.stride = stride;
 
-        ret = ioctl(bufmgr_gem->fd,
-                DRM_IOCTL_I915_GEM_SET_TILING,
-                &set_tiling);
-    } while (ret == -1 && (errno == EINTR || errno == EAGAIN));
+    ret = drmIoctl(bufmgr_gem->fd,
+            DRM_IOCTL_I915_GEM_SET_TILING,
+            &set_tiling);
     if (ret == -1)
         return -errno;
 
@@ -4824,6 +4822,7 @@ struct drm_i915_gem_vm_control* mos_gem_vm_create(struct mos_bufmgr *bufmgr)
     if (ret != 0) {
         MOS_DBG("DRM_IOCTL_I915_GEM_VM_CREATE failed: %s\n",
             strerror(errno));
+        free(vm);
         return nullptr;
     }
 
@@ -4993,13 +4992,8 @@ int mos_query_engines_count(struct mos_bufmgr *bufmgr,
     query_item.length = len;
     query_item.data_ptr = (uintptr_t)engines;
     ret = mos_gem_query_items(fd, &query_item, 1);
-    if(ret)
-    {
-        *nengine = 0;
-        return ret;
-    }
-    
-    *nengine = engines->num_engines;
+
+    *nengine = ret ? 0 : engines->num_engines;
 
     if (engines)
     {

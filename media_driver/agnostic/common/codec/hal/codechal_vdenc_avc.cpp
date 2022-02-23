@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2011-2021, Intel Corporation
+* Copyright (c) 2011-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -5032,6 +5032,8 @@ MOS_STATUS CodechalVdencAvcState::HuCBrcInitReset()
     // (HUC_Start command with last start bit set).
     CODECHAL_ENCODE_CHK_STATUS_RETURN(AvcVdencStoreHuCStatus2Register(m_hwInterface, &cmdBuffer));
 
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(&cmdBuffer));
+
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(&cmdBuffer, true));
 
     // wait Huc completion (use HEVC bit for now)
@@ -5256,6 +5258,8 @@ MOS_STATUS CodechalVdencAvcState::HuCBrcUpdate()
     // BitField: VALID IMEM LOADED - This bit will be cleared by HW at the end of a HUC workload
     // (HUC_Start command with last start bit set).
     CODECHAL_ENCODE_CHK_STATUS_RETURN(AvcVdencStoreHuCStatus2Register(m_hwInterface, &cmdBuffer));
+
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(StoreHuCStatus2Report(&cmdBuffer));
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hucInterface->AddHucStartCmd(&cmdBuffer, true));
 
@@ -6140,6 +6144,8 @@ MOS_STATUS CodechalVdencAvcState::ExecutePictureLevel()
 
                 CODECHAL_ENCODE_CHK_STATUS_RETURN(m_vdencInterface->AddVdencAvcCostStateCmd(nullptr, secondLevelBatchBufferUsed, imageStateParams));
 
+                CODECHAL_ENCODE_CHK_STATUS_RETURN(m_vdencInterface->AddVdencCmd3Cmd(nullptr, secondLevelBatchBufferUsed, imageStateParams));
+
                 CODECHAL_ENCODE_CHK_STATUS_RETURN(m_vdencInterface->AddVdencImgStateCmd(nullptr, secondLevelBatchBufferUsed, imageStateParams));
 
                 CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferEnd(nullptr, secondLevelBatchBufferUsed));
@@ -6440,7 +6446,7 @@ MOS_STATUS CodechalVdencAvcState::ExecuteSliceLevel()
     }
 
     // Prepare MetaData
-    if ((m_presMetadataBuffer != nullptr) && (m_currPass == m_numPasses))
+    if (m_presMetadataBuffer != nullptr)
     {
         CODECHAL_ENCODE_CHK_STATUS_RETURN(PrepareHWMetaData(m_presMetadataBuffer, &m_pakSliceSizeStreamoutBuffer, &cmdBuffer));
     }
@@ -8595,7 +8601,10 @@ MOS_STATUS CodechalVdencAvcState::DumpHucBrcUpdate(bool isInput)
 
 uint32_t CodechalVdencAvcState::GetPakVDEncPassDumpSize()
 {
-    return m_mfxInterface->GetAvcImgStateSize() + m_vdencInterface->GetVdencAvcCostStateSize() + m_vdencInterface->GetVdencAvcImgStateSize();
+    return m_mfxInterface->GetAvcImgStateSize() +
+        m_vdencInterface->GetVdencAvcCostStateSize() +
+        m_vdencInterface->GetVdencCmd3Size() +
+        m_vdencInterface->GetVdencAvcImgStateSize();
 }
 
 MOS_STATUS CodechalVdencAvcState::DumpEncodeImgStats(
