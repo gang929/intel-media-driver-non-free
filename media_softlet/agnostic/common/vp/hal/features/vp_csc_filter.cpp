@@ -29,6 +29,9 @@
 #include "vp_vebox_cmd_packet.h"
 #include "hw_filter.h"
 #include "sw_filter_pipe.h"
+#ifndef ENABLE_VP_SOFTLET_BUILD
+#include "vp_vebox_cmd_packet_legacy.h"
+#endif
 
 namespace vp {
 
@@ -302,7 +305,7 @@ MOS_STATUS VpCscFilter::SetSfcChromaParams(
 
     if (vpExecuteCaps.bVebox)
     {
-        if (VpHal_GetSurfaceColorPack(m_sfcCSCParams->inputFormat) == VPHAL_COLORPACK_444)
+        if (VpUtils::GetSurfaceColorPack(m_sfcCSCParams->inputFormat) == VPHAL_COLORPACK_444)
         {
             m_sfcCSCParams->b8tapChromafiltering = true;
         }
@@ -339,7 +342,7 @@ MOS_STATUS VpCscFilter::SetVeboxCUSChromaParams(VP_EXECUTE_CAPS vpExecuteCaps)
         (vpExecuteCaps.b3DlutOutput && !vpExecuteCaps.bHDR3DLUT);
     bool bDIEnabled      = vpExecuteCaps.bDI;
 
-    srcColorPack = VpHal_GetSurfaceColorPack(m_cscParams.formatInput);
+    srcColorPack = VpUtils::GetSurfaceColorPack(m_cscParams.formatInput);
 
     // Init CUS as disabled
     m_veboxCSCParams->bypassCUS = true;
@@ -486,7 +489,7 @@ MOS_STATUS VpCscFilter::SetVeboxCDSChromaParams(VP_EXECUTE_CAPS vpExecuteCaps)
 
     bool bNeedDownSampling = false;
 
-    VPHAL_COLORPACK dstColorPack = VpHal_GetSurfaceColorPack(m_cscParams.formatOutput);
+    VPHAL_COLORPACK dstColorPack = VpUtils::GetSurfaceColorPack(m_cscParams.formatOutput);
 
     // Only VEBOX output, we use VEO to do downsampling.
     // Else, we use SFC/FC path to do downscaling.
@@ -605,7 +608,7 @@ MOS_STATUS VpCscFilter::UpdateChromaSiting(VP_EXECUTE_CAPS vpExecuteCaps)
     {
         m_cscParams.input.chromaSiting = (CHROMA_SITING_HORZ_LEFT | CHROMA_SITING_VERT_CENTER);
     }
-    switch (VpHal_GetSurfaceColorPack(m_cscParams.formatInput))
+    switch (VpUtils::GetSurfaceColorPack(m_cscParams.formatInput))
     {
     case VPHAL_COLORPACK_422:
         m_cscParams.input.chromaSiting = (m_cscParams.input.chromaSiting & 0x7) | CHROMA_SITING_VERT_TOP;
@@ -621,7 +624,7 @@ MOS_STATUS VpCscFilter::UpdateChromaSiting(VP_EXECUTE_CAPS vpExecuteCaps)
     {
         m_cscParams.output.chromaSiting = (CHROMA_SITING_HORZ_LEFT | CHROMA_SITING_VERT_CENTER);
     }
-    switch (VpHal_GetSurfaceColorPack(m_cscParams.formatOutput))
+    switch (VpUtils::GetSurfaceColorPack(m_cscParams.formatOutput))
     {
     case VPHAL_COLORPACK_422:
         m_cscParams.output.chromaSiting = (m_cscParams.output.chromaSiting & 0x7) | CHROMA_SITING_VERT_TOP;
@@ -643,8 +646,8 @@ bool VpCscFilter::IsChromaUpSamplingNeeded()
     bool                  bChromaUpSampling = false;
     VPHAL_COLORPACK       srcColorPack, dstColorPack;
 
-    srcColorPack = VpHal_GetSurfaceColorPack(m_cscParams.formatInput);
-    dstColorPack = VpHal_GetSurfaceColorPack(m_cscParams.formatOutput);
+    srcColorPack = VpUtils::GetSurfaceColorPack(m_cscParams.formatInput);
+    dstColorPack = VpUtils::GetSurfaceColorPack(m_cscParams.formatOutput);
 
     if ((srcColorPack == VPHAL_COLORPACK_420 &&
         (dstColorPack == VPHAL_COLORPACK_422 || dstColorPack == VPHAL_COLORPACK_444)) ||
@@ -728,22 +731,32 @@ VpSfcCscParameter::VpSfcCscParameter(PVP_MHWINTERFACE pHwInterface, PacketParamF
 }
 VpSfcCscParameter::~VpSfcCscParameter() {}
 
-bool VpSfcCscParameter::SetPacketParam(VpCmdPacket *pPacket)
+bool VpSfcCscParameter::SetPacketParam(VpCmdPacket *_packet)
 {
     VP_FUNC_CALL();
 
-    VpVeboxCmdPacket *pVeboxPacket = dynamic_cast<VpVeboxCmdPacket *>(pPacket);
-    if (nullptr == pVeboxPacket)
+    SFC_CSC_PARAMS *params = m_CscFilter.GetSfcParams();
+    if (nullptr == params)
     {
+        VP_PUBLIC_ASSERTMESSAGE("Failed to get sfc csc params");
         return false;
     }
 
-    SFC_CSC_PARAMS *pParams = m_CscFilter.GetSfcParams();
-    if (nullptr == pParams)
+    VpVeboxCmdPacket *packet = dynamic_cast<VpVeboxCmdPacket *>(_packet);
+    if (packet)
     {
-        return false;
+        return MOS_SUCCEEDED(packet->SetSfcCSCParams(params));
     }
-    return MOS_SUCCEEDED(pVeboxPacket->SetSfcCSCParams(pParams));
+#ifndef ENABLE_VP_SOFTLET_BUILD
+    VpVeboxCmdPacketLegacy *packetLegacy = dynamic_cast<VpVeboxCmdPacketLegacy *>(_packet);
+    if (packetLegacy)
+    {
+        return MOS_SUCCEEDED(packetLegacy->SetSfcCSCParams(params));
+    }
+#endif
+
+    VP_PUBLIC_ASSERTMESSAGE("Invalid packet for sfc csc");
+    return false;
 }
 
 MOS_STATUS VpSfcCscParameter::Initialize(HW_FILTER_CSC_PARAM &params)
@@ -925,18 +938,28 @@ bool VpVeboxCscParameter::SetPacketParam(VpCmdPacket* pPacket)
 {
     VP_FUNC_CALL();
 
-    VpVeboxCmdPacket* pVeboxPacket = dynamic_cast<VpVeboxCmdPacket*>(pPacket);
-    if (nullptr == pVeboxPacket)
+    VEBOX_CSC_PARAMS *params = m_CscFilter.GetVeboxParams();
+    if (nullptr == params)
     {
+        VP_PUBLIC_ASSERTMESSAGE("Failed to get vebox be csc params");
         return false;
     }
 
-    VEBOX_CSC_PARAMS* pParams = m_CscFilter.GetVeboxParams();
-    if (nullptr == pParams)
+    VpVeboxCmdPacket *packet = dynamic_cast<VpVeboxCmdPacket *>(pPacket);
+    if (packet)
     {
-        return false;
+        return MOS_SUCCEEDED(packet->SetVeboxBeCSCParams(params));
     }
-    return MOS_SUCCEEDED(pVeboxPacket->SetVeboxBeCSCParams(pParams));
+#ifndef ENABLE_VP_SOFTLET_BUILD
+    VpVeboxCmdPacketLegacy *packetLegacy = dynamic_cast<VpVeboxCmdPacketLegacy *>(pPacket);
+    if (packetLegacy)
+    {
+        return MOS_SUCCEEDED(packetLegacy->SetVeboxBeCSCParams(params));
+    }
+#endif
+
+    VP_PUBLIC_ASSERTMESSAGE("Invalid packet for vebox be csc");
+    return false;
 }
 MOS_STATUS VpVeboxCscParameter::Initialize(HW_FILTER_CSC_PARAM& params)
 {

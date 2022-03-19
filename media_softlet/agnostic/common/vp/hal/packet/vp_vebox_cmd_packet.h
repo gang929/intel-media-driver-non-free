@@ -29,7 +29,7 @@
 #define __VP_VEBOX_CMD_PACKET_H__
 
 #include "mhw_vebox_g12_X.h"
-#include "vp_cmd_packet.h"
+#include "vp_vebox_cmd_packet_base.h"
 #include "vp_vebox_common.h"
 #include "vp_render_sfc_base.h"
 #include "vp_filter.h"
@@ -328,7 +328,7 @@ typedef struct _VP_VEBOX_CACHE_CNTL
 
 namespace vp {
 
-class VpVeboxCmdPacket : public VpCmdPacket
+class VpVeboxCmdPacket : public VpVeboxCmdPacketBase
 {
 public:
     VpVeboxCmdPacket(MediaTask * task, PVP_MHWINTERFACE hwInterface, PVpAllocator &allocator, VPMediaMemComp *mmc);

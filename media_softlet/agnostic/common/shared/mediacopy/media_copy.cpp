@@ -120,7 +120,7 @@ MOS_STATUS MediaCopyBaseState::CapabilityCheck()
     // common policy check
     // legal check
     // Blt engine does not support protection, allow the copy if dst is staging buffer in system mem
-    if (m_mcpySrc.CpMode == MCPY_CPMODE_CP && m_mcpyDst.CpMode == MCPY_CPMODE_CLEAR && !m_allowBltCopy)
+    if (m_mcpySrc.CpMode == MCPY_CPMODE_CP && m_mcpyDst.CpMode == MCPY_CPMODE_CLEAR && !m_allowCPBltCopy)
     {
         MCPY_ASSERTMESSAGE("illegal usage");
         return MOS_STATUS_INVALID_PARAMETER;
@@ -186,7 +186,7 @@ MOS_STATUS MediaCopyBaseState::CopyEnigneSelect(MCPY_METHOD preferMethod)
     switch (preferMethod)
     {
         case MCPY_METHOD_PERFORMANCE:
-            m_mcpyEngine = m_mcpyEngineCaps.engineRender?MCPY_ENGINE_RENDER:(m_mcpyEngineCaps.engineVebox?MCPY_ENGINE_VEBOX:MCPY_ENGINE_BLT);
+            m_mcpyEngine = m_mcpyEngineCaps.engineRender?MCPY_ENGINE_RENDER:(m_mcpyEngineCaps.engineBlt ? MCPY_ENGINE_BLT : MCPY_ENGINE_VEBOX);
             break;
         case MCPY_METHOD_BALANCE:
             m_mcpyEngine = m_mcpyEngineCaps.engineVebox?MCPY_ENGINE_VEBOX:(m_mcpyEngineCaps.engineBlt?MCPY_ENGINE_BLT:MCPY_ENGINE_RENDER);

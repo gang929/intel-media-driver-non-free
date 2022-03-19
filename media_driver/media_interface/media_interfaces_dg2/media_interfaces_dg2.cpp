@@ -1,6 +1,6 @@
 /*===================== begin_copyright_notice ==================================
 
-# Copyright (c) 2021, Intel Corporation
+# Copyright (c) 2021-2022, Intel Corporation
 
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -28,12 +28,9 @@
 //!
 
 #include "media_interfaces_dg2.h"
-#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
-#include "igcodeckrn_g12.h"
-#endif
 #include "codechal.h"
 #include "codechal_debug_xe_hpm_ext.h"
-#if defined(ENABLE_KERNELS) && defined(IGFX_DG2_ENABLE_NON_UPSTREAM)
+#if defined(ENABLE_KERNELS) && defined(_MEDIA_RESERVED)
 #include "cm_gpucopy_kernel_xe_hpm.h"
 #include "cm_gpuinit_kernel_xe_hpm.h"
 #else
@@ -44,11 +41,10 @@ unsigned char *pGPUInit_kernel_isa_dg2 = nullptr;
 #endif
 #include "vp_pipeline_adapter_xe_hpm.h"
 #include "vp_platform_interface_xe_hpm.h"
+#include "encode_av1_vdenc_pipeline_adapter_xe_hpm.h"
 
 using namespace mhw::vdbox::avp::xe_hpm;
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
 using namespace mhw::vdbox::vdenc::xe_hpm;
-#endif
 using namespace mhw::vdbox::huc::xe_hpm;
 
 extern template class MediaInterfacesFactory<MhwInterfaces>;
@@ -420,9 +416,12 @@ MOS_STATUS MhwInterfacesDg2_Next::Initialize(
     m_cpInterface = Create_MhwCpInterface(osInterface);
     m_miInterface = MOS_New(Mi, m_cpInterface, osInterface);
     {
-        auto ptr = std::make_shared<mhw::mi::xe_xpm_base::Impl>(osInterface);
-        ptr->SetCpInterface(m_cpInterface);
-        m_miItf  = std::static_pointer_cast<mhw::mi::Itf>(ptr);
+        MHW_MI_CHK_NULL(m_miInterface);
+        m_miItf = std::static_pointer_cast<mhw::mi::Itf>(m_miInterface->GetNewMiInterface());
+        //After dependency of legacy m_miInterface is cleanup, code above will be replaced with following codes.
+        //auto ptr = std::make_shared<mhw::mi::xe_xpm_base::Impl>(osInterface);
+        //ptr->SetCpInterface(m_cpInterface);
+        //m_miItf  = std::static_pointer_cast<mhw::mi::Itf>(ptr);
     }
 
     if (params.Flags.m_render)
@@ -469,10 +468,8 @@ MOS_STATUS MhwInterfacesDg2_Next::Initialize(
     if (params.Flags.m_vdboxAll || params.Flags.m_vdenc)
     {
         m_vdencInterface = MOS_New(Vdenc, osInterface);
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
         auto ptr = std::make_shared<mhw::vdbox::vdenc::xe_hpm::Impl>(osInterface);
         m_vdencItf = std::static_pointer_cast<mhw::vdbox::vdenc::Itf>(ptr);
-#endif
     }
     if (params.Flags.m_blt)
     {
@@ -611,18 +608,18 @@ MOS_STATUS CodechalInterfacesXe_Hpm::Initialize(
             return MOS_STATUS_NO_SPACE;
         }
     }
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM    
     else if (CodecHalIsEncode(CodecFunction))
     {
         MhwInterfacesNext      *mhwInterfacesNext = nullptr;
 
-        #define RETRUN_STATUS_WITH_DELETE(stmt)    \
+        #define RETURN_STATUS_WITH_DELETE(stmt)    \
         {                                          \
             MOS_Delete(mhwInterfacesNext);         \
             return stmt;                           \
         }
 
         CodechalEncoderState *encoder = nullptr;
+
 #if defined (_AVC_ENCODE_VDENC_SUPPORTED)
         if (info->Mode == CODECHAL_ENCODE_MODE_AVC)
         {
@@ -649,59 +646,6 @@ MOS_STATUS CodechalInterfacesXe_Hpm::Initialize(
         }
         else
 #endif
-#ifdef _VP9_ENCODE_VDENC_SUPPORTED
-        if (info->Mode == CODECHAL_ENCODE_MODE_VP9)
-        {
-#ifdef _APOGEIOS_SUPPORTED
-            bool                        apogeiosEnable = false;
-            MOS_USER_FEATURE_VALUE_DATA userFeatureData;
-            MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-
-            userFeatureData.i32Data     = apogeiosEnable;
-            userFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
-            MOS_UserFeature_ReadValue_ID(
-                nullptr,
-                __MEDIA_USER_FEATURE_VALUE_APOGEIOS_ENABLE_ID,
-                &userFeatureData,
-                osInterface->pOsContext);
-            apogeiosEnable = (userFeatureData.i32Data) ? true : false;
-
-            if (apogeiosEnable)
-            {
-                CreateCodecHalInterface(mhwInterfaces, mhwInterfacesNext, hwInterface, debugInterface, osInterface, CodecFunction, disableScalability);
-
-                m_codechalDevice = MOS_New(EncodeVp9VdencPipelineAdapterXe_Hpm, hwInterface, debugInterface);
-                if (m_codechalDevice == nullptr)
-                {
-                    CODECHAL_PUBLIC_ASSERTMESSAGE("Encode state creation failed!");
-                    return MOS_STATUS_INVALID_PARAMETER;
-                }
-                RETRUN_STATUS_WITH_DELETE(MOS_STATUS_SUCCESS);
-            }
-            else
-            {
-                CreateCodecHalInterface(mhwInterfaces, hwInterface, debugInterface, osInterface, CodecFunction, disableScalability);
-#endif
-                encoder = MOS_New(Encode::Vp9, hwInterface, debugInterface, info);
-            }
-            if (encoder == nullptr)
-            {
-                CODECHAL_PUBLIC_ASSERTMESSAGE("Encode state creation failed!");
-                return MOS_STATUS_INVALID_PARAMETER;
-            }
-            else
-            {
-                m_codechalDevice = encoder;
-            }
-        }
-        else
-#endif
-        if (info->Mode == CODECHAL_ENCODE_MODE_MPEG2)
-        {
-            CODECHAL_PUBLIC_ASSERTMESSAGE("Encode allocation failed, MPEG2 Encoder is not supported!");
-            return MOS_STATUS_INVALID_PARAMETER;
-        }
-        else
 #ifdef _JPEG_ENCODE_SUPPORTED
         if (info->Mode == CODECHAL_ENCODE_MODE_JPEG)
         {
@@ -721,57 +665,18 @@ MOS_STATUS CodechalInterfacesXe_Hpm::Initialize(
         }
         else
 #endif
-#if defined (_AV1_ENCODE_VDENC_SUPPORTED)
-        if (info->Mode == codechalEncodeModeAv1)
+        if (info->Mode == CODECHAL_ENCODE_MODE_MPEG2)
         {
-            CreateCodecHalInterface(mhwInterfaces, mhwInterfacesNext, hwInterface, debugInterface, osInterface, CodecFunction, disableScalability);
-
-            if (CodecHalUsesVdencEngine(info->CodecFunction))
-            {
-                m_codechalDevice = MOS_New(Encode::Av1Vdenc, hwInterface, debugInterface);
-                CODECHAL_PUBLIC_CHK_NULL_RETURN(m_codechalDevice);
-                RETRUN_STATUS_WITH_DELETE(MOS_STATUS_SUCCESS);
-            }
-            else
-            {
-                return MOS_STATUS_INVALID_PARAMETER;
-            }
+            CODECHAL_PUBLIC_ASSERTMESSAGE("Encode allocation failed, MPEG2 Encoder is not supported!");
+            return MOS_STATUS_INVALID_PARAMETER;
         }
         else
-#endif
-#if defined (_HEVC_ENCODE_VME_SUPPORTED) || defined (_HEVC_ENCODE_VDENC_SUPPORTED)
-        if (info->Mode == CODECHAL_ENCODE_MODE_HEVC)
+#ifdef _VP9_ENCODE_VDENC_SUPPORTED
+        if (info->Mode == CODECHAL_ENCODE_MODE_VP9)
         {
-            CreateCodecHalInterface(mhwInterfaces, mhwInterfacesNext, hwInterface, debugInterface, osInterface, CodecFunction, disableScalability);
+            CreateCodecHalInterface(mhwInterfaces, hwInterface, debugInterface, osInterface, CodecFunction, disableScalability);
 
-            if (CodecHalUsesVdencEngine(info->CodecFunction))
-            {
-            #ifdef _HEVC_ENCODE_VDENC_SUPPORTED
-                m_codechalDevice = MOS_New(Encode::HevcVdenc, hwInterface, debugInterface);
-                if (m_codechalDevice == nullptr)
-                {
-                    CODECHAL_PUBLIC_ASSERTMESSAGE("Encode state creation failed!");
-                    return MOS_STATUS_INVALID_PARAMETER;
-                }
-                RETRUN_STATUS_WITH_DELETE(MOS_STATUS_SUCCESS);
-            #endif
-            }
-            else
-            {
-
-                // disable HEVC encode MDF path.
-
-            #ifdef _HEVC_ENCODE_VME_SUPPORTED
-                if (!mdfSupported)
-                {
-                    encoder = MOS_New(Encode::HevcEnc, hwInterface, debugInterface, info);
-                }
-                else
-                {
-                    encoder = MOS_New(Encode::HevcMbenc, hwInterface, debugInterface, info);
-                }
-            #endif
-            }
+            encoder = MOS_New(Encode::Vp9, hwInterface, debugInterface, info);
 
             if (encoder == nullptr)
             {
@@ -782,8 +687,42 @@ MOS_STATUS CodechalInterfacesXe_Hpm::Initialize(
             {
                 m_codechalDevice = encoder;
             }
+        }
+        else
+#endif
+#if defined (_AV1_ENCODE_VDENC_SUPPORTED)
+        if (info->Mode == codechalEncodeModeAv1)
+        {
+            CreateCodecHalInterface(mhwInterfaces, mhwInterfacesNext, hwInterface, debugInterface, osInterface, CodecFunction, disableScalability);
 
-            encoder->m_kernelBase = (uint8_t*)IGCODECKRN_G12;
+            if (CodecHalUsesVdencEngine(info->CodecFunction))
+            {
+                m_codechalDevice = MOS_New(Encode::Av1Vdenc, hwInterface, debugInterface);
+                CODECHAL_PUBLIC_CHK_NULL_RETURN(m_codechalDevice);
+                RETURN_STATUS_WITH_DELETE(MOS_STATUS_SUCCESS);
+            }
+            else
+            {
+                return MOS_STATUS_INVALID_PARAMETER;
+            }
+        }
+        else
+#endif
+#if defined (_HEVC_ENCODE_VDENC_SUPPORTED)
+        if (info->Mode == CODECHAL_ENCODE_MODE_HEVC)
+        {
+            CreateCodecHalInterface(mhwInterfaces, mhwInterfacesNext, hwInterface, debugInterface, osInterface, CodecFunction, disableScalability);
+
+            if (CodecHalUsesVdencEngine(info->CodecFunction))
+            {
+                m_codechalDevice = MOS_New(Encode::HevcVdenc, hwInterface, debugInterface);
+                if (m_codechalDevice == nullptr)
+                {
+                    CODECHAL_PUBLIC_ASSERTMESSAGE("Encode state creation failed!");
+                    return MOS_STATUS_INVALID_PARAMETER;
+                }
+                RETURN_STATUS_WITH_DELETE(MOS_STATUS_SUCCESS);
+            }
         }
         else
 #endif
@@ -792,36 +731,11 @@ MOS_STATUS CodechalInterfacesXe_Hpm::Initialize(
             return MOS_STATUS_INVALID_PARAMETER;
         }
 
-        if (info->Mode != CODECHAL_ENCODE_MODE_JPEG)
-        {
-            if (encoder == nullptr)
-            {
-                CODECHAL_PUBLIC_ASSERTMESSAGE("Encode state creation failed!");
-                return MOS_STATUS_INVALID_PARAMETER;
-            }
-            if (mdfSupported && info->Mode == CODECHAL_ENCODE_MODE_HEVC && !CodecHalUsesVdencEngine(info->CodecFunction))
-            {
-                if ((encoder->m_cscDsState = MOS_New(Encode::CscDsMdf, encoder)) == nullptr)
-                {
-                    return MOS_STATUS_INVALID_PARAMETER;
-                }
-            }
-            else
-            {
-                // Create CSC and Downscaling interface
-                if ((encoder->m_cscDsState = MOS_New(Encode::CscDs, encoder)) == nullptr)
-                {
-                    return MOS_STATUS_INVALID_PARAMETER;
-                }
-            }
-        }
-
         if (mhwInterfacesNext != nullptr)
         {
             MOS_Delete(mhwInterfacesNext);
         }
     }
-#endif
     else
     {
         CODECHAL_PUBLIC_ASSERTMESSAGE("Unsupported codec function requested.");
@@ -831,7 +745,7 @@ MOS_STATUS CodechalInterfacesXe_Hpm::Initialize(
     return MOS_STATUS_SUCCESS;
 }
 
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
+#ifdef _MEDIA_RESERVED
 static bool dg2RegisteredCMHal =
     MediaInterfacesFactory<CMHalDevice>::
     RegisterHal<CMHalInterfacesXe_Hpm>((uint32_t)IGFX_DG2);

@@ -3297,6 +3297,23 @@ finish:
 }
 
 //!
+//! \brief    Set auxiliary sync resource
+//! \details  Set auxiliary resource to sync with decompression
+//! \param    PMOS_INTERFACE pOsInterface
+//!           [in] pointer to OS Interface structure
+//! \param    PMOS_RESOURCE pOsResource
+//!           [in/out] Resource object
+//! \return   MOS_STATUS
+//!           MOS_STATUS_SUCCESS if successful
+//!
+MOS_STATUS Mos_Specific_SetDecompSyncRes(
+    PMOS_INTERFACE pOsInterface,
+    PMOS_RESOURCE  syncResource)
+{
+    return MOS_STATUS_SUCCESS;
+}
+
+//!
 //! \brief    Decompress and Copy Resource to Another Buffer
 //! \details  Decompress and Copy Resource to Another Buffer
 //! \param    PMOS_INTERFACE pOsInterface
@@ -7100,6 +7117,25 @@ static MOS_STATUS Mos_Specific_InitInterface_Ve(
     return eStatus;
 }
 
+MediaUserSettingSharedPtr Mos_Specific_GetUserSettingInstance(
+    PMOS_INTERFACE osInterface)
+{
+    MOS_OS_FUNCTION_ENTER;
+    PMOS_CONTEXT mosContext = nullptr;
+    if (!osInterface)
+    {
+        MOS_OS_ASSERTMESSAGE("Invalid mosContext ptr");
+        return nullptr;
+    }
+
+    if (osInterface->apoMosEnabled)
+    {
+        return MosInterface::MosGetUserSettingInstance(osInterface->osStreamState);
+    }
+
+    return nullptr;
+}
+
 //! \brief    Unified OS Initializes OS Linux Interface
 //! \details  Linux OS Interface initilization
 //! \param    PMOS_INTERFACE pOsInterface
@@ -7273,6 +7309,7 @@ MOS_STATUS Mos_Specific_InitInterface(
     pOsInterface->pfnLockResource                           = Mos_Specific_LockResource;
     pOsInterface->pfnUnlockResource                         = Mos_Specific_UnlockResource;
     pOsInterface->pfnDecompResource                         = Mos_Specific_DecompResource;
+    pOsInterface->pfnSetDecompSyncRes                       = Mos_Specific_SetDecompSyncRes;
     pOsInterface->pfnDoubleBufferCopyResource               = Mos_Specific_DoubleBufferCopyResource;
     pOsInterface->pfnMediaCopyResource2D                    = Mos_Specific_MediaCopyResource2D;
     pOsInterface->pfnGetMosContext                          = Mos_Specific_GetMosContext;
@@ -7373,6 +7410,8 @@ MOS_STATUS Mos_Specific_InitInterface(
     pOsInterface->pfnSetGpuContextHandle                    = Mos_Specific_SetGpuContextHandle;
     pOsInterface->pfnGetGpuContextMgr                       = Mos_Specific_GetGpuContextMgr;
     pOsInterface->pfnGetGpuContextbyHandle                  = Mos_Specific_GetGpuContextbyHandle;
+
+    pOsInterface->pfnGetUserSettingInstance                 = Mos_Specific_GetUserSettingInstance;
 
     pOsUserFeatureInterface->bIsNotificationSupported   = false;
     pOsUserFeatureInterface->pOsInterface               = pOsInterface;

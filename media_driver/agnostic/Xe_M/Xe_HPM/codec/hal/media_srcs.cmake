@@ -1,4 +1,4 @@
-# Copyright (c) 2021, Intel Corporation
+# Copyright (c) 2019-2022, Intel Corporation
 
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -29,6 +29,17 @@ set (TMP_DEC_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/codechal_kernel_olp_mdf_xe_hpm.h
 )
 
+if ("${AVC_Encode_VDEnc_Supported}" STREQUAL "yes")
+    set (TMP_ENC_SOURCES_
+        ${TMP_ENC_SOURCES_}
+        ${CMAKE_CURRENT_LIST_DIR}/codechal_vdenc_avc_xe_hpm.cpp
+    )
+    set (TMP_ENC_HEADERS_
+        ${TMP_ENC_HEADERS_}
+        ${CMAKE_CURRENT_LIST_DIR}/codechal_vdenc_avc_xe_hpm.h
+    )
+endif ()
+
 if ("${HEVC_Encode_VDEnc_Supported}" STREQUAL "yes")
     set (TMP_ENC_SOURCES_
         ${TMP_ENC_SOURCES_}
@@ -37,6 +48,29 @@ if ("${HEVC_Encode_VDEnc_Supported}" STREQUAL "yes")
     set (TMP_ENC_HEADERS_
         ${TMP_ENC_HEADERS_}
         ${CMAKE_CURRENT_LIST_DIR}/codechal_hw_xe_hpm.h
+    )
+endif ()
+
+# mmc
+if("${MMC_Supported}" STREQUAL "yes")
+    set(TMP_ENC_SOURCES_
+        ${TMP_ENC_SOURCES_}
+        ${CMAKE_CURRENT_LIST_DIR}/codechal_mmc_encode_avc_xe_hpm.cpp
+    )
+    set(TMP_ENC_HEADERS_
+        ${TMP_ENC_HEADERS_}
+        ${CMAKE_CURRENT_LIST_DIR}/codechal_mmc_encode_avc_xe_hpm.h
+    )
+endif()
+
+if ("${VP9_Encode_VDEnc_Supported}" STREQUAL "yes")
+    set (TMP_ENC_SOURCES_
+        ${TMP_ENC_SOURCES_}
+        ${CMAKE_CURRENT_LIST_DIR}/codechal_vdenc_vp9_xe_hpm.cpp
+    )
+    set (TMP_ENC_HEADERS_
+        ${TMP_ENC_HEADERS_}
+        ${CMAKE_CURRENT_LIST_DIR}/codechal_vdenc_vp9_xe_hpm.h
     )
 endif ()
 
@@ -52,19 +86,22 @@ set(HEADERS_
     ${TMP_DEC_HEADERS_}
 ) 
 
-set(COMMON_SOURCES_
-    ${COMMON_SOURCES_}
+set(CODEC_SOURCES_
+    ${CODEC_SOURCES_}
     ${TMP_ENC_SOURCES_}
     ${TMP_DEC_SOURCES_}
 )
 
-set(COMMON_HEADERS_
-    ${COMMON_HEADERS_}
+set(CODEC_HEADERS_
+    ${CODEC_HEADERS_}
     ${TMP_ENC_HEADERS_}
     ${TMP_DEC_HEADERS_}
 )
 
 source_group( "CodecHal\\Encode" FILES ${TMP_ENC_SOURCES_} ${TMP_ENC_HEADERS_} )
 source_group( "CodecHal\\Decode" FILES ${TMP_DEC_SOURCES_} ${TMP_DEC_HEADERS_} )
-
+set(TMP_ENC_SOURCES_ "")
+set(TMP_ENC_HEADERS_ "")
+set(TMP_DEC_SOURCES_ "")
+set(TMP_DEC_HEADERS_ "")
 media_add_curr_to_include_path()

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2021, Intel Corporation
+* Copyright (c) 2009-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -33,6 +33,7 @@
 #include "mos_util_debug.h"
 #include "mos_util_user_interface.h"
 #include "mos_interface.h"
+#include "media_user_setting.h"
 
 PerfUtility* g_perfutility = PerfUtility::getInstance();
 
@@ -104,7 +105,17 @@ MOS_STATUS Mos_OsFillResource(
 
     uint8_t *       pByte = nullptr;
     MOS_LOCK_PARAMS LockFlags;
-
+    uint32_t        size = 0;
+#ifndef VPSOLO_EMUL
+    if (pOsResource->pGmmResInfo)
+    {
+        size = (uint32_t)pOsResource->pGmmResInfo->GetSizeSurface();
+    }
+    if (dwSize > size)
+    {
+        MOS_OS_ASSERTMESSAGE("dwSize (%x)> size (%x)", dwSize, size);
+    }
+#endif
     // Lock the surface for writing
     MOS_ZeroMemory(&LockFlags, sizeof(MOS_LOCK_PARAMS));
 
@@ -514,9 +525,11 @@ MOS_STATUS Mos_DumpCommandBufferInit(
     MOS_USER_FEATURE_VALUE_DATA         UserFeatureData;
     char                                *psFileNameAfterPrefix = nullptr;
     size_t                              nSizeFileNamePrefix = 0;
+    MediaUserSettingSharedPtr           userSettingPtr = nullptr;
 
     MOS_OS_CHK_NULL_RETURN(pOsInterface);
 
+    userSettingPtr = pOsInterface->pfnGetUserSettingInstance(pOsInterface);
     // Setup member function and variable.
     pOsInterface->pfnDumpCommandBuffer  = Mos_DumpCommandBuffer;
     // Check if command buffer dump was enabled in user feature.
@@ -532,7 +545,7 @@ MOS_STATUS Mos_DumpCommandBufferInit(
     if (pOsInterface->bDumpCommandBufferToFile)
     {
         // Create output directory.
-        eStatus = MOS_LogFileNamePrefix(pOsInterface->sDirName, pOsInterface->pOsContext);
+        eStatus = MosUtilDebug::MosLogFileNamePrefix(pOsInterface->sDirName, userSettingPtr);
         if (eStatus != MOS_STATUS_SUCCESS)
         {
             MOS_OS_NORMALMESSAGE("Failed to create log file prefix. Status = %d", eStatus);
@@ -1059,5 +1072,5 @@ MOS_STATUS Mos_CheckVirtualEngineSupported(
 }
 #endif // !SKIP_VE_DEFINE
 
-
+void *MosStreamState::pvSoloContext = nullptr; 
 

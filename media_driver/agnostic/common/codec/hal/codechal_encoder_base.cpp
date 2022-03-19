@@ -4052,7 +4052,7 @@ MOS_STATUS CodechalEncoderState::GetStatusReport(
             )
 
             // to be discussed, how to identify whether huc invloved in pipeline
-            if (m_vdencEnabled && m_vdencBrcEnabled && (m_standard == CODECHAL_HEVC || m_standard == CODECHAL_AVC || m_standard == CODECHAL_VP9))
+            if (!m_swBrcMode && m_vdencEnabled && m_vdencBrcEnabled && (m_standard == CODECHAL_HEVC || m_standard == CODECHAL_AVC || m_standard == CODECHAL_VP9))
             {
                 MOS_USER_FEATURE_VALUE_WRITE_DATA userFeatureWriteData;
                 MOS_ZeroMemory(&userFeatureWriteData, sizeof(MOS_USER_FEATURE_VALUE_WRITE_DATA));
@@ -5109,6 +5109,8 @@ CodechalEncoderState::CodechalEncoderState(
     PCODECHAL_STANDARD_INFO standardInfo):
     Codechal(hwInterface, debugInterface)
 {
+    pfnGetKernelHeaderAndSize = nullptr;
+
     // Add Null checks here for all interfaces.
     CODECHAL_ENCODE_CHK_NULL_NO_STATUS_RETURN(m_hwInterface);
     m_mfxInterface = m_hwInterface->GetMfxInterface();
@@ -5147,8 +5149,6 @@ CodechalEncoderState::CodechalEncoderState(
     {
         m_meKernelStates[i] = MHW_KERNEL_STATE();
     }
-
-    pfnGetKernelHeaderAndSize = nullptr;
 
     MOS_ZeroMemory(&m_encodeParams, sizeof(m_encodeParams));
     MOS_ZeroMemory(&m_resHwCount, sizeof(m_resHwCount));
@@ -5293,16 +5293,19 @@ MOS_STATUS CodechalEncoderState::ResolveMetaData(
     MOS_COMMAND_BUFFER cmdBuffer;
     MOS_ZeroMemory(&cmdBuffer, sizeof(cmdBuffer));
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnGetCommandBuffer(m_osInterface, &cmdBuffer, 0));
+
     MHW_MI_COPY_MEM_MEM_PARAMS CpyParams;
     CpyParams.presSrc = pHwLayoutMetaData;
     CpyParams.presDst = pResolvedLayoutMetadata;
-    int bufSize = m_metaDataOffset.dwMetaDataSize + m_numSlices*m_metaDataOffset.dwMetaDataSubRegionSize;
+
+    int bufSize = m_metaDataOffset.dwMetaDataSize + m_numSlices * m_metaDataOffset.dwMetaDataSubRegionSize;
     for (int i = 0; i < bufSize; i = i + 4)
     {
         CpyParams.dwSrcOffset = i;
         CpyParams.dwDstOffset = i;
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiCopyMemMemCmd(&cmdBuffer,&CpyParams));
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiCopyMemMemCmd(&cmdBuffer, &CpyParams));
     }
+
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferEnd(&cmdBuffer, nullptr));
     m_osInterface->pfnReturnCommandBuffer(m_osInterface, &cmdBuffer, 0);
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, false));
@@ -5310,9 +5313,47 @@ MOS_STATUS CodechalEncoderState::ResolveMetaData(
     return eStatus;
 }
 
+MOS_STATUS CodechalEncoderState::ReportErrorFlag(
+    PMOS_RESOURCE pMetadataBuffer,
+    uint32_t      size,
+    uint32_t      offset,
+    uint32_t      flag)
+{
+    CODECHAL_ENCODE_FUNCTION_ENTER;
+
+    m_metaDataOffset.dwMetaDataSize = size;  // init common
+
+    MOS_COMMAND_BUFFER cmdBuffer;
+    MOS_ZeroMemory(&cmdBuffer, sizeof(cmdBuffer));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnGetCommandBuffer(m_osInterface, &cmdBuffer, 0));
+
+    MHW_MI_STORE_DATA_PARAMS storeDataParams;
+    MOS_ZeroMemory(&storeDataParams, sizeof(storeDataParams));
+
+    // Report error flags to metadata buffer
+    storeDataParams.pOsResource      = pMetadataBuffer;
+    storeDataParams.dwResourceOffset = offset;
+    storeDataParams.dwValue          = flag;
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreDataImmCmd(&cmdBuffer, &storeDataParams));
+
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferEnd(&cmdBuffer, nullptr));
+    m_osInterface->pfnReturnCommandBuffer(m_osInterface, &cmdBuffer, 0);
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, false));
+
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS CodechalEncoderState::StoreHuCStatus2Report(PMOS_COMMAND_BUFFER cmdBuffer)
 {
     CODECHAL_ENCODE_FUNCTION_ENTER;
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+    if (m_swBrcMode != nullptr)
+    {
+        // Skip check if SW BRC DLL path
+        return MOS_STATUS_SUCCESS;
+    }
+#endif // _DEBUG || _RELEASE_INTERNAL
 
     CODECHAL_ENCODE_CHK_NULL_RETURN(cmdBuffer);
 

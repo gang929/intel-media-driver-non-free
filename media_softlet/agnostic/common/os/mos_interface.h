@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2020, Intel Corporation
+* Copyright (c) 2009-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -1436,6 +1436,20 @@ public:
         MOS_RESOURCE_HANDLE resource);
 
     //!
+    //! \brief    Set auxiliary resource to sync with decompression
+    //!
+    //! \param    [in] streamState
+    //!           Handle of Os Stream State
+    //! \param    [in] resource
+    //!           MOS Resource handle of the resource.
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS SetDecompSyncRes(
+        MOS_STREAM_HANDLE   streamState,
+        MOS_RESOURCE_HANDLE syncResource);
+
+    //!
     //! \brief  Set Memory Compression Mode
     //!
     //! \param    [in] streamState
@@ -1984,6 +1998,29 @@ public:
     static int GetPlaneSurfaceOffset(
         const MOS_PLANE_OFFSET &planeOffset);
 
+    //!
+    //! \brief  Translate MOS_FORMAT into GMM_RESOURCE_FORMAT
+    //!
+    static GMM_RESOURCE_FORMAT MosFmtToGmmFmt(MOS_FORMAT format);
+
+    //!
+    //! \brief  Translate MOS_FORMAT into MOS_OS_FORMAT
+    //!
+    static MOS_OS_FORMAT MosFmtToOsFmt(MOS_FORMAT format);
+
+    //!
+    //! \brief  Translate MOS_OS_FORMT into MOS_FORMAT
+    //!
+    static MOS_FORMAT OsFmtToMosFmt(MOS_OS_FORMAT format);
+
+    //! \brief    Get usersetting instance for each stream
+    //! \details  the user setting instance
+    //! \param    MOS_PLANE_OFFSET planeOffset
+    //!           [in] Reference to MOS_PLANE_OFFSET structure
+    //! \return   int - offset of the plane
+    //!
+    static MediaUserSettingSharedPtr MosGetUserSettingInstance(
+        MOS_STREAM_HANDLE streamState);
 private:
     //!
     //! \brief    Init per stream parameters

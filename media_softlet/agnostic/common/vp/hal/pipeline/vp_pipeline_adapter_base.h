@@ -64,7 +64,8 @@ struct VpSettings
                       disableDnDi(0),
                       kernelUpdate(0),
                       disableHdr(0),
-                      veboxParallelExecution(0){};
+                      veboxParallelExecution(0),
+                      clearVideoViewMode(false){};
 
     int32_t  maxPhases;
     int32_t  mediaStates;
@@ -73,6 +74,7 @@ struct VpSettings
     uint32_t kernelUpdate;            //!< For VEBox Copy and Update kernels
     uint32_t disableHdr;              //!< Disable Hdr
     uint32_t veboxParallelExecution;  //!< Control VEBox parallel execution with render engine
+    uint32_t clearVideoViewMode;     //!< Perf Optimize for ClearVideoView DDI
 };
 
 //!
@@ -220,7 +222,8 @@ public:
 
         if (m_veboxInterface != nullptr)
         {
-            m_veboxItf = std::static_pointer_cast<mhw::vebox::Itf>(veboxInterface->m_veboxItfNew);
+            m_veboxItf = std::static_pointer_cast<mhw::vebox::Itf>(m_veboxInterface->GetNewVeboxInterface());
+
             if (m_veboxItf)
             {
                 eStatus = m_veboxItf->DestroyHeap();
@@ -240,6 +243,7 @@ public:
         }
 
         m_veboxInterface = veboxInterface;
+        m_veboxItf = std::static_pointer_cast<mhw::vebox::Itf>(veboxInterface->GetNewVeboxInterface());
     }
 
     void SetMhwSfcInterface(MhwSfcInterface *sfcInterface)

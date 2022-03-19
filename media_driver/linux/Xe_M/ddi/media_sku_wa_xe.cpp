@@ -80,32 +80,22 @@ static struct LinuxCodecInfo Dg2CodecInfo =
     .avcDecoding    = 1,
     .mpeg2Decoding  = 1,
     .vp8Decoding    = 0,
-    .vc1Decoding    = SET_STATUS_BY_FULL_OPEN_SOURCE(1, 0),
+    .vc1Decoding    = 0,
     .jpegDecoding   = 1,
     .avcEncoding    = 0,
     .mpeg2Encoding  = 0,
     .hevcDecoding   = 1,
     .hevcEncoding   = 0,
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
     .jpegEncoding   = 1,
     .avcVdenc       = 1,
-#else
-    .jpegEncoding   = 0,
-    .avcVdenc       = 0,
-#endif
     .vp9Decoding    = 1,
     .hevc10Decoding = 1,
     .vp9b10Decoding = 1,
     .hevc10Encoding = 0,
     .hevc12Encoding = 0,
     .vp8Encoding    = 0,
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
     .hevcVdenc      = 1,
     .vp9Vdenc       = 1,
-#else
-    .hevcVdenc      = 0,
-    .vp9Vdenc       = 0,
-#endif
     .adv0Decoding   = 1,
     .adv1Decoding   = 1,
 };
@@ -236,16 +226,6 @@ static bool InitTglMediaSkuExt(struct GfxDeviceInfo *devInfo,
         /* VP9 VDENC 10Bit 420/444 */
         MEDIA_WR_SKU(skuTable, FtrEncodeVP9Vdenc10bit420, codecInfo->vp9Vdenc);
         MEDIA_WR_SKU(skuTable, FtrEncodeVP9Vdenc10bit444, codecInfo->vp9Vdenc);
-
-#if defined(IGFX_XEHP_SDV_ENABLE_NON_UPSTREAM) || defined(IGFX_DG2_ENABLE_NON_UPSTREAM) || defined(IGFX_PVC_ENABLE_NON_UPSTREAM)
-        /* AV1 VDENC 8/10Bit 420 */
-        MEDIA_WR_SKU(skuTable, FtrEncodeAV1Vdenc, 1);
-        MEDIA_WR_SKU(skuTable, FtrEncodeAV1Vdenc10bit420, 1);
-#else
-        MEDIA_WR_SKU(skuTable, FtrEncodeAV1Vdenc, 0);
-        MEDIA_WR_SKU(skuTable, FtrEncodeAV1Vdenc10bit420, 0);
-#endif
-
     }
 
     MEDIA_WR_SKU(skuTable, FtrEnableMediaKernels, drvInfo->hasHuc);
@@ -337,10 +317,10 @@ static bool InitTglMediaSkuExt(struct GfxDeviceInfo *devInfo,
 
      bool compressibleSurfaceEnable = false;
 
-    ReadUserSetting(compressibleSurfaceEnable,
+    ReadUserSetting(nullptr,
+        compressibleSurfaceEnable,
         "Enable Compressible Surface Creation",
-        MediaUserSetting::Group::Device,
-        (PMOS_CONTEXT)nullptr);
+        MediaUserSetting::Group::Device);
 
     if (compressibleSurfaceEnable)
     {
@@ -769,6 +749,13 @@ static bool InitDg2MediaSku(struct GfxDeviceInfo *devInfo,
         MEDIA_WR_SKU(skuTable, FtrCCSNode, 0);
     }
 
+    if (drvInfo->hasBsd)
+    {
+        /* AV1 VDENC 8/10Bit 420 */
+        MEDIA_WR_SKU(skuTable, FtrEncodeAV1Vdenc, 1);
+        MEDIA_WR_SKU(skuTable, FtrEncodeAV1Vdenc10bit420, 1);
+    }
+
     MEDIA_WR_SKU(skuTable, FtrSfcScalability, 1);
 
     // Guc Submission
@@ -785,6 +772,9 @@ static bool InitDg2MediaSku(struct GfxDeviceInfo *devInfo,
 
     // Enable AV1 Large Scale Tile decoding
     MEDIA_WR_SKU(skuTable, FtrAV1VLDLSTDecoding, 1);
+
+    // Enable down scaling first if 3DLUT enabled
+    MEDIA_WR_SKU(skuTable, FtrScalingFirst, 1);
 
     // Tile64
     if (drvInfo->devRev >=0x04 &&
@@ -838,9 +828,9 @@ static bool InitDg2MediaWa(struct GfxDeviceInfo *devInfo,
     if  (SI_WA_FROM(drvInfo->devRev, ACM_G10_MEDIA_REV_ID_B0) ||
          GFX_IS_DG2_G11_CONFIG(drvInfo->devId))
     {
-        /* Turn off MMC for codec and vpp*/
-        MEDIA_WR_WA(waTable, WaDisableCodecMmc, 1);
-        MEDIA_WR_WA(waTable, WaDisableVPMmc, 1);
+        /* Turn on MMC for codec and vpp*/
+        MEDIA_WR_WA(waTable, WaDisableCodecMmc, 0);
+        MEDIA_WR_WA(waTable, WaDisableVPMmc, 0);
     }
 
     if (GFX_IS_DG2_G11_CONFIG(drvInfo->devId) ||
@@ -880,11 +870,7 @@ static bool InitDg2MediaWa(struct GfxDeviceInfo *devInfo,
             MEDIA_WR_WA(waTable, Wa_14010476401, 1);
             MEDIA_WR_WA(waTable, Wa_22011531258, 1);
             MEDIA_WR_WA(waTable, Wa_2209975292, 1);
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
             MEDIA_WR_WA(waTable, WaHEVCVDEncForceDeltaQpRoiNotSupported, 1);
-#else
-            MEDIA_WR_WA(waTable, WaHEVCVDEncForceDeltaQpRoiNotSupported, 0);
-#endif
         }
         MEDIA_WR_WA(waTable, Wa_22011549751, 1);
     }
@@ -901,6 +887,9 @@ static bool InitDg2MediaWa(struct GfxDeviceInfo *devInfo,
             MEDIA_WR_WA(waTable, Wa_16011481064, 1);
         }
     }
+
+    MEDIA_WR_WA(waTable, Wa_15010089951, 1);
+
     return true;
 }
 

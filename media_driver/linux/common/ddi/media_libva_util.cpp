@@ -431,8 +431,8 @@ VAStatus DdiMediaUtil_AllocateSurface(
             cpTag = PROTECTED_SURFACE_TAG;
         }
 
-        // For secure/compressible external surface, call legacy gmm interface due to limitation of new interface
-        if (cpTag || bMemCompEnable)
+        // For compressible external surface, call legacy gmm interface due to limitation of new interface
+        if (bMemCompEnable)
         {
             MOS_ZeroMemory(&gmmParams, sizeof(gmmParams));
             gmmParams.BaseWidth         = width;
@@ -537,6 +537,7 @@ VAStatus DdiMediaUtil_AllocateSurface(
             gmmCustomParams.Size          = mediaSurface->pSurfDesc->uiSize;
             gmmCustomParams.BaseAlignment = 4096;
             gmmCustomParams.NoOfPlanes    = mediaSurface->pSurfDesc->uiPlanes;
+            gmmCustomParams.CpTag         = cpTag;
             switch (tileformat)
             {
                 case I915_TILING_Y:
@@ -956,6 +957,8 @@ VAStatus DdiMediaUtil_Allocate2DBuffer(
     memPolicyPar.waTable = &mediaBuffer->pMediaCtx->WaTable;
     memPolicyPar.resInfo = mediaBuffer->pGmmResourceInfo;
     memPolicyPar.resName = "Media 2D Buffer";
+    memPolicyPar.uiType   = mediaBuffer->uiType;
+    memPolicyPar.preferredMemType = mediaBuffer->bUseSysGfxMem ? MOS_MEMPOOL_SYSTEMMEMORY : 0;
 
     mem_type = MemoryPolicyManager::UpdateMemoryPolicy(&memPolicyPar);
 
@@ -1342,10 +1345,6 @@ void DdiMediaUtil_UnlockSurfaceInternal(DDI_MEDIA_SURFACE  *surface)
             SwizzleSurfaceByHW(surface, true);
 
             mos_bo_unmap(surface->pShadowBuffer->bo);
-            DdiMediaUtil_FreeBuffer(surface->pShadowBuffer);
-            MOS_FreeMemory(surface->pShadowBuffer);
-            surface->pShadowBuffer = nullptr;
-
             mos_bo_unmap(surface->bo);
         }
         else if (surface->pSystemShadow)
@@ -1483,6 +1482,14 @@ void DdiMediaUtil_FreeSurface(DDI_MEDIA_SURFACE *surface)
     if (surface->pMediaCtx->m_auxTableMgr)
     {
         surface->pMediaCtx->m_auxTableMgr->UnmapResource(surface->pGmmResourceInfo, surface->bo);
+    }
+
+    // free shadow buffer it created
+    if (surface->pShadowBuffer != nullptr)
+    {
+        DdiMediaUtil_FreeBuffer(surface->pShadowBuffer);
+        MOS_FreeMemory(surface->pShadowBuffer);
+        surface->pShadowBuffer = nullptr;
     }
 
     if(surface->bMapped)

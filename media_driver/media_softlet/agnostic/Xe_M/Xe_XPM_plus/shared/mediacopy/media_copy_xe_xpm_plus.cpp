@@ -108,7 +108,7 @@ bool MediaCopyStateXe_Xpm_Plus::RenderFormatSupportCheck(PMOS_RESOURCE src, PMOS
      if ((Source.Format != Format_RGBP) && (Source.Format != Format_NV12) && (Source.Format != Format_RGB)
      && (Source.Format != Format_P010) && (Source.Format != Format_P016) && (Source.Format != Format_YUY2)
      && (Source.Format != Format_Y210) && (Source.Format != Format_Y216) && (Source.Format != Format_AYUV)
-     && (Source.Format != Format_Y410) && (Source.Format != Format_Y416) && (Source.Format != Format_A8R8G8B8))
+     && (Source.Format != Format_Y410) && (Source.Format != Format_A8R8G8B8))
     {
          MCPY_NORMALMESSAGE("render copy doesn't suppport format %d ", Source.Format);
          return false;
@@ -177,7 +177,7 @@ MOS_STATUS MediaCopyStateXe_Xpm_Plus::CapabilityCheck()
     // common policy check
     // legal check
     // Blt engine does not support protection, allow the copy if dst is staging buffer in system mem
-    if (m_mcpySrc.CpMode == MCPY_CPMODE_CP && m_mcpyDst.CpMode == MCPY_CPMODE_CLEAR && !m_allowBltCopy)
+    if (m_mcpySrc.CpMode == MCPY_CPMODE_CP && m_mcpyDst.CpMode == MCPY_CPMODE_CLEAR && !m_allowCPBltCopy)
     {
         MCPY_ASSERTMESSAGE("illegal usage");
         return MOS_STATUS_INVALID_PARAMETER;

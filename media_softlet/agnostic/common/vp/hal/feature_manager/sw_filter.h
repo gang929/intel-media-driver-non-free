@@ -517,6 +517,7 @@ struct FeatureParamDenoise : public FeatureParam
     uint32_t             widthAlignUnitInput  = 0;
     uint32_t             heightAlignUnitInput = 0;
     uint32_t             heightInput          = 0;
+    bool                 secureDnNeeded       = false;
 };
 
 class SwFilterDenoise : public SwFilter
@@ -664,8 +665,7 @@ struct FeatureParamHdr : public FeatureParam
     VPHAL_HDR_MODE  hdrMode              = VPHAL_HDR_MODE_NONE;
     VPHAL_CSPACE    srcColorSpace        = CSpace_None;
     VPHAL_CSPACE    dstColorSpace        = CSpace_None;
-
-    HDR_STAGE       stage;
+    HDR_STAGE       stage                = HDR_STAGE_DEFAULT;
 };
 
 class SwFilterHdr : public SwFilter

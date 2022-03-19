@@ -58,6 +58,38 @@ MOS_STATUS VphalState::Allocate(
     VPHAL_PUBLIC_CHK_NULL(pVpHalSettings);
     VPHAL_PUBLIC_CHK_NULL(m_renderHal);
 
+    m_clearVideoViewMode = pVpHalSettings->clearVideoViewMode;
+
+    if ((MEDIA_IS_SKU(m_skuTable, FtrVERing) ||
+         MEDIA_IS_SKU(m_skuTable, FtrSFCPipe)) &&
+        !m_clearVideoViewMode)
+    {
+        MhwInterfaces *             mhwInterfaces = nullptr;
+        MhwInterfaces::CreateParams params;
+        MOS_ZeroMemory(&params, sizeof(params));
+        params.Flags.m_sfc   = MEDIA_IS_SKU(m_skuTable, FtrSFCPipe);
+        params.Flags.m_vebox = MEDIA_IS_SKU(m_skuTable, FtrVERing);
+
+        mhwInterfaces = MhwInterfaces::CreateFactory(params, m_osInterface);
+        if (mhwInterfaces)
+        {
+            SetMhwVeboxInterface(mhwInterfaces->m_veboxInterface);
+            SetMhwSfcInterface(mhwInterfaces->m_sfcInterface);
+
+            // MhwInterfaces always create CP and MI interfaces, so we have to delete those we don't need.
+            MOS_Delete(mhwInterfaces->m_miInterface);
+            Delete_MhwCpInterface(mhwInterfaces->m_cpInterface);
+            mhwInterfaces->m_cpInterface = nullptr;
+            MOS_Delete(mhwInterfaces);
+        }
+        else
+        {
+            VPHAL_DEBUG_ASSERTMESSAGE("Allocate MhwInterfaces failed");
+            eStatus = MOS_STATUS_NO_SPACE;
+            MT_ERR1(MT_VP_HAL_INIT, MT_CODE_LINE, __LINE__);
+        }
+    }
+
     // Create Render GPU Context
     {
         MOS_GPUCTX_CREATOPTIONS createOption;
@@ -89,7 +121,7 @@ MOS_STATUS VphalState::Allocate(
         m_osInterface,
         m_renderGpuContext));
 
-    if (MEDIA_IS_SKU(m_skuTable, FtrVERing) && m_veboxInterface)
+    if (MEDIA_IS_SKU(m_skuTable, FtrVERing) && m_veboxInterface && !m_clearVideoViewMode)
     {
         GpuNodeLimit.bSfcInUse         = MEDIA_IS_SKU(m_skuTable, FtrSFCPipe);
 
@@ -106,20 +138,18 @@ MOS_STATUS VphalState::Allocate(
                 VeboxGpuContext,
                 VeboxGpuNode));
         }
-        else
-        {
-            // Check GPU Node decide logic together in this function
-            VPHAL_HW_CHK_STATUS(m_veboxInterface->FindVeboxGpuNodeToUse(&GpuNodeLimit));
 
-            VeboxGpuNode    = (MOS_GPU_NODE)(GpuNodeLimit.dwGpuNodeToUse);
-            VeboxGpuContext = (VeboxGpuNode == MOS_GPU_NODE_VE) ? MOS_GPU_CONTEXT_VEBOX : MOS_GPU_CONTEXT_VEBOX2;
+        // Check GPU Node decide logic together in this function
+        VPHAL_HW_CHK_STATUS(m_veboxInterface->FindVeboxGpuNodeToUse(&GpuNodeLimit));
 
-            // Create VEBOX/VEBOX2 Context
-            VPHAL_PUBLIC_CHK_STATUS(m_veboxInterface->CreateGpuContext(
-                m_osInterface,
-                VeboxGpuContext,
-                VeboxGpuNode));
-        }
+        VeboxGpuNode    = (MOS_GPU_NODE)(GpuNodeLimit.dwGpuNodeToUse);
+        VeboxGpuContext = (VeboxGpuNode == MOS_GPU_NODE_VE) ? MOS_GPU_CONTEXT_VEBOX : MOS_GPU_CONTEXT_VEBOX2;
+
+        // Create VEBOX/VEBOX2 Context
+        VPHAL_PUBLIC_CHK_STATUS(m_veboxInterface->CreateGpuContext(
+            m_osInterface,
+            VeboxGpuContext,
+            VeboxGpuNode));
 
         // Add gpu context entry, including stream 0 gpu contexts
         if (IsApoEnabled() && 
@@ -140,24 +170,28 @@ MOS_STATUS VphalState::Allocate(
     RenderHalSettings.iMediaStates  = pVpHalSettings->mediaStates;
     VPHAL_PUBLIC_CHK_STATUS(m_renderHal->pfnInitialize(m_renderHal, &RenderHalSettings));
 
-    if (m_veboxItf)
+    if (!m_clearVideoViewMode)
     {
-        const MHW_VEBOX_HEAP* veboxHeap = nullptr;
-        m_veboxItf->GetVeboxHeapInfo(&veboxHeap);
-        uint32_t uiNumInstances = m_veboxItf->GetVeboxNumInstances();
-
-        if (uiNumInstances > 0 &&
-            veboxHeap == nullptr)
+        if (m_veboxItf)
         {
-            // Allocate VEBOX Heap
-            VPHAL_PUBLIC_CHK_STATUS(m_veboxItf->CreateHeap());
+            const MHW_VEBOX_HEAP *veboxHeap = nullptr;
+            m_veboxItf->GetVeboxHeapInfo(&veboxHeap);
+            uint32_t uiNumInstances = m_veboxItf->GetVeboxNumInstances();
+
+            if (uiNumInstances > 0 &&
+                veboxHeap == nullptr)
+            {
+                // Allocate VEBOX Heap
+                VPHAL_PUBLIC_CHK_STATUS(m_veboxItf->CreateHeap());
+            }
         }
-    }
-    else if (m_veboxInterface &&
-        m_veboxInterface->m_veboxSettings.uiNumInstances > 0 &&
-        m_veboxInterface->m_veboxHeap == nullptr)
-    {
-        VPHAL_PUBLIC_CHK_STATUS(m_veboxInterface->CreateHeap());
+
+        if (m_veboxInterface &&
+            m_veboxInterface->m_veboxSettings.uiNumInstances > 0 &&
+            m_veboxInterface->m_veboxHeap == nullptr)
+        {
+            VPHAL_PUBLIC_CHK_STATUS(m_veboxInterface->CreateHeap());
+        }
     }
 
     // Create renderer
@@ -666,35 +700,6 @@ VphalState::VphalState(
         &m_cpInterface,
         m_osInterface));
 
-    if (MEDIA_IS_SKU(m_skuTable, FtrVERing) ||
-        MEDIA_IS_SKU(m_skuTable, FtrSFCPipe))
-    {
-        MhwInterfaces *mhwInterfaces = nullptr;
-        MhwInterfaces::CreateParams params;
-        MOS_ZeroMemory(&params, sizeof(params));
-        params.Flags.m_sfc   = MEDIA_IS_SKU(m_skuTable, FtrSFCPipe);
-        params.Flags.m_vebox = MEDIA_IS_SKU(m_skuTable, FtrVERing);
-
-        mhwInterfaces = MhwInterfaces::CreateFactory(params, pOsInterface);
-        if (mhwInterfaces)
-        {
-            SetMhwVeboxInterface(mhwInterfaces->m_veboxInterface);
-            SetMhwSfcInterface(mhwInterfaces->m_sfcInterface);
-
-            // MhwInterfaces always create CP and MI interfaces, so we have to delete those we don't need.
-            MOS_Delete(mhwInterfaces->m_miInterface);
-            Delete_MhwCpInterface(mhwInterfaces->m_cpInterface);
-            mhwInterfaces->m_cpInterface = nullptr;
-            MOS_Delete(mhwInterfaces);
-        }
-        else
-        {
-            VPHAL_DEBUG_ASSERTMESSAGE("Allocate MhwInterfaces failed");
-            eStatus = MOS_STATUS_NO_SPACE;
-            MT_ERR1(MT_VP_HAL_INIT, MT_CODE_LINE, __LINE__);
-        }
-    }
-
 finish:
     if(peStatus)
     {
@@ -750,13 +755,11 @@ VphalState::~VphalState()
         {
             eStatus = m_veboxItf->DestroyHeap();
         }
-        else
-        {
-            eStatus = m_veboxInterface->DestroyHeap();
-        }
-        //eStatus = m_veboxInterface->DestroyHeap();
+
+        eStatus = m_veboxInterface->DestroyHeap();
         MOS_Delete(m_veboxInterface);
         m_veboxInterface = nullptr;
+        m_veboxItf       = nullptr;
         if (eStatus != MOS_STATUS_SUCCESS)
         {
             VPHAL_PUBLIC_ASSERTMESSAGE("Failed to destroy Vebox Interface, eStatus:%d.\n", eStatus);

@@ -46,7 +46,6 @@ public:
     //!
     MediaLibvaCapsDG2(DDI_MEDIA_CONTEXT *mediaCtx) : MediaLibvaCapsG12(mediaCtx)
     {
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
         // DG2 supported Encode format
         static struct EncodeFormatTable encodeFormatTableDG2[] =
         {
@@ -57,11 +56,10 @@ public:
             {VP9, Vdenc, VA_RT_FORMAT_YUV420 | VA_RT_FORMAT_YUV420_10BPP |
              VA_RT_FORMAT_YUV444 | VA_RT_FORMAT_YUV444_10 | VA_RT_FORMAT_RGB32 |
              VA_RT_FORMAT_RGB32_10BPP},
-            {(EncodeFormat)RESERVED0, Vdenc, VA_RT_FORMAT_YUV420 | VA_RT_FORMAT_YUV420_10BPP}
+            {AV1, Vdenc, VA_RT_FORMAT_YUV420 | VA_RT_FORMAT_YUV420_10BPP}
         };
         m_encodeFormatTable = (struct EncodeFormatTable*)(&encodeFormatTableDG2[0]);
         m_encodeFormatCount = sizeof(encodeFormatTableDG2)/sizeof(struct EncodeFormatTable);
-#endif
         return;
     }
 
@@ -216,5 +214,23 @@ public:
         VASurfaceAttrib  *attribList,
         uint32_t &numAttribs) override;
 
+    //!
+    //! \brief    Get display attributes
+    //!           returns the current attributes values in "attribList"
+    //!
+    //! \param    [in, out] attribList
+    //!           the attrib type should be filled.
+    //!           returns the supported display attributes
+    //!
+    //! \param    [in] numAttribs
+    //!           the number of supported attributes
+    //!
+    //! \return   VAStatus
+    //!           VA_STATUS_SUCCESS if success
+    //!           VA_STATUS_ERROR_MAX_NUM_EXCEEDED if size of attribList is too small
+    //!
+    virtual VAStatus GetDisplayAttributes(
+        VADisplayAttribute * attribList,
+        int32_t numAttribs) override;
 };
 #endif
