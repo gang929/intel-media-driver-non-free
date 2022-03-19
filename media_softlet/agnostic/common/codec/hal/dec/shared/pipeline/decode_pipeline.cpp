@@ -53,7 +53,7 @@ DecodePipeline::DecodePipeline(
     m_hwInterface = hwInterface;
 
     m_singleTaskPhaseSupported =
-        ReadUserFeature(__MEDIA_USER_FEATURE_VALUE_SINGLE_TASK_PHASE_ENABLE_ID, m_osInterface ? m_osInterface->pOsContext : nullptr).i32Data ? true : false;
+        ReadUserFeature(__MEDIA_USER_FEATURE_VALUE_DECODE_SINGLE_TASK_PHASE_ENABLE_ID, m_osInterface ? m_osInterface->pOsContext : nullptr).i32Data ? true : false;
 
     CODECHAL_DEBUG_TOOL(
         DECODE_ASSERT(debugInterface != nullptr);
@@ -616,7 +616,7 @@ MOS_STATUS DecodePipeline::StatusCheck()
     uint32_t completedCount = m_statusReport->GetCompletedCount();
     if (completedCount <= m_statusCheckCount)
     {
-        DECODE_CHK_COND(completedCount < m_statusCheckCount, "Invalid status check count");
+        DECODE_NORMALMESSAGE("Invalid status check count, completedCount = %d m_statusCheckCount =%d.", completedCount, m_statusCheckCount);
         return MOS_STATUS_SUCCESS;
     }
 

@@ -21,6 +21,8 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 
 ======================= end_copyright_notice ==================================*/
+
+
 //!
 //! \file     media_interfaces_dg2.h
 //! \brief    All interfaces used for DG2 that require factory creation
@@ -53,16 +55,17 @@
 #include "mhw_vdbox_avp_xe_hpm.h"
 #include "mhw_vdbox_huc_xe_hpm.h"
 #include "mhw_vdbox_avp_g12_X.h"
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
+#ifdef IGFX_VDENC_INTERFACE_EXT_SUPPORT
 #include "mhw_vdbox_vdenc_xe_hpm_ext.h"
 #else
-#include "mhw_vdbox_vdenc_g12_X.h"
+#include "mhw_vdbox_vdenc_xe_hpm.h"
 #endif
 #include "vphal_render_vebox_memdecomp_xe_xpm.h"
 #include "media_copy_xe_hpm.h"
 #include "mhw_blt_xe_hp_base.h"
 
 #include "codechal_hw_xe_hpm.h"
+
 
 #ifdef _AVC_DECODE_SUPPORTED
 #include "decode_avc_pipeline_adapter_m12.h"
@@ -96,23 +99,8 @@
 #include "decode_av1_pipeline_adapter_g12.h"
 #endif
 
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
-#ifdef _JPEG_ENCODE_SUPPORTED
-#include "codechal_encode_jpeg_g12.h"
-#endif
-
-#include "codechal_encode_csc_ds_xe_xpm.h"
-#include "codechal_encode_csc_ds_mdf_xe_xpm.h"
-
-#ifdef _HEVC_ENCODE_VME_SUPPORTED
-#include "codechal_encode_hevc_g12.h"
-#include "codechal_encode_hevc_mbenc_xe_xpm.h"
-#include "codechal_encode_csc_ds_mdf_g12.h"
-#endif
 #ifdef _HEVC_ENCODE_VDENC_SUPPORTED
 #include "encode_hevc_vdenc_pipeline_adapter_xe_hpm.h"
-#ifdef _APOGEIOS_SUPPORTED
-#endif
 #endif
 
 #ifdef _AV1_ENCODE_VDENC_SUPPORTED
@@ -120,23 +108,35 @@
 #endif
 
 #ifdef _AVC_ENCODE_VDENC_SUPPORTED
-#include "codechal_vdenc_avc_xe_hpm_ext.h"
+#include "codechal_vdenc_avc_xe_hpm.h"
 #endif
-
-#include "codechal_memdecomp_g11_icl.h"
 
 #ifdef _VP9_ENCODE_VDENC_SUPPORTED
 #include "codechal_vdenc_vp9_g12.h"
 #include "codechal_vdenc_vp9_xe_hpm.h"
+#endif
+
+#ifdef _JPEG_ENCODE_SUPPORTED
+#include "codechal_encode_jpeg_g12.h"
+#endif
+
+#ifdef _MEDIA_RESERVED
+#ifdef _AVC_ENCODE_VDENC_SUPPORTED
+#include "codechal_vdenc_avc_xe_hpm_ext.h"
+#endif
+
+#ifdef _VP9_ENCODE_VDENC_SUPPORTED
 #ifdef _APOGEIOS_SUPPORTED
 #include "encode_vp9_vdenc_pipeline_adapter_xe_hpm.h"
 #endif
 #endif
 
-#endif
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
+#include "codechal_memdecomp_g11_icl.h"
+
 #include "cm_hal_xe_xpm.h"
-#endif
+
+#endif // _MEDIA_RESERVED
+
 #include "vphal_xe_xpm.h"
 #include "vphal_xe_hpm.h"
 #include "renderhal_xe_hpg.h"
@@ -157,10 +157,10 @@ public:
     using Mfx       = MhwVdboxMfxInterfaceXe_Xpm;
     using Hcp       = MhwVdboxHcpInterfaceXe_Hpm;
     using Huc       = MhwVdboxHucInterfaceXe_Hpm;
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
+#ifdef IGFX_VDENC_INTERFACE_EXT_SUPPORT
     using Vdenc     = MhwVdboxVdencInterfaceXe_HpmExt;
 #else
-    using Vdenc     = MhwVdboxVdencInterfaceG12X;
+    using Vdenc     = MhwVdboxVdencInterfaceXe_Hpm;
 #endif
     using Vebox     = MhwVeboxInterfaceXe_Hpm;
     using Blt       = MhwBltInterfaceXe_Hp_Base;
@@ -190,10 +190,10 @@ public:
     using Hcp       = MhwVdboxHcpInterfaceXe_Hpm;
     using Avp       = MhwVdboxAvpInterfaceXe_Hpm;
     using Huc       = MhwVdboxHucInterfaceXe_Hpm;
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
+#ifdef IGFX_VDENC_INTERFACE_EXT_SUPPORT
     using Vdenc     = MhwVdboxVdencInterfaceXe_HpmExt;
 #else
-    using Vdenc     = MhwVdboxVdencInterfaceG12X;
+    using Vdenc     = MhwVdboxVdencInterfaceXe_Hpm;
 #endif
     using Vebox     = MhwVeboxInterfaceXe_Hpm;
     using Blt       = MhwBltInterfaceXe_Hp_Base;
@@ -267,41 +267,41 @@ public:
 #endif
 };
 
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
 class CodechalEncodeInterfacesXe_Hpm
 {
 public:
-    using CscDs = CodechalEncodeCscDsXe_Xpm;
-    using CscDsMdf = CodechalEncodeCscDsMdfXe_Xpm;
+#ifdef _MEDIA_RESERVED
 #ifdef _VP9_ENCODE_VDENC_SUPPORTED
     using Vp9 = CodechalVdencVp9StateXe_Xpm;
 #endif
+#ifdef _AVC_ENCODE_VDENC_SUPPORTED
+    using AvcVdenc = CodechalVdencAvcStateXe_HpmExt;
+#endif
+#else
+#ifdef _VP9_ENCODE_VDENC_SUPPORTED
+    using Vp9 = CodechalVdencVp9StateXe_Xpm;
+#endif
+#ifdef _AVC_ENCODE_VDENC_SUPPORTED
+    using AvcVdenc = CodechalVdencAvcStateXe_Hpm;
+#endif
+#endif
+
 #ifdef _JPEG_ENCODE_SUPPORTED
     using Jpeg = CodechalEncodeJpegStateG12;
 #endif
-#ifdef _HEVC_ENCODE_VME_SUPPORTED
-    using HevcEnc = CodechalEncHevcStateG12;
-    using HevcMbenc = CodecHalHevcMbencXe_Xpm;
-#endif
 #ifdef _HEVC_ENCODE_VDENC_SUPPORTED
     using HevcVdenc = EncodeHevcVdencPipelineAdapterXe_Hpm;
-#endif
-#ifdef _AVC_ENCODE_VDENC_SUPPORTED
-    using AvcVdenc = CodechalVdencAvcStateXe_HpmExt;
 #endif
 #ifdef _AV1_ENCODE_VDENC_SUPPORTED
     using Av1Vdenc = EncodeAv1VdencPipelineAdapterXe_Hpm;
 #endif
 };
-#endif
 
 class CodechalInterfacesXe_Hpm : public CodechalDevice
 {
 public:
     using Decode = CodechalDecodeInterfacesXe_Hpm;
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
     using Encode = CodechalEncodeInterfacesXe_Hpm;
-#endif
     using Hw = CodechalHwInterfaceXe_Hpm;
 
     MOS_STATUS Initialize(
@@ -339,7 +339,7 @@ static const L3ConfigRegisterValues DG2_L3_PLANES[DG2_L3_CONFIG_COUNT] =
     {0x80000000, 0x70000080, 0, 0},  //  256   0    0    224  32  512
 };
 
-#ifdef IGFX_DG2_ENABLE_NON_UPSTREAM
+#ifdef _MEDIA_RESERVED
 class CMHalInterfacesXe_Hpm : public CMHalDevice
 {
 protected:

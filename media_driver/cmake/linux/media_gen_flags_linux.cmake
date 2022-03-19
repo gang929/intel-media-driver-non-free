@@ -18,6 +18,17 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
+# TODO: Remove this option when all Gen options can successfully disable
+#       driver code.
+# Status:
+#   GEN8:  Done
+#   GEN9:  TODO
+#   GEN10: TODO (Remove)
+#   GEN11: TODO
+#   GEN12: TODO
+option(ENABLE_REQUIRED_GEN_CODE "Make per-Gen options disable only media-kernels (not driver code) if driver code is known to be required for a successful build"
+    ON)
+
 option(GEN8 "Enable Gen8 support" ON)
 cmake_dependent_option(GEN8_BDW
     "Enabled BDW support (Gen8)" ON
@@ -46,7 +57,7 @@ cmake_dependent_option(GEN9_CMPV
     "Enabled CMPV support (Gen9)" ON
     "GEN9" OFF)
 
-option(GEN10 "Enable Gen10 support" ON)
+option(GEN10 "Enable Gen10 support" OFF)
 cmake_dependent_option(GEN10_CNL
     "Enabled CNL support (Gen10)" ON
     "GEN10" OFF)
@@ -79,6 +90,10 @@ cmake_dependent_option(GEN12_ADLS
 
 cmake_dependent_option(GEN12_ADLP
     "Enabled ADLP support (Gen12)" ON
+    "GEN12_TGLLP" OFF)
+
+cmake_dependent_option(GEN12_ADLN
+    "Enabled ADLN support (Gen12)" ON
     "GEN12_TGLLP" OFF)
 
 cmake_dependent_option(Xe_M
@@ -182,6 +197,10 @@ endif()
 
 if(GEN12_ADLP)
     add_definitions(-DIGFX_GEN12_ADLP_SUPPORTED)
+endif()
+
+if(GEN12_ADLN)
+    add_definitions(-DIGFX_GEN12_ADLN_SUPPORTED)
 endif()
 
 if(DG2)

@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2021, Intel Corporation
+# Copyright (c) 2017-2022, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -41,6 +41,7 @@ set(TMP_2_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/codec_def_encode_mpeg2.h
     ${CMAKE_CURRENT_LIST_DIR}/codec_def_encode_vp9.h
     ${CMAKE_CURRENT_LIST_DIR}/codec_def_encode_hevc.h
+    ${CMAKE_CURRENT_LIST_DIR}/codec_def_encode_av1.h
 )
 
 set(HEADERS_
@@ -49,8 +50,8 @@ set(HEADERS_
     ${TMP_2_HEADERS_}
 )
 
-set(COMMON_HEADERS_
-    ${COMMON_HEADERS_}
+set(CODEC_HEADERS_
+    ${CODEC_HEADERS_}
     ${TMP_HEADERS_}
     ${TMP_2_HEADERS_}
 )
@@ -58,5 +59,6 @@ set(COMMON_HEADERS_
 source_group( "CodecHal\\Common" FILES ${TMP_HEADERS_} )
 
 source_group( "Codec\\Shared" FILES ${TMP_2_HEADERS_} )
-
+set(TMP_2_HEADERS_ "")
+set(TMP_HEADERS_ "")
 media_add_curr_to_include_path()

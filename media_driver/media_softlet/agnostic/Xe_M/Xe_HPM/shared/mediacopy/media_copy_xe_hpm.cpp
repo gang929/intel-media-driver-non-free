@@ -113,7 +113,7 @@ bool MediaCopyState_Xe_Hpm::RenderFormatSupportCheck(PMOS_RESOURCE src, PMOS_RES
     if ((Source.Format != Format_RGBP) && (Source.Format != Format_NV12) && (Source.Format != Format_RGB)
      && (Source.Format != Format_P010) && (Source.Format != Format_P016) && (Source.Format != Format_YUY2)
      && (Source.Format != Format_Y210) && (Source.Format != Format_Y216) && (Source.Format != Format_AYUV)
-     && (Source.Format != Format_Y410) && (Source.Format != Format_Y416) && (Source.Format != Format_A8R8G8B8))
+     && (Source.Format != Format_Y410) && (Source.Format != Format_A8R8G8B8))
     {
          MCPY_NORMALMESSAGE("render copy doesn't suppport format %d ", Source.Format);
          return false;
@@ -191,4 +191,23 @@ MOS_STATUS MediaCopyState_Xe_Hpm::MediaRenderCopy(PMOS_RESOURCE src, PMOS_RESOUR
      {
       return MOS_STATUS_UNIMPLEMENTED;
      }
+}
+
+MOS_STATUS MediaCopyState_Xe_Hpm::PreProcess(MCPY_METHOD preferMethod)
+{
+    if ((preferMethod == MCPY_METHOD_POWERSAVING)
+        && m_mcpyEngineCaps.engineBlt
+        && (m_mcpySrc.CpMode == MCPY_CPMODE_CP)
+        && (m_mcpyDst.CpMode == MCPY_CPMODE_CLEAR))
+    {
+        //Allow blt engine to do copy when dst buffer is staging buffer and allocate in system mem, since protection off with blt engine.
+        //Current only used for small localbar cases.
+        m_allowCPBltCopy = true;
+    }
+    else
+    {
+        m_allowCPBltCopy = false;
+    }
+
+    return MOS_STATUS_SUCCESS;
 }

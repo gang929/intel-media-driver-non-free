@@ -30,6 +30,9 @@
 #include "vp_utils.h"
 #include "hw_filter.h"
 #include "sw_filter_pipe.h"
+#ifndef ENABLE_VP_SOFTLET_BUILD
+#include "vp_vebox_cmd_packet_legacy.h"
+#endif
 
 using namespace vp;
 
@@ -128,7 +131,7 @@ void VpScalingFilter::GetFormatWidthHeightAlignUnit(
     widthAlignUnit = 1;
     heightAlignUnit = 1;
 
-    switch (VpHal_GetSurfaceColorPack(format))
+    switch (VpUtils::GetSurfaceColorPack(format))
     {
     case VPHAL_COLORPACK_420:
         widthAlignUnit = 2;
@@ -188,9 +191,9 @@ MOS_STATUS VpScalingFilter::SetColorFillParams()
         {
             VP_PUBLIC_NORMALMESSAGE("colorFillColorDst need be recalculated.");
             // Clean history Dst BG Color if hit unsupported format
-            if (!VpHal_CSC_8(&m_colorFillColorDst, &Src, src_cspace, dst_cspace))
+            if (!VpUtils::GetCscMatrixForRender8Bit(&m_colorFillColorDst, &Src, src_cspace, dst_cspace))
             {
-                VP_PUBLIC_ASSERTMESSAGE("VpHal_CSC_8 failed!");
+                VP_PUBLIC_NORMALMESSAGE("VpHal_CSC_8 failed!");
                 MOS_ZeroMemory(&m_colorFillColorDst, sizeof(m_colorFillColorDst));
             }
             // store the values for next iteration
@@ -633,18 +636,28 @@ bool VpSfcScalingParameter::SetPacketParam(VpCmdPacket *pPacket)
 {
     VP_FUNC_CALL();
 
-    VpVeboxCmdPacket *pVeboxPacket = dynamic_cast<VpVeboxCmdPacket *>(pPacket);
-    if (nullptr == pVeboxPacket)
+    SFC_SCALING_PARAMS *params = m_ScalingFilter.GetSfcParams();
+    if (nullptr == params)
     {
+        VP_PUBLIC_ASSERTMESSAGE("Failed to get sfc scaling params");
         return false;
     }
 
-    SFC_SCALING_PARAMS *pParams = m_ScalingFilter.GetSfcParams();
-    if (nullptr == pParams)
+    VpVeboxCmdPacket *packet = dynamic_cast<VpVeboxCmdPacket *>(pPacket);
+    if (packet)
     {
-        return false;
+        return MOS_SUCCEEDED(packet->SetScalingParams(params));
     }
-    return MOS_SUCCEEDED(pVeboxPacket->SetScalingParams(pParams));
+#ifndef ENABLE_VP_SOFTLET_BUILD
+    VpVeboxCmdPacketLegacy *packetLegacy = dynamic_cast<VpVeboxCmdPacketLegacy *>(pPacket);
+    if (packetLegacy)
+    {
+        return MOS_SUCCEEDED(packetLegacy->SetScalingParams(params));
+    }
+#endif
+
+    VP_PUBLIC_ASSERTMESSAGE("Invalid packet for sfc scaling");
+    return false;
 }
 
 MOS_STATUS VpSfcScalingParameter::Initialize(HW_FILTER_SCALING_PARAM &params)
