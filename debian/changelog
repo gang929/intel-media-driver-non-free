@@ -1,3 +1,9 @@
+intel-media-driver-non-free (22.3.1+ds1-1) unstable; urgency=medium
+
+  * New upstream version 22.3.1+ds1
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Mon, 04 Apr 2022 23:37:05 +0200
+
 intel-media-driver-non-free (22.3.0+ds1-1) unstable; urgency=medium
 
   * New upstream version 22.3.0+ds1
