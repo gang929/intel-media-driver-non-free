@@ -30,14 +30,14 @@
 #define __VP_RENDER_SFC_M12_H__
 
 #include "mhw_sfc_g12_X.h"
-#include "vp_render_sfc_base.h"
+#include "vp_render_sfc_base_legacy.h"
 
 namespace vp {
 
-class SfcRenderM12 : public SfcRenderBase
+class SfcRenderM12 : public SfcRenderBaseLegacy
 {
 public:
-    SfcRenderM12(VP_MHWINTERFACE &vpMhwinterface, PVpAllocator &allocator);
+    SfcRenderM12(VP_MHWINTERFACE &vpMhwinterface, PVpAllocator &allocator, bool disbaleSfcDithering);
     virtual     ~SfcRenderM12();
 
     //!
@@ -84,6 +84,7 @@ protected:
 
     virtual bool IsOutputChannelSwapNeeded(MOS_FORMAT outputFormat);
     virtual bool IsCscNeeded(SFC_CSC_PARAMS &cscParams);
+MEDIA_CLASS_DEFINE_END(SfcRenderM12)
 };
 
 }

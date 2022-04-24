@@ -27,6 +27,7 @@
 #include "vp_kernelset.h"
 #include "vp_render_common.h"
 #include "vp_render_kernel_obj.h"
+#include "mhw_mi_itf.h"
 
 namespace vp
 {
@@ -145,6 +146,8 @@ protected:
     virtual MOS_STATUS InitFcMemCacheControl(PVP_RENDER_CACHE_CNTL settings);
     MOS_STATUS InitSurfMemCacheControl(VP_EXECUTE_CAPS packetCaps);
 
+    MHW_SETPAR_DECL_HDR(PIPE_CONTROL);
+
 protected:
 
     KERNEL_OBJECTS                     m_kernelObjs;
@@ -161,6 +164,7 @@ protected:
     KERNEL_SAMPLER_STATE_GROUP         m_kernelSamplerStateGroup;
 
     KERNEL_SUBMISSION_MODE             m_submissionMode = MULTI_KERNELS_WITH_MULTI_MEDIA_STATES;
+    KERNEL_BINDINGTABLE_MODE           m_bindingtableMode = MULTI_KERNELS_WITH_ONE_BINDINGTABLE;
     uint32_t                           m_slmSize        = 0;
     uint32_t                           m_totalCurbeSize = 0;
     uint32_t                           m_totoalInlineSize = 0;

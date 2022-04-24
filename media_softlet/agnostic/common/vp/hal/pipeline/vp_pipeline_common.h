@@ -164,6 +164,7 @@ struct _VP_EXECUTE_CAPS
             uint64_t b3DlutOutput   : 1;
             uint64_t bCappipe       : 1;
             uint64_t bLgca          : 1;
+            uint64_t bFDFB          : 1;
 
             // SFC features
             uint64_t bSfcCsc        : 1;   // Sfc Csc enabled
@@ -214,6 +215,7 @@ typedef struct _VP_EngineEntry
             uint32_t sfcNotSupported : 1;       // true if sfc cannot be selected.
             uint32_t veboxNotSupported : 1;     // true if vebox cannot be selected.
             uint32_t onlyParamCalculation : 1;  // true if the feature is used for parameter calculation.
+            uint32_t sfcOnlyFeatureExists : 1;  // The feature exists, which only support sfc.
         };
         uint32_t value;
     };

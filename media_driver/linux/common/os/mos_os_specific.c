@@ -2510,7 +2510,9 @@ MOS_STATUS Mos_Specific_AllocateResource(
     {
         case MOS_TILE_Y:
             tileformat_linux               = I915_TILING_Y;
-            if (pParams->bIsCompressible && MEDIA_IS_SKU(&pOsInterface->pOsContext->SkuTable, FtrE2ECompression))
+            if (pParams->bIsCompressible                                             && 
+                MEDIA_IS_SKU(&pOsInterface->pOsContext->SkuTable, FtrE2ECompression) &&
+                MEDIA_IS_SKU(&pOsInterface->pOsContext->SkuTable, FtrCompressibleSurfaceDefault))
             {
                 GmmParams.Flags.Gpu.MMC = true;
                 GmmParams.Flags.Info.MediaCompressed = 1;
@@ -5560,11 +5562,19 @@ void Mos_Specific_IncrementGpuStatusTag(
 //!
 uint32_t Mos_Specific_GetGpuStatusSyncTag(
     PMOS_INTERFACE            pOsInterface,
-    MOS_GPU_CONTEXT           GpuContext)
+    MOS_GPU_CONTEXT           gpuContext)
 {
-    MOS_UNUSED(pOsInterface);
-    MOS_UNUSED(GpuContext);
-    return 0;
+    MOS_OS_FUNCTION_ENTER;
+    PMOS_CONTEXT pOsContext = nullptr;
+
+    if(!pOsInterface || !pOsInterface->pOsContext)
+    {
+        MOS_OS_ASSERTMESSAGE("Invalid nullptr");
+        return 0;
+    }
+    pOsContext = pOsInterface->pOsContext;
+
+    return pOsContext->GetGPUTag(pOsInterface, gpuContext);
 }
 
 //!

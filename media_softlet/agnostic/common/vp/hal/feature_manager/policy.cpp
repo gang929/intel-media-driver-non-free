@@ -1850,7 +1850,6 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
         }
         caps.bVebox = true;
         caps.bIECP = engineCaps.VeboxIECPNeeded;
-        caps.bSFC = engineCaps.nonVeboxFeatureExists;
         caps.bDiProcess2ndField = engineCaps.diProcess2ndField;
 
         if (engineCaps.fcOnlyFeatureExists)
@@ -1861,6 +1860,13 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
             // For vebox/sfc+render case, use 2nd workload (render) to do Procamp, 
             // especially for the scenario including Lumakey feature, which will ensure the Procamp can be done after Lumakey.
             caps.bForceProcampToRender = true;
+            // For vebox + render with features, which can be done on both sfc and render, 
+            // and sfc is not must have, sfc should not be selected and those features should be done on render.
+            caps.bSFC                  = engineCaps.nonVeboxFeatureExists && engineCaps.sfcOnlyFeatureExists;
+        }
+        else
+        {
+            caps.bSFC = engineCaps.nonVeboxFeatureExists;
         }
     }
     else
@@ -2052,6 +2058,11 @@ MOS_STATUS Policy::GetInputPipeEngineCaps(SwFilterPipe& featurePipe, VP_EngineEn
                     engineCapsForVeboxSfc.sfcNotSupported = engineCaps.sfcNotSupported;
                     engineCapsForFc.sfcNotSupported       = engineCaps.sfcNotSupported;
                     VP_PUBLIC_NORMALMESSAGE("sfcNotSupported flag is set.");
+                }
+
+                if ((engineCaps.SfcNeeded && !engineCaps.RenderNeeded && !engineCaps.VeboxNeeded))
+                {
+                    engineCapsForVeboxSfc.sfcOnlyFeatureExists = 1;
                 }
 
                 isSingleSubPipe = true;
@@ -2446,14 +2457,8 @@ MOS_STATUS Policy::UpdateFeatureTypeWithEngineSingleLayer(SwFilterSubPipe *featu
 
                 if (!engineCaps->bEnabled && caps.bIECP && filterID == FeatureTypeCsc)
                 {
-                    engineCaps->bEnabled = 1;
+                    engineCaps->bEnabled    = 1;
                     engineCaps->VeboxNeeded = 1;
-                }
-
-                if (!engineCaps->VeboxNeeded)
-                {
-                    // Will handle such case in PolicyVeboxCscHandler::UpdateFeaturePipe.
-                    VP_PUBLIC_NORMALMESSAGE("VeboxNeeded being false. Csc selected just for chroma sitting.");
                 }
 
                 VP_PUBLIC_CHK_STATUS_RETURN(UpdateExeCaps(feature, caps, EngineTypeVebox));
@@ -3100,7 +3105,7 @@ MOS_STATUS Policy::AddFiltersBasedOnCaps(
 
     // Create and Add CSC filter for VEBOX IECP chromasiting config
     // HDR State holder: To keep same as Legacy path -- for VE 3DLut HDR, enable VE chroma up sampling when ONLY VE output.
-    if (!caps.bBeCSC && ((caps.bSFC && (caps.bIECP || caps.bDI)) || (!caps.bSFC && caps.b3DlutOutput)))
+    if (!caps.bBeCSC && ((caps.bSFC && (caps.bIECP || caps.bDI)) || (!caps.bSFC && (caps.bIECP || caps.b3DlutOutput || caps.bBt2020ToRGB))))
     {
         VP_PUBLIC_CHK_STATUS_RETURN(AddNewFilterOnVebox(featurePipe, pipeIndex, caps, executedFilters, executedPipeIndex, FeatureTypeCsc));
     }
@@ -3202,6 +3207,28 @@ MOS_STATUS Policy::GetCscParamsOnCaps(PVP_SURFACE surfInput, PVP_SURFACE surfOut
         cscParams.formatInput        = surfInput->osSurface->Format;
         cscParams.formatOutput       = veboxOutputFormat;
         cscParams.input.chromaSiting = surfInput->ChromaSiting;
+        cscParams.output.chromaSiting = surfOutput->ChromaSiting;
+
+        cscParams.pAlphaParams = nullptr;
+        cscParams.pIEFParams   = nullptr;
+
+        return MOS_STATUS_SUCCESS;
+    }
+    else if (caps.bBt2020ToRGB || caps.bIECP)
+    {
+        // For BeCsc filter added in policy based on caps, it's for chroma-sitting and
+        // SetVeboxIecpStateBecsc to use.
+        // For BT2020 to RGB case, the VeboxInterface_BT2020YUVToRGB will be used for BeCsc setting,
+        // which will overwritten the one by SetVeboxIecpStateBecsc.
+        // So in GetCscParamsOnCaps for BT2020ToRGB case,
+        // we just need to use same format and colorspace for both input and output,
+        // just use the input format to ensure chroma-sitting parameters being correct.
+        cscParams.input.colorSpace   = surfInput->ColorSpace;
+        cscParams.formatInput        = surfInput->osSurface->Format;
+        cscParams.input.chromaSiting = surfInput->ChromaSiting;
+
+        cscParams.output.colorSpace   = surfInput->ColorSpace;
+        cscParams.formatOutput        = surfInput->osSurface->Format;
         cscParams.output.chromaSiting = surfOutput->ChromaSiting;
 
         cscParams.pAlphaParams = nullptr;

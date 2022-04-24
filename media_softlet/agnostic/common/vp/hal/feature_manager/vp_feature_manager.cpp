@@ -198,8 +198,8 @@ MOS_STATUS VpFeatureManagerNext::UnregisterFeatures()
     {
         auto it = m_featureHandler.begin();
         SwFilterFeatureHandler* p = it->second;
-        m_featureHandler.erase(it);
         MOS_Delete(p);
+        m_featureHandler.erase(it);
     }
     m_isFeatureRegistered = false;
     return MOS_STATUS_SUCCESS;
@@ -214,7 +214,10 @@ VPFeatureManager::VPFeatureManager(
     MediaFeatureManager(),
     m_hwInterface(hwInterface)
 {
-
+    if (m_hwInterface && m_hwInterface->m_osInterface)
+    {
+        m_userSettingPtr = m_hwInterface->m_osInterface->pfnGetUserSettingInstance(m_hwInterface->m_osInterface);
+    }
 }
 
 MOS_STATUS VPFeatureManager::CheckFeatures(void * params, bool &bApgFuncSupported)
@@ -257,9 +260,10 @@ MOS_STATUS VPFeatureManager::CheckFeatures(void * params, bool &bApgFuncSupporte
         return MOS_STATUS_SUCCESS;
     }
 
-    if (IsHdrNeeded(pvpParams->pSrc[0], pvpParams->pTarget[0]))
+    bool isHdrNeeded = IsHdrNeeded(pvpParams->pSrc[0], pvpParams->pTarget[0]);
+    if (isHdrNeeded && IsCroppingNeeded(pvpParams->pSrc[0]))
     {
-        VPHAL_RENDER_NORMALMESSAGE("Disable APO Path for HDR cases.");
+        VP_PUBLIC_NORMALMESSAGE("Disable APO Path for HDR Cropping");
         return MOS_STATUS_SUCCESS;
     }
 
@@ -295,6 +299,25 @@ MOS_STATUS VPFeatureManager::CheckFeatures(void * params)
 
     bool bApgFuncSupported = false;
     return CheckFeatures(params, bApgFuncSupported);
+}
+
+bool VPFeatureManager::IsCroppingNeeded(
+    PVPHAL_SURFACE pSrc)
+{
+    VP_FUNC_CALL();
+
+    if (!pSrc)
+    {
+        return false;
+    }
+    bool bCropping = false;
+    // use comp for cropping
+    if (pSrc->rcSrc.left != 0 || pSrc->rcDst.left != 0 ||
+        pSrc->rcSrc.top != 0 || pSrc->rcDst.top != 0)
+    {
+        bCropping = true;
+    }
+    return bCropping;
 }
 
 bool VPFeatureManager::IsHdrNeeded(
@@ -574,15 +597,11 @@ bool VPFeatureManager::IsSfcOutputFeasible(PVP_PIPELINE_PARAMS params)
     if (MEDIA_IS_SKU(m_hwInterface->m_skuTable, FtrSFCPipe))
     {
         // Read user feature key to Disable SFC
-        MOS_USER_FEATURE_VALUE_DATA UserFeatureData;
-        MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
-        MOS_USER_FEATURE_INVALID_KEY_ASSERT(MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __VPHAL_VEBOX_DISABLE_SFC_ID,
-            &UserFeatureData,
-            m_hwInterface->m_osInterface->pOsContext));
-
-        disableSFC = UserFeatureData.bData ? true : false;
+        ReadUserSetting(
+            m_userSettingPtr,
+            disableSFC,
+            __VPHAL_VEBOX_DISABLE_SFC,
+            MediaUserSetting::Group::Sequence);
 
         if (disableSFC)
         {

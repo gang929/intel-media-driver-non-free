@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2021, Intel Corporation
+* Copyright (c) 2019-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -733,7 +733,8 @@ MOS_STATUS VpAllocator::ReAllocateSurface(
         MOS_HW_RESOURCE_DEF     resUsageType,
         MOS_TILE_MODE_GMM       tileModeByForce,
         Mos_MemPool             memType,
-        bool                    isNotLockable)
+        bool                    isNotLockable,
+        void *                  systemMemory)
 {
     VP_FUNC_CALL();
     MOS_STATUS              eStatus = MOS_STATUS_SUCCESS;
@@ -745,28 +746,34 @@ MOS_STATUS VpAllocator::ReAllocateSurface(
     //---------------------------------
     VP_PUBLIC_CHK_NULL_RETURN(m_allocator);
 
-    if (!m_mmc->IsMmcEnabled())
+    if (!m_mmc->IsMmcEnabled() || 
+        !m_mmc->IsCompressibelSurfaceSupported())
     {
         compressible    = 0;
         compressionMode = MOS_MMC_DISABLED;
     }
     //---------------------------------
 
+    auto surfInfoCheck = [=](VP_SURFACE *&surface) -> bool
+                            {
+                                return  (surface->osSurface->Format               == format)          &&
+                                        ((surface->osSurface->bCompressible != 0) == compressible)    &&
+                                        (surface->osSurface->CompressionMode      == compressionMode) &&
+                                        (surface->osSurface->TileType             == defaultTileType) &&
+                                        ((Format_Buffer                           == format           &&
+                                        surface->bufferWidth                      == width            &&
+                                        surface->bufferHeight                     == height)          ||
+                                        (Format_Buffer                            != format           &&
+                                        surface->osSurface->dwWidth               == width            &&
+                                        surface->osSurface->dwHeight              == height)           );
+                            };
+
     // compressible should be compared with bCompressible since it is inited by bCompressible in previous call
     // TileType of surface should be compared since we need to reallocate surface if TileType changes
     if (surface                                                       &&
         surface->osSurface                                            &&
         !Mos_ResourceIsNull(&surface->osSurface->OsResource)          &&
-        (surface->osSurface->Format               == format)          &&
-        ((surface->osSurface->bCompressible != 0) == compressible)    &&
-        (surface->osSurface->CompressionMode      == compressionMode) &&
-        (surface->osSurface->TileType             == defaultTileType) &&
-        ((Format_Buffer                           == format           &&
-          surface->bufferWidth                    == width            &&
-          surface->bufferHeight                   == height)          ||
-         (Format_Buffer                           != format           &&
-          surface->osSurface->dwWidth             == width            &&
-          surface->osSurface->dwHeight            == height))         )
+        surfInfoCheck(surface)                                        )
     {
         return eStatus;
     }
@@ -799,9 +806,20 @@ MOS_STATUS VpAllocator::ReAllocateSurface(
     allocParams.m_tileModeByForce = tileModeByForce;
     allocParams.dwMemType       = memType;
     allocParams.Flags.bNotLockable = isNotLockable;
+    allocParams.pSystemMemory      = systemMemory;
 
     surface = AllocateVpSurface(allocParams, zeroOnAllocate);
     VP_PUBLIC_CHK_NULL_RETURN(surface);
+    VP_PUBLIC_CHK_NULL_RETURN(surface->osSurface);
+    if (Mos_ResourceIsNull(&surface->osSurface->OsResource))
+    {
+        VP_PUBLIC_CHK_NULL_RETURN(nullptr);
+    }
+
+    if (!surfInfoCheck(surface))
+    {
+        VP_PUBLIC_ASSERTMESSAGE("Incorrect surface parameters.");
+    }
 
     MT_LOG7(MT_VP_HAL_REALLOC_SURF, MT_NORMAL, MT_VP_HAL_INTER_SURF_TYPE, surfaceName ? *((int64_t*)surfaceName) : 0,
         MT_SURF_WIDTH, width, MT_SURF_HEIGHT, height, MT_SURF_MOS_FORMAT, format, MT_SURF_TILE_MODE, surface->osSurface->TileModeGMM,
@@ -1222,6 +1240,8 @@ uint64_t VP_SURFACE::GetAllocationHandle(MOS_INTERFACE* osIntf)
     {
         return 0;
     }
+#elif (_VULKAN)
+    return 0;
 #else
     return osSurface ? osSurface->OsResource.AllocationInfo.m_AllocationHandle : 0;
 #endif

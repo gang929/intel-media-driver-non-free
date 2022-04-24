@@ -35,12 +35,17 @@
 #include "vp_pipeline_adapter_base.h"
 #include "vp_feature_report.h"
 #include "vphal_common_hdr.h"
+#include "vp_base.h"
 
 //*-----------------------------------------------------------------------------
 //| DEFINITIONS
 //*-----------------------------------------------------------------------------
 // Incremental size for allocating/reallocating resource
 #define VPHAL_BUFFER_SIZE_INCREMENT     128
+ 
+// VPP internal resource NotLockable flag macro
+#define VPP_INTER_RESOURCE_NOTLOCKABLE  true
+#define VPP_INTER_RESOURCE_LOCKABLE     false
 
 // YUV input ranges
 #define YUV_RANGE_16_235                1
@@ -332,7 +337,7 @@ using VphalFeatureReport = VpFeatureReport;
 //! Class VphalState
 //! \brief VPHAL class definition
 //!
-class VphalState
+class VphalState : public VpBase
 {
 public:
     // Perf Optimize for ClearVideoView DDI
@@ -431,15 +436,15 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    MOS_STATUS GetStatusReportEntryLength(
+    virtual MOS_STATUS GetStatusReportEntryLength(
         uint32_t                         *puiLength);
 
-    PLATFORM &GetPlatform()
+    virtual PLATFORM &GetPlatform()
     {
         return m_platform;
     }
 
-    MEDIA_FEATURE_TABLE* GetSkuTable()
+    virtual MEDIA_FEATURE_TABLE* GetSkuTable()
     {
         return m_skuTable;
     }
@@ -449,12 +454,12 @@ public:
         return m_waTable;
     }
 
-    PMOS_INTERFACE GetOsInterface()
+    virtual PMOS_INTERFACE GetOsInterface()
     {
         return m_osInterface;
     }
 
-    PRENDERHAL_INTERFACE GetRenderHal()
+    virtual PRENDERHAL_INTERFACE GetRenderHal()
     {
         return m_renderHal;
     }
@@ -533,8 +538,6 @@ public:
     virtual MOS_STATUS GetVpMhwInterface(
         VP_MHWINTERFACE &vpMhwinterface);
 
-    HANDLE                      m_gpuAppTaskEvent;
-
 protected:
     // Internals
     PLATFORM                    m_platform;
@@ -557,6 +560,7 @@ protected:
     // StatusTable indicating if command is done by gpu or not
     VPHAL_STATUS_TABLE          m_statusTable = {};
 
+    MediaUserSettingSharedPtr   m_userSettingPtr = nullptr;  //!< usersettingInstance
 
     // Same MOS_GPU_CONTEXT may be created in MediaContext with a different handle,
     // which will cause the gpuContext created in VphalState missed to be destroyed during
@@ -597,6 +601,16 @@ private:
     //!
     MOS_STATUS DestroyGpuContextWithInvalidHandle();
 
+    //!
+    //! \brief    Check whether GPU context is reused or not
+    //! \details  Check whether GPU context is reused or not
+    //! \param    MOS_GPU_CONTEXT mosGpuConext
+    //!           [in] Mos GPU context
+    //! \return   bool
+    //!           Return true if is reused, otherwise false
+    //!
+    bool IsGpuContextReused(
+        MOS_GPU_CONTEXT mosGpuContext);
 };
 
 #endif  // __VPHAL_H__

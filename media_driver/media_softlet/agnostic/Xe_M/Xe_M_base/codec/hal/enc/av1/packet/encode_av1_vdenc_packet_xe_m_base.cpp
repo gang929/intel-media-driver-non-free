@@ -354,6 +354,9 @@ namespace encode
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnResourceWait(m_osInterface, &syncParams));
         m_osInterface->pfnSetResourceSyncTag(m_osInterface, &syncParams);
 
+        // Set flag to boost GPU frequency for low latency in remote gaming scenario
+        cmdBuffer.Attributes.bFrequencyBoost = (m_av1SeqParams->ScenarioInfo == ESCENARIO_REMOTEGAMING);
+
         ENCODE_CHK_STATUS_RETURN(RegisterPostCdef());
         ENCODE_CHK_STATUS_RETURN(PatchPictureLevelCommands(packetPhase, cmdBuffer));
 
@@ -1148,6 +1151,31 @@ namespace encode
                 commandsSize,
                 patchListSize,
                 &stateCmdSizeParams));
+
+        return MOS_STATUS_SUCCESS;
+    }
+
+    MOS_STATUS Av1VdencPktXe_M_Base::CalculateAvpCommandsSize()
+    {
+        uint32_t avpPictureStatesSize    = 0;
+        uint32_t avpPicturePatchListSize = 0;
+        uint32_t avpTileStatesSize       = 0;
+        uint32_t avpTilePatchListSize    = 0;
+
+        // Picture Level Commands
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(CalculateAvpPictureStateCommandSize(&avpPictureStatesSize, &avpPicturePatchListSize));
+
+        m_pictureStatesSize += avpPictureStatesSize;
+        m_picturePatchListSize += avpPicturePatchListSize;
+
+        // Tile Level Commands
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hwInterface->GetAvpPrimitiveCommandSize(
+            CODECHAL_ENCODE_MODE_AV1,
+            &avpTileStatesSize,
+            &avpTilePatchListSize));
+
+        m_tileStatesSize += avpTileStatesSize;
+        m_tilePatchListSize += avpTilePatchListSize;
 
         return MOS_STATUS_SUCCESS;
     }

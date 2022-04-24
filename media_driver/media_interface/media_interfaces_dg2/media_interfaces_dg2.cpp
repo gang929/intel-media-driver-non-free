@@ -107,18 +107,19 @@ MOS_STATUS VphalInterfacesXe_Hpm::Initialize(
             return *eStatus;
         }
 
-        m_vphalState = MOS_New(
+        m_vpBase = MOS_New(
             VpPipelineAdapterXe_Hpm,
             osInterface,
             osDriverContext,
             *vpPlatformInterface,
             *eStatus);
-        if (nullptr == m_vphalState)
+        if (nullptr == m_vpBase)
         {
             MOS_Delete(vpPlatformInterface);
             *eStatus = MOS_STATUS_NULL_POINTER;
             return *eStatus;
         }
+        m_isNextEnabled = true;
     }
     else
     {
@@ -452,7 +453,7 @@ MOS_STATUS MhwInterfacesDg2_Next::Initialize(
     {
         m_hcpInterface =
             MOS_New(Hcp, osInterface, m_miInterface, m_cpInterface, params.m_isDecode);
-        m_hcpItf = std::make_shared<mhw::vdbox::hcp::xe_xpm_plus_base::xe_hpm::Impl>(osInterface);
+        m_hcpItf = std::make_shared<mhw::vdbox::hcp::xe_xpm_base::xe_hpm::Impl>(osInterface);
     }
     if (params.Flags.m_vdboxAll)
     {

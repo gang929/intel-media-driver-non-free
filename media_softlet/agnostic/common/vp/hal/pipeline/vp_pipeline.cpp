@@ -198,6 +198,8 @@ MOS_STATUS VpPipeline::Init(void *mhwInterface)
 
     m_vpMhwInterface = *(PVP_MHWINTERFACE)mhwInterface;
 
+    VP_PUBLIC_CHK_STATUS_RETURN(m_vpMhwInterface.m_vpPlatformInterface->ConfigVirtualEngine());
+
     VP_PUBLIC_CHK_STATUS_RETURN(MediaPipeline::InitPlatform());
     VP_PUBLIC_CHK_STATUS_RETURN(MediaPipeline::CreateMediaCopy());
 

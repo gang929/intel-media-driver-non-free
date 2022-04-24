@@ -685,7 +685,7 @@ typedef struct _MOS_INTERFACE
 
     // Saved OS context
     PMOS_CONTEXT                    pOsContext;
-    MOS_GPU_CONTEXT                 CurrentGpuContextOrdinal;
+    MOS_GPU_CONTEXT                 CurrentGpuContextOrdinal = MOS_GPU_CONTEXT_MAX;
     //!< An internal handle that indexes into the list of GPU Context object
     uint32_t                        CurrentGpuContextHandle;
     //!< A handle to the graphics context device that can be used to calls back
@@ -1324,13 +1324,6 @@ typedef struct _MOS_INTERFACE
 
     int32_t (*pfnIsGPUHung)(
         PMOS_INTERFACE              pOsInterface);
-
-    MOS_STATUS (*pfnDumpTraceGpuData)(
-        PMOS_INTERFACE              pOsInterface,
-        const char *                pcName,
-        uint32_t                    flags,
-        PMOS_RESOURCE               pOsResource,
-        uint32_t                    dwSize);
 
     //!
     //! \brief    Get Aux Table base address

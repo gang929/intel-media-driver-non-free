@@ -171,6 +171,10 @@ VphalSfcState::VphalSfcState(
     m_renderHal       = renderHal;
     m_sfcInterface    = sfcInterface;
     m_osInterface     = osInterface;
+    if (m_osInterface)
+    {
+        m_userSettingPtr = m_osInterface->pfnGetUserSettingInstance(m_osInterface);
+    }
 
     // Allocate AVS state
     VpHal_RndrCommonInitAVSParams(
@@ -869,7 +873,7 @@ MOS_STATUS VphalSfcState::AllocateResources()
         MOS_HW_RESOURCE_DEF_MAX,
         MOS_TILE_UNSET_GMM,
         memTypeSurfVideoMem,
-        MOS_MEMPOOL_DEVICEMEMORY == memTypeSurfVideoMem));
+        VPP_INTER_RESOURCE_NOTLOCKABLE));
 
     // Allocate IEF Line Buffer surface----------------------------------------------
     dwWidth  = 1;
@@ -891,7 +895,7 @@ MOS_STATUS VphalSfcState::AllocateResources()
         MOS_HW_RESOURCE_DEF_MAX,
         MOS_TILE_UNSET_GMM,
         memTypeSurfVideoMem,
-        MOS_MEMPOOL_DEVICEMEMORY == memTypeSurfVideoMem));
+        VPP_INTER_RESOURCE_NOTLOCKABLE));
 
     // Allocate SFD Line Buffer surface----------------------------------------------
     if (NEED_SFD_LINE_BUFFER(pSfcStateParams->dwScaledRegionHeight))
@@ -913,7 +917,7 @@ MOS_STATUS VphalSfcState::AllocateResources()
             MOS_HW_RESOURCE_DEF_MAX,
             MOS_TILE_UNSET_GMM,
             memTypeSurfVideoMem,
-            MOS_MEMPOOL_DEVICEMEMORY == memTypeSurfVideoMem));
+            VPP_INTER_RESOURCE_NOTLOCKABLE));
     }
 
 finish:

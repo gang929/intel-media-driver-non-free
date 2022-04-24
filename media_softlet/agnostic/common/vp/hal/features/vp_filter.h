@@ -102,6 +102,16 @@ public:
         m_packet = packet;
     }
 
+    //!
+    //! \brief  Get current associated media Packet
+    //! \return MediaTask*
+    //!         return the media task pointer
+    //!
+    PVP_MHWINTERFACE GetMhwInterface()
+    {
+        return m_pvpMhwInterface;
+    }
+
 protected:
 
     PVP_MHWINTERFACE      m_pvpMhwInterface = nullptr;   // vp HW interfaces
@@ -131,6 +141,11 @@ struct _SFC_SCALING_PARAMS
     uint32_t                        dwScaledRegionWidth;                        // Scaled region width
     uint32_t                        dwScaledRegionVerticalOffset;               // Scaled region vertical offset
     uint32_t                        dwScaledRegionHorizontalOffset;             // Scaled region horizontal offset
+    uint32_t                        dwTargetRectangleStartHorizontalOffset;     // Target rectangle start horizontal offset
+    uint32_t                        dwTargetRectangleEndHorizontalOffset;       // Target rectangle end horizontal offset
+    uint32_t                        dwTargetRectangleStartVerticalOffset;       // Target rectangle start vertical offset
+    uint32_t                        dwTargetRectangleEndVerticalOffset;         // Target rectangle end vertical offset
+    bool                            bRectangleEnabled;                          // Target rectangle enabled
     float                           fAVSXScalingRatio;                          // X Scaling Ratio
     float                           fAVSYScalingRatio;                          // Y Scaling Ratio
 
@@ -150,6 +165,7 @@ struct _SFC_CSC_PARAMS
     bool                            bIEFEnable;                                  // IEF Enabled
     bool                            bChromaUpSamplingEnable;                     // ChromaUpSampling
     bool                            b8tapChromafiltering;                        // Enables 8 tap filtering for Chroma Channels
+    bool                            isDitheringNeeded;                           // 0: dithering is not needed; 1: dithering is needed
     VPHAL_CSPACE                    inputColorSpace;                             // Input Color Space
     MOS_FORMAT                      inputFormat;                                 // SFC Input Format
     MOS_FORMAT                      outputFormat;                                // SFC Output Format

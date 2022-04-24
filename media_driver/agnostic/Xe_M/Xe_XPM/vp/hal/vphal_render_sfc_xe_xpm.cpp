@@ -42,16 +42,15 @@ VphalSfcStateXe_Xpm::VphalSfcStateXe_Xpm(
     VphalSfcState(osInterface, renderHal, sfcInterface),
     VphalSfcStateG12(osInterface, renderHal, sfcInterface)
 {
-    MOS_USER_FEATURE_VALUE_DATA UserFeatureData;
     // get dithering flag.
-    MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_SFC_OUTPUT_DTR_DISABLE_ID,
-        &UserFeatureData,
-        m_osInterface->pOsContext);
-    m_disableSfcDithering = UserFeatureData.bData ? true : false;
-
+    ReadUserSetting(
+        m_userSettingPtr,
+        m_disableSfcDithering,
+        __MEDIA_USER_FEATURE_VALUE_SFC_OUTPUT_DTR_DISABLE,
+        MediaUserSetting::Group::Sequence,
+        0,
+        true);
+    VP_PUBLIC_NORMALMESSAGE("m_disableSfcDithering = %d", m_disableSfcDithering);
 
 #if LINUX
     char *Sfc2PassPerfMode = getenv("SET_SFC2PASS_PERFMODE");
@@ -117,7 +116,19 @@ MOS_STATUS VphalSfcStateXe_Xpm::SetSfcStateParams(
     eStatus = VphalSfcStateG12::SetSfcStateParams(pRenderData, pSrcSurface, pOutSurface);
 
     // Dithering parameter
-    sfcStateParams->ditheringEn = m_disableSfcDithering ? 0 : 1;
+    bool isDitheringNeeded = IsDitheringNeeded(pSrcSurface->Format, pOutSurface->Format);
+    if (!m_disableSfcDithering && isDitheringNeeded)
+    {
+        sfcStateParams->ditheringEn = true;
+    }
+    else
+    {
+        sfcStateParams->ditheringEn = false;
+    }
+    VPHAL_RENDER_NORMALMESSAGE("cscParams.isDitheringNeeded = %d, m_disableSfcDithering = %d, ditheringEn = %d",
+        isDitheringNeeded,
+        m_disableSfcDithering,
+        sfcStateParams->ditheringEn);
 
     if (pSrcSurface->InterlacedScalingType != ISCALING_NONE)
     {
@@ -514,6 +525,40 @@ finish:
     return OutputPipe;
 }
 
+bool VphalSfcStateXe_Xpm::IsDitheringNeeded(MOS_FORMAT formatInput, MOS_FORMAT formatOutput)
+{
+    uint32_t inputBitDepth = VpUtils::GetSurfaceBitDepth(formatInput);
+    if (inputBitDepth == 0)
+    {
+        VPHAL_RENDER_ASSERTMESSAGE("Unknown Input format %d for bit depth, return false", formatInput);
+        return false;
+    }
+    uint32_t outputBitDepth = VpUtils::GetSurfaceBitDepth(formatOutput);
+    if (outputBitDepth == 0)
+    {
+        VPHAL_RENDER_ASSERTMESSAGE("Unknown Output format %d for bit depth, return false", formatOutput);
+        return false;
+    }
+    if (inputBitDepth > outputBitDepth)
+    {
+        VPHAL_RENDER_NORMALMESSAGE("inputFormat = %d, inputBitDepth = %d, outputFormat = %d, outputBitDepth = %d, return true",
+            formatInput,
+            inputBitDepth,
+            formatOutput,
+            outputBitDepth);
+        return true;
+    }
+    else
+    {
+        VPHAL_RENDER_NORMALMESSAGE("inputFormat = %d, inputBitDepth = %d, outputFormat = %d, outputBitDepth = %d, return false",
+            formatInput,
+            inputBitDepth,
+            formatOutput,
+            outputBitDepth);
+        return false;
+    }
+}
+
 //!
 //! \brief    Set Sfc index used by HW
 //! \details  VPHAL set Sfc index used by HW
@@ -613,7 +658,7 @@ MOS_STATUS VphalSfcStateXe_Xpm::AllocateResources()
             MOS_HW_RESOURCE_DEF_MAX,
             MOS_TILE_UNSET_GMM,
             memTypeSurfVideoMem,
-            MOS_MEMPOOL_DEVICEMEMORY == memTypeSurfVideoMem));
+            VPP_INTER_RESOURCE_NOTLOCKABLE));
 
         // Allocate IEF Line Buffer surface for split
         dwWidth  = m_IEFLineBufferSurface.dwWidth;
@@ -635,7 +680,7 @@ MOS_STATUS VphalSfcStateXe_Xpm::AllocateResources()
             MOS_HW_RESOURCE_DEF_MAX,
             MOS_TILE_UNSET_GMM,
             memTypeSurfVideoMem,
-            MOS_MEMPOOL_DEVICEMEMORY == memTypeSurfVideoMem));
+            VPP_INTER_RESOURCE_NOTLOCKABLE));
     }
 
 finish:

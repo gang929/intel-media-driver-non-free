@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2021, Intel Corporation
+* Copyright (c) 2019-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -74,6 +74,11 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
 
     if (GetOsContextValid() == false)
     {
+        m_skuTable.reset();
+        m_waTable.reset();
+        MosUtilities::MosZeroMemory(&m_platformInfo, sizeof(m_platformInfo));
+        MosUtilities::MosZeroMemory(&m_gtSystemInfo, sizeof(m_gtSystemInfo));
+
         if( nullptr == osDriverContext  ||
             0 >= osDriverContext->fd )
         {
@@ -89,28 +94,12 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
             return MOS_STATUS_INVALID_PARAMETER;
         }
         mos_bufmgr_gem_enable_reuse(m_bufmgr);
-        
-        MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
-        MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_ENABLE_SOFTPIN_ID,
-            &UserFeatureData,
-            osDriverContext);
-        if (UserFeatureData.i32Data)
-        {
-            mos_bufmgr_gem_enable_softpin(m_bufmgr);
-        }
 
         osDriverContext->bufmgr                 = m_bufmgr;
 
         //Latency reducation:replace HWGetDeviceID to get device using ioctl from drm.
         iDeviceId   = mos_bufmgr_gem_get_devid(m_bufmgr);
         m_isAtomSOC = IS_ATOMSOC(iDeviceId);
-
-        m_skuTable.reset();
-        m_waTable.reset();
-        MosUtilities::MosZeroMemory(&m_platformInfo, sizeof(m_platformInfo));
-        MosUtilities::MosZeroMemory(&m_gtSystemInfo, sizeof(m_gtSystemInfo));
 
         eStatus = NullHW::Init(osDriverContext);
         if (!NullHW::IsEnabled())
@@ -130,6 +119,23 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
         {
             MOS_OS_ASSERTMESSAGE("Fatal error - unsuccesfull Sku/Wa/GtSystemInfo initialization");
             return eStatus;
+        }
+
+        MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
+        MOS_UserFeature_ReadValue_ID(
+            nullptr,
+            __MEDIA_USER_FEATURE_VALUE_ENABLE_SOFTPIN_ID,
+            &UserFeatureData,
+            osDriverContext);
+        if (UserFeatureData.i32Data)
+        {
+            bool softpin_va1Malign = false;
+            if (MEDIA_IS_SKU(&m_skuTable, Ftr1MGranularAuxTable))
+            {
+                softpin_va1Malign = true;
+            }
+
+            mos_bufmgr_gem_enable_softpin(m_bufmgr, softpin_va1Malign);
         }
 
         if (MEDIA_IS_SKU(&m_skuTable, FtrEnableMediaKernels) == 0)
@@ -249,7 +255,7 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
         }
         else
         {
-            osDriverContext->ppMediaCopyState = m_mosMediaCopy->GetMediaCopyState();
+            osDriverContext->ppMediaCopyState = (void **)m_mosMediaCopy->GetMediaCopyState();
             if ((nullptr == osDriverContext->ppMediaCopyState) || (nullptr == *osDriverContext->ppMediaCopyState))
             {
                 MOS_OS_NORMALMESSAGE("Media Copy state creation failed");

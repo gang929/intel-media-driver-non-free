@@ -222,6 +222,7 @@ MOS_STATUS Mos_OsGetBitsPerPixel(
     case Format_A8P8:
     case Format_A8L8:
     case Format_R16U:
+    case Format_V8U8:
         *piBpp = 16;
         break;
 
@@ -971,7 +972,7 @@ MEMORY_OBJECT_CONTROL_STATE Mos_CachePolicyGetMemoryObject(
 #ifndef SKIP_VE_DEFINE
 MOS_STATUS Mos_CheckVirtualEngineSupported(
     PMOS_INTERFACE      osInterface,
-    bool                isDecode,
+    bool                isNotEncode,
     bool                veDefaultEnable)
 {
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
@@ -983,7 +984,7 @@ MOS_STATUS Mos_CheckVirtualEngineSupported(
 
     osInterface->pfnGetPlatform(osInterface, &platform);
 
-    if (isDecode)
+    if (isNotEncode)
     {
         //UMD Decode Virtual Engine Override
         // 0: disable. can set to 1 only when KMD VE is enabled.
