@@ -107,10 +107,10 @@ Media driver supports two build types as below
 | JPEG | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D</u><br><i>D<i> |
 | VP8 | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>&nbsp;</u><br><i>&nbsp;<i> | <u>&nbsp;</u><br><i>&nbsp;<i> | <u>D*</u><br><i>D*<i> | <u>D</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> | <u>D</u><br><i>D<i> | <u>D</u><br><i>D<i> | <u>D</u><br><i>D<i> |
 | HEVC 8bit | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>D/E</u><br><i>D/E<i> | <u>D/E/Es</u><br><i>D/E<i> | <u>D/E/Es</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E/Es</u><br><i>D/E<i> | <u>D/Es</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> |  |
-| HEVC 8bit 422 | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>D</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> | <u>D</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> |  |  |  |  |
+| HEVC 8bit 422 | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>D/E</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> | <u>D</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> |  |  |  |  |
 | HEVC 8bit 444 | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> |  |  |  |  |
 | HEVC 10bit | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>D/E</u><br><i>D/E<i> | <u>D/E/Es</u><br><i>D/E<i> | <u>D/E/Es</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E/Es</u><br><i>D/E<i> | <u>D/Es</u><br><i>D<i> | <u>D</u><br><i>D<i> |  |  |
-| HEVC 10bit 422 | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>D</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> | <u>D</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> |  |  |  |  |
+| HEVC 10bit 422 | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>D/E</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> | <u>D</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> |  |  |  |  |
 | HEVC 10bit 444 | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> | <u>D/E</u><br><i>D/E<i> |  |  |  |  |
 | HEVC 12bit | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>D</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> | <u>D/Es</u><br><i>D<i> |  |  |  |  |  |  |
 | HEVC 12bit 422 | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>D</u><br><i>D<i> | <u>D</u><br><i>D<i> | <u>D</u><br><i>D<i> |  |  |  |  |  |  |
@@ -156,7 +156,7 @@ For more decoding and encoding features information, please refer to
 | TCC | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | &nbsp;<br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> |
 | Color fill | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>Yes</u><br><i>Yes</i> | <u>Yes</u><br><i>Yes</i> | <u>Yes</u><br><i>Yes</i> | <u>Yes</u><br><i>Yes</i> | <u>Yes</u><br><i>Yes</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> |
 | Chroma Siting | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>Yes</u><br><i>Yes</i> | <u>Yes</u><br><i>Yes</i> | <u>Yes</u><br><i>Yes</i> | <u>Yes</u><br><i>Yes</i> | <u>Yes</u><br><i>Yes</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | &nbsp;<br><i>&nbsp;</i> |
-| HDR10 TM | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>&nbsp;</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | &nbsp;<br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | &nbsp;<br><i>&nbsp;</i> | &nbsp;<br><i>&nbsp;</i> | &nbsp;<br><i>&nbsp;</i> | &nbsp;<br><i>&nbsp;</i> |
+| HDR10 TM | <u>Full-Feature</u><br><i>Free-Kernel</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | &nbsp;<br><i>&nbsp;</i> | <u>Yes</u><br><i>&nbsp;</i> | &nbsp;<br><i>&nbsp;</i> | &nbsp;<br><i>&nbsp;</i> | &nbsp;<br><i>&nbsp;</i> | &nbsp;<br><i>&nbsp;</i> |
 
 - \* EHL/JSL only support BOB DI
 - CSC: Color Space Conversion

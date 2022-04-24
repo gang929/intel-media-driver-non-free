@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, Intel Corporation
+* Copyright (c) 2019-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -97,6 +97,7 @@ namespace encode
         virtual MOS_STATUS AllocateResources() override;
 
         virtual MOS_STATUS CalculateAvpPictureStateCommandSize(uint32_t * commandsSize, uint32_t * patchListSize) override;
+        virtual MOS_STATUS CalculateAvpCommandsSize() override;
 
         MOS_STATUS ReadAvpStatus(MHW_VDBOX_NODE_IND vdboxIndex, MediaStatusReport *statusReport, MOS_COMMAND_BUFFER &cmdBuffer) override;
         MOS_STATUS RegisterPostCdef();
@@ -126,6 +127,7 @@ namespace encode
     private:
         uint16_t m_tileColStartSb[64];  //!< tile column start SB
         uint16_t m_tileRowStartSb[64];  //!< tile row start SB
+    MEDIA_CLASS_DEFINE_END(Av1VdencPktXe_M_Base)
     };
 
 }

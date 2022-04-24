@@ -613,23 +613,16 @@ MOS_STATUS MhwVdboxAvpInterfaceG12::AddAvpDecodeSurfaceStateCmd(
 
     cmd->DW3.DefaultAlphaValue = 0;
 
-    // Add compression setting for each ref
-    cmd->DW4.MemoryCompressionEnableForAv1IntraFrame   = (MmcEnable(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.MemoryCompressionEnableForAv1LastFrame    = (MmcEnable(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.MemoryCompressionEnableForAv1Last2Frame   = (MmcEnable(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.MemoryCompressionEnableForAv1Last3Frame   = (MmcEnable(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.MemoryCompressionEnableForAv1GoldenFrame  = (MmcEnable(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.MemoryCompressionEnableForAv1BwdrefFrame  = (MmcEnable(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.MemoryCompressionEnableForAv1Altref2Frame = (MmcEnable(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.MemoryCompressionEnableForAv1AltrefFrame  = (MmcEnable(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.CompressionTypeForIntraFrame              = (MmcIsRc(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.CompressionTypeForLastFrame               = (MmcIsRc(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.CompressionTypeForLast2Frame              = (MmcIsRc(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.CompressionTypeForLast3Frame              = (MmcIsRc(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.CompressionTypeForGoldenFrame             = (MmcIsRc(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.CompressionTypeForBwdrefFrame             = (MmcIsRc(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.CompressionTypeForAltref2Frame            = (MmcIsRc(params->mmcState)) ? 0xff : 0;
-    cmd->DW4.CompressionTypeForAltrefFrame             = (MmcIsRc(params->mmcState)) ? 0xff : 0;
+    uint32_t DW4 = 0;
+    if(MmcEnable(params->mmcState))
+    {
+        DW4 |= 0xff;
+    }
+    if(MmcIsRc(params->mmcState))
+    {
+        DW4 |= 0xff00;
+    }
+    cmd->DW4.Value = DW4;
 
     return MOS_STATUS_SUCCESS;
 }
@@ -1680,6 +1673,8 @@ MOS_STATUS MhwVdboxAvpInterfaceG12::AddAvpDecodePicStateCmd(
         PCODEC_PICTURE  refFrameList = &(picParams->m_refFrameMap[0]);
         uint32_t        refFrameWidth[7], refFrameHeight[7];
         uint8_t         refPicIndex;
+        uint32_t        av1ScalingFactorMax = (1 << 15);  //!< AV1 Scaling factor range [1/16, 2]
+        uint32_t        av1ScalingFactorMin = (1 << 10);  //!< AV1 Scaling factor range [1/16, 2]
 
         union
         {
@@ -1717,6 +1712,10 @@ MOS_STATUS MhwVdboxAvpInterfaceG12::AddAvpDecodePicStateCmd(
 
             refFrameRes[i].m_widthInPixelMinus1     = refFrameWidth[i] - 1;
             refFrameRes[i].m_heightInPixelMinus1    = refFrameHeight[i] - 1;
+            MHW_CHK_COND(refScaleFactor[i].m_horizontalScaleFactor > av1ScalingFactorMax, "Invalid parameter");
+            MHW_CHK_COND(refScaleFactor[i].m_verticalScaleFactor   > av1ScalingFactorMax, "Invalid parameter");
+            MHW_CHK_COND(refScaleFactor[i].m_horizontalScaleFactor < av1ScalingFactorMin, "Invalid parameter");
+            MHW_CHK_COND(refScaleFactor[i].m_verticalScaleFactor   < av1ScalingFactorMin, "Invalid parameter");
         }
 
         cmd.DW31.Value = CAT2SHORTS(picParams->m_frameWidthMinus1, picParams->m_frameHeightMinus1);

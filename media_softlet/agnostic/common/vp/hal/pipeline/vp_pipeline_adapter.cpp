@@ -92,6 +92,10 @@ MOS_STATUS VpPipelineAdapter::Init(
     {
         VP_PUBLIC_CHK_STATUS_RETURN(vpMhwinterface.m_veboxInterface->CreateHeap());
     }
+    RENDERHAL_SETTINGS RenderHalSettings;
+    RenderHalSettings.iMediaStates = pVpHalSettings->mediaStates;
+    VP_PUBLIC_CHK_STATUS_RETURN(vpMhwinterface.m_renderHal->pfnInitialize(vpMhwinterface.m_renderHal, &RenderHalSettings));
+    vpMhwinterface.m_renderHal->sseuTable = VpHalDefaultSSEUTable;
 
     return m_vpPipeline->Init(&vpMhwinterface);
 }
@@ -145,11 +149,42 @@ MOS_STATUS VpPipelineAdapter::Render(PCVPHAL_RENDER_PARAMS pcRenderParams)
     VP_PUBLIC_CHK_NULL_RETURN(pcRenderParams);
     VP_PUBLIC_CHK_NULL_RETURN(m_vpPipeline);
 
-    params = *(PVP_PIPELINE_PARAMS)pcRenderParams;
-    // default render of video
-    params.bIsDefaultStream = true;
+    if (1 == pcRenderParams->uSrcCount && pcRenderParams->uDstCount > 1)
+    {
+        for (uint32_t dstIndex = 0; dstIndex < pcRenderParams->uDstCount; ++dstIndex)
+        {
+            params           = *(PVP_PIPELINE_PARAMS)pcRenderParams;
+            params.uDstCount = 1;
+            // update the first target point
+            params.pTarget[0]            = pcRenderParams->pTarget[dstIndex];
+            params.pTarget[0]->b16UsrPtr = pcRenderParams->pTarget[dstIndex]->b16UsrPtr;
+            if (pcRenderParams->uDstCount > 1)
+            {
+                // for multi output, support different scaling ratio but doesn't support cropping.
+                params.pSrc[0]->rcDst.top    = params.pTarget[0]->rcSrc.top;
+                params.pSrc[0]->rcDst.left   = params.pTarget[0]->rcSrc.left;
+                params.pSrc[0]->rcDst.bottom = params.pTarget[0]->rcSrc.bottom;
+                params.pSrc[0]->rcDst.right  = params.pTarget[0]->rcSrc.right;
+            }
+            // default render of video
+            params.bIsDefaultStream = true;
 
-    eStatus = Execute(&params);
+            eStatus = Execute(&params);
+            if (MOS_FAILED(eStatus))
+            {
+                VP_PUBLIC_ASSERTMESSAGE("APG Execution failed with 0x%x for dstIndex %d \n", eStatus, dstIndex);
+                break;
+            }
+        }
+    }
+    else
+    {
+        params = *(PVP_PIPELINE_PARAMS)pcRenderParams;
+        // default render of video
+        params.bIsDefaultStream = true;
+
+        eStatus = Execute(&params);
+    }
 
     if (eStatus == MOS_STATUS_SUCCESS)
     {
@@ -159,6 +194,7 @@ MOS_STATUS VpPipelineAdapter::Render(PCVPHAL_RENDER_PARAMS pcRenderParams)
     }
     else
     {
+        VP_PUBLIC_ASSERTMESSAGE("APG Execution failed with 0x%x, return \n", eStatus);
         m_bApgEnabled = false;
         return eStatus;
     }

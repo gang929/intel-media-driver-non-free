@@ -31,8 +31,9 @@
 #include "mhw_vebox_g12_X.h"
 #include "vp_vebox_cmd_packet_base.h"
 #include "vp_vebox_common.h"
-#include "vp_render_sfc_base.h"
+#include "vp_render_sfc_base_legacy.h"
 #include "vp_filter.h"
+#include "mhw_mi_itf.h"
 
 #define VP_MAX_NUM_FFDI_SURFACES     4                                       //!< 2 for ADI plus additional 2 for parallel execution on HSW+
 #define VP_NUM_FFDN_SURFACES         2                                       //!< Number of FFDN surfaces
@@ -712,8 +713,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetupVeboxState(
-        PMHW_VEBOX_STATE_CMD_PARAMS pVeboxStateCmdParams);
+    virtual MOS_STATUS SetupVeboxState(mhw::vebox::VEBOX_STATE_PAR& veboxStateCmdParams);
 
     //!
     //! \brief    Setup Vebox_DI_IECP Command params
@@ -727,7 +727,7 @@ public:
     //!
     virtual MOS_STATUS SetupDiIecpState(
         bool                        bDiScdEnable,
-        PMHW_VEBOX_DI_IECP_CMD_PARAMS   pVeboxDiIecpCmdParams);
+        mhw::vebox::VEB_DI_IECP_PAR &veboxDiIecpCmdParam);
 
     //!
     //! \brief    Check Vebox using kernel resource or not
@@ -772,8 +772,8 @@ public:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     virtual MOS_STATUS IsCmdParamsValid(
-        const MHW_VEBOX_STATE_CMD_PARAMS            &VeboxStateCmdParams,
-        const MHW_VEBOX_DI_IECP_CMD_PARAMS          &VeboxDiIecpCmdParams,
+        const mhw::vebox::VEBOX_STATE_PAR           &veboxStateCmdParams,
+        const mhw::vebox::VEB_DI_IECP_PAR           &veboxDiIecpCmdParams,
         const VPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS  &VeboxSurfaceStateCmdParams);
 
     virtual MOS_STATUS QueryStatLayout(
@@ -865,10 +865,8 @@ protected:
     //!
     virtual MOS_STATUS RenderVeboxCmd(
         MOS_COMMAND_BUFFER                      *CmdBuffer,
-        MHW_VEBOX_DI_IECP_CMD_PARAMS            &VeboxDiIecpCmdParams,
         VPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS    &VeboxSurfaceStateCmdParams,
         MHW_VEBOX_SURFACE_STATE_CMD_PARAMS      &MhwVeboxSurfaceStateCmdParams,
-        MHW_VEBOX_STATE_CMD_PARAMS              &VeboxStateCmdParams,
         MHW_MI_FLUSH_DW_PARAMS                  &FlushDwParams,
         PRENDERHAL_GENERIC_PROLOG_PARAMS        pGenericPrologParams);
 
@@ -1004,10 +1002,10 @@ protected:
     virtual MHW_CSPACE VpHalCspace2MhwCspace(VPHAL_CSPACE cspace);
 
     virtual MOS_STATUS SetupHDRLuts(
-        PMHW_VEBOX_STATE_CMD_PARAMS pVeboxStateCmdParams);
+        mhw::vebox::VEBOX_STATE_PAR &veboxStateCmdParams);
     virtual MOS_STATUS Init3DLutTable(PVP_SURFACE surf3DLut);
     MOS_STATUS SetupVebox3DLutForHDR(
-        PMHW_VEBOX_STATE_CMD_PARAMS pVeboxStateCmdParams);
+        mhw::vebox::VEBOX_STATE_PAR &veboxStateCmdParams);
 
 private:
 
@@ -1036,36 +1034,27 @@ private:
     MOS_STATUS DumpVeboxStateHeap();
 
     MOS_STATUS SetVeboxSurfaceControlBits(
-        PMHW_VEBOX_INTERFACE                pVeboxInterface,
         MHW_VEBOX_SURFACE_CNTL_PARAMS       *pVeboxSurfCntlParams,
         uint32_t                            *pSurfCtrlBits);
 
-    MOS_STATUS setVeboxProCmd(
+    MOS_STATUS SetVeboxProCmd(
         PMHW_MI_INTERFACE     pMhwMiInterface,
-        PMHW_VEBOX_INTERFACE  pVeboxInterface,
         MOS_COMMAND_BUFFER*   CmdBuffer);
 
     MOS_STATUS SetVeboxIndex(
-        PMHW_VEBOX_INTERFACE                pVeboxInterface,
         uint32_t                            dwVeboxIndex,
         uint32_t                            dwVeboxCount,
         uint32_t                            dwUsingSFC);
 
     MOS_STATUS SetVeboxState(
-        PMHW_VEBOX_INTERFACE        pVeboxInterface,
-        PMOS_COMMAND_BUFFER         pCmdBufferInUse,
-        PMHW_VEBOX_STATE_CMD_PARAMS pVeboxStateCmdParams,
-        bool                        bCmBuffer);
+        PMOS_COMMAND_BUFFER                 pCmdBufferInUse);
 
     MOS_STATUS SetVeboxSurfaces(
-        PMHW_VEBOX_INTERFACE                pVeboxInterface,
         PMOS_COMMAND_BUFFER                 pCmdBufferInUse,
         PMHW_VEBOX_SURFACE_STATE_CMD_PARAMS pMhwVeboxSurfaceStateCmdParams);
 
     MOS_STATUS SetVeboxDiIecp(
-        PMHW_VEBOX_INTERFACE               pVeboxInterface,
-        PMOS_COMMAND_BUFFER                pCmdBufferInUse,
-        PMHW_VEBOX_DI_IECP_CMD_PARAMS      pVeboxDiIecpCmdParams);
+        PMOS_COMMAND_BUFFER                pCmdBufferInUse);
 
 protected:
 
@@ -1106,6 +1095,8 @@ protected:
     bool                        m_useKernelResource        = false;               //!< Use Vebox Kernel Resource 
     uint32_t                    m_inputDepth               = 0;
     std::shared_ptr<mhw::vebox::Itf> m_veboxItf            = nullptr;
+    MediaFeatureManager        *m_featureManager           = nullptr;
+    std::shared_ptr<mhw::mi::Itf> m_miItf                  = nullptr;
 
 MEDIA_CLASS_DEFINE_END(VpVeboxCmdPacket)
 };

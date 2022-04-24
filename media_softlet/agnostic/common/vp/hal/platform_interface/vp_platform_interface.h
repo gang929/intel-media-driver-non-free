@@ -122,10 +122,7 @@ class VpPlatformInterface
 {
 public:
 
-    VpPlatformInterface(PMOS_INTERFACE pOsInterface)
-    {
-        m_pOsInterface = pOsInterface;
-    }
+    VpPlatformInterface(PMOS_INTERFACE pOsInterface);
 
     virtual ~VpPlatformInterface();
 
@@ -206,6 +203,8 @@ public:
     //only for get kernel binary in legacy path not being used in APO path.
     virtual MOS_STATUS GetKernelBinary(const void *&kernelBin, uint32_t &kernelSize, const void *&patchKernelBin, uint32_t &patchKernelSize);
 
+    virtual MOS_STATUS ConfigVirtualEngine() = 0;
+
 protected:
     PMOS_INTERFACE m_pOsInterface = nullptr;
     KERNEL_POOL    m_kernelPool;
@@ -213,8 +212,9 @@ protected:
     bool m_sfc2PassScalingEnabled = false;
     bool m_sfc2PassScalingPerfMode = false;
     bool m_vpMmcDisabled = false;
+    MediaUserSettingSharedPtr m_userSettingPtr  = nullptr;  //!< usersettingInstance
 
-MEDIA_CLASS_DEFINE_END(VpPlatformInterface)
+    MEDIA_CLASS_DEFINE_END(VpPlatformInterface)
 };
 
 }

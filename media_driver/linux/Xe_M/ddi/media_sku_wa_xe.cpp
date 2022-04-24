@@ -389,7 +389,6 @@ static bool InitTglMediaWaExt(struct GfxDeviceInfo *devInfo,
     /*software wa to fix some corner hang cases for Scalability*/
     MEDIA_WR_WA(waTable, Wa_2209620131, 1);
 
-    MEDIA_WR_WA(waTable, WaDisableVeboxFor8K, 1);
     
     if (drvInfo->devId == 0x9A49 ||
         drvInfo->devId == 0x9AC9 ||
@@ -731,6 +730,10 @@ static bool InitPvcMediaWa(struct GfxDeviceInfo *devInfo,
 
     // I as P WA
     MEDIA_WR_WA(waTable, Wa_22011549751, 1);
+
+    // Remove the WA of DummyReference
+    MEDIA_WR_WA(waTable, WaDummyReference, 0);
+
     return true;
 }
 
@@ -889,6 +892,9 @@ static bool InitDg2MediaWa(struct GfxDeviceInfo *devInfo,
     }
 
     MEDIA_WR_WA(waTable, Wa_15010089951, 1);
+
+    // Remove the WA of DummyReference
+    MEDIA_WR_WA(waTable, WaDummyReference, 0);
 
     return true;
 }

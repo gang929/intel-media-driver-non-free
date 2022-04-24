@@ -53,6 +53,8 @@ MOS_STATUS VphalState::Allocate(
     RENDERHAL_SETTINGS          RenderHalSettings;
     MOS_GPU_NODE                VeboxGpuNode;
     MOS_GPU_CONTEXT             VeboxGpuContext;
+    bool                        checkGpuCtxOverwriten = false;
+    bool                        addGpuCtxToCheckList  = false;
     MOS_STATUS                  eStatus;
 
     VPHAL_PUBLIC_CHK_NULL(pVpHalSettings);
@@ -90,6 +92,14 @@ MOS_STATUS VphalState::Allocate(
         }
     }
 
+    if (IsApoEnabled() &&
+        m_osInterface->apoMosEnabled &&
+        m_osInterface->bSetHandleInvalid)
+    {
+        checkGpuCtxOverwriten = true;
+    }
+    addGpuCtxToCheckList = checkGpuCtxOverwriten && !IsGpuContextReused(m_renderGpuContext);
+
     // Create Render GPU Context
     {
         MOS_GPUCTX_CREATOPTIONS createOption;
@@ -109,9 +119,8 @@ MOS_STATUS VphalState::Allocate(
     // In legacy path, stream 0 gpu contexts could be reused, and will keep these stream 0 gpu contexts alive
     // But its mapping relation could be overwritten in APO path
     // Now, don't reuse these stream 0 gpu contexts overwritten by MediaContext in APO path 
-    if (IsApoEnabled() && 
-        m_osInterface->apoMosEnabled && 
-        m_osInterface->bSetHandleInvalid)
+    // Can not add reused GPU context
+    if (addGpuCtxToCheckList)
     {
         AddGpuContextToCheckList(m_renderGpuContext);
     }
@@ -145,6 +154,8 @@ MOS_STATUS VphalState::Allocate(
         VeboxGpuNode    = (MOS_GPU_NODE)(GpuNodeLimit.dwGpuNodeToUse);
         VeboxGpuContext = (VeboxGpuNode == MOS_GPU_NODE_VE) ? MOS_GPU_CONTEXT_VEBOX : MOS_GPU_CONTEXT_VEBOX2;
 
+        addGpuCtxToCheckList = checkGpuCtxOverwriten && !IsGpuContextReused(VeboxGpuContext);
+      
         // Create VEBOX/VEBOX2 Context
         VPHAL_PUBLIC_CHK_STATUS(m_veboxInterface->CreateGpuContext(
             m_osInterface,
@@ -152,9 +163,7 @@ MOS_STATUS VphalState::Allocate(
             VeboxGpuNode));
 
         // Add gpu context entry, including stream 0 gpu contexts
-        if (IsApoEnabled() && 
-            m_osInterface->apoMosEnabled && 
-            m_osInterface->bSetHandleInvalid)
+        if (addGpuCtxToCheckList)
         {
             AddGpuContextToCheckList(VeboxGpuContext);
         }
@@ -669,7 +678,6 @@ VphalState::VphalState(
         PMOS_INTERFACE          pOsInterface,
         PMOS_CONTEXT            pOsDriverContext,
         MOS_STATUS              *peStatus) :
-        m_gpuAppTaskEvent(nullptr),
         m_platform(),
         m_skuTable(nullptr),
         m_waTable(nullptr),
@@ -692,6 +700,9 @@ VphalState::VphalState(
     m_osInterface->pfnGetPlatform(m_osInterface, &m_platform);
     m_skuTable = m_osInterface->pfnGetSkuTable(m_osInterface);
     m_waTable  = m_osInterface->pfnGetWaTable (m_osInterface);
+
+    m_userSettingPtr = m_osInterface->pfnGetUserSettingInstance(m_osInterface);
+    VpUtils::DeclareUserSettings(m_userSettingPtr);
 
     m_renderHal = (PRENDERHAL_INTERFACE)MOS_AllocAndZeroMemory(sizeof(*m_renderHal));
     VPHAL_PUBLIC_CHK_NULL(m_renderHal);
@@ -858,11 +869,7 @@ MOS_STATUS VphalState::GetStatusReport(
             continue;
         }
 
-#if (LINUX || ANDROID)
-        dwGpuTag    = pOsContext->GetGPUTag(m_osInterface, pStatusEntry->GpuContextOrdinal);
-#else
-        dwGpuTag    = m_osInterface->pfnGetGpuStatusSyncTag(m_osInterface, pStatusEntry->GpuContextOrdinal);
-#endif
+        dwGpuTag           = m_osInterface->pfnGetGpuStatusSyncTag(m_osInterface, pStatusEntry->GpuContextOrdinal);
         bDoneByGpu         = (dwGpuTag >= pStatusEntry->dwTag);
         bFailedOnSubmitCmd = (pStatusEntry->dwStatus == VPREP_ERROR);
 
@@ -1044,4 +1051,37 @@ MOS_STATUS VphalState::DestroyGpuContextWithInvalidHandle()
 #endif
 
     return MOS_STATUS_SUCCESS;
+}
+
+//!
+//! \brief    Check whether GPU context is reused or not
+//! \details  Check whether GPU context is reused or not
+//! \param    MOS_GPU_CONTEXT mosGpuConext
+//!           [in] Mos GPU context
+//! \return   bool
+//!           Return true if is reused, otherwise false
+//!
+bool VphalState::IsGpuContextReused(
+    MOS_GPU_CONTEXT mosGpuContext)
+{
+    bool reuseContextFlag = false;
+#if !EMUL
+    MOS_GPU_CONTEXT originalGpuCtxOrdinal = m_osInterface->CurrentGpuContextOrdinal;
+    if (MOS_SUCCEEDED(m_osInterface->pfnSetGpuContext(m_osInterface, mosGpuContext)))
+    {
+        VPHAL_PUBLIC_NORMALMESSAGE("Reuse mos GPU context %d. GPU handle %d", (uint32_t)mosGpuContext, m_osInterface->CurrentGpuContextHandle);
+        reuseContextFlag = true;
+    }
+
+    if (originalGpuCtxOrdinal < MOS_GPU_CONTEXT_MAX &&
+        m_osInterface->CurrentGpuContextOrdinal != originalGpuCtxOrdinal)
+    {
+        //Recover original settings
+        if (m_osInterface->pfnSetGpuContext(m_osInterface, originalGpuCtxOrdinal) != MOS_STATUS_SUCCESS)
+        {
+            VPHAL_PUBLIC_NORMALMESSAGE("Have not recovered original GPU Context settings in m_osInterface");
+        }
+    }
+#endif
+    return reuseContextFlag;
 }
