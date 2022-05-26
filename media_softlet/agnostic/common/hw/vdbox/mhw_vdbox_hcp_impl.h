@@ -584,6 +584,18 @@ public:
         return m_pakHWTileSizeRecordSize;
     }
 
+    uint32_t GetHcpVp9PicStateCommandSize()
+    {
+        // Just return success here, please implement logic in platform sepecific impl class.
+        return MOS_STATUS_SUCCESS;
+    }
+
+    uint32_t GetHcpVp9SegmentStateCommandSize()
+    {
+        // Just return success here, please implement logic in platform sepecific impl class.
+        return MOS_STATUS_SUCCESS;
+    }
+
     MOS_STATUS GetHcpStateCommandSize(
         uint32_t                        mode,
         uint32_t                       *commandsSize,
@@ -2192,8 +2204,6 @@ protected:
         MEDIA_WA_TABLE *m_waTable = this->m_osItf->pfnGetWaTable(this->m_osItf);
         MHW_MI_CHK_STATUS(this->m_osItf->pfnGetResourceInfo(this->m_osItf, &params.psPreDeblockSurface->OsResource, &details));
         cmd.DecodedPictureMemoryAddressAttributes.DW0.TileMode = GetHwTileType(details.TileType, details.TileModeGMM, details.bGMMTileEnabled);
-        if ((params.Mode == CODECHAL_ENCODE_MODE_HEVC || params.Mode == CODECHAL_ENCODE_MODE_VP9) && MEDIA_IS_WA(m_waTable, WaForceTile64ReconSurfaceToTile4) && details.Format != Format_NV12 && details.TileModeGMM == MOS_TILE_64_GMM)
-            cmd.DecodedPictureMemoryAddressAttributes.DW0.TileMode = MOS_TILE_4_GMM;
 
         for (uint32_t i = 0; i < CODECHAL_MAX_CUR_NUM_REF_FRAME_HEVC; i++)
         {

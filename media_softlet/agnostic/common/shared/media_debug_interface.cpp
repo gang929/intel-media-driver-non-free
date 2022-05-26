@@ -1460,7 +1460,7 @@ MOS_STATUS MediaDebugInterface::DumpMosSpecificResourceInfoToOfs(
 
     PMOS_RESOURCE ptr = pOsResource;
     ofs << "MOS_RESOURCE:" << std::endl;
-#if !defined(LINUX)
+#if !defined(LINUX) || defined(WDDM_LINUX)
     FIELD_TO_OFS(RunTimeHandle, );
 #else
     FIELD_TO_OFS(iWidth, );
@@ -1694,7 +1694,7 @@ MOS_STATUS MediaDebugInterface::ReAllocateSurface(
         (pSurface->dwWidth == pSrcSurf->dwWidth) &&
         (pSurface->dwHeight == pSrcSurf->dwHeight) &&
         (pSurface->Format == pSrcSurf->Format) &&
-        (pSurface->bCompressible == pSrcSurf->bCompressible) &&
+        ((pSurface->bCompressible == pSrcSurf->bCompressible) || useLinearResource) && // omit this check as linear surface is uncompressible
         (pSurface->CompressionMode == pSrcSurf->CompressionMode) &&
         ((pSurface->TileType == pSrcSurf->TileType) ||
          (pSurface->TileType == MOS_TILE_LINEAR && useLinearResource))) // when useLinearResource no reallocation needed

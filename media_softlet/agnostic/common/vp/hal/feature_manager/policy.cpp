@@ -135,6 +135,10 @@ MOS_STATUS Policy::RegisterFeatures()
     VP_PUBLIC_CHK_NULL_RETURN(p);
     m_VeboxSfcFeatureHandlers.insert(std::make_pair(FeatureTypeDnOnVebox, p));
 
+    p = MOS_New(PolicyRenderDnHVSCalHandler, m_hwCaps);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeDnHVSCalOnRender, p));
+
     p = MOS_New(PolicyVeboxCscHandler, m_hwCaps);
     VP_PUBLIC_CHK_NULL_RETURN(p);
     m_VeboxSfcFeatureHandlers.insert(std::make_pair(FeatureTypeCscOnVebox, p));
@@ -1319,27 +1323,40 @@ MOS_STATUS Policy::GetDenoiseExecutionCaps(SwFilter* feature)
 
     if (m_hwCaps.m_veboxHwEntry[inputformat].denoiseSupported)
     {
-        widthAlignUint = MOS_ALIGN_CEIL(m_hwCaps.m_veboxHwEntry[inputformat].horizontalAlignUnit, 2);
-
-        if (inputformat == Format_NV12 ||
-            inputformat == Format_P010 ||
-            inputformat == Format_P016)
+        if (denoiseParams.denoiseParams.bEnableHVSDenoise)
         {
-            heightAlignUnit = MOS_ALIGN_CEIL(m_hwCaps.m_veboxHwEntry[inputformat].verticalAlignUnit, 4);
+            denoiseParams.stage      = DN_STAGE_HVS_KERNEL;
+            denoiseEngine.bEnabled   = 1;
+            denoiseEngine.isolated   = 1;
+            denoiseEngine.RenderNeeded = 1;
+            denoise->SetRenderTargetType(RenderTargetType::RenderTargetTypeParameter);
+            VP_PUBLIC_NORMALMESSAGE("DN_STAGE_HVS_KERNEL");
         }
         else
         {
-            heightAlignUnit = MOS_ALIGN_CEIL(m_hwCaps.m_veboxHwEntry[inputformat].verticalAlignUnit, 2);
-        }
+            denoiseParams.stage = DN_STAGE_DEFAULT;
+            widthAlignUint = MOS_ALIGN_CEIL(m_hwCaps.m_veboxHwEntry[inputformat].horizontalAlignUnit, 2);
 
-        if (MOS_IS_ALIGNED(denoiseParams.heightInput, heightAlignUnit))
-        {
-            denoiseEngine.bEnabled    = 1;
-            denoiseEngine.VeboxNeeded = 1;
-        }
-        else
-        {
-            VP_PUBLIC_NORMALMESSAGE("Denoise Feature is disabled since heightInput (%d) not being %d aligned.", denoiseParams.heightInput, heightAlignUnit);
+            if (inputformat == Format_NV12 ||
+                inputformat == Format_P010 ||
+                inputformat == Format_P016)
+            {
+                heightAlignUnit = MOS_ALIGN_CEIL(m_hwCaps.m_veboxHwEntry[inputformat].verticalAlignUnit, 4);
+            }
+            else
+            {
+                heightAlignUnit = MOS_ALIGN_CEIL(m_hwCaps.m_veboxHwEntry[inputformat].verticalAlignUnit, 2);
+            }
+
+            if (MOS_IS_ALIGNED(denoiseParams.heightInput, heightAlignUnit))
+            {
+                denoiseEngine.bEnabled    = 1;
+                denoiseEngine.VeboxNeeded = 1;
+            }
+            else
+            {
+                VP_PUBLIC_NORMALMESSAGE("Denoise Feature is disabled since heightInput (%d) not being %d aligned.", denoiseParams.heightInput, heightAlignUnit);
+            }
         }
     }
 
@@ -2177,6 +2194,7 @@ MOS_STATUS Policy::BypassVeboxFeatures(SwFilterSubPipe *featureSubPipe, VP_Engin
     }
 
     engineCaps.nonVeboxFeatureExists = true;
+    VP_PUBLIC_NORMALMESSAGE("Set nonVeboxFeatureExists to 1 for BypassVeboxFeatures.");
 
     return MOS_STATUS_SUCCESS;
 }
@@ -2272,7 +2290,45 @@ MOS_STATUS Policy::FilterFeatureCombination(SwFilterPipe &swFilterPipe, bool isI
                 feature->GetFilterEngineCaps().VeboxNeeded = 0;
                 feature->GetFilterEngineCaps().SfcNeeded = 0;
                 feature->GetFilterEngineCaps().forceEnableForSfc = 0;
-                VP_PUBLIC_NORMALMESSAGE("Disable Feature 0x%x since vebox cannot be used.", filterID);
+                VP_PUBLIC_NORMALMESSAGE("Disable feature 0x%x since vebox cannot be used.", filterID);
+                PrintFeatureExecutionCaps("Disable feature since vebox cannot be used", feature->GetFilterEngineCaps());
+            }
+        }
+    }
+
+    // For DI on render with scaling case, force to do scaling on render.
+    if (engineCapsCombined.SfcNeeded)
+    {
+        auto di      = pipe->GetSwFilter(FeatureType(FeatureTypeDi));
+
+        if (di && di->GetFilterEngineCaps().bEnabled &&
+            !di->GetFilterEngineCaps().VeboxNeeded && di->GetFilterEngineCaps().RenderNeeded)
+        {
+            for (auto filterID : m_featurePool)
+            {
+                auto feature = pipe->GetSwFilter(FeatureType(filterID));
+                if (nullptr == feature || !feature->GetFilterEngineCaps().bEnabled)
+                {
+                    continue;
+                }
+                if (FeatureType(filterID) == FeatureTypeScaling &&
+                    feature->GetFilterEngineCaps().SfcNeeded &&
+                    !feature->GetFilterEngineCaps().RenderNeeded &&
+                    !m_hwCaps.m_rules.isAvsSamplerSupported)
+                {
+                    feature->GetFilterEngineCaps().SfcNeeded    = 0;
+                    feature->GetFilterEngineCaps().RenderNeeded = 1;
+                    feature->GetFilterEngineCaps().fcSupported  = 1;
+                    PrintFeatureExecutionCaps("Update scaling caps for render DI", feature->GetFilterEngineCaps());
+                }
+                else if (!feature->GetFilterEngineCaps().VeboxNeeded &&
+                         feature->GetFilterEngineCaps().SfcNeeded &&
+                         feature->GetFilterEngineCaps().RenderNeeded)
+                {
+                    feature->GetFilterEngineCaps().SfcNeeded = 0;
+                    VP_PUBLIC_NORMALMESSAGE("Force feature 0x%x to render for render DI", filterID);
+                    PrintFeatureExecutionCaps("Force feature to render for render DI", feature->GetFilterEngineCaps());
+                }
             }
         }
     }
@@ -2288,6 +2344,8 @@ MOS_STATUS Policy::FilterFeatureCombination(SwFilterPipe &swFilterPipe, bool isI
                 if (feature && feature->GetFilterEngineCaps().bEnabled)
                 {
                     feature->GetFilterEngineCaps().bEnabled = false;
+                    VP_PUBLIC_NORMALMESSAGE("Disable feature 0x%x for HDR.", filterID);
+                    PrintFeatureExecutionCaps("Disable feature for HDR", feature->GetFilterEngineCaps());
                 }
             }
             if (filterID == FeatureTypeCsc)
@@ -2297,6 +2355,7 @@ MOS_STATUS Policy::FilterFeatureCombination(SwFilterPipe &swFilterPipe, bool isI
                 {
                     auto &params      = feature->GetSwFilterParams();
                     params.pIEFParams = nullptr;
+                    PrintFeatureExecutionCaps("Disable IEF for HDR", feature->GetFilterEngineCaps());
                 }
             }
         }
@@ -3022,6 +3081,17 @@ MOS_STATUS Policy::UpdateExeCaps(SwFilter* feature, VP_EXECUTE_CAPS& caps, Engin
             else
             {
                 VP_PUBLIC_ASSERTMESSAGE("HDR Kernel has not been enabled in APO path");
+            }
+            break;
+        case FeatureTypeDn:
+            if (feature->GetFilterEngineCaps().isolated)
+            {
+                caps.bHVSCalc = 1;
+                feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(DnHVSCal, Render)));
+            }
+            else
+            {
+                VP_PUBLIC_ASSERTMESSAGE("DN HVS Kernel has not been enabled in APO path");
             }
             break;
         default:

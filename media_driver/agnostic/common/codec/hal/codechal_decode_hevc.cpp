@@ -937,6 +937,12 @@ MOS_STATUS CodechalDecodeHevc::InitializeBitstreamCat ()
     // Need to make sure that pDecoderInterface->CurrPic won't update until all bitstream is copied.
     m_crrPic.PicFlags = PICTURE_INVALID;
 
+    if (m_numSlices == 0)
+    {
+        CODECHAL_DECODE_ASSERTMESSAGE("Invalid Slice Number = 0");
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
+
     // Estimate Bytes in Bitstream per frame
     PCODEC_HEVC_SLICE_PARAMS hevcLastSliceParamsInFrame = m_hevcSliceParams + (m_numSlices - 1);
     m_estiBytesInBitstream                              = MOS_ALIGN_CEIL(hevcLastSliceParamsInFrame->slice_data_offset + hevcLastSliceParamsInFrame->slice_data_size, 64);
@@ -1292,6 +1298,15 @@ MOS_STATUS CodechalDecodeHevc::SetFrameStates ()
     m_crrPic = m_hevcPicParams->CurrPic;
     m_secondField =
         CodecHal_PictureIsBottomField(m_hevcPicParams->CurrPic);
+
+    m_pCodechalOcaDumper->SetHevcDecodeParam(
+        m_hevcPicParams,
+        nullptr,
+        nullptr,
+        m_hevcSliceParams,
+        nullptr,
+        m_numSlices,
+        m_shortFormatInUse);
 
     CODECHAL_DEBUG_TOOL(
         m_debugInterface->m_currPic     = m_crrPic;
@@ -2482,6 +2497,7 @@ MOS_STATUS CodechalDecodeHevc::DecodePrimitiveLevel()
         }
     );
 
+    HalOcaInterface::DumpCodechalParam(cmdBuffer, *m_osInterface->pOsContext, m_pCodechalOcaDumper, CODECHAL_HEVC);
     HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
 
     CODECHAL_DECODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(

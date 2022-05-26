@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2021, Intel Corporation
+# Copyright (c) 2017-2022, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -18,6 +18,9 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
+media_include_subdirectory(osservice)
+
+if(NOT CMAKE_WDDM_LINUX)
 media_include_subdirectory(i915)
 
 if(ENABLE_PRODUCTION_KMD)
@@ -27,14 +30,13 @@ endif()
 # This is to include drm_device.h in cmrtlib, no cpp file needed.
 include_directories(${BS_DIR_MEDIA}/cmrtlib/linux/hardware)
 
+
 set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/hwinfo_linux.c
     ${CMAKE_CURRENT_LIST_DIR}/mos_context_specific.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_graphicsresource_specific.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_specific.c
-    ${CMAKE_CURRENT_LIST_DIR}/mos_util_debug_specific.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_util_devult_specific.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/mos_utilities_specific.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_commandbuffer_specific.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_gpucontext_specific.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_auxtable_mgr.cpp
@@ -87,3 +89,4 @@ set(HEADERS_
 
 
 media_add_curr_to_include_path()
+endif() #NOT CMAKE_WDDM_LINUX

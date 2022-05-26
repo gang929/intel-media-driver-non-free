@@ -122,6 +122,33 @@ public:
         return tileMode;
     }
 
+    MOS_STATUS UpdateVeboxSync()
+    {
+        PMHW_VEBOX_HEAP          pVeboxHeap;
+        MOS_STATUS               eStatus = MOS_STATUS_SUCCESS;
+        PMOS_INTERFACE           pOsInterface;
+
+        MHW_FUNCTION_ENTER;
+
+        MHW_CHK_NULL_RETURN(this->m_osItf);
+        MHW_CHK_NULL(m_veboxHeap);
+
+        pVeboxHeap      = m_veboxHeap;
+        pOsInterface    = this->m_osItf;
+
+        // If KMD frame tracking is on, the dwSyncTag has been set to gpu status tag
+        // in Mhw_VeboxInterface_AssignVeboxState(). dwNextTag is not used anymore.
+        if (!pOsInterface->bEnableKmdMediaFrameTracking)
+        {
+            pVeboxHeap->pStates[pVeboxHeap->uiCurState].dwSyncTag =
+                pVeboxHeap->dwNextTag++;
+        }
+        pVeboxHeap->pStates[pVeboxHeap->uiCurState].bBusy = true;
+
+    finish:
+        return eStatus;
+    }
+
     MOS_STATUS GetVeboxHeapInfo(
         const MHW_VEBOX_HEAP** ppVeboxHeap)
     {
@@ -521,11 +548,11 @@ public:
             auto& par = miItf->MHW_GETPAR_F(MI_LOAD_REGISTER_IMM)();
             par = {};
             par.dwData     = (auxTableBaseAddr & 0xffffffff);
-            par.dwRegister = MhwMiInterfaceG12::m_mmioVe0AuxTableBaseLow;
+            par.dwRegister        = miItf->GetMmioInterfaces(mhw::mi::MHW_MMIO_VE0_AUX_TABLE_BASE_LOW);
             miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(CmdBuffer);
 
             par.dwData     = ((auxTableBaseAddr >> 32) & 0xffffffff);
-            par.dwRegister = MhwMiInterfaceG12::m_mmioVe0AuxTableBaseHigh;
+            par.dwRegister = miItf->GetMmioInterfaces(mhw::mi::MHW_MMIO_VE0_AUX_TABLE_BASE_HIGH);
             miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(CmdBuffer);
         }
 
@@ -893,6 +920,11 @@ public:
     bool IsVeboxScalabilitywith4K()
     {
         return m_veboxScalabilitywith4K;
+    }
+
+    MOS_STATUS Add1DLutState(void *&surface, PMHW_1DLUT_PARAMS p1DLutParams)
+    {
+        return MOS_STATUS_SUCCESS;
     }
 
     _MHW_SETCMD_OVERRIDE_DECL(VEBOX_SURFACE_STATE)

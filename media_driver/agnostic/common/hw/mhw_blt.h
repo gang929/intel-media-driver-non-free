@@ -57,6 +57,11 @@ typedef enum BLT_TILE_TYPE_ENUM
    BLT_TILED_64
 }BLT_TILE_TYPE;
 
+typedef enum _MHW_BLT_ENGINE_ADDRESS_SHIFT
+{
+    MHW_BLT_ENGINE_STATE_BASE_ADDRESS_SHIFT = 6
+} MHW_BLT_ENGINE_ADDRESS_SHIFT;
+
 class mhw_blt_state
 {
 public:
@@ -538,8 +543,12 @@ public:
     //!
     virtual uint32_t GetFastTilingMode(
         BLT_TILE_TYPE              TileType);
+
+    virtual std::shared_ptr<void> GetNewBltInterface() { return nullptr; }
+
 public:
     PMOS_INTERFACE m_osInterface = nullptr;
+    std::shared_ptr<void>  m_bltItfNew    = nullptr;
 };
 
 typedef class MhwBltInterface *PMHW_BLT_INTERFACE;

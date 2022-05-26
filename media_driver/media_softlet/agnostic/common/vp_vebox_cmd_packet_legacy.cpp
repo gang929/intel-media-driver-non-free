@@ -155,6 +155,21 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetupVebox3DLutForHDR(
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS VpVeboxCmdPacketLegacy::UpdateDnHVSParameters(
+    uint32_t *pStatSlice0GNEPtr,
+    uint32_t *pStatSlice1GNEPtr)
+{
+    VP_FUNC_CALL();
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacketLegacy::SetupDNTableForHVS(
+    PMHW_VEBOX_STATE_CMD_PARAMS veboxStateCmdParams)
+{
+    VP_FUNC_CALL();
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS VpVeboxCmdPacketLegacy::SetupHDRLuts(
     PMHW_VEBOX_STATE_CMD_PARAMS veboxStateCmdParams)
 {
@@ -237,6 +252,7 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetupVeboxState(
     }
 
     VP_RENDER_CHK_STATUS_RETURN(SetupHDRLuts(pVeboxStateCmdParams));
+    VP_RENDER_CHK_STATUS_RETURN(SetupDNTableForHVS(pVeboxStateCmdParams));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -749,6 +765,7 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetDnParams(
     pRenderData->GetDNDIParams().bProgressiveDN  = pDnParams->bDnEnabled && pDnParams->bProgressive;
     pRenderData->GetHVSParams().QP               = pDnParams->HVSDenoise.QP;
     pRenderData->GetHVSParams().Mode             = pDnParams->HVSDenoise.Mode;
+    pRenderData->GetHVSParams().Strength         = pDnParams->HVSDenoise.Strength;
 
     GetDnLumaParams(pDnParams->bDnEnabled, pDnParams->bAutoDetect, pDnParams->fDenoiseFactor, m_PacketCaps.bRefValid, &lumaParams);
     GetDnChromaParams(pDnParams->bChromaDenoise, pDnParams->bAutoDetect, pDnParams->fDenoiseFactor, &chromaParams);
@@ -1939,11 +1956,11 @@ MOS_STATUS VpVeboxCmdPacketLegacy::RenderVeboxCmd(
     if (bMultipipe)
     {
         scalability->SetCurrentPipeIndex(inputPipe);
-        WriteUserFeature(__MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE_ID, true, m_hwInterface->m_osInterface->pOsContext);
+        ReportUserSetting(m_userSettingPtr, __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE, true, MediaUserSetting::Group::Sequence);
     }
     else
     {
-        WriteUserFeature(__MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE_ID, false, m_hwInterface->m_osInterface->pOsContext);
+        ReportUserSetting(m_userSettingPtr, __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE, false, MediaUserSetting::Group::Sequence);
     }
 
     MT_LOG2(MT_VP_HAL_RENDER_VE, MT_NORMAL, MT_VP_MHW_VE_SCALABILITY_EN, bMultipipe, MT_VP_MHW_VE_SCALABILITY_USE_SFC, m_IsSfcUsed);
@@ -2233,7 +2250,75 @@ MOS_STATUS VpVeboxCmdPacketLegacy::PrepareState()
     return eStatus;
 }
 
-MOS_STATUS VpVeboxCmdPacketLegacy::PacketInit(
+MOS_STATUS VpVeboxCmdPacketLegacy::AdjustBlockStatistics()
+{
+    VP_FUNC_CALL();
+
+    if (m_surfSetting.dwVeboxPerBlockStatisticsWidth == 0 || m_surfSetting.dwVeboxPerBlockStatisticsHeight == 0)
+    {
+        VP_RENDER_NORMALMESSAGE("Not need update statistic block height and width");
+        return MOS_STATUS_SUCCESS;
+    }
+
+    uint32_t dwWidth  = 0;
+    uint32_t dwHeight = 0;
+    MHW_VEBOX_SURFACE_PARAMS mhwVeboxSurfaceParam = {};
+    PMHW_VEBOX_INTERFACE     pVeboxInterface      = m_hwInterface->m_veboxInterface;
+
+    VP_RENDER_CHK_NULL_RETURN(pVeboxInterface);
+    VP_RENDER_CHK_NULL_RETURN(m_veboxPacketSurface.pCurrInput);
+
+    // Align dwEndingX with surface state
+    VP_RENDER_CHK_STATUS_RETURN(InitVeboxSurfaceParams(
+        m_veboxPacketSurface.pCurrInput, &mhwVeboxSurfaceParam));
+
+    // Update Statistics Block Height and Weight in surfsetting
+
+    if (m_veboxItf)
+    {
+        VP_RENDER_CHK_STATUS_RETURN(m_veboxItf->VeboxAdjustBoundary(
+            &mhwVeboxSurfaceParam,
+            &dwWidth,
+            &dwHeight,
+            m_PacketCaps.bDI));
+    }
+    else
+    {
+        VP_RENDER_CHK_STATUS_RETURN(pVeboxInterface->VeboxAdjustBoundary(
+            &mhwVeboxSurfaceParam,
+            &dwWidth,
+            &dwHeight,
+            m_PacketCaps.bDI));
+    }
+
+    dwWidth  = MOS_ALIGN_CEIL(dwWidth, 64);
+    dwHeight = MOS_ROUNDUP_DIVIDE(dwHeight, 4);
+
+    if (dwWidth > m_surfSetting.dwVeboxPerBlockStatisticsWidth || dwHeight > m_surfSetting.dwVeboxPerBlockStatisticsHeight)
+    {
+        VP_RENDER_ASSERTMESSAGE("Adjust boundary width %d, height %d is larger than origin boundary width %d, height %d, not need update params",
+            dwWidth,
+            dwHeight,
+            m_surfSetting.dwVeboxPerBlockStatisticsWidth,
+            m_surfSetting.dwVeboxPerBlockStatisticsHeight);
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
+    else
+    {
+        VP_RENDER_NORMALMESSAGE("Adjust boundary width %d, height %d. Origin boundary width %d, height %d",
+            dwWidth,
+            dwHeight,
+            m_surfSetting.dwVeboxPerBlockStatisticsWidth,
+            m_surfSetting.dwVeboxPerBlockStatisticsHeight);
+
+        m_surfSetting.dwVeboxPerBlockStatisticsHeight = dwHeight;
+        m_surfSetting.dwVeboxPerBlockStatisticsWidth  = dwWidth;
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+    MOS_STATUS VpVeboxCmdPacketLegacy::PacketInit(
     VP_SURFACE                          *inputSurface,
     VP_SURFACE                          *outputSurface,
     VP_SURFACE                          *previousSurface,
@@ -2282,8 +2367,6 @@ MOS_STATUS VpVeboxCmdPacketLegacy::PacketInit(
     m_veboxPacketSurface.pAlphaOrVignette           = GetSurface(SurfaceTypeAlphaOrVignette);
     m_veboxPacketSurface.pLaceOrAceOrRgbHistogram   = GetSurface(SurfaceTypeLaceAceRGBHistogram);
     m_veboxPacketSurface.pSurfSkinScoreOutput       = GetSurface(SurfaceTypeSkinScore);
-    m_dwVeboxPerBlockStatisticsHeight               = surfSetting.dwVeboxPerBlockStatisticsHeight;
-    m_dwVeboxPerBlockStatisticsWidth                = surfSetting.dwVeboxPerBlockStatisticsWidth;
 
     VP_RENDER_CHK_NULL_RETURN(m_veboxPacketSurface.pCurrInput);
     VP_RENDER_CHK_NULL_RETURN(m_veboxPacketSurface.pStatisticsOutput);
@@ -2324,6 +2407,8 @@ MOS_STATUS VpVeboxCmdPacketLegacy::PacketInit(
         }
     }
 
+    // Adjust boundary for statistics surface block
+    VP_RENDER_CHK_STATUS_RETURN(AdjustBlockStatistics());
 
     // Get Vebox Secure mode form policy
     m_useKernelResource = packetCaps.bSecureVebox;
@@ -2476,8 +2561,8 @@ MOS_STATUS VpVeboxCmdPacketLegacy::GetStatisticsSurfaceOffsets(
     if (m_PacketCaps.bDI) // VEBOX, VEBOX+IECP
     {
         // Frame based statistics begins after Encoder statistics
-        iOffset = m_dwVeboxPerBlockStatisticsWidth *
-                  m_dwVeboxPerBlockStatisticsHeight;
+        iOffset = m_surfSetting.dwVeboxPerBlockStatisticsWidth *
+                  m_surfSetting.dwVeboxPerBlockStatisticsHeight;
 
         *pStatSlice0Offset = iOffset + uiPitch;                                     // Slice 0 current frame
         *pStatSlice1Offset = iOffset + uiPitch * 3;                                 // Slice 1 current frame
@@ -2485,8 +2570,8 @@ MOS_STATUS VpVeboxCmdPacketLegacy::GetStatisticsSurfaceOffsets(
     else if (m_PacketCaps.bDN) // DN, DN_IECP, SpatialDI
     {
         // Frame based statistics begins after Encoder statistics
-        iOffset = m_dwVeboxPerBlockStatisticsWidth *
-                  m_dwVeboxPerBlockStatisticsHeight;
+        iOffset = m_surfSetting.dwVeboxPerBlockStatisticsWidth *
+                  m_surfSetting.dwVeboxPerBlockStatisticsHeight;
 
         *pStatSlice0Offset = iOffset;                                               // Slice 0 input frame
         *pStatSlice1Offset = iOffset + uiPitch;                                     // Slice 1 input frame
@@ -3131,9 +3216,98 @@ MOS_STATUS VpVeboxCmdPacketLegacy::VeboxSetPerfTagPaFormat()
     return MOS_STATUS_SUCCESS;
 }
 
+//!
+//! \brief    Vebox get statistics surface base
+//! \details  Calculate address of statistics surface address based on the
+//!           functions which were enabled in the previous call.
+//! \param    uint8_t* pStat
+//!           [in] Pointer to Statistics surface
+//! \param    uint8_t* * pStatSlice0Base
+//!           [out] Statistics surface Slice 0 base pointer
+//! \param    uint8_t* * pStatSlice1Base
+//!           [out] Statistics surface Slice 1 base pointer
+//! \return   MOS_STATUS
+//!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+//!
+MOS_STATUS VpVeboxCmdPacketLegacy::GetStatisticsSurfaceBase(
+    uint8_t  *pStat,
+    uint8_t **pStatSlice0Base,
+    uint8_t **pStatSlice1Base)
+{
+    VP_FUNC_CALL();
+
+    int32_t    iOffsetSlice0, iOffsetSlice1;
+    MOS_STATUS eStatus;
+
+    eStatus = MOS_STATUS_UNKNOWN;
+
+    // Calculate the offsets of Slice0 and Slice1
+    VP_RENDER_CHK_STATUS(VpVeboxCmdPacketLegacy::GetStatisticsSurfaceOffsets(
+        &iOffsetSlice0,
+        &iOffsetSlice1));
+
+    *pStatSlice0Base = pStat + iOffsetSlice0;  // Slice 0 current frame
+    *pStatSlice1Base = pStat + iOffsetSlice1;  // Slice 1 current frame
+
+finish:
+    return eStatus;
+}
+
 MOS_STATUS VpVeboxCmdPacketLegacy::UpdateVeboxStates()
 {
     VP_FUNC_CALL();
+    MOS_STATUS         eStatus;
+    uint8_t           *pStat = nullptr;
+    uint8_t           *pStatSlice0Base, *pStatSlice1Base;
+    uint32_t           dwQuery = 0;
+    MOS_LOCK_PARAMS    LockFlags;
+    VpVeboxRenderData *renderData = GetLastExecRenderData();
+
+    VP_PUBLIC_CHK_NULL_RETURN(renderData);
+    VP_PUBLIC_CHK_NULL_RETURN(m_veboxPacketSurface.pStatisticsOutput);
+    VP_PUBLIC_CHK_NULL_RETURN(m_veboxPacketSurface.pStatisticsOutput->osSurface);
+    VP_PUBLIC_CHK_NULL_RETURN(m_sfcRender);
+
+    eStatus = MOS_STATUS_SUCCESS;
+
+    if (!renderData->DN.bHvsDnEnabled)
+    {
+        // no need to update, direct return.
+        return MOS_STATUS_SUCCESS;
+    }
+
+    // Update DN State in CPU
+    MOS_ZeroMemory(&LockFlags, sizeof(MOS_LOCK_PARAMS));
+    LockFlags.ReadOnly = 1;
+
+    // Get Statistic surface
+    pStat = (uint8_t *)m_allocator->Lock(
+        &m_veboxPacketSurface.pStatisticsOutput->osSurface->OsResource,
+        &LockFlags);
+
+    VP_PUBLIC_CHK_NULL_RETURN(pStat);
+
+    VP_RENDER_CHK_STATUS_RETURN(GetStatisticsSurfaceBase(
+        pStat,
+        &pStatSlice0Base,
+        &pStatSlice1Base));
+
+    // Query platform dependent GNE offset
+    VP_RENDER_CHK_STATUS_RETURN(QueryStatLayoutGNE(
+        VEBOX_STAT_QUERY_GNE_OFFEST,
+        &dwQuery,
+        pStatSlice0Base,
+        pStatSlice1Base));
+
+#if VEBOX_AUTO_DENOISE_SUPPORTED
+    VP_RENDER_CHK_STATUS_RETURN(UpdateDnHVSParameters(
+        (uint32_t *)(pStatSlice0Base + dwQuery),
+        (uint32_t *)(pStatSlice1Base + dwQuery)));
+#endif
+
+    // unlock the statistic surface
+    VP_RENDER_CHK_STATUS_RETURN(m_allocator->UnLock(
+        &m_veboxPacketSurface.pStatisticsOutput->osSurface->OsResource));
 
     return MOS_STATUS_SUCCESS;
 }
