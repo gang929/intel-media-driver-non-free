@@ -189,6 +189,7 @@ MOS_STATUS BltState::SetupBltCopyParam(
     MOS_SURFACE       ResDetails;
     MOS_ZeroMemory(&ResDetails, sizeof(MOS_SURFACE));
     MOS_ZeroMemory(pMhwBltParams, sizeof(MHW_FAST_COPY_BLT_PARAM));
+    ResDetails.Format = Format_Invalid;
     BLT_CHK_STATUS_RETURN(m_osInterface->pfnGetResourceInfo(m_osInterface, inputSurface, &ResDetails));
 
     if (inputSurface->TileType != MOS_TILE_LINEAR)
@@ -204,6 +205,7 @@ MOS_STATUS BltState::SetupBltCopyParam(
     pMhwBltParams->dwSrcLeft   = ResDetails.RenderOffset.YUV.Y.XOffset;
 
     MOS_ZeroMemory(&ResDetails, sizeof(MOS_SURFACE));
+    ResDetails.Format = Format_Invalid;
     BLT_CHK_STATUS_RETURN(m_osInterface->pfnGetResourceInfo(m_osInterface, outputSurface, &ResDetails));
 
     if (outputSurface->TileType != MOS_TILE_LINEAR)
@@ -253,6 +255,14 @@ MOS_STATUS BltState::SetupBltCopyParam(
         if (1 == planeIndex || 2 == planeIndex)
         {
            pMhwBltParams->dwDstBottom = pMhwBltParams->dwDstBottom / bytePerTexelScaling;
+           if (ResDetails.Format == Format_I420 || ResDetails.Format == Format_YV12)
+           {
+               pMhwBltParams->dwDstPitch  = pMhwBltParams->dwDstPitch / 2;
+               pMhwBltParams->dwSrcPitch  = pMhwBltParams->dwSrcPitch / 2;
+               pMhwBltParams->dwDstRight  = pMhwBltParams->dwDstRight / 2;
+               pMhwBltParams->dwDstBottom = pMhwBltParams->dwDstBottom / 2;
+           }
+
         }
     }
     pMhwBltParams->pSrcOsResource = inputSurface;

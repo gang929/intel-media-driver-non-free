@@ -1535,6 +1535,12 @@ MOS_STATUS MosInterface::ConvertResourceFromDdi(
         case Media_Format_A16B16G16R16:
             resource->Format = Format_A16B16G16R16;
             break;
+        case Media_Format_I420:
+            resource->Format = Format_I420;
+            break;
+        case Media_Format_YV12:
+            resource->Format = Format_YV12;
+            break;
         default:
             MOS_OS_ASSERTMESSAGE("MOS: unsupported media format for surface.");
             break;
@@ -2986,6 +2992,12 @@ PMOS_RESOURCE MosInterface::GetMarkerResource(
 int MosInterface::GetPlaneSurfaceOffset(const MOS_PLANE_OFFSET &planeOffset)
 {
     return planeOffset.iSurfaceOffset;
+}
+
+uint32_t MosInterface::GetResourceArrayIndex(
+    PMOS_RESOURCE resource)
+{
+    return 0;
 }
 
 MediaUserSettingSharedPtr MosInterface::MosGetUserSettingInstance(

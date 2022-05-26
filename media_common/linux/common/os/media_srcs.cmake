@@ -1,4 +1,4 @@
-# Copyright (c) 2021, Intel Corporation
+# Copyright (c) 2021-2022, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -17,11 +17,13 @@
 # OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
+
+media_include_subdirectory(osservice)
+
+if(NOT CMAKE_WDDM_LINUX)
 set(TMP_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/mos_defs_specific.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_util_user_feature_keys_specific.h
-    ${CMAKE_CURRENT_LIST_DIR}/mos_util_debug_specific.h
-    ${CMAKE_CURRENT_LIST_DIR}/mos_utilities_specific.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_specific.h
 )
 
@@ -42,3 +44,4 @@ set(HEADERS_
 source_group( "MOS" FILES ${TMP_SOURCES_} ${TMP_HEADERS_} )
 
 media_add_curr_to_include_path()
+endif() # CMAKE_WDDM_LINUX

@@ -21,16 +21,13 @@
 set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/vp_scalability_option.cpp
     ${CMAKE_CURRENT_LIST_DIR}/vp_scalability_singlepipe.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/vp_scalability_singlepipe_next.cpp
 )
 
 set(TMP_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/vp_scalability_option.h
     ${CMAKE_CURRENT_LIST_DIR}/vp_scalability_singlepipe.h
-)
-
-set(SOURCES_
-    ${SOURCES_}
-    ${TMP_SOURCES_}
+    ${CMAKE_CURRENT_LIST_DIR}/vp_scalability_singlepipe_next.h
 )
 
 set(HEADERS_NEW

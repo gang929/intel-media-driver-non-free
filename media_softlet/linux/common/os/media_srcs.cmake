@@ -18,24 +18,25 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
+media_include_subdirectory(osservice)
+
+if(NOT CMAKE_WDDM_LINUX)
 set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/mos_context_specific_next.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_graphicsresource_specific_next.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/mos_util_debug_specific_next.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/mos_utilities_specific_next.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_commandbuffer_specific_next.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_gpucontext_specific_next.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_gpucontext_specific_next_ext.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_specific_next.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_decompression.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_mediacopy.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/mos_user_setting_specific.cpp
 )
 
 set(TMP_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/mos_context_specific_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_graphicsresource_specific_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_util_devult_specific_next.h
-    ${CMAKE_CURRENT_LIST_DIR}/mos_utilities_specific_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_commandbuffer_specific_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_gpucontext_specific_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_specific_next.h
@@ -71,3 +72,4 @@ set(HEADERS_
 
 
 media_add_curr_to_include_path()
+endif() # CMAKE_WDDM_LINUX

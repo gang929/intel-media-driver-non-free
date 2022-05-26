@@ -38,6 +38,8 @@ MOS_STATUS MosUserSetting::InitMosUserSetting(MediaUserSettingSharedPtr userSett
     InitUserSettingForDebug(userSettingPtr);
 #endif
 
+    InitMosUserSettingSpecific(userSettingPtr);
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -70,6 +72,29 @@ MOS_STATUS MosUserSetting::InitMosCommonUserSetting(MediaUserSettingSharedPtr us
         MediaUserSetting::Group::Device,
         0,
         true);
+
+    DeclareUserSettingKey(  //For debugging purpose. Enable Vebox In-Place decompression
+        userSettingPtr,
+        __VPHAL_ENABLE_VEBOX_MMC_DECOMPRESS,
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEMORY_NINJA_BEGIN_COUNTER,
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEMORY_NINJA_END_COUNTER,
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+#endif
 
     return MOS_STATUS_SUCCESS;
 }
@@ -315,21 +340,6 @@ MOS_STATUS MosUserSetting::InitMosMessageUserSetting(MediaUserSettingSharedPtr u
         0,
         true);
 
-#if (_DEBUG || _RELEASE_INTERNAL)
-    DeclareUserSettingKeyForDebug(
-        userSettingPtr,
-        __MOS_USER_FEATURE_KEY_DDI_DUMP_DIRECTORY,
-        MediaUserSetting::Group::Device,
-        "",
-        true);
-
-    DeclareUserSettingKeyForDebug(
-        userSettingPtr,
-        __MOS_USER_FEATURE_KEY_ENCODE_DDI_DUMP_ENABLE,
-        MediaUserSetting::Group::Device,
-        0,
-        true);
-#endif
     return MOS_STATUS_SUCCESS;
 }
 #endif

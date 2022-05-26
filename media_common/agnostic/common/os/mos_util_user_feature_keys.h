@@ -58,7 +58,6 @@
 //!
 #define __MEDIA_USER_FEATURE_VALUE_VDI_MODE                             "VDI Mode"
 #define __MEDIA_USER_FEATURE_VALUE_MEDIA_WALKER_MODE                    "Media Walker Mode"
-#define __MEDIA_USER_FEATURE_VALUE_CSC_COEFF_PATCH_MODE_DISABLE         "CSC Patch Mode Disable"
 
 #if (_DEBUG || _RELEASE_INTERNAL)
 //!
@@ -77,13 +76,10 @@
 //!
 #define __MEDIA_USER_FEATURE_VALUE_HUC_DRM_ENABLE                           "HuC DRM Enable"                 //!< 0: Disable, Others: enable
 
-#endif // (_DEBUG || _RELEASE_INTERNAL)
+#define __MEDIA_USER_FEATURE_VALUE_MEMORY_NINJA_BEGIN_COUNTER             "MemNinjaBeginCounter"
+#define __MEDIA_USER_FEATURE_VALUE_MEMORY_NINJA_END_COUNTER               "MemNinjaEndCounter"
 
-// !
-// ! \brief User feature key for Split-Screen Demo Mode
-// !
-#define __MEDIA_USER_FEATURE_VALUE_SPLIT_SCREEN_DEMO_POSITION               "Split-Screen Demo Position"
-#define __MEDIA_USER_FEATURE_VALUE_SPLIT_SCREEN_DEMO_PARAMETERS             "Split-Screen Demo Parameters"
+#endif // (_DEBUG || _RELEASE_INTERNAL)
 
 //!
 //! \brief User feature keys to define debug message levels and assertions.
@@ -239,6 +235,7 @@
 //!
 #define __MOS_USER_FEATURE_KEY_MESSAGE_MMC_TAG              "MMC Message Tags"
 #define __MOS_USER_FEATURE_KEY_BY_SUB_COMPONENT_MMC         "MMC Tags By Sub Component"
+
 //!
 //! \brief 63____________________________________________________________________________3__________0
 //!         |                                                                            |   Self   |
@@ -261,10 +258,6 @@
 #define __MOS_USER_FEATURE_KEY_SUB_COMPONENT_MCPY_TAG       "MCPY Sub Components Tags"
 
 #define __MOS_USER_FEATURE_KEY_DISABLE_ASSERT               "DisableAssert"
-
-#define __MOS_USER_FEATURE_KEY_DDI_DUMP_DIRECTORY           "DDI Dump Directory"
-
-#define __MOS_USER_FEATURE_KEY_ENCODE_DDI_DUMP_ENABLE       "Encode DDI Dump Enable"
 
 #endif // MOS_MESSAGES_ENABLED
 
@@ -316,6 +309,8 @@
 #define __MEDIA_USER_FEATURE_VALUE_COUNT_FOR_OCA_BUFFER_LEAKED                  "Count For Oca Buffer Leaked"
 #define __MEDIA_USER_FEATURE_VALUE_COUNT_FOR_OCA_1ST_LEVEL_BB_END_MISSED        "Count For Oca 1st Level BB End Missed"
 #define __MEDIA_USER_FEATURE_VALUE_COUNT_FOR_ADDITIONAL_OCA_BUFFER_ALLOCATED    "Count For Additional Oca Buffer Allocated"
+
+#define __VPHAL_ENABLE_VEBOX_MMC_DECOMPRESS                                     "Enable Vebox Decompress"
 
 //User feature key for enable Perf Utility Tool
 #define __MEDIA_USER_FEATURE_VALUE_PERF_UTILITY_TOOL_ENABLE          "Perf Utility Tool Enable"

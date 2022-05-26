@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2021, Intel Corporation
+* Copyright (c) 2018-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -185,7 +185,7 @@ MOS_STATUS VpPipeline::CreateUserFeatureControl()
     VP_FUNC_CALL();
 
     VP_PUBLIC_CHK_NULL_RETURN(m_osInterface);
-    m_userFeatureControl = MOS_New(VpUserFeatureControl, *m_osInterface, this);
+    m_userFeatureControl = MOS_New(VpUserFeatureControl, *m_osInterface, m_vpMhwInterface.m_vpPlatformInterface, this);
     VP_PUBLIC_CHK_NULL_RETURN(m_userFeatureControl);
     return MOS_STATUS_SUCCESS;
 }
@@ -254,6 +254,22 @@ MOS_STATUS VpPipeline::Init(void *mhwInterface)
     {
         VP_PUBLIC_CHK_STATUS_RETURN(CreateUserFeatureControl());
         m_vpMhwInterface.m_userFeatureControl = m_userFeatureControl;
+    }
+
+    if (m_vpMhwInterface.m_vpPlatformInterface->IsGpuContextCreatedInPipelineInit())
+    {
+        if (m_numVebox > 0)
+        {
+            VP_PUBLIC_NORMALMESSAGE("Create GpuContext for Vebox.");
+            VP_PUBLIC_CHK_STATUS_RETURN(PacketPipe::SwitchContext(VP_PIPELINE_PACKET_VEBOX, m_scalability,
+                m_mediaContext, MOS_VE_SUPPORTED(m_osInterface), m_numVebox));
+        }
+
+        bool computeContextEnabled = m_userFeatureControl->IsComputeContextEnabled();
+        auto packetId              = computeContextEnabled ? VP_PIPELINE_PACKET_COMPUTE : VP_PIPELINE_PACKET_RENDER;
+        VP_PUBLIC_NORMALMESSAGE("Create GpuContext for Compute/Render (PacketId: %d).", packetId);
+        VP_PUBLIC_CHK_STATUS_RETURN(PacketPipe::SwitchContext(packetId, m_scalability,
+            m_mediaContext, MOS_VE_SUPPORTED(m_osInterface), m_numVebox));
     }
 
     return MOS_STATUS_SUCCESS;
@@ -369,19 +385,18 @@ MOS_STATUS VpPipeline::UpdateExecuteStatus()
 
 #if ((_DEBUG || _RELEASE_INTERNAL) && !EMUL)
         // Decompre output surface for debug
-        MOS_USER_FEATURE_VALUE_DATA userFeatureData;
         bool uiForceDecompressedOutput = false;
-        MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+        bool forceDecompressedOutput   = false;
 
-        MOS_STATUS eStatus1 = MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __VPHAL_RNDR_FORCE_VP_DECOMPRESSED_OUTPUT_ID,
-            &userFeatureData,
-            m_osInterface->pOsContext);
+        MOS_STATUS eStatus1 = ReadUserSettingForDebug(
+            m_userSettingPtr,
+            forceDecompressedOutput,
+            __VPHAL_RNDR_FORCE_VP_DECOMPRESSED_OUTPUT,
+            MediaUserSetting::Group::Sequence);
 
         if (eStatus1 == MOS_STATUS_SUCCESS)
         {
-            uiForceDecompressedOutput = userFeatureData.u32Data;
+            uiForceDecompressedOutput = forceDecompressedOutput;
         }
         else
         {
@@ -430,20 +445,19 @@ MOS_STATUS VpPipeline::GetSystemVeboxNumber()
     VP_FUNC_CALL();
 
     // Check whether scalability being disabled.
-    MOS_USER_FEATURE_VALUE_DATA userFeatureData;
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+    int32_t enableVeboxScalability = 0;
 
     MOS_STATUS statusKey = MOS_STATUS_SUCCESS;
-    statusKey = MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE_ID,
-        &userFeatureData,
-        m_osInterface->pOsContext);
+    statusKey = ReadUserSetting(
+        m_userSettingPtr,
+        enableVeboxScalability,
+        __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE,
+        MediaUserSetting::Group::Sequence);
 
     bool disableScalability = false;
     if (statusKey == MOS_STATUS_SUCCESS)
     {
-        disableScalability = userFeatureData.i32Data ? false : true;
+        disableScalability = enableVeboxScalability ? false : true;
         if (disableScalability == false)
         {
             m_forceMultiplePipe = MOS_SCALABILITY_ENABLE_MODE_USER_FORCE | MOS_SCALABILITY_ENABLE_MODE_DEFAULT;
@@ -465,11 +479,7 @@ MOS_STATUS VpPipeline::GetSystemVeboxNumber()
     }
     else if (m_forceMultiplePipe == MOS_SCALABILITY_ENABLE_MODE_DEFAULT)
     {
-        std::shared_ptr<mhw::vebox::Itf> veboxItf = nullptr;
-        if (m_vpMhwInterface.m_veboxInterface)
-        {
-            veboxItf = std::static_pointer_cast<mhw::vebox::Itf>(m_vpMhwInterface.m_veboxInterface->GetNewVeboxInterface());
-        }
+        std::shared_ptr<mhw::vebox::Itf> veboxItf = m_vpMhwInterface.m_vpPlatformInterface->GetMhwVeboxItf();
 
         if (veboxItf && !(veboxItf->IsVeboxScalabilitywith4K()))
         {
@@ -615,26 +625,21 @@ MOS_STATUS VpPipeline::InitUserFeatureSetting()
     VP_FUNC_CALL();
 
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
-    MOS_USER_FEATURE_VALUE_DATA userFeatureData = {0};
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     //SFC NV12/P010 Linear Output.
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __VPHAL_ENABLE_SFC_NV12_P010_LINEAR_OUTPUT_ID,
-        &userFeatureData,
-        m_vpMhwInterface.m_osInterface->pOsContext);
-    m_userFeatureSetting.enableSFCNv12P010LinearOutput = userFeatureData.bData;
+    ReadUserSettingForDebug(
+        m_userSettingPtr,
+        m_userFeatureSetting.enableSFCNv12P010LinearOutput,
+        __VPHAL_ENABLE_SFC_NV12_P010_LINEAR_OUTPUT,
+        MediaUserSetting::Group::Sequence);
 
     //SFC RGBP Linear/Tile RGB24 Linear Output.
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __VPHAL_ENABLE_SFC_RGBP_RGB24_OUTPUT_ID,
-        &userFeatureData,
-        m_vpMhwInterface.m_osInterface->pOsContext);
-    m_userFeatureSetting.enableSFCRGBPRGB24Output = userFeatureData.u32Data;
+    ReadUserSettingForDebug(
+        m_userSettingPtr,
+        m_userFeatureSetting.enableSFCRGBPRGB24Output,
+        __VPHAL_ENABLE_SFC_RGBP_RGB24_OUTPUT,
+        MediaUserSetting::Group::Sequence);
 #endif
     return eStatus;
 }

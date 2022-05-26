@@ -163,7 +163,8 @@ MOS_STATUS VpRenderCmdPacket::Prepare()
         m_kernelSamplerStateGroup,
         m_kernelConfigs,
         m_kernelObjs,
-        *m_surfMemCacheCtl));
+        *m_surfMemCacheCtl,
+        m_packetSharedContext));
 
     if (m_submissionMode == MULTI_KERNELS_WITH_MULTI_MEDIA_STATES)
     {
@@ -816,8 +817,8 @@ MOS_STATUS VpRenderCmdPacket::InitStateHeapSurface(SurfaceType type, RENDERHAL_S
 
     VP_RENDER_CHK_NULL_RETURN(m_hwInterface);
     VP_RENDER_CHK_NULL_RETURN(m_hwInterface->m_veboxInterface);
-    veboxItf = std::static_pointer_cast<mhw::vebox::Itf>(m_hwInterface->m_veboxInterface->GetNewVeboxInterface());
 
+    veboxItf = m_hwInterface->m_vpPlatformInterface->GetMhwVeboxItf();
     if (veboxItf)
     {
         VP_RENDER_CHK_STATUS_RETURN(veboxItf->GetVeboxHeapInfo(
@@ -1622,7 +1623,6 @@ MOS_STATUS VpRenderCmdPacket::SubmitWithMultiKernel(MOS_COMMAND_BUFFER *commandB
     pPerfProfiler   = m_renderHal->pPerfProfiler;
     pOsContext      = pOsInterface->pOsContext;
     pMmioRegisters  = pMhwRender->GetMmioRegisters();
-    m_miItf         = std::static_pointer_cast<mhw::mi::Itf>(pMhwMiInterface->GetNewMiInterface());
 
     RENDER_PACKET_CHK_STATUS_RETURN(SetPowerMode(kernelCombinedFc));
 
@@ -2048,4 +2048,26 @@ MHW_SETPAR_DECL_SRC(PIPE_CONTROL, VpRenderCmdPacket)
 
     return MOS_STATUS_SUCCESS;
 }
+
+MOS_STATUS VpRenderCmdPacket::SetDnHVSParams(
+    PRENDER_DN_HVS_CAL_PARAMS params)
+{
+    VP_FUNC_CALL();
+    VP_RENDER_CHK_NULL_RETURN(params);
+
+    m_kernelConfigs.insert(std::make_pair(params->kernelId, (void *)params));
+
+    KERNEL_PARAMS kernelParams = {};
+    kernelParams.kernelId      = params->kernelId;
+    // kernelArgs will be initialized in VpRenderHVSKernel::Init with
+    // kernel.GetKernelArgs().
+    kernelParams.kernelThreadSpace.uWidth  = params->threadWidth;
+    kernelParams.kernelThreadSpace.uHeight = params->threadHeight;
+    kernelParams.kernelArgs                = params->kernelArgs;
+    kernelParams.syncFlag                  = true;
+    m_renderKernelParams.push_back(kernelParams);
+
+    return MOS_STATUS_SUCCESS;
+}
+
 }  // namespace vp

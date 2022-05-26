@@ -39,7 +39,6 @@ namespace vp
 {
 class VpScalabilitySinglePipe : public MediaScalabilitySinglePipe
 {
-
 public:
     //!
     //! \brief  VP scalability singlepipe constructor
@@ -58,12 +57,12 @@ public:
     //!
     //! \brief    Copy constructor
     //!
-    VpScalabilitySinglePipe(const VpScalabilitySinglePipe&) = delete;
+    VpScalabilitySinglePipe(const VpScalabilitySinglePipe& ) = delete;
 
     //!
     //! \brief    Copy assignment operator
     //!
-    VpScalabilitySinglePipe& operator=(const VpScalabilitySinglePipe&) = delete;
+    VpScalabilitySinglePipe& operator=(const VpScalabilitySinglePipe& ) = delete;
 
     //!
     //! \brief   Initialize the vp single scalability
@@ -75,19 +74,15 @@ public:
     //!          MOS_STATUS_SUCCESS if success, else fail reason
     //!
     virtual MOS_STATUS Initialize(const MediaScalabilityOption &option) override;
-
 protected:
-
     virtual MOS_STATUS SendAttrWithFrameTracking(MOS_COMMAND_BUFFER &cmdBuffer, bool frameTrackingRequested) override
     {
         return MOS_STATUS_SUCCESS;
     }
-
 private:
-    PVP_MHWINTERFACE  m_hwInterface = nullptr;
+    PVP_MHWINTERFACE m_hwInterface = nullptr;
 
 MEDIA_CLASS_DEFINE_END(VpScalabilitySinglePipe)
 };
-}
-#endif // !__VP_SCALABILITY_SINGLEPIPE_H__
-
+}  // namespace vp
+#endif  // !__VP_SCALABILITY_SINGLEPIPE_H__

@@ -1,4 +1,4 @@
-# Copyright (c) 2017, Intel Corporation
+# Copyright (c) 2017-2022, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -20,6 +20,8 @@
 
 # external dependency
 # Common path we need to include for now.
+
+if(NOT CMAKE_WDDM_LINUX)
 include_directories(${BS_DIR_INC})
 include_directories(${BS_DIR_INC}/common)
 include_directories(${BS_DIR_INC}/platform/iAlm)
@@ -29,8 +31,9 @@ include_directories(${BS_DIR_INC}/umKmInc)
 include_directories(${BS_DIR_SKUWA})
 include_directories(${BS_DIR_GMMLIB}/inc)
 include_directories(${BS_DIR_SOURCE}/huc/inc)
+endif()
 
-if(${PLATFORM} STREQUAL "linux")
+if(${PLATFORM} STREQUAL "linux" AND NOT CMAKE_WDDM_LINUX)
     include(${MEDIA_DRIVER_CMAKE}/linux/media_include_paths_linux.cmake)
 else()
     include(${MEDIA_EXT_CMAKE}/ext/media_include_paths_ext.cmake OPTIONAL)

@@ -366,7 +366,8 @@ public:
         KERNEL_PARAMS& kernelParams,
         VP_SURFACE_GROUP& surfaces,
         KERNEL_SAMPLER_STATE_GROUP& samplerStateGroup,
-        KERNEL_CONFIGS& kernelConfigs);
+        KERNEL_CONFIGS& kernelConfigs,
+        VP_PACKET_SHARED_CONTEXT* sharedContext);
 
     virtual MOS_STATUS GetScoreboardParams(PMHW_VFE_SCOREBOARD &scoreboardParams)
     {
@@ -493,7 +494,7 @@ protected:
 
     virtual MOS_STATUS SetWalkerSetting(KERNEL_THREAD_SPACE& threadSpace, bool bSyncFlag);
 
-    virtual MOS_STATUS SetKernelArgs(KERNEL_ARGS& kernelArgs);
+    virtual MOS_STATUS SetKernelArgs(KERNEL_ARGS &kernelArgs, VP_PACKET_SHARED_CONTEXT *sharedContext);
 
     virtual MOS_STATUS SetupSurfaceState() = 0;
 
@@ -521,6 +522,7 @@ protected:
     KERNEL_SURFACE_CONFIG                                   m_surfaceState;             // surfaces processed pool where the surface state will generated here, if KERNEL_SURFACE_STATE_PARAM 
     KERNEL_SURFACE_BINDING_INDEX                            m_surfaceBindingIndex;      // store the binding index for processed surface
     PVpAllocator                                            m_allocator = nullptr;
+    MediaUserSettingSharedPtr                               m_userSettingPtr = nullptr;  // usersettingInstance
 
     // kernel attribute 
     std::string                                             m_kernelName = "";
@@ -531,6 +533,8 @@ protected:
     KernelIndex                                             m_kernelIndex = 0;          // index of current kernel in KERNEL_PARAMS_LIST
 
     bool                                                    m_isAdvKernel = false;      // true mean multi kernel can be submitted in one workload.
+
+    std::shared_ptr<mhw::vebox::Itf>                        m_veboxItf = nullptr;
 
 MEDIA_CLASS_DEFINE_END(VpRenderKernelObj)
 };
