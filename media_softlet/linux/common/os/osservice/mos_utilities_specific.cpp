@@ -21,12 +21,12 @@
 */
 //!
 //! \file        mos_utilities_specific.cpp
-//! \brief        This module implements the MOS wrapper functions for Linux/Android
+//! \brief       This module implements the MOS wrapper functions for Linux/Android
 //!
 
-#include "mos_utilities_specific_next.h"
+#include "mos_utilities_specific.h"
 #include "mos_utilities.h"
-#include "mos_util_debug_next.h"
+#include "mos_util_debug.h"
 #include <fcntl.h>     // open
 #include <stdlib.h>    // atoi
 #include <string.h>    // strlen, strcat, etc.
@@ -51,6 +51,7 @@
 #include <signal.h>
 #include <unistd.h>  // fork
 #include <algorithm>
+#include <execinfo.h> // backtrace
 
 const char           *MosUtilitiesSpecificNext::m_szUserFeatureFile     = USER_FEATURE_FILE;
 MOS_PUF_KEYLIST      MosUtilitiesSpecificNext::m_ufKeyList              = nullptr;
@@ -741,7 +742,7 @@ MOS_STATUS  MosUtilitiesSpecificNext::UserFeatureDumpFile(const char * const szF
     int32_t         iCount;
     PFILE           File;
     int32_t         bEmpty;
-    int32_t         iCurId;
+    uint32_t        iCurId;
     MOS_STATUS      eStatus;
     char            *tmpChar; // Used in the 64-bit case to read uint64_t
 
@@ -2488,6 +2489,25 @@ void MosUtilities::MosTraceEvent(
                 MOS_FreeMemory(pTraceBuf);
             }
         }
+        if (m_mosTraceFilter & (1ULL << TR_KEY_CALL_STACK))
+        {
+            // reserve space for header and stack size field.
+            // max 32-2=30 layers call stack in 64bit driver.
+            uint32_t nLen = 4*sizeof(uint32_t);
+            void **stack = (void **)(traceBuf + nLen);
+            int num = backtrace(stack, ((sizeof(traceBuf)-nLen)/sizeof(void *)));
+            if (num > 0)
+            {
+                uint32_t *header = (uint32_t *)traceBuf;
+
+                header[0] = 0x494D5445; // IMTE (IntelMediaTraceEvent) as ftrace raw marker tag
+                header[1] = (EVENT_CALL_STACK << 16) | (num*sizeof(void *)+sizeof(uint32_t));
+                header[2] = 0;
+                header[3] = (uint32_t)num;
+                nLen += num*sizeof(void *);
+                size_t ret = write(MosUtilitiesSpecificNext::m_mosTraceFd, traceBuf, nLen);
+            }
+        }
     }
     return;
 }
@@ -2619,4 +2639,77 @@ void MosUtilities::MosGfxInfo(
     ...)
 {
     // not implemented
+}
+
+void PerfUtility::startTick(std::string tag)
+{
+    std::lock_guard<std::mutex> lock(perfMutex);
+    Tick newTick = {};
+    struct timespec ts = {};
+
+    // get start tick count
+    clock_gettime(CLOCK_REALTIME, &ts);
+    newTick.start = int(ts.tv_sec * 1000000) + int(ts.tv_nsec / 1000); // us
+
+    std::vector<Tick> *perf = nullptr;
+    std::map<std::string, std::vector<Tick>*>::iterator it;
+    it = records.find(tag);
+    if (it == records.end())
+    {
+        perf = new std::vector<Tick>;
+        perf->push_back(newTick);
+        records[tag] = perf;
+    }
+    else
+    {
+        it->second->push_back(newTick);
+    }
+}
+
+void PerfUtility::stopTick(std::string tag)
+{
+    std::lock_guard<std::mutex> lock(perfMutex);
+    struct timespec ts = {};
+    std::map<std::string, std::vector<Tick>*>::iterator it;
+    it = records.find(tag);
+    if (it == records.end())
+    {
+        // should not happen
+        return;
+    }
+
+    // get stop tick count
+    clock_gettime(CLOCK_REALTIME, &ts);
+    it->second->back().stop = int(ts.tv_sec * 1000000) + int(ts.tv_nsec / 1000); // us
+
+    // calculate time interval
+    it->second->back().time = double(it->second->back().stop - it->second->back().start) / 1000.0; // ms
+}
+
+/*----------------------------------------------------------------------------
+| Name      : GMMDebugBreak
+| Purpose   : Fix compiling issue for Gmmlib on debug mode
+| Arguments : N/A
+| Returns   : void
+| Calls     : N/A
+| Callers   : Several
+\---------------------------------------------------------------------------*/
+void GMMDebugBreak(const char  *file, const char  *function,const int32_t line)
+{
+    // Not required for media driver
+    return;
+}
+
+/*----------------------------------------------------------------------------
+| Name      : GMMPrintMessage
+| Purpose   : Fix compiling issue for Gmmlib on debug mode
+| Arguments : N/A
+| Returns   : void
+| Calls     : N/A
+| Callers   : Several
+\---------------------------------------------------------------------------*/
+void GMMPrintMessage(int32_t debuglevel, const char  *function, ...)
+{
+    // Not Required for media driver
+    return;
 }

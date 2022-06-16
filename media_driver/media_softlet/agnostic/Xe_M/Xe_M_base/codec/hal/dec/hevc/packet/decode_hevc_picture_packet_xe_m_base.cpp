@@ -388,9 +388,11 @@ MOS_STATUS HevcDecodePicPktXe_M_Base::SetHcpRefSurfaceParams(
 #ifdef _MMC_SUPPORTED
     HevcDecodeMemComp *hevcDecodeMemComp = dynamic_cast<HevcDecodeMemComp *>(m_mmcState);
     DECODE_CHK_NULL(hevcDecodeMemComp);
-    DECODE_CHK_STATUS(m_mmcState->GetSurfaceMmcState(refSurfaceParams.psSurface, &refSurfaceParams.mmcState));
-    DECODE_CHK_STATUS(m_mmcState->GetSurfaceMmcFormat(refSurfaceParams.psSurface, &refSurfaceParams.dwCompressionFormat));
+    // Set refSurfaceParams mmcState as MOS_MEMCOMP_MC to satisfy MmcEnable in AddHcpSurfaceCmd
+    // The actual mmcstate is recorded by refSurfaceParams.mmcSkipMask
+    refSurfaceParams.mmcState = MOS_MEMCOMP_MC;
     DECODE_CHK_STATUS(hevcDecodeMemComp->SetRefSurfaceMask(*m_hevcBasicFeature, pipeBufAddrParams.presReferences, refSurfaceParams.mmcSkipMask));
+    DECODE_CHK_STATUS(hevcDecodeMemComp->SetRefSurfaceCompressionFormat(*m_hevcBasicFeature, pipeBufAddrParams.presReferences, refSurfaceParams.dwCompressionFormat));
 #endif
 
     return MOS_STATUS_SUCCESS;
@@ -574,12 +576,12 @@ MOS_STATUS HevcDecodePicPktXe_M_Base::SetHcpPipeBufAddrParams(MHW_VDBOX_PIPE_BUF
         })
 
 #if MOS_EVENT_TRACE_DUMP_SUPPORTED
-    if (MOS_GetTraceEventKeyword() & EVENT_DECODE_MV_KEYWORD)
+    if (MOS_TraceKeyEnabled(TR_KEY_DECODE_MV))
     {
         TraceDataDumpMV(pipeBufAddrParams);
     }
     
-    if (MOS_GetTraceEventKeyword() & EVENT_DECODE_REFYUV_KEYWORD)
+    if (MOS_TraceKeyEnabled(TR_KEY_DECODE_REFYUV))
     {
         TraceDataDumpReferences(pipeBufAddrParams);
     }

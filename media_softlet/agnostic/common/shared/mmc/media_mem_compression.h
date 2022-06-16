@@ -95,9 +95,16 @@ public:
         MOS_MEMCOMP_STATE &mmcMode);
 
     //!
+    //! \brief    GetResourceMmcFormat
+    //!
+    virtual MOS_STATUS GetResourceMmcFormat(
+        PMOS_RESOURCE resource,
+        uint32_t    &mmcFormat);
+
+    //!
     //! \brief    IsMmcEnabled
     //!
-    bool IsMmcEnabled();
+    virtual bool IsMmcEnabled();
 
     //!
     //! \brief    DisableMmc
@@ -144,6 +151,7 @@ protected:
     bool                        m_bComponentMmcEnabled = false;
     uint32_t                    m_mmcFeatureId = __MOS_USER_FEATURE_KEY_MAX_ID;
     uint32_t                    m_mmcInuseFeatureId = __MOS_USER_FEATURE_KEY_MAX_ID;
+    MediaUserSettingSharedPtr   m_userSettingPtr = nullptr;
 };
 
 #endif //__MEDIA_MEM_COMPRESSION_H__

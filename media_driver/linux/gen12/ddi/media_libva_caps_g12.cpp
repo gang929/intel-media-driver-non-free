@@ -382,7 +382,8 @@ VAStatus MediaLibvaCapsG12::GetPlatformSpecificAttrib(VAProfile profile,
         case VAConfigAttribDecProcessing:
         {
 #ifdef _DECODE_PROCESSING_SUPPORTED
-            if (IsAvcProfile(profile) || IsHevcProfile(profile) || IsJpegProfile(profile) || IsVp9Profile(profile))
+            if ((IsAvcProfile(profile) || IsHevcProfile(profile) || IsJpegProfile(profile) || IsVp9Profile(profile))
+                && !(MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrDisableVDBox2SFC)))
             {
                 *value = VA_DEC_PROCESSING;
             }
@@ -509,7 +510,18 @@ VAStatus MediaLibvaCapsG12::GetPlatformSpecificAttrib(VAProfile profile,
         }
         case VAConfigAttribPredictionDirection:
         {
-            *value = VA_PREDICTION_DIRECTION_PREVIOUS | VA_PREDICTION_DIRECTION_FUTURE | VA_PREDICTION_DIRECTION_BI_NOT_EMPTY;
+            if (!IsHevcSccProfile(profile))
+            {
+                *value = VA_PREDICTION_DIRECTION_PREVIOUS | VA_PREDICTION_DIRECTION_FUTURE | VA_PREDICTION_DIRECTION_BI_NOT_EMPTY;
+            }
+            else
+            {
+                // Here we set
+                // VAConfigAttribPredictionDirection: VA_PREDICTION_DIRECTION_PREVIOUS | VA_PREDICTION_DIRECTION_BI_NOT_EMPTY together with
+                // VAConfigAttribEncMaxRefFrames: L0 != 0, L1 !=0
+                // to indicate SCC only supports I/low delay B
+                *value = VA_PREDICTION_DIRECTION_PREVIOUS | VA_PREDICTION_DIRECTION_BI_NOT_EMPTY;
+            }
             break;
         }
 #if VA_CHECK_VERSION(1, 12, 0)
@@ -706,14 +718,6 @@ VAStatus MediaLibvaCapsG12::LoadHevcEncLpProfileEntrypoints()
     {
         uint32_t configStartIdx = m_encConfigs.size();
         AddEncConfig(VA_RC_CQP);
-        if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrEnableMediaKernels))
-        {
-            for (int32_t j = 3; j < rcModeSize; j++)
-            {
-                AddEncConfig(m_encRcMode[j]);
-                AddEncConfig(m_encRcMode[j] | VA_RC_PARALLEL);
-            }
-        }
         AddProfileEntry(VAProfileHEVCSccMain, VAEntrypointEncSliceLP, attributeList,
                 configStartIdx, m_encConfigs.size() - configStartIdx);
     }
@@ -722,14 +726,6 @@ VAStatus MediaLibvaCapsG12::LoadHevcEncLpProfileEntrypoints()
     {
         uint32_t configStartIdx = m_encConfigs.size();
         AddEncConfig(VA_RC_CQP);
-        if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrEnableMediaKernels))
-        {
-            for (int32_t j = 3; j < rcModeSize; j++)
-            {
-                AddEncConfig(m_encRcMode[j]);
-                AddEncConfig(m_encRcMode[j] | VA_RC_PARALLEL);
-            }
-        }
         AddProfileEntry(VAProfileHEVCSccMain10, VAEntrypointEncSliceLP, attributeList,
                 configStartIdx, m_encConfigs.size() - configStartIdx);
     }
@@ -738,14 +734,6 @@ VAStatus MediaLibvaCapsG12::LoadHevcEncLpProfileEntrypoints()
     {
         uint32_t configStartIdx = m_encConfigs.size();
         AddEncConfig(VA_RC_CQP);
-        if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrEnableMediaKernels))
-        {
-            for (int32_t j = 3; j < rcModeSize; j++)
-            {
-                AddEncConfig(m_encRcMode[j]);
-                AddEncConfig(m_encRcMode[j] | VA_RC_PARALLEL);
-            }
-        }
         AddProfileEntry(VAProfileHEVCSccMain444, VAEntrypointEncSliceLP, attributeList,
                 configStartIdx, m_encConfigs.size() - configStartIdx);
     }
@@ -754,14 +742,6 @@ VAStatus MediaLibvaCapsG12::LoadHevcEncLpProfileEntrypoints()
     {
         uint32_t configStartIdx = m_encConfigs.size();
         AddEncConfig(VA_RC_CQP);
-        if (MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrEnableMediaKernels))
-        {
-            for (int32_t j = 3; j < rcModeSize; j++)
-            {
-                AddEncConfig(m_encRcMode[j]);
-                AddEncConfig(m_encRcMode[j] | VA_RC_PARALLEL);
-            }
-        }
         AddProfileEntry(VAProfileHEVCSccMain444_10, VAEntrypointEncSliceLP, attributeList,
                 configStartIdx, m_encConfigs.size() - configStartIdx);
     }
@@ -2090,7 +2070,18 @@ VAStatus MediaLibvaCapsG12::CreateEncAttributes(
     if (IsHevcProfile(profile))
     {
         attrib.type = (VAConfigAttribType) VAConfigAttribPredictionDirection;
-        attrib.value = VA_PREDICTION_DIRECTION_PREVIOUS | VA_PREDICTION_DIRECTION_FUTURE | VA_PREDICTION_DIRECTION_BI_NOT_EMPTY;
+        if (!IsHevcSccProfile(profile))
+        {
+            attrib.value = VA_PREDICTION_DIRECTION_PREVIOUS | VA_PREDICTION_DIRECTION_FUTURE | VA_PREDICTION_DIRECTION_BI_NOT_EMPTY;
+        }
+        else
+        {
+            // Here we set
+            // VAConfigAttribPredictionDirection: VA_PREDICTION_DIRECTION_PREVIOUS | VA_PREDICTION_DIRECTION_BI_NOT_EMPTY together with
+            // VAConfigAttribEncMaxRefFrames: L0 != 0, L1 !=0
+            // to indicate SCC only supports I/low delay B
+            attrib.value = VA_PREDICTION_DIRECTION_PREVIOUS | VA_PREDICTION_DIRECTION_BI_NOT_EMPTY;
+        }
         (*attribList)[attrib.type] = attrib.value;
 #if VA_CHECK_VERSION(1, 12, 0)
         attrib.type = (VAConfigAttribType)VAConfigAttribEncHEVCFeatures;

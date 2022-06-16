@@ -29,6 +29,7 @@
 #include <map>
 #include "mos_os.h"
 #include "mhw_mi.h"
+#include "media_class_trace.h"
 
 using Map = std::map<void*, uint32_t>;
 
@@ -89,8 +90,8 @@ public:
     //!           Pointer of Codechal/VPHal
     //! \param    [in] osInterface
     //!           Pointer of OS interface
-    //! \param    [in] miInterface
-    //!           pointer of MI interface
+    //! \param  [in] miItf
+    //!         Reference to Mhw MiItf.
     //! \param    [in] cmdBuffer
     //!           Pointer of OS command buffer
     //!
@@ -109,8 +110,8 @@ public:
     //!           Pointer of Codechal/VPHal
     //! \param    [in] osInterface
     //!           Pointer of OS interface
-    //! \param    [in] miInterface
-    //!           pointer of MI interface
+    //! \param  [in] miItf
+    //!         Reference to Mhw MiItf.
     //! \param    [in] cmdBuffer
     //!           Pointer of OS command buffer
     //!
@@ -135,8 +136,8 @@ public:
     //!
     //! \brief    Save data to the buffer which store the performance data
     //!
-    //! \param    [in] miInterface
-    //!           Pointer of MI interface
+    //! \param  [in] miItf
+    //!         Reference to Mhw MiItf.
     //! \param    [in] cmdBuffer
     //!           Pointer of OS command buffer
     //! \param    [in] offset
@@ -157,8 +158,8 @@ public:
     //! \param    [in] osInterface
     //!           Pointer of MOS_INTERFACE
     //!
-    //! \param    [in] miInterface
-    //!           Pointer of MI interface
+    //! \param  [in] miItf
+    //!         Reference to Mhw MiItf.
     //! \param    [in] cmdBuffer
     //!           Pointer of OS command buffer
     //! \param    [in] offset
@@ -179,8 +180,8 @@ public:
     //!
     //! \brief    Save timestamp to the buffer by Pipe control command
     //!
-    //! \param    [in] miInterface
-    //!           Pointer of MI interface
+    //! \param  [in] miItf
+    //!         Reference to Mhw MiItf.
     //! \param    [in] cmdBuffer
     //!           Pointer of OS command buffer
     //! \param    [in] offset
@@ -196,8 +197,8 @@ public:
     //!
     //! \brief    Save timestamp to the buffer by MI command
     //!
-    //! \param    [in] miInterface
-    //!           Pointer of MI interface
+    //! \param  [in] miItf
+    //!         Reference to Mhw MiItf.
     //! \param    [in] cmdBuffer
     //!           Pointer of OS command buffer
     //! \param    [in] offset
@@ -269,6 +270,7 @@ public:
     char                       m_outputFileName[MOS_MAX_PATH_LENGTH + 1];  //!< Name of output file
     bool                       m_enableProfilerDump = true;   //!< Indicate whether enable UMD Profiler dump
     std::shared_ptr<mhw::mi::Itf> m_miItf           = nullptr;
+MEDIA_CLASS_DEFINE_END(MediaPerfProfilerNext)
 };
 
 #endif // __MEDIA_PERF_PROFILER_NEXT_H__

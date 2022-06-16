@@ -40,6 +40,7 @@ MediaMemComp::MediaMemComp(PMOS_INTERFACE osInterface, MhwMiInterface *miInterfa
 {
     MEDIA_FEATURE_TABLE *skuTable = m_osInterface->pfnGetSkuTable(m_osInterface);
     m_isCompSurfAllocable = MosInterface::IsCompressibelSurfaceSupported(skuTable);
+    m_userSettingPtr = m_osInterface->pfnGetUserSettingInstance(m_osInterface);
 }
 
 MOS_STATUS MediaMemComp::InitMmcEnabled()
@@ -180,6 +181,22 @@ MOS_STATUS MediaMemComp::GetSurfaceMmcFormat(
         status = m_osInterface->pfnGetMemoryCompressionFormat(m_osInterface, &surface->OsResource, mmcFormat);
     else
         *mmcFormat = 0;
+
+    return status;
+}
+
+MOS_STATUS MediaMemComp::GetResourceMmcFormat(
+    PMOS_RESOURCE resource,
+    uint32_t    &mmcFormat)
+{
+    MOS_STATUS status = MOS_STATUS_SUCCESS;
+    MOS_CHK_NULL_RETURN(MOS_COMPONENT_MMC, MOS_MMC_SUBCOMP_SELF, resource);
+    MOS_CHK_NULL_RETURN(MOS_COMPONENT_MMC, MOS_MMC_SUBCOMP_SELF, m_osInterface);
+
+    if (m_mmcEnabled)
+        status = m_osInterface->pfnGetMemoryCompressionFormat(m_osInterface, resource, &mmcFormat);
+    else
+        mmcFormat = 0;
 
     return status;
 }
