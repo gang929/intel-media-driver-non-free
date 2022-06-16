@@ -174,7 +174,7 @@ VAStatus DdiDecodeAVC::ParseSliceParams(
     }
 
 #if MOS_EVENT_TRACE_DUMP_SUPPORTED
-    if (MOS_GetTraceEventKeyword() & EVENT_DECODE_SLICEPARAM_KEYWORD)
+    if (MOS_TraceKeyEnabled(TR_KEY_DECODE_SLICEPARAM))
     {
         if (m_ddiDecodeCtx->bShortFormatInUse)
         {
@@ -270,6 +270,8 @@ VAStatus DdiDecodeAVC::ParsePicParams(
     //Accoding to RecList, if the surface id is invalid, set PicFlags equal to PICTURE_INVALID
     for (i = 0; i < CODEC_MAX_NUM_REF_FRAME; i++)
     {
+        if (avcPicParams->RefFrameList[i].FrameIdx >= CODEC_AVC_NUM_UNCOMPRESSED_SURFACE)
+            return VA_STATUS_ERROR_INVALID_PARAMETER;        
         //Check the surface id of reference list
         if (VA_INVALID_ID == m_ddiDecodeCtx->RecListSurfaceID[avcPicParams->RefFrameList[i].FrameIdx])
         {
@@ -327,7 +329,7 @@ VAStatus DdiDecodeAVC::ParsePicParams(
     avcPicParams->frame_num = picParam->frame_num;
 
 #if MOS_EVENT_TRACE_DUMP_SUPPORTED
-    if (MOS_GetTraceEventKeyword() & EVENT_DECODE_PICPARAM_KEYWORD)
+    if (MOS_TraceKeyEnabled(TR_KEY_DECODE_PICPARAM))
     {
         DECODE_EVENTDATA_PICPARAM_AVC eventData;
         DecodeEventDataAVCPicParamInit(&eventData, avcPicParams);
@@ -444,7 +446,7 @@ VAStatus DdiDecodeAVC::RenderPicture(
             uint8_t * pDataBuf = (uint8_t *)DdiMediaUtil_LockBuffer(m_ddiDecodeCtx->BufMgr.pBitStreamBuffObject[index], MOS_LOCKFLAG_READONLY);
             DDI_CHK_NULL(pDataBuf, "nullptr bitstream", VA_STATUS_ERROR_INVALID_BUFFER);
 
-            if (MOS_GetTraceEventKeyword() & EVENT_DECODE_BITSTREAM_32BYTE_KEYWORD)
+            if (MOS_TraceKeyEnabled(TR_KEY_DECODE_BITSTREAM_32BYTE))
             {
                 DECODE_EVENTDATA_BITSTREAM eventData;
                 for (int i = 0; i < 32; i++)
@@ -454,7 +456,7 @@ VAStatus DdiDecodeAVC::RenderPicture(
                 MOS_TraceEvent(EVENT_DECODE_BUFFER_Bitstream, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0);
             }
 
-            if (MOS_GetTraceEventKeyword() & EVENT_DECODE_BITSTREAM_KEYWORD)
+            if (MOS_TraceKeyEnabled(TR_KEY_DECODE_BITSTREAM))
             {
                 MOS_TraceDataDump(
                 "Decode_Bitstream",
@@ -490,7 +492,7 @@ VAStatus DdiDecodeAVC::RenderPicture(
             DDI_CHK_RET(ParseIQMatrix(mediaCtx, imxBuf),"ParseIQMatrix failed!");
 
 #if MOS_EVENT_TRACE_DUMP_SUPPORTED
-            if (MOS_GetTraceEventKeyword() & EVENT_DECODE_QMATRIX_KEYWORD)
+            if (MOS_TraceKeyEnabled(TR_KEY_DECODE_QMATRIX))
             {
                 MOS_TraceDataDump(
                     "Decode_QMatrix",

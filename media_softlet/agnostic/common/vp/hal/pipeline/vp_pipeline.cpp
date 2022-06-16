@@ -296,6 +296,7 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
     PacketPipe                 *pPacketPipe = nullptr;
     std::vector<SwFilterPipe*> swFilterPipes;
     VpFeatureManagerNext       *featureManagerNext = dynamic_cast<VpFeatureManagerNext *>(m_featureManager);
+    bool                        isBypassNeeded     = false;
 
     VP_PUBLIC_CHK_NULL_RETURN(featureManagerNext);
     VP_PUBLIC_CHK_NULL_RETURN(m_pPacketPipeFactory);
@@ -321,6 +322,13 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
         }
         // Predication
         SetPredicationParams(params);
+
+        eStatus = ProcessBypassHandler(params, isBypassNeeded);
+        VP_PUBLIC_CHK_STATUS_RETURN(eStatus);
+        if (isBypassNeeded)
+        {
+            return MOS_STATUS_SUCCESS;
+        }
 
     }
 
@@ -479,14 +487,7 @@ MOS_STATUS VpPipeline::GetSystemVeboxNumber()
     }
     else if (m_forceMultiplePipe == MOS_SCALABILITY_ENABLE_MODE_DEFAULT)
     {
-        std::shared_ptr<mhw::vebox::Itf> veboxItf = m_vpMhwInterface.m_vpPlatformInterface->GetMhwVeboxItf();
-
-        if (veboxItf && !(veboxItf->IsVeboxScalabilitywith4K()))
-        {
-            m_numVebox = 1;
-            return MOS_STATUS_SUCCESS;
-        }
-        else if (m_vpMhwInterface.m_veboxInterface && !(m_vpMhwInterface.m_veboxInterface->m_veboxScalabilitywith4K))
+        if (!(m_vpMhwInterface.m_vpPlatformInterface->IsVeboxScalabilitywith4K(m_vpMhwInterface)))
         {
             m_numVebox = 1;
             return MOS_STATUS_SUCCESS;

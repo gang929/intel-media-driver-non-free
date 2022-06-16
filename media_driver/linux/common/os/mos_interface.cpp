@@ -2419,7 +2419,12 @@ MOS_STATUS MosInterface::DecompResource(
     MOS_OS_CHK_NULL_RETURN(resource->pGmmResInfo);
 
     MOS_LINUX_BO *bo = resource->bo;
-    if (resource->pGmmResInfo->IsMediaMemoryCompressed(0))
+    GMM_RESOURCE_FLAG gmmFlags;
+    gmmFlags = resource->pGmmResInfo->GetResFlags();
+    if (((gmmFlags.Gpu.MMC ||
+        gmmFlags.Gpu.CCS) &&
+        gmmFlags.Gpu.UnifiedAuxSurface) ||
+        resource->pGmmResInfo->IsMediaMemoryCompressed(0))
     {
         OsContextNext *osCtx = streamState->osDeviceContext;
         MOS_OS_CHK_NULL_RETURN(osCtx);
@@ -3306,4 +3311,9 @@ bool MosInterface::IsCompressibelSurfaceSupported(MEDIA_FEATURE_TABLE *skuTable)
         return MEDIA_IS_SKU(skuTable, FtrCompressibleSurfaceDefault);
     }
     return true;
+}
+
+bool MosInterface::IsMismatchOrderProgrammingSupported()
+{
+    return false;
 }

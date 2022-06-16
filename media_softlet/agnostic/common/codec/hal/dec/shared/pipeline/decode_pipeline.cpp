@@ -186,6 +186,9 @@ MOS_STATUS DecodePipeline::Uninitialize()
 {
     DECODE_FUNC_CALL();
 
+    // Wait all cmd completion before delete resource.
+    m_osInterface->pfnWaitAllCmdCompletion(m_osInterface);
+
     Delete_DecodeCpInterface(m_decodecp);
     m_decodecp = nullptr;
 
@@ -666,7 +669,7 @@ MOS_STATUS DecodePipeline::StatusCheck()
 #endif
 
 #if MOS_EVENT_TRACE_DUMP_SUPPORTED
-        if (MOS_GetTraceEventKeyword() & EVENT_DECODE_DSTYUV_KEYWORD)
+        if (MOS_TraceKeyEnabled(TR_KEY_DECODE_DSTYUV))
         {
             const DecodeStatusReportData &reportETWData = statusReport->GetReportData(m_statusCheckCount);
             DECODE_CHK_STATUS(TraceDataDumpOutput(reportETWData));

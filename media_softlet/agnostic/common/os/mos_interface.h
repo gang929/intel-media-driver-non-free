@@ -49,6 +49,7 @@
 
 #include "mos_defs.h"
 #include "mos_os.h"
+#include "media_class_trace.h"
 
 class GpuContextSpecificNext;
 struct _MOS_VIRTUALENGINE_SET_PARAMS;
@@ -2036,6 +2037,12 @@ public:
     //! \brief  Translate MOS_OS_FORMT into MOS_FORMAT
     //!
     static bool IsCompressibelSurfaceSupported(MEDIA_FEATURE_TABLE *skuTable);
+
+    //!
+    //! \brief  Check if Mismatch Order Programming model is supported
+    //!
+    static bool IsMismatchOrderProgrammingSupported();
+
 private:
     //!
     //! \brief    Init per stream parameters
@@ -2135,6 +2142,7 @@ private:
     static uint32_t m_mosOsApiFailSimulateHint;
     static uint32_t m_mosOsApiFailSimulateCounter;
 #endif
+MEDIA_CLASS_DEFINE_END(MosInterface)
 };
 
 #endif  // __MOS_INTERFACE_H__

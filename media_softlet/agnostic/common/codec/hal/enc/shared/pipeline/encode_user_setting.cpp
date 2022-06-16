@@ -31,12 +31,7 @@ MOS_STATUS EncodePipeline::InitUserSetting(MediaUserSettingSharedPtr userSetting
 {
     ENCODE_FUNC_CALL();
     ENCODE_CHK_STATUS_RETURN(MediaPipeline::InitUserSetting(userSettingPtr));
-    DeclareUserSettingKey(
-        userSettingPtr,
-        "HEVC Encode",
-        MediaUserSetting::Group::Sequence,
-        int32_t(1),
-        false);
+    
     DeclareUserSettingKey(
         userSettingPtr,
         "Set Media Encode Mode",
@@ -69,6 +64,34 @@ MOS_STATUS EncodePipeline::InitUserSetting(MediaUserSettingSharedPtr userSetting
         MediaUserSetting::Group::Sequence,
         int32_t(0),
         true);
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        "Encode Recon Compressible",
+        MediaUserSetting::Group::Sequence,
+        int32_t(0),
+        true);
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        "Encode Recon Compress Mode",
+        MediaUserSetting::Group::Sequence,
+        int32_t(0),
+        true);
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        "Encode MMC In Use",
+        MediaUserSetting::Group::Sequence,
+        int32_t(0),
+        true);
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        "Enable Encode MMC",
+        MediaUserSetting::Group::Sequence,
+        int32_t(0),
+        false);
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     DeclareUserSettingKeyForDebug(
@@ -137,7 +160,20 @@ MOS_STATUS EncodePipeline::InitUserSetting(MediaUserSettingSharedPtr userSetting
         MediaUserSetting::Group::Sequence,
         int32_t(3),
         true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "CodecHal Debug Output Directory",
+        MediaUserSetting::Group::Sequence,
+        "",
+        false);
 #endif
+
+#if _MEDIA_RESERVED
+#define ENCODE_USER_SETTING_EXT
+#include "encode_user_setting_ext.h"
+#undef ENCODE_USER_SETTING_EXT
+#endif
+
     return MOS_STATUS_SUCCESS;
 }
 }  // namespace encode

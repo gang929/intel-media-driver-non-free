@@ -278,6 +278,7 @@ struct _MHW_PAR_T(HCP_PIC_STATE)
     bool     deblockingFilterOverrideEnabled         = false;
     bool     ppsDeblockingFilterDisabled             = false;
     bool     requestCRC                              = false;
+    uint8_t  bNotFirstPass                           = 0;
     PCODEC_HEVC_EXT_PIC_PARAMS pHevcExtPicParams     = nullptr;
     PCODEC_HEVC_SCC_PIC_PARAMS pHevcSccPicParams     = nullptr;
     __MHW_VDBOX_HCP_WRAPPER_EXT(HCP_PIC_STATE_CMDPAR_EXT);
@@ -294,6 +295,8 @@ struct _MHW_PAR_T(HCP_SURFACE_STATE)
     MOS_MEMCOMP_STATE mmcState             = MOS_MEMCOMP_DISABLED;
     uint8_t           mmcSkipMask          = 0;
     uint32_t          dwCompressionFormat  = 0;
+    uint8_t           refsMmcEnable        = 0;
+    uint8_t           refsMmcType          = 0;
 };
 
 struct _MHW_PAR_T(HCP_PIPE_MODE_SELECT)

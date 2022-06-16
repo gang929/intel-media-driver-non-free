@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021, Intel Corporation
+* Copyright (c) 2015-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -1514,8 +1514,7 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxGamutState(
             pIecpState->CscState.DW0.YuvChannelSwap = true;
         }
         if (pVeboxGamutParams->ColorSpace == MHW_CSpace_BT601 ||
-            pVeboxGamutParams->ColorSpace == MHW_CSpace_xvYCC601 ||
-            pVeboxGamutParams->ColorSpace == MHW_CSpace_BT601_FullRange)
+            pVeboxGamutParams->ColorSpace == MHW_CSpace_xvYCC601)
         {
             pIecpState->CscState.DW0.C0          = 76309;
             pIecpState->CscState.DW1.C1          = 0;
@@ -1533,9 +1532,26 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxGamutState(
             pIecpState->CscState.DW11.OffsetIn3  = MOS_BITFIELD_VALUE((uint32_t)-16384, 16);
             pIecpState->CscState.DW11.OffsetOut3 = 0;
         }
+        else if (pVeboxGamutParams->ColorSpace == MHW_CSpace_BT601_FullRange)
+        {
+            pIecpState->CscState.DW0.C0          = 65536;
+            pIecpState->CscState.DW1.C1          = 0;
+            pIecpState->CscState.DW2.C2          = 91881;
+            pIecpState->CscState.DW3.C3          = 65536;
+            pIecpState->CscState.DW4.C4          = MOS_BITFIELD_VALUE((uint32_t)-22553, 19);
+            pIecpState->CscState.DW5.C5          = MOS_BITFIELD_VALUE((uint32_t)-46801, 19);
+            pIecpState->CscState.DW6.C6          = 65536;
+            pIecpState->CscState.DW7.C7          = 116130;
+            pIecpState->CscState.DW8.C8          = 0;
+            pIecpState->CscState.DW9.OffsetIn1   = 0;
+            pIecpState->CscState.DW9.OffsetOut1  = 0;
+            pIecpState->CscState.DW10.OffsetIn2  = MOS_BITFIELD_VALUE((uint32_t)-16384, 16);
+            pIecpState->CscState.DW10.OffsetOut2 = 0;
+            pIecpState->CscState.DW11.OffsetIn3  = MOS_BITFIELD_VALUE((uint32_t)-16384, 16);
+            pIecpState->CscState.DW11.OffsetOut3 = 0;
+        }
         else if (pVeboxGamutParams->ColorSpace == MHW_CSpace_BT709 ||
-                 pVeboxGamutParams->ColorSpace == MHW_CSpace_xvYCC709 ||
-                 pVeboxGamutParams->ColorSpace == MHW_CSpace_BT709_FullRange)
+                 pVeboxGamutParams->ColorSpace == MHW_CSpace_xvYCC709)
         {
             pIecpState->CscState.DW0.C0          = 76309;
             pIecpState->CscState.DW1.C1          = 0;
@@ -1553,7 +1569,26 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxGamutState(
             pIecpState->CscState.DW11.OffsetIn3  = MOS_BITFIELD_VALUE((uint32_t)-16384, 16);
             pIecpState->CscState.DW11.OffsetOut3 = 0;
         }
-        else if (pVeboxGamutParams->ColorSpace == MHW_CSpace_BT2020)
+        else if (pVeboxGamutParams->ColorSpace == MHW_CSpace_BT709_FullRange)
+        {
+            pIecpState->CscState.DW0.C0          = 65536;
+            pIecpState->CscState.DW1.C1          = 0;
+            pIecpState->CscState.DW2.C2          = 103206;
+            pIecpState->CscState.DW3.C3          = 65536;
+            pIecpState->CscState.DW4.C4          = MOS_BITFIELD_VALUE((uint32_t)-12277, 19);
+            pIecpState->CscState.DW5.C5          = MOS_BITFIELD_VALUE((uint32_t)-30679, 19);
+            pIecpState->CscState.DW6.C6          = 65536;
+            pIecpState->CscState.DW7.C7          = 121609;
+            pIecpState->CscState.DW8.C8          = 0;
+            pIecpState->CscState.DW9.OffsetIn1   = 0;
+            pIecpState->CscState.DW9.OffsetOut1  = 0;
+            pIecpState->CscState.DW10.OffsetIn2  = MOS_BITFIELD_VALUE((uint32_t)-16384, 16);
+            pIecpState->CscState.DW10.OffsetOut2 = 0;
+            pIecpState->CscState.DW11.OffsetIn3  = MOS_BITFIELD_VALUE((uint32_t)-16384, 16);
+            pIecpState->CscState.DW11.OffsetOut3 = 0;
+        }
+        else if (pVeboxGamutParams->ColorSpace == MHW_CSpace_BT2020 ||
+                 pVeboxGamutParams->ColorSpace == MHW_CSpace_BT2020_FullRange)
         {
             VeboxInterface_BT2020YUVToRGB(m_veboxHeap, pVeboxIecpParams, pVeboxGamutParams);
         }
@@ -2947,15 +2982,15 @@ MOS_STATUS MhwVeboxInterfaceG12::AddVeboxTilingConvert(
 
         if (outSurParams->CompressionMode != MOS_MMC_DISABLED)
         {
-            veboxInputSurfCtrlBits.DW0.MemoryCompressionEnable = true;
+            veboxOutputSurfCtrlBits.DW0.MemoryCompressionEnable = true;
 
             if (outSurParams->CompressionMode == MOS_MMC_RC)
             {
-                veboxInputSurfCtrlBits.DW0.CompressionType = 1;
+                veboxOutputSurfCtrlBits.DW0.CompressionType = 1;
             }
             else
             {
-                veboxInputSurfCtrlBits.DW0.CompressionType = 0;
+                veboxOutputSurfCtrlBits.DW0.CompressionType = 0;
             }
         }
 

@@ -52,11 +52,9 @@ MOS_STATUS VPFeatureManagerXe_Xpm_Base::IsScalabilityNeeded(bool &isScalabilityN
     isScalabilityNeeded = false;
 
     VP_PUBLIC_CHK_NULL_RETURN(m_hwInterface);
-    VP_PUBLIC_CHK_NULL_RETURN(m_hwInterface->m_veboxInterface);
-    VP_PUBLIC_CHK_NULL_RETURN(m_hwInterface->m_veboxInterface->m_osInterface);
+    VP_PUBLIC_CHK_NULL_RETURN(m_hwInterface->m_osInterface);
 
-    pVeboxState     = m_hwInterface->m_veboxInterface;
-    pOsInterface    = pVeboxState->m_osInterface;
+    pOsInterface    = m_hwInterface->m_osInterface;
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     if (pOsInterface->bEnableDbgOvrdInVE)
@@ -180,7 +178,11 @@ MOS_STATUS VPFeatureManagerXe_Xpm_Base::CheckFeatures(void * params, bool &bApgF
     if (!IsVeboxOutFeasible(pvpParams) &&
         !IsSfcOutputFeasible(pvpParams))
     {
-        return MOS_STATUS_SUCCESS;
+        if (!isHdrNeeded)
+        {
+            return MOS_STATUS_SUCCESS;
+        }
+        VP_PUBLIC_NORMALMESSAGE("Enable APG for HDR.");
     }
 
     bool bVeboxNeeded = IsVeboxSupported(pvpParams);
