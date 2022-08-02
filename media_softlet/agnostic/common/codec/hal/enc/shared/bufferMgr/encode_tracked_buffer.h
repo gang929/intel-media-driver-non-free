@@ -55,6 +55,8 @@ enum class BufferType
     vdencSegIdStreamOutBuffer,
     bwdAdaptCdfBuffer,
     postCdefReconSurface,
+    preMbCodedBuffer,
+    preRefSurface,
     preDs4xSurface,
     preDs8xSurface,
     superResRefScaled,
@@ -217,6 +219,8 @@ protected:
         {BufferType::vdencSegIdStreamOutBuffer, ResourceType::bufferResource},
         {BufferType::bwdAdaptCdfBuffer,         ResourceType::bufferResource},
         {BufferType::postCdefReconSurface,      ResourceType::surfaceResource},
+        {BufferType::preMbCodedBuffer,          ResourceType::bufferResource},
+        {BufferType::preRefSurface,             ResourceType::surfaceResource},
         {BufferType::preDs4xSurface,            ResourceType::surfaceResource},
         {BufferType::preDs8xSurface,            ResourceType::surfaceResource},
 #if _MEDIA_RESERVED
@@ -243,7 +247,7 @@ protected:
     std::map<BufferType, std::shared_ptr<BufferQueue> > m_bufferQueue = {};  //!< buffer queues
     std::map<BufferType, std::shared_ptr<BufferQueue> > m_oldQueue = {};     //!< old queues for resolution change
 
-MEDIA_CLASS_DEFINE_END(TrackedBuffer)
+MEDIA_CLASS_DEFINE_END(encode__TrackedBuffer)
 };
 }  // namespace encode
 #endif  // !__ENCODE_BUFFER_TRACKER_H__

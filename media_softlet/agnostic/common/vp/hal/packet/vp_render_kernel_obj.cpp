@@ -26,7 +26,7 @@
 //!
 #include "vp_render_kernel_obj.h"
 #include "vp_dumper.h"
-#include  "hal_oca_interface.h"
+#include "hal_oca_interface.h"
 
 using namespace vp;
 
@@ -168,6 +168,7 @@ MOS_STATUS VpRenderKernelObj::InitKernel(void* binary, uint32_t size, KERNEL_CON
     VP_RENDER_CHK_STATUS_RETURN(SetProcessSurfaceGroup(surfacesGroup));
 
     VP_RENDER_NORMALMESSAGE("Kernel %d is in use.", m_kernelId);
+    MT_LOG1(MT_VP_KERNEL_Init, MT_NORMAL, MT_VP_KERNEL_ID, m_kernelId);
 
     return MOS_STATUS_SUCCESS;
 }
@@ -187,7 +188,7 @@ void VpRenderKernelObj::DumpSurface(VP_SURFACE* pSurface, PCCHAR fileName)
     MOS_LOCK_PARAMS         LockFlags;
 
     VP_FUNC_CALL();
-
+#if !EMUL
     PMOS_INTERFACE        pOsInterface = m_hwInterface->m_osInterface;
 
     pDst = nullptr;
@@ -255,4 +256,6 @@ void VpRenderKernelObj::DumpSurface(VP_SURFACE* pSurface, PCCHAR fileName)
     }
 
     m_allocator->UnLock(&pSurface->osSurface->OsResource);
+#endif
 }
+

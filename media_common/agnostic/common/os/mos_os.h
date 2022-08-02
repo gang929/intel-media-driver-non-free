@@ -527,11 +527,14 @@ struct _MOS_GPUCTX_CREATOPTIONS
         uint32_t SSEUValue;
     };
 
+    uint8_t isRealTimePriority;  // 1 if context is created from real time priority command queue (run GT at higher frequency)
+
     _MOS_GPUCTX_CREATOPTIONS() : CmdBufferNumScale(MOS_GPU_CONTEXT_CREATE_DEFAULT),
         RAMode(0),
         ProtectMode(0),
         gpuNode(0),
-        SSEUValue(0){}
+        SSEUValue(0),
+        isRealTimePriority(0){}
 
     virtual ~_MOS_GPUCTX_CREATOPTIONS(){}
 };
@@ -572,7 +575,7 @@ private:
     static std::shared_ptr<GpuCmdResInfoDump> m_instance;
     mutable uint32_t         m_cnt         = 0;
     bool                     m_dumpEnabled = false;
-    std::string              m_path;
+    std::string              m_path        = "";
 };
 #endif // MOS_COMMAND_RESINFO_DUMP_SUPPORTED
 
@@ -1182,15 +1185,6 @@ typedef struct _MOS_INTERFACE
         PMOS_INTERFACE              pOsInterface,
         PMOS_COMMAND_BUFFER         pCmdBuffer);
 
-    MOS_FORMAT (* pfnFmt_OsToMos) (
-        MOS_OS_FORMAT               format);
-
-    MOS_OS_FORMAT (* pfnFmt_MosToOs) (
-        MOS_FORMAT                  format);
-
-    GMM_RESOURCE_FORMAT (* pfnFmt_MosToGmm) (
-        MOS_FORMAT                  format);
-
     void (* pfnSetPerfTag) (
         PMOS_INTERFACE              pOsInterface,
         uint32_t                    PerfTag);
@@ -1322,6 +1316,9 @@ typedef struct _MOS_INTERFACE
         PMOS_RESOURCE               pOsResource);
 
     int32_t (*pfnIsGPUHung)(
+        PMOS_INTERFACE              pOsInterface);
+
+    bool (*pfnIsMultipleCodecDevicesInUse)(
         PMOS_INTERFACE              pOsInterface);
 
     //!

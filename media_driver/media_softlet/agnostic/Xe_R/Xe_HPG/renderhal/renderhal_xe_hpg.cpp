@@ -27,10 +27,45 @@
 //! \details    Render functions
 //!
 
-#include "renderhal.h"
+#include "renderhal_legacy.h"
 #include "renderhal_xe_hpg.h"
-#include "mhw_mi_g12_X.h"
 #include "vp_utils.h"
+#include "mhw_render_xe_hp_base.h"
+#include "mhw_state_heap.h"
+#include "mos_os.h"
+#include "mos_utilities.h"
+#include "mos_utilities_common.h"
+#include "vp_common.h"
+
+#define RENDERHAL_SAMPLERS_AVS_HPG 0
+
+extern const RENDERHAL_STATE_HEAP_SETTINGS g_cRenderHal_State_Heap_Settings_xe_hpg =
+{
+    // Global GSH Allocation parameters
+    RENDERHAL_SYNC_SIZE,                       //!< iSyncSize
+
+    // Media State Allocation parameters
+    RENDERHAL_MEDIA_STATES,                    //!< iMediaStateHeaps - Set by Initialize
+    RENDERHAL_MEDIA_IDS,                       //!< iMediaIDs
+    RENDERHAL_CURBE_SIZE,                      //!< iCurbeSize
+    RENDERHAL_SAMPLERS,                        //!< iSamplers
+    RENDERHAL_SAMPLERS_AVS_HPG,                //!< iSamplersAVS
+    RENDERHAL_SAMPLERS_VA,                     //!< iSamplersVA
+    RENDERHAL_KERNEL_COUNT,                    //!< iKernelCount
+    RENDERHAL_KERNEL_HEAP,                     //!< iKernelHeapSize
+    RENDERHAL_KERNEL_BLOCK_SIZE,               //!< iKernelBlockSize
+
+    // Media VFE/ID configuration, limits
+    0,                                         //!< iPerThreadScratchSize
+    RENDERHAL_MAX_SIP_SIZE,                    //!< iSipSize
+
+    // Surface State Heap Settings
+    RENDERHAL_SSH_INSTANCES,                   //!< iSurfaceStateHeaps
+    RENDERHAL_SSH_BINDING_TABLES,              //!< iBindingTables
+    RENDERHAL_SSH_SURFACE_STATES,              //!< iSurfaceStates
+    RENDERHAL_SSH_SURFACES_PER_BT,             //!< iSurfacesPerBT
+    RENDERHAL_SSH_BINDING_TABLE_ALIGN          //!< iBTAlignment
+};
 
 MOS_STATUS XRenderHal_Interface_Xe_Hpg::IsRenderHalMMCEnabled(
     PRENDERHAL_INTERFACE pRenderHal)
@@ -78,18 +113,19 @@ MOS_STATUS XRenderHal_Interface_Xe_Hpg::SendComputeWalker(
     MHW_ID_ENTRY_PARAMS         mhwIdEntryParams;
     PRENDERHAL_KRN_ALLOCATION   pKernelEntry;
     PRENDERHAL_MEDIA_STATE      pCurMediaState;
+    PRENDERHAL_INTERFACE_LEGACY pRenderHalLegacy = (PRENDERHAL_INTERFACE_LEGACY)pRenderHal;
 
-    MHW_RENDERHAL_CHK_NULL(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL(pRenderHalLegacy);
     MHW_RENDERHAL_CHK_NULL(pCmdBuffer);
-    MHW_RENDERHAL_CHK_NULL(pRenderHal->pMhwRenderInterface);
+    MHW_RENDERHAL_CHK_NULL(pRenderHalLegacy->pMhwRenderInterface);
     MHW_RENDERHAL_CHK_NULL(pGpGpuWalkerParams);
-    MHW_RENDERHAL_CHK_NULL(pRenderHal->pStateHeap);
-    MHW_RENDERHAL_CHK_NULL(pRenderHal->pStateHeap->pKernelAllocation);
+    MHW_RENDERHAL_CHK_NULL(pRenderHalLegacy->pStateHeap);
+    MHW_RENDERHAL_CHK_NULL(pRenderHalLegacy->pStateHeap->pKernelAllocation);
 
     MOS_ZeroMemory(&mhwIdEntryParams, sizeof(mhwIdEntryParams));
 
-    pKernelEntry = &pRenderHal->pStateHeap->pKernelAllocation[pRenderHal->iKernelAllocationID];
-    pCurMediaState = pRenderHal->pStateHeap->pCurMediaState;
+    pKernelEntry = &pRenderHalLegacy->pStateHeap->pKernelAllocation[pRenderHalLegacy->iKernelAllocationID];
+    pCurMediaState = pRenderHalLegacy->pStateHeap->pCurMediaState;
 
     MHW_RENDERHAL_CHK_NULL(pKernelEntry);
     MHW_RENDERHAL_CHK_NULL(pCurMediaState);
@@ -97,17 +133,17 @@ MOS_STATUS XRenderHal_Interface_Xe_Hpg::SendComputeWalker(
     mhwIdEntryParams.dwKernelOffset = pKernelEntry->dwOffset;
     mhwIdEntryParams.dwSamplerCount = pKernelEntry->Params.Sampler_Count;
     mhwIdEntryParams.dwSamplerOffset = pCurMediaState->dwOffset +
-                                        pRenderHal->pStateHeap->dwOffsetSampler +
-                                        pGpGpuWalkerParams->InterfaceDescriptorOffset * pRenderHal->pStateHeap->dwSizeSampler;
-    mhwIdEntryParams.dwBindingTableOffset = pGpGpuWalkerParams->BindingTableID * pRenderHal->pStateHeap->iBindingTableSize;
+                                        pRenderHalLegacy->pStateHeap->dwOffsetSampler +
+                                        pGpGpuWalkerParams->InterfaceDescriptorOffset * pRenderHalLegacy->pStateHeap->dwSizeSampler;
+    mhwIdEntryParams.dwBindingTableOffset = pGpGpuWalkerParams->BindingTableID * pRenderHalLegacy->pStateHeap->iBindingTableSize;
     mhwIdEntryParams.dwSharedLocalMemorySize = pGpGpuWalkerParams->SLMSize;
     mhwIdEntryParams.dwNumberofThreadsInGPGPUGroup = pGpGpuWalkerParams->ThreadWidth * pGpGpuWalkerParams->ThreadHeight;
     //This only a WA to disable EU fusion for multi-layer blending cases.
     //Need remove it after kernel and compiler fix it.
-    mhwIdEntryParams.bBarrierEnable = pRenderHal->eufusionBypass ? 1: 0;
-    pGpGpuWalkerParams->IndirectDataStartAddress = pGpGpuWalkerParams->IndirectDataStartAddress + pRenderHal->pStateHeap->pCurMediaState->dwOffset;
+    mhwIdEntryParams.bBarrierEnable = pRenderHalLegacy->eufusionBypass ? 1: 0;
+    pGpGpuWalkerParams->IndirectDataStartAddress = pGpGpuWalkerParams->IndirectDataStartAddress + pRenderHalLegacy->pStateHeap->pCurMediaState->dwOffset;
 
-    MHW_RENDERHAL_CHK_STATUS(static_cast<MhwRenderInterfaceXe_Xpm_Base*>(pRenderHal->pMhwRenderInterface)->AddComputeWalkerCmd(pCmdBuffer,
+    MHW_RENDERHAL_CHK_STATUS(static_cast<MhwRenderInterfaceXe_Xpm_Base*>(pRenderHalLegacy->pMhwRenderInterface)->AddComputeWalkerCmd(pCmdBuffer,
         pGpGpuWalkerParams,
         &mhwIdEntryParams,
         nullptr,
@@ -115,4 +151,18 @@ MOS_STATUS XRenderHal_Interface_Xe_Hpg::SendComputeWalker(
 
 finish:
     return eStatus;
+}
+
+//!
+//! \brief    Initialize the State Heap Settings per platform
+//! \param    PRENDERHAL_STATE_HEAP_SETTINGS pSettings
+//!           [out] Pointer to PRENDERHAL_STATE_HEAP_SETTINGSStructure
+//! \return   void
+//!
+void XRenderHal_Interface_Xe_Hpg::InitStateHeapSettings(
+    PRENDERHAL_INTERFACE    pRenderHal)
+{
+    MHW_RENDERHAL_CHK_NULL_NO_STATUS_RETURN(pRenderHal);
+    // Set State Heap settings for xe hpg
+    pRenderHal->StateHeapSettings = g_cRenderHal_State_Heap_Settings_xe_hpg;
 }

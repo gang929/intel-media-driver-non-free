@@ -30,6 +30,7 @@
 
 #include "mhw_vdbox_avp_itf.h"
 #include "mhw_impl.h"
+#include "mos_interface.h"
 
 namespace mhw
 {
@@ -175,9 +176,12 @@ public:
                     bufferSize = (sbPerFrmWid + 3) * MHW_CACHELINE_SIZE * (8 + 8) << 1; // 8 for Luma, 8 for Chroma
                 }
                 break;
-            case fgTileColBuffer:
-            case fgSampleTmpBuffer:
             case lrTileColAlignBuffer:
+            case fgTileColBuffer:
+                bufferSize = sbPerFrmHgt * avpBufferSize[index][avpBufSizeParam->bitDepthIdc][avpBufSizeParam->isSb128x128] 
+                    + avpBufferSizeExt[index][avpBufSizeParam->bitDepthIdc][avpBufSizeParam->isSb128x128];
+                break;
+            case fgSampleTmpBuffer:
                 bufferSize = avpBufferSize[index][avpBufSizeParam->bitDepthIdc][avpBufSizeParam->isSb128x128]
                     + avpBufferSizeExt[index][avpBufSizeParam->bitDepthIdc][avpBufSizeParam->isSb128x128];
                 break;

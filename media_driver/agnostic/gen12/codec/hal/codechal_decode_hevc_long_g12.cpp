@@ -108,10 +108,27 @@ MOS_STATUS HevcDecodeSliceLongG12::ProcessSliceLong(uint8_t *cmdResBase, uint32_
         PHEVC_SLICE_TILE_PARAMS     sliceTileParams = nullptr;
 
         bool isIndependentSlice = (i == 0) || !slc->LongSliceFlags.fields.dependent_slice_segment_flag;
+
+        if(slc->slice_data_offset + slc->slice_data_size > m_decoder->m_dataSize)
+        {
+            CODECHAL_DECODE_ASSERTMESSAGE("invalid slice %d, data size overflow\n", i);
+            MOS_SafeFreeMemory(cmdBufArray);
+            return MOS_STATUS_INVALID_PARAMETER;
+        }
+
         if (isIndependentSlice)
         {
             origCtbX = slc->slice_segment_address % m_widthInCtb;
             origCtbY = slc->slice_segment_address / m_widthInCtb;
+
+            if(i == 0 && slc->slice_segment_address != 0)
+            {
+                //Spec reequires that segment address in first slice must be 0
+                CODECHAL_DECODE_ASSERTMESSAGE("invalid independent slice %d, slice_segment_address=%d\n",
+                    i, slc->slice_segment_address);
+                MOS_SafeFreeMemory(cmdBufArray);
+                return MOS_STATUS_INVALID_PARAMETER;
+            }
         }
         else //dependent
         {
@@ -122,6 +139,14 @@ MOS_STATUS HevcDecodeSliceLongG12::ProcessSliceLong(uint8_t *cmdResBase, uint32_
                 {
                     origCtbX = (slcBase + index)->slice_segment_address % m_widthInCtb;
                     origCtbY = (slcBase + index)->slice_segment_address / m_widthInCtb;
+
+                    if(index == 0 && (slcBase + index)->slice_segment_address != 0)
+                    {
+                        CODECHAL_DECODE_ASSERTMESSAGE("invalid dependent slice %d, index %d, slice_segment_address=%d\n",
+                            index, slc->slice_segment_address);
+                        MOS_SafeFreeMemory(cmdBufArray);
+                        return MOS_STATUS_INVALID_PARAMETER;
+                    }
                     break;
                 }
             }
@@ -186,6 +211,7 @@ MOS_STATUS HevcDecodeSliceLongG12::ProcessSliceLong(uint8_t *cmdResBase, uint32_
                 if (eStatus != MOS_STATUS_SUCCESS)
                 {
                     MOS_SafeFreeMemory(sliceTileParams);
+                    MOS_SafeFreeMemory(cmdBufArray);
                     CODECHAL_DECODE_CHK_STATUS_RETURN(eStatus);
                 }
                 //insert 2 dummy VD_CONTROL_STATE packets with data=0 before every HCP_TILE_CODING
@@ -208,6 +234,7 @@ MOS_STATUS HevcDecodeSliceLongG12::ProcessSliceLong(uint8_t *cmdResBase, uint32_
                 if (eStatus != MOS_STATUS_SUCCESS)
                 {
                     MOS_SafeFreeMemory(sliceTileParams);
+                    MOS_SafeFreeMemory(cmdBufArray);
                     CODECHAL_DECODE_CHK_STATUS_RETURN(eStatus);
                 }
 
@@ -255,6 +282,7 @@ MOS_STATUS HevcDecodeSliceLongG12::ProcessSliceLong(uint8_t *cmdResBase, uint32_
             if (eStatus != MOS_STATUS_SUCCESS)
             {
                 MOS_SafeFreeMemory(sliceTileParams);
+                MOS_SafeFreeMemory(cmdBufArray);
                 CODECHAL_DECODE_CHK_STATUS_RETURN(eStatus);
             }
 
@@ -262,6 +290,7 @@ MOS_STATUS HevcDecodeSliceLongG12::ProcessSliceLong(uint8_t *cmdResBase, uint32_
             if (eStatus != MOS_STATUS_SUCCESS)
             {
                 MOS_SafeFreeMemory(sliceTileParams);
+                MOS_SafeFreeMemory(cmdBufArray);
                 CODECHAL_DECODE_CHK_STATUS_RETURN(eStatus);
             }
 
@@ -269,6 +298,7 @@ MOS_STATUS HevcDecodeSliceLongG12::ProcessSliceLong(uint8_t *cmdResBase, uint32_
             if (eStatus != MOS_STATUS_SUCCESS)
             {
                 MOS_SafeFreeMemory(sliceTileParams);
+                MOS_SafeFreeMemory(cmdBufArray);
                 CODECHAL_DECODE_CHK_STATUS_RETURN(eStatus);
             }
 
@@ -276,6 +306,7 @@ MOS_STATUS HevcDecodeSliceLongG12::ProcessSliceLong(uint8_t *cmdResBase, uint32_
             if (eStatus != MOS_STATUS_SUCCESS)
             {
                 MOS_SafeFreeMemory(sliceTileParams);
+                MOS_SafeFreeMemory(cmdBufArray);
                 CODECHAL_DECODE_CHK_STATUS_RETURN(eStatus);
             }
 
@@ -286,6 +317,7 @@ MOS_STATUS HevcDecodeSliceLongG12::ProcessSliceLong(uint8_t *cmdResBase, uint32_
                 if (eStatus != MOS_STATUS_SUCCESS)
                 {
                     MOS_SafeFreeMemory(sliceTileParams);
+                    MOS_SafeFreeMemory(cmdBufArray);
                     CODECHAL_DECODE_CHK_STATUS_RETURN(eStatus);
                 }
                 // Send VD_PIPELINE_FLUSH command
@@ -298,6 +330,7 @@ MOS_STATUS HevcDecodeSliceLongG12::ProcessSliceLong(uint8_t *cmdResBase, uint32_
                 if (eStatus != MOS_STATUS_SUCCESS)
                 {
                     MOS_SafeFreeMemory(sliceTileParams);
+                    MOS_SafeFreeMemory(cmdBufArray);
                     CODECHAL_DECODE_CHK_STATUS_RETURN(eStatus);
                 }
             }

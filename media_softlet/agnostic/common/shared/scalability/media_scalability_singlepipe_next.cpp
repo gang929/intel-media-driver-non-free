@@ -26,16 +26,20 @@
 //! \details  The media scalability singlepipe interface is further sub-divided by component,
 //!           this file is for the base interface which is shared by all components.
 //!
+
+#include <stddef.h>
+#include <memory>
+#include "media_scalability_option.h"
+#include "mos_os_virtualengine_next.h"
+#include "mos_interface.h"
+#include "mos_os_virtualengine_specific.h"
+#include "mos_utilities.h"
 #include <typeinfo>
-#include <iostream>
-#include "mos_os_virtualengine_scalability.h"
+#include "mos_os.h"
 #include "media_scalability_defs.h"
 #include "media_scalability_singlepipe_next.h"
-#include "mhw_mi.h"
-#include "hal_oca_interface.h"
 #include "mhw_mi_itf.h"
-#include "mhw_mi_cmdpar.h"
-#include "media_packet.h"
+class MediaContext;
 
 MediaScalabilitySinglePipeNext::MediaScalabilitySinglePipeNext(void *hwInterface, MediaContext *mediaContext, uint8_t componentType) :
     MediaScalability(mediaContext)
@@ -46,36 +50,22 @@ MediaScalabilitySinglePipeNext::MediaScalabilitySinglePipeNext(void *hwInterface
 MOS_STATUS MediaScalabilitySinglePipeNext::Initialize(const MediaScalabilityOption &option)
 {
     SCALABILITY_CHK_NULL_RETURN(m_osInterface);
-
+#if !EMUL
     if (MOS_VE_SUPPORTED(m_osInterface))
     {
         MOS_VIRTUALENGINE_INIT_PARAMS VEInitParams;
         MOS_ZeroMemory(&VEInitParams, sizeof(VEInitParams));
         VEInitParams.bScalabilitySupported = false;
 
-        if (m_osInterface->apoMosEnabled)
-        {
-            SCALABILITY_CHK_NULL_RETURN(m_osInterface->osStreamState);
-            SCALABILITY_CHK_STATUS_RETURN(MosInterface::CreateVirtualEngineState(
-                m_osInterface->osStreamState, &VEInitParams, m_veState));
-            SCALABILITY_CHK_NULL_RETURN(m_veState);
+        SCALABILITY_CHK_NULL_RETURN(m_osInterface->osStreamState);
+        SCALABILITY_CHK_STATUS_RETURN(MosInterface::CreateVirtualEngineState(
+            m_osInterface->osStreamState, &VEInitParams, m_veState));
+        SCALABILITY_CHK_NULL_RETURN(m_veState);
 
-            SCALABILITY_CHK_STATUS_RETURN(MosInterface::GetVeHintParams(m_osInterface->osStreamState, false, &m_veHitParams));
-            SCALABILITY_CHK_NULL_RETURN(m_veHitParams);
-        }
-        else
-        {
-            SCALABILITY_CHK_STATUS_RETURN(Mos_VirtualEngineInterface_Initialize(m_osInterface, &VEInitParams));
-            m_veInterface = m_osInterface->pVEInterf;
-            SCALABILITY_CHK_NULL_RETURN(m_veInterface);
-            if (m_veInterface->pfnVEGetHintParams)
-            {
-                SCALABILITY_CHK_STATUS_RETURN(m_veInterface->pfnVEGetHintParams(m_veInterface, false, &m_veHitParams));
-                SCALABILITY_CHK_NULL_RETURN(m_veHitParams);
-            }
-        }
+        SCALABILITY_CHK_STATUS_RETURN(MosInterface::GetVeHintParams(m_osInterface->osStreamState, false, &m_veHitParams));
+        SCALABILITY_CHK_NULL_RETURN(m_veHitParams);
     }
-
+#endif
     PMOS_GPUCTX_CREATOPTIONS_ENHANCED gpuCtxCreateOption = MOS_New(MOS_GPUCTX_CREATOPTIONS_ENHANCED);
     SCALABILITY_CHK_NULL_RETURN(gpuCtxCreateOption);
 
@@ -84,20 +74,12 @@ MOS_STATUS MediaScalabilitySinglePipeNext::Initialize(const MediaScalabilityOpti
     gpuCtxCreateOption->LRCACount = 1;
     // This setting is only for encode, please override it in decode/vpp
     gpuCtxCreateOption->UsingSFC = false;
-#if (_DEBUG || _RELEASE_INTERNAL)
+#if (_DEBUG || _RELEASE_INTERNAL) && !EMUL
     if (m_osInterface->bEnableDbgOvrdInVE)
     {
         gpuCtxCreateOption->DebugOverride = true;
-        if (m_osInterface->apoMosEnabled)
-        {
-            SCALABILITY_ASSERT(MosInterface::GetVeEngineCount(m_osInterface->osStreamState) == 1);
-            gpuCtxCreateOption->EngineInstance[0] = MosInterface::GetEngineLogicId(m_osInterface->osStreamState, 0);
-        }
-        else
-        {
-            SCALABILITY_ASSERT(m_veInterface->ucEngineCount == 1);
-            gpuCtxCreateOption->EngineInstance[0] = m_veInterface->EngineLogicId[0];
-        }
+        SCALABILITY_ASSERT(MosInterface::GetVeEngineCount(m_osInterface->osStreamState) == 1);
+        gpuCtxCreateOption->EngineInstance[0] = MosInterface::GetEngineLogicId(m_osInterface->osStreamState, 0);
     }
 #endif
     m_gpuCtxCreateOption = (PMOS_GPUCTX_CREATOPTIONS)gpuCtxCreateOption;
@@ -183,14 +165,7 @@ MOS_STATUS MediaScalabilitySinglePipeNext::SetHintParams()
     SCALABILITY_FUNCTION_ENTER;
 
     SCALABILITY_CHK_NULL_RETURN(m_osInterface);
-    if (m_osInterface->apoMosEnabled)
-    {
-        SCALABILITY_CHK_NULL_RETURN(m_osInterface->osStreamState);
-    }
-    else
-    {
-        SCALABILITY_CHK_NULL_RETURN(m_veInterface);
-    }
+    SCALABILITY_CHK_NULL_RETURN(m_osInterface->osStreamState);
 
     MOS_STATUS                   eStatus = MOS_STATUS_SUCCESS;
     MOS_VIRTUALENGINE_SET_PARAMS veParams;
@@ -207,17 +182,7 @@ MOS_STATUS MediaScalabilitySinglePipeNext::SetHintParams()
         veParams.bSFCInUse                   = false;
     }
 
-    if (m_osInterface->apoMosEnabled)
-    {
-        SCALABILITY_CHK_STATUS_RETURN(MosInterface::SetVeHintParams(m_osInterface->osStreamState, &veParams));
-    }
-    else
-    {
-        if (m_veInterface && m_veInterface->pfnVESetHintParams)
-        {
-            SCALABILITY_CHK_STATUS_RETURN(m_veInterface->pfnVESetHintParams(m_veInterface, &veParams));
-        }
-    }
+    SCALABILITY_CHK_STATUS_RETURN(MosInterface::SetVeHintParams(m_osInterface->osStreamState, &veParams));
     return eStatus;
 }
 
@@ -245,7 +210,10 @@ MOS_STATUS MediaScalabilitySinglePipeNext::SubmitCmdBuffer(PMOS_COMMAND_BUFFER c
 
     SCALABILITY_CHK_STATUS_RETURN(GetCmdBuffer(cmdBuffer));
 
-    SCALABILITY_CHK_STATUS_RETURN(m_miItf->AddMiBatchBufferEnd(cmdBuffer, nullptr));
+    if (!m_osInterface->pfnIsMismatchOrderProgrammingSupported())
+    {
+        SCALABILITY_CHK_STATUS_RETURN(m_miItf->AddMiBatchBufferEnd(cmdBuffer, nullptr));
+    }
 
     SCALABILITY_CHK_STATUS_RETURN(Oca1stLevelBBEnd(*cmdBuffer));
 

@@ -34,7 +34,6 @@
 #include "encode_utils.h"
 #include "encode_hevc_vdenc_pipeline.h"
 #include "encode_hevc_basic_feature.h"
-#include "mhw_vdbox_g12_X.h"
 #if _ENCODE_RESERVED
 #include "encode_huc_brc_update_packet_ext.h"
 #endif // _ENCODE_RESERVED
@@ -122,8 +121,10 @@ namespace encode
         uint8_t     CqmEnable                    = 0;
         uint8_t     UPD_TempCurrentlayer         = 0;
         uint8_t     UPD_TempScalable             = 0;
+        uint32_t    UPD_UserMaxFrame             = 0;
+        uint32_t    UPD_UserMaxFramePB           = 0;
 
-        uint8_t     RSVD[52] = {};  // 64 bytes aligned
+        uint8_t     RSVD[44] = {};  // 64 bytes aligned
     };
     C_ASSERT(256 == sizeof(VdencHevcHucBrcUpdateDmem));
 
@@ -293,7 +294,7 @@ namespace encode
         std::shared_ptr<mhw::mi::Itf>           m_miItf    = nullptr;
         std::shared_ptr<MediaFeatureManager::ManagerLite> m_featureManager = nullptr;
 
-    MEDIA_CLASS_DEFINE_END(HucBrcUpdatePkt)
+    MEDIA_CLASS_DEFINE_END(encode__HucBrcUpdatePkt)
     };
 
 }  // namespace encode

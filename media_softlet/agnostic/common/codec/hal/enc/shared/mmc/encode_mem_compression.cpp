@@ -31,7 +31,7 @@
 #include "encode_mem_compression.h"
 
 EncodeMemComp::EncodeMemComp(CodechalHwInterface *hwInterface) :
-    MediaMemComp(hwInterface->GetOsInterface(), hwInterface->GetMiInterface())
+    MediaMemCompNext(hwInterface->GetOsInterface(), std::static_pointer_cast<mhw::mi::Itf>(hwInterface->GetMiInterface()->GetNewMiInterface()))
 {
     m_mmcFeatureId      = __MEDIA_USER_FEATURE_VALUE_CODEC_MMC_ENABLE_ID;
     m_mmcInuseFeatureId = __MEDIA_USER_FEATURE_VALUE_CODEC_MMC_IN_USE_ID;
@@ -76,12 +76,11 @@ MOS_STATUS EncodeMemComp::UpdateUserFeatureKey(PMOS_SURFACE surface)
 
 void EncodeMemComp::InitEncodeMmc(CodechalHwInterface *hwInterface)
 {
-    CODECHAL_HW_ASSERT(hwInterface);
-    CODECHAL_HW_ASSERT(hwInterface->GetSkuTable());
+    CODEC_HW_ASSERT(hwInterface);
+    CODEC_HW_ASSERT(hwInterface->GetSkuTable());
     if (MEDIA_IS_SKU(hwInterface->GetSkuTable(), FtrE2ECompression))
     {
         //read encode mmc if available, then report encode mmc in use
-
         bool encodeMmcEnabled = true;
         MediaUserSetting::Value outValue;
         ReadUserSetting(
@@ -89,7 +88,8 @@ void EncodeMemComp::InitEncodeMmc(CodechalHwInterface *hwInterface)
             outValue,
             "Enable Encode MMC",
             MediaUserSetting::Group::Sequence,
-            m_osInterface->pOsContext);
+            m_osInterface->pOsContext,
+            encodeMmcEnabled, true);
         encodeMmcEnabled = outValue.Get<bool>();
 
         m_mmcEnabledForEncode = m_mmcEnabled && encodeMmcEnabled;

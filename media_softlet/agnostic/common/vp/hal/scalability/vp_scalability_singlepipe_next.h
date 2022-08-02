@@ -75,6 +75,8 @@ public:
     //!
     virtual MOS_STATUS Initialize(const MediaScalabilityOption &option) override;
 
+    static MOS_STATUS CreateSinglePipe(void *hwInterface, MediaContext *mediaContext, uint8_t componentType);
+
 protected:
 
     virtual MOS_STATUS SendAttrWithFrameTracking(MOS_COMMAND_BUFFER &cmdBuffer, bool frameTrackingRequested) override
@@ -85,7 +87,7 @@ protected:
 private:
     PVP_MHWINTERFACE  m_hwInterface = nullptr;
 
-MEDIA_CLASS_DEFINE_END(VpScalabilitySinglePipeNext)
+MEDIA_CLASS_DEFINE_END(vp__VpScalabilitySinglePipeNext)
 };
 }
 #endif // !__VP_SCALABILITY_SINGLEPIPE_NEXT_H__

@@ -28,7 +28,7 @@
 //!
 
 #include "media_interfaces_xehp_sdv.h"
-#include "codechal_debug_xe_xpm_ext.h"
+#include "codechal_debug.h"
 #if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 #include "igcodeckrn_g12.h"
 #endif
@@ -274,6 +274,11 @@ MOS_STATUS MmdDeviceXe_Xpm::Initialize(
         mhwInterfaces->m_miInterface,
         mhwInterfaces->m_veboxInterface) != MOS_STATUS_SUCCESS)
     {
+        // Vebox/mi/cp interface will gove control to mmd device, will release will be in destructure func
+        // set as null to avoid double free in driver
+        mhwInterfaces->m_cpInterface = nullptr;
+        mhwInterfaces->m_miInterface = nullptr;
+        mhwInterfaces->m_veboxInterface = nullptr;
         MMD_FAILURE();
     }
 
@@ -416,7 +421,7 @@ MOS_STATUS CodechalInterfacesXe_Xpm::Initialize(
         return MOS_STATUS_NO_SPACE;
     }
 #if USE_CODECHAL_DEBUG_TOOL
-    CodechalDebugInterface *debugInterface = MOS_New(CodechalDebugInterfaceXe_Xpm);
+    CodechalDebugInterface *debugInterface = MOS_New(CodechalDebugInterface);
     if (debugInterface == nullptr)
     {
         MOS_Delete(hwInterface);

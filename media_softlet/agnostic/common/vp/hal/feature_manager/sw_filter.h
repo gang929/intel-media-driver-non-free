@@ -55,6 +55,11 @@ class SwFilterSubPipe;
 #define FEATURE_TYPE_MASK                   0xffffff00
 #define FEATURE_TYPE_ENGINE_ASSIGNED(feature) (((feature)&FEATURE_TYPE_MASK) != (feature))
 
+#define SURFACETYPE_SIZE32                  31
+#define SURFACETYPE_SIZE16                  15
+#define SURFACETYPE_SIZE5                   4
+#define SURFACETYPE_SIZE10                  9
+
 enum FeatureType
 {
     FeatureTypeInvalid          = 0,
@@ -123,6 +128,8 @@ enum FeatureType
     FeatureTypeFDFB             = 0x2100,
     FeatureTypeFDFBOnVebox      = FeatureTypeFDFB | FEATURE_TYPE_ENGINE_BITS_VEBOX,
     FeatureTypeFDFBOnRender     = FeatureTypeFDFB | FEATURE_TYPE_ENGINE_BITS_RENDER,
+    FeatureTypeSegmentation     = 0x2200,
+    FeatureTypeSegmentationOnRender = FeatureTypeSegmentation | FEATURE_TYPE_ENGINE_BITS_RENDER,
     // ...
     NumOfFeatureType
 };
@@ -624,14 +631,99 @@ enum SurfaceType
     SurfaceTypeFBInputSampler,
     // HVS Kernel
     SurfaceTypeHVSTable,
+    //Segmentation
+    SurfaceTypeRenderPreviousInput,
+    SurfaceTypeRenderTempOutput,  //Used for seg out only
+    SurfaceTypeSegBackground,
+    SurfaceTypeSegGaussianCoeffBuffer,
+    SurfaceTypeSegTFMask,
+    SurfaceTypeSegTFOutMask,
+    SurfaceTypeSegWindowSize,
+    SurfaceTypeSegMaskScaling,
+    SurfaceTypeSegMaskBlur,
+    SurfaceTypeSegBlurScaling,
+    SurfaceTypeSegGaussianBlur,
+    SurfaceTypeSegBlur,
+    SurfaceTypeSegBlur2,
+    SurfaceTypeSegBlur3,
+    SurfaceTypeSegGFLayer,
+    SurfaceTypeSegGFLayerEnd = SurfaceTypeSegGFLayer + 8,
+    SurfaceTypeSegGFOut,
+    SurfaceTypeSegGFOut2,
+    SurfaceTypeSegGFOut3,
+    SurfaceTypeSegGFOut4,
+    SurfaceTypeSegInputMotion,
+    SurfaceTypeSegInputMotionEnd = SurfaceTypeSegInputMotion + 2,
+    SurfaceTypeSegPreInputMotion,
+    SurfaceTypeSegPreInputMotionEnd = SurfaceTypeSegPreInputMotion +2,
+    SurfaceTypeSegDiffMotion,
+    SurfaceTypeSegDiffMotionEnd = SurfaceTypeSegDiffMotion + 2,
+    SurfaceTypeSegErode1x2Motion,
+    SurfaceTypeSegErode1x2MotionEnd = SurfaceTypeSegErode1x2Motion + 2,
+    SurfaceTypeSegErode2x1Motion,
+    SurfaceTypeSegErode2x1Motion2,
+    SurfaceTypeSegErode2x1Motion3,
+    SurfaceTypeSegSumMotion,
+    // Segmentation layers
+    SurfaceTypeSegModelLayer,
+    SurfaceTypeSegModelLayerEnd = SurfaceTypeSegModelLayer + 85,
+    SurfaceTypeSegWeights,
+    SurfaceTypeSegWeightsEnd = SurfaceTypeSegWeights + 85,
+    SurfaceTypeSegBias,
+    SurfaceTypeSegBiasEnd = SurfaceTypeSegBias + 85,
+
+    // SR
+    SurfaceTypeSRLumaInputSurf,
+    SurfaceTypeSRTempOutputSurf,
+    SurfaceTypeSRTempLumaOutput,
+    SurfaceTypeSRTempLumaOutputEnd = SurfaceTypeSRTempLumaOutput + SURFACETYPE_SIZE32,
+    SurfaceTypeSRTempLuma2Output,
+    SurfaceTypeSRTempLuma2OutputEnd = SurfaceTypeSRTempLuma2Output + SURFACETYPE_SIZE16,
+    SurfaceTypeSRTempLuma3Output,
+    SurfaceTypeSRTempLuma3OutputEnd = SurfaceTypeSRTempLuma3Output + SURFACETYPE_SIZE5,
+    SurfaceTypeSRTempLuma4Output,
+    SurfaceTypeSRTempLuma4OutputEnd = SurfaceTypeSRTempLuma4Output + SURFACETYPE_SIZE32,
+    SurfaceTypeSRTempLuma5Output,
+    SurfaceTypeSRWeightBuffer,
+    SurfaceTypeSRWeightBufferEnd = SurfaceTypeSRWeightBuffer + SURFACETYPE_SIZE10,
+    SurfaceTypeSRBiasBuffer,
+    SurfaceTypeSRBiasBufferEnd = SurfaceTypeSRBiasBuffer + SURFACETYPE_SIZE10,
+    SurfaceTypeSRPreluBuffer,
+    SurfaceTypeSRPreluBufferEnd = SurfaceTypeSRPreluBuffer + SURFACETYPE_SIZE10,
+    SurfaceTypeSRSlopeBuffer,
+    SurfaceTypeSRSlopeBufferEnd = SurfaceTypeSRSlopeBuffer + SURFACETYPE_SIZE5,
+    SurfaceTypeSROutput,
+    SurfaceTypeSRChromaInput,
+
     NumberOfSurfaceType
 };
 
 using  VP_SURFACE_GROUP = std::map<SurfaceType, VP_SURFACE*>;
 
+struct REMOVE_BB_SETTING
+{
+    bool     isRemoveBB    = false;
+    bool     isKeepMaxBlob = false;
+    uint32_t index         = 0;
+};
+
+struct MOTIONLESS_SETTING
+{
+    bool     isEnable        = false;
+    bool     isSkipDetection = false;
+    bool     isInfer         = false;
+    bool     isFirstConv     = false;
+    bool     isMotion        = false;
+    bool     isResUpdate     = false;
+    uint32_t width           = 0;
+    uint32_t height          = 0;
+};
+
 struct VP_SURFACE_SETTING
 {
     VP_SURFACE_GROUP    surfGroup;
+    REMOVE_BB_SETTING   removeBBSetting;
+    MOTIONLESS_SETTING  motionlessSetting;
     bool                isPastHistogramValid       = false;
     uint32_t            imageWidthOfPastHistogram  = 0;
     uint32_t            imageHeightOfPastHistogram = 0;
@@ -648,6 +740,8 @@ struct VP_SURFACE_SETTING
     void Clean()
     {
         surfGroup.clear();
+        removeBBSetting             = {};
+        motionlessSetting           = {};
         isPastHistogramValid        = false;
         imageWidthOfPastHistogram   = 0;
         imageHeightOfPastHistogram  = 0;
@@ -808,7 +902,7 @@ protected:
     RenderTargetType m_renderTargetType = RenderTargetTypeSurface;
     bool m_isInExePipe = false;
 
-MEDIA_CLASS_DEFINE_END(SwFilter)
+MEDIA_CLASS_DEFINE_END(vp__SwFilter)
 };
 
 struct FeatureParamCsc : public FeatureParam
@@ -844,7 +938,7 @@ public:
 private:
     FeatureParamCsc m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterCsc)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterCsc)
 };
 
 struct FeatureParamScaling : public FeatureParam
@@ -906,7 +1000,7 @@ public:
 private:
     FeatureParamScaling m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterScaling)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterScaling)
 };
 
 struct FeatureParamRotMir : public FeatureParam
@@ -936,7 +1030,7 @@ public:
 private:
     FeatureParamRotMir m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterRotMir)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterRotMir)
 };
 
 enum DN_STAGE
@@ -979,7 +1073,7 @@ public:
 private:
     FeatureParamDenoise m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterDenoise)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterDenoise)
 };
 
 struct FeatureParamDeinterlace : public FeatureParam
@@ -1015,7 +1109,7 @@ public:
 private:
     FeatureParamDeinterlace m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterDeinterlace)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterDeinterlace)
 };
 
 struct FeatureParamSte : public FeatureParam
@@ -1039,7 +1133,7 @@ public:
 private:
     FeatureParamSte m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterSte)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterSte)
 };
 
 struct FeatureParamTcc : public FeatureParam
@@ -1068,7 +1162,7 @@ public:
 private:
     FeatureParamTcc m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterTcc)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterTcc)
 };
 
 struct FeatureParamProcamp : public FeatureParam
@@ -1091,7 +1185,7 @@ public:
 private:
     FeatureParamProcamp m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterProcamp)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterProcamp)
 };
 
 enum HDR_STAGE
@@ -1133,7 +1227,7 @@ public:
 private:
     FeatureParamHdr m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterHdr)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterHdr)
 };
 
 struct FeatureParamLumakey : public FeatureParam
@@ -1156,7 +1250,7 @@ public:
 private:
     FeatureParamLumakey m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterLumakey)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterLumakey)
 };
 
 struct FeatureParamBlending : public FeatureParam
@@ -1179,7 +1273,7 @@ public:
 private:
     FeatureParamBlending m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterBlending)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterBlending)
 };
 
 struct FeatureParamColorFill : public FeatureParam
@@ -1203,7 +1297,7 @@ public:
 private:
     FeatureParamColorFill m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterColorFill)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterColorFill)
 };
 
 struct FeatureParamAlpha : public FeatureParam
@@ -1227,7 +1321,7 @@ public:
 private:
     FeatureParamAlpha m_Params = {};
 
-MEDIA_CLASS_DEFINE_END(SwFilterAlpha)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterAlpha)
 };
 
 class SwFilterSet
@@ -1255,7 +1349,7 @@ private:
     // nullptr if it is unordered filters, otherwise, it's the pointer to m_OrderedFilters it belongs to.
     std::vector<class SwFilterSet *> *m_location = nullptr;
 
-MEDIA_CLASS_DEFINE_END(SwFilterSet)
+MEDIA_CLASS_DEFINE_END(vp__SwFilterSet)
 };
 
 }

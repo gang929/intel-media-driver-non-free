@@ -365,7 +365,8 @@ MOS_STATUS SfcRenderBase::SetIefStateParams(
 
     VP_RENDER_CHK_NULL_RETURN(psfcStateParams);
 
-    pIefStateParams = &m_IefStateParams;
+    auto &iefStateParams = m_sfcItf->MHW_GETPAR_F(SFC_IEF_STATE)();
+    pIefStateParams      = &iefStateParams;
     MOS_ZeroMemory(pIefStateParams, sizeof(*pIefStateParams));
     pIefStateParams->sfcPipeMode = m_pipeMode;
 
@@ -394,7 +395,8 @@ MOS_STATUS SfcRenderBase::SetAvsStateParams()
     MHW_SCALING_MODE            scalingMode        = MHW_SCALING_AVS;
     bool                        bUse8x8Filter      = false;
 
-    pMhwAvsState = &m_avsState.AvsStateParams;
+    auto &avsStateParams = m_sfcItf->MHW_GETPAR_F(SFC_AVS_STATE)();
+    pMhwAvsState         = &avsStateParams;
     MOS_ZeroMemory(pMhwAvsState, sizeof(MHW_SFC_AVS_STATE));
     pMhwAvsState->sfcPipeMode = m_pipeMode;
 
@@ -449,12 +451,18 @@ MOS_STATUS SfcRenderBase::SetAvsStateParams()
             bUse8x8Filter = true;
         }
 
-        m_avsState.LumaCoeffs.sfcPipeMode   = m_pipeMode;
-        m_avsState.ChromaCoeffs.sfcPipeMode = m_pipeMode;
+        // directly get the par of SFC_AVS_LUMA_Coeff_Table_PAR  and initialize.
+        auto &lumaCoeffs = m_sfcItf->MHW_GETPAR_F(SFC_AVS_LUMA_Coeff_Table)();
+
+        // directly get the par of SFC_AVS_CHROMA_Coeff_Table  and initialize.
+        auto &chromaCoeffs = m_sfcItf->MHW_GETPAR_F(SFC_AVS_CHROMA_Coeff_Table)();
+
+        lumaCoeffs.sfcPipeMode              = m_pipeMode;
+        chromaCoeffs.sfcPipeMode            = m_pipeMode;
 
         VP_RENDER_CHK_STATUS_RETURN(SetSfcSamplerTable(
-            &m_avsState.LumaCoeffs,
-            &m_avsState.ChromaCoeffs,
+            &lumaCoeffs,
+            &chromaCoeffs,
             m_renderData.pAvsParams,
             m_renderData.SfcInputFormat,
             m_renderData.fScaleX,
@@ -1102,21 +1110,18 @@ MOS_STATUS SfcRenderBase::SendSfcCmd(
 
     // Send SFC_AVS_STATE command
     VP_RENDER_CHK_STATUS_RETURN(AddSfcAvsState(
-        pCmdBuffer,
-        &m_avsState.AvsStateParams));
+        pCmdBuffer));
 
     if (m_renderData.bScaling ||
         m_renderData.bForcePolyPhaseCoefs)
     {
         // Send SFC_AVS_LUMA_TABLE command
         VP_RENDER_CHK_STATUS_RETURN(AddSfcAvsLumaTable(
-            pCmdBuffer,
-            &m_avsState.LumaCoeffs));
+            pCmdBuffer));
 
         // Send SFC_AVS_CHROMA_TABLE command
         VP_RENDER_CHK_STATUS_RETURN(AddSfcAvsChromaTable(
-            pCmdBuffer,
-            &m_avsState.ChromaCoeffs));
+            pCmdBuffer));
     }
 
     // Send SFC_IEF_STATE command
@@ -1124,8 +1129,7 @@ MOS_STATUS SfcRenderBase::SendSfcCmd(
     {
         // Will modified when enable IEF/CSC
         VP_RENDER_CHK_STATUS_RETURN(AddSfcIefState(
-            pCmdBuffer,
-            &m_IefStateParams));
+            pCmdBuffer));
         //SETPAR_AND_ADDCMD(SFC_IEF_STATE, sfcItf, pCmdBuffer);
     }
 
@@ -1379,6 +1383,9 @@ MOS_STATUS SfcRenderBase::AllocateResources()
         VP_RENDER_CHK_NULL_RETURN(m_SFDLineBufferSurfaceArray);
     }
 
+    // for AVSLineBuffer, IEFLineBuffer and SFDLineBuffer, they are only needed when surface allocation bigger than 4150.
+    // for AVSLineTileBuffer, IEFLineTileBuffer and SFDLineTileBuffer, they are only needed for VdBox SFC scalability case and not needed for VeBox SFC case.
+
     // Allocate AVS Line Buffer surface----------------------------------------------
     size = GetAvsLineBufferSize(false, m_renderData.sfcStateParams->b8tapChromafiltering, m_renderData.sfcStateParams->dwInputFrameWidth, m_renderData.sfcStateParams->dwInputFrameHeight);
     VP_RENDER_CHK_STATUS_RETURN(AllocateLineBufferArray(m_AVSLineBufferSurfaceArray, size, "SfcAVSLineBufferSurface"));
@@ -1387,22 +1394,27 @@ MOS_STATUS SfcRenderBase::AllocateResources()
     size = GetIefLineBufferSize(false, m_renderData.sfcStateParams->dwScaledRegionHeight);
     VP_RENDER_CHK_STATUS_RETURN(AllocateLineBufferArray(m_IEFLineBufferSurfaceArray, size, "SfcIEFLineBufferSurface"));
 
-    // Allocate SFD Line Buffer surface
-    size = GetSfdLineBufferSize(false, m_renderData.sfcStateParams->OutputFrameFormat, m_renderData.sfcStateParams->dwScaledRegionWidth, m_renderData.sfcStateParams->dwScaledRegionHeight);
-    VP_RENDER_CHK_STATUS_RETURN(AllocateLineBufferArray(m_SFDLineBufferSurfaceArray, size, "SfcSFDLineBufferSurface"));
+    if (m_renderData.sfcStateParams->dwScaledRegionHeight > SFC_LINEBUFEER_SIZE_LIMITED)
+    {
+        // Allocate SFD Line Buffer surface
+        size = GetSfdLineBufferSize(false, m_renderData.sfcStateParams->OutputFrameFormat, m_renderData.sfcStateParams->dwScaledRegionWidth, m_renderData.sfcStateParams->dwScaledRegionHeight);
+        VP_RENDER_CHK_STATUS_RETURN(AllocateLineBufferArray(m_SFDLineBufferSurfaceArray, size, "SfcSFDLineBufferSurface"));
+    }
 
-    // Allocate AVS Line Tile Buffer surface----------------------------------------------
-    size = GetAvsLineBufferSize(true, m_renderData.sfcStateParams->b8tapChromafiltering, m_renderData.sfcStateParams->dwInputFrameWidth, m_renderData.sfcStateParams->dwInputFrameHeight);
-    VP_RENDER_CHK_STATUS_RETURN(AllocateLineBuffer(m_AVSLineTileBufferSurface, size, "SfcAVSLineTileBufferSurface"));
+    if (m_bVdboxToSfc)
+    {
+        // Allocate AVS Line Tile Buffer surface----------------------------------------------
+        size = GetAvsLineBufferSize(true, m_renderData.sfcStateParams->b8tapChromafiltering, m_renderData.sfcStateParams->dwInputFrameWidth, m_renderData.sfcStateParams->dwInputFrameHeight);
+        VP_RENDER_CHK_STATUS_RETURN(AllocateLineBuffer(m_AVSLineTileBufferSurface, size, "SfcAVSLineTileBufferSurface"));
 
-    // Allocate IEF Line Tile Buffer surface----------------------------------------------
-    size = GetIefLineBufferSize(true, m_renderData.sfcStateParams->dwScaledRegionHeight);
-    VP_RENDER_CHK_STATUS_RETURN(AllocateLineBuffer(m_IEFLineTileBufferSurface, size, "SfcIEFLineTileBufferSurface"));
+        // Allocate IEF Line Tile Buffer surface----------------------------------------------
+        size = GetIefLineBufferSize(true, m_renderData.sfcStateParams->dwScaledRegionHeight);
+        VP_RENDER_CHK_STATUS_RETURN(AllocateLineBuffer(m_IEFLineTileBufferSurface, size, "SfcIEFLineTileBufferSurface"));
 
-    // Allocate SFD Line Tile Buffer surface
-    size = GetSfdLineBufferSize(true, m_renderData.sfcStateParams->OutputFrameFormat, m_renderData.sfcStateParams->dwScaledRegionWidth, m_renderData.sfcStateParams->dwScaledRegionHeight);
-    VP_RENDER_CHK_STATUS_RETURN(AllocateLineBuffer(m_SFDLineTileBufferSurface, size, "SfcSFDLineTileBufferSurface"));
-
+        // Allocate SFD Line Tile Buffer surface
+        size = GetSfdLineBufferSize(true, m_renderData.sfcStateParams->OutputFrameFormat, m_renderData.sfcStateParams->dwScaledRegionWidth, m_renderData.sfcStateParams->dwScaledRegionHeight);
+        VP_RENDER_CHK_STATUS_RETURN(AllocateLineBuffer(m_SFDLineTileBufferSurface, size, "SfcSFDLineTileBufferSurface"));
+    }
     return MOS_STATUS_SUCCESS;
 }
 
@@ -1504,17 +1516,10 @@ MOS_STATUS SfcRenderBase::AddSfcState(
 }
 
 MOS_STATUS SfcRenderBase::AddSfcAvsState(
-    PMOS_COMMAND_BUFFER             pCmdBuffer,
-    mhw::sfc::SFC_AVS_STATE_PAR     *pSfcAvsStateParams)
+    PMOS_COMMAND_BUFFER             pCmdBuffer)
 {
     VP_FUNC_CALL();
-
-    VP_RENDER_CHK_NULL_RETURN(pSfcAvsStateParams);
     VP_RENDER_CHK_NULL_RETURN(m_sfcItf);
-
-    auto& params = m_sfcItf->MHW_GETPAR_F(SFC_AVS_STATE)();
-    params = {};
-    params = *pSfcAvsStateParams;
 
     VP_RENDER_CHK_STATUS_RETURN(m_sfcItf->MHW_ADDCMD_F(SFC_AVS_STATE)(pCmdBuffer));
 
@@ -1522,17 +1527,10 @@ MOS_STATUS SfcRenderBase::AddSfcAvsState(
 }
 
 MOS_STATUS SfcRenderBase::AddSfcIefState(
-    PMOS_COMMAND_BUFFER            pCmdBuffer,
-    mhw::sfc::SFC_IEF_STATE_PAR    *pSfcIefStateParams)
+    PMOS_COMMAND_BUFFER            pCmdBuffer)
 {
     VP_FUNC_CALL();
-
-    VP_RENDER_CHK_NULL_RETURN(pSfcIefStateParams);
     VP_RENDER_CHK_NULL_RETURN(m_sfcItf);
-
-    auto& params = m_sfcItf->MHW_GETPAR_F(SFC_IEF_STATE)();
-    params = {};
-    params = *pSfcIefStateParams;
 
     VP_RENDER_CHK_STATUS_RETURN(m_sfcItf->MHW_ADDCMD_F(SFC_IEF_STATE)(pCmdBuffer));
 
@@ -1540,33 +1538,21 @@ MOS_STATUS SfcRenderBase::AddSfcIefState(
 }
 
 MOS_STATUS SfcRenderBase::AddSfcAvsLumaTable(
-    PMOS_COMMAND_BUFFER                pCmdBuffer,
-    mhw::sfc::SFC_AVS_LUMA_Coeff_Table_PAR *pLumaTable)
+    PMOS_COMMAND_BUFFER                pCmdBuffer)
 {
     VP_FUNC_CALL();
 
-    VP_RENDER_CHK_NULL_RETURN(pLumaTable);
     VP_RENDER_CHK_NULL_RETURN(m_sfcItf);
-
-    auto& params = m_sfcItf->MHW_GETPAR_F(SFC_AVS_LUMA_Coeff_Table)();
-    params = {};
-    params = *pLumaTable;
 
     VP_RENDER_CHK_STATUS_RETURN(m_sfcItf->MHW_ADDCMD_F(SFC_AVS_LUMA_Coeff_Table)(pCmdBuffer));
     return MOS_STATUS_SUCCESS;
 }
 
 MOS_STATUS SfcRenderBase::AddSfcAvsChromaTable(
-    PMOS_COMMAND_BUFFER             pCmdBuffer,
-    mhw::sfc::SFC_AVS_CHROMA_Coeff_Table_PAR       *pChromaTable)
+    PMOS_COMMAND_BUFFER             pCmdBuffer)
 {
     VP_FUNC_CALL();
-    VP_RENDER_CHK_NULL_RETURN(pChromaTable);
     VP_RENDER_CHK_NULL_RETURN(m_sfcItf);
-
-    auto& params = m_sfcItf->MHW_GETPAR_F(SFC_AVS_CHROMA_Coeff_Table)();
-    params = {};
-    params = *pChromaTable;
 
     VP_RENDER_CHK_STATUS_RETURN(m_sfcItf->MHW_ADDCMD_F(SFC_AVS_CHROMA_Coeff_Table)(pCmdBuffer));
 

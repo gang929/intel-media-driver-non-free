@@ -26,6 +26,7 @@
 #ifndef __ENCODE_HEVC_BASIC_FEATURE_H__
 #define __ENCODE_HEVC_BASIC_FEATURE_H__
 
+#include <deque>
 #include "encode_basic_feature.h"
 #include "codec_def_encode_hevc.h"
 #include "encode_hevc_reference_frames.h"
@@ -47,16 +48,6 @@ namespace encode
 #define CODECHAL_HEVC_MIN_TILE_SIZE            128
 #define CODECHAL_ENCODE_HEVC_MIN_ICQ_QUALITYFACTOR      1
 #define CODECHAL_ENCODE_HEVC_MAX_ICQ_QUALITYFACTOR      51
-    //!
-    //! \enum   MbBrcSetting
-    //! \brief  Indicate the MBBRC settings
-    //!
-    enum MbBrcSetting
-    {
-        mbBrcInternal = 0,
-        mbBrcEnabled  = 1,
-        mbBrcDisabled = 2,
-    };
 
 class HevcBasicFeature : public EncodeBasicFeature, public mhw::vdbox::vdenc::Itf::ParSetting, public mhw::vdbox::hcp::Itf::ParSetting
 {
@@ -102,9 +93,10 @@ public:
 
     EncodeMemComp *m_mmcState = nullptr;
 
-    static constexpr uint32_t                   m_maxSliceQP = 52;          //!< Max QP
-    static constexpr uint32_t                   m_maxLCUSize = 64;          //!< Max LCU size 64
-    static constexpr uint32_t                   m_qpNum      = 52;          //!< Number of QP values
+    static constexpr uint32_t                   m_maxSliceQP   = 52;          //!< Max QP
+    static constexpr uint32_t                   m_maxLCUSize   = 64;          //!< Max LCU size 64
+    static constexpr uint32_t                   m_qpNum        = 52;          //!< Number of QP values
+    static constexpr uint32_t                   m_maxSyncDepth = 10;
 
     // Parameters passed from application
     PCODEC_HEVC_ENCODE_SEQUENCE_PARAMS  m_hevcSeqParams = nullptr;          //!< Pointer to sequence parameter
@@ -152,6 +144,8 @@ public:
     MOS_STATUS            InitRsvdState();
 #endif
 
+    std::deque<uint32_t> m_recycleBufferIdxes;
+
 protected:
     MOS_STATUS SetPictureStructs();
     virtual MOS_STATUS UpdateTrackedBufferParameters() override;
@@ -167,8 +161,9 @@ protected:
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
     MOS_STATUS CalcLCUMaxCodingSize();
+    MOS_STATUS GetRecycleBuffers();
 
-MEDIA_CLASS_DEFINE_END(HevcBasicFeature)
+MEDIA_CLASS_DEFINE_END(encode__HevcBasicFeature)
 };
 
 }  // namespace encode

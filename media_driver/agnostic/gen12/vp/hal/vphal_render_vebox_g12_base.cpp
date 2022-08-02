@@ -34,6 +34,8 @@
 #if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 #include "igvpkrn_isa_g12_tgllp.h"
 #endif
+#include "vphal_render_hdr_3dlut_g12.h"
+
 const char g_KernelDNDI_Str_g12[KERNEL_VEBOX_BASE_MAX][MAX_PATH] =
 {
     DBG_TEXT("Reserved"),
@@ -720,7 +722,7 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
 
     tileModeByForce = MOS_TILE_UNSET_GMM;
     //DN output surface must be tile64 only when input format is bayer
-    if (MEDIA_IS_SKU(pVeboxState->m_pSkuTable, FtrMediaTile64) &&
+    if (!MEDIA_IS_SKU(pVeboxState->m_pSkuTable, FtrTileY) &&
         IS_BAYER_FORMAT(pVeboxState->m_currentSurface->Format))
     {
         VPHAL_RENDER_NORMALMESSAGE("tilemode: media support tile encoding 1");
@@ -813,7 +815,7 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
     }
 
     tileModeByForce = MOS_TILE_UNSET_GMM;
-    if (MEDIA_IS_SKU(pVeboxState->m_pSkuTable, FtrMediaTile64))
+    if (!MEDIA_IS_SKU(pVeboxState->m_pSkuTable, FtrTileY))
     {
         VPHAL_RENDER_NORMALMESSAGE("tilemode: media support tile encoding 1");
         tileModeByForce = MOS_TILE_64_GMM;
@@ -1048,7 +1050,7 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
             {
 #if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
                 PRENDERHAL_INTERFACE pRenderHal = pVeboxState->m_pRenderHal;
-                m_hdr3DLutGenerator             = MOS_New(Hdr3DLutGenerator, pRenderHal, m_hdr3DLutKernelBinary, m_hdr3DLutKernelBinarySize);
+                m_hdr3DLutGenerator             = MOS_New(Hdr3DLutGeneratorG12, pRenderHal, m_hdr3DLutKernelBinary, m_hdr3DLutKernelBinarySize);
 #endif
             }
         }
@@ -3010,6 +3012,7 @@ void VPHAL_VEBOX_STATE_G12_BASE::VeboxSetRenderingFlags(
     pRenderData->bHdr3DLut = bToneMapping;
     pRenderData->bHdr3DLut |= (pSrc->p3DLutParams != nullptr);
     VPHAL_RENDER_NORMALMESSAGE("Enable 3DLut for HDR ToneMapping %d or 3DLUT filter %d.", bToneMapping, (pSrc->p3DLutParams != nullptr));
+    MT_LOG1(MT_VP_HAL_RENDER_VE, MT_NORMAL, MT_VP_RENDERDATA_HDR3DLUT, pRenderData->bHdr3DLut);
 
     VPHAL_VEBOX_STATE::VeboxSetRenderingFlags(pSrc, pRenderTarget);
 

@@ -28,9 +28,6 @@
 #include "hw_filter.h"
 #include "sw_filter_pipe.h"
 #include "vp_render_cmd_packet.h"
-#ifndef ENABLE_VP_SOFTLET_BUILD
-#include "vp_vebox_cmd_packet_legacy.h"
-#endif
 
 namespace vp
 {
@@ -86,17 +83,14 @@ MOS_STATUS VpHdrFilter::CalculateEngineParams(
         m_renderHdr3DLutParams.hdrMode             = hdrParams.hdrMode;
         m_renderHdr3DLutParams.kernelId            = (VpKernelID)kernelHdr3DLutCalc;
 
-        uint32_t blockWidth = 16;
-        uint32_t blockHeight = 8;
-
-        m_renderHdr3DLutParams.threadWidth = (LUT65_SEG_SIZE * 2 + blockWidth - 1) / blockWidth;
-        m_renderHdr3DLutParams.threadHeight = (LUT65_SEG_SIZE * LUT65_MUL_SIZE + blockHeight - 1) / blockHeight;
+        m_renderHdr3DLutParams.threadWidth  = LUT65_SEG_SIZE;
+        m_renderHdr3DLutParams.threadHeight = LUT65_SEG_SIZE;
 
         KRN_ARG krnArg  = {};
         krnArg.uIndex   = 0;
         krnArg.eArgKind = ARG_KIND_SURFACE;
         krnArg.uSize    = 4;
-        krnArg.pData    = &m_surfType3DLut2D;
+        krnArg.pData    = &m_surfType3DLut;
         m_renderHdr3DLutParams.kernelArgs.push_back(krnArg);
 
         krnArg.uIndex   = 1;
@@ -208,18 +202,11 @@ bool VpVeboxHdrParameter::SetPacketParam(VpCmdPacket *pPacket)
         return false;
     }
 
-    VpVeboxCmdPacket *packet = dynamic_cast<VpVeboxCmdPacket *>(pPacket);
+    VpVeboxCmdPacketBase *packet = dynamic_cast<VpVeboxCmdPacketBase *>(pPacket);
     if (packet)
     {
         return MOS_SUCCEEDED(packet->SetHdrParams(pParams));
     }
-#ifndef ENABLE_VP_SOFTLET_BUILD
-    VpVeboxCmdPacketLegacy *packetLegacy = dynamic_cast<VpVeboxCmdPacketLegacy *>(pPacket);
-    if (packetLegacy)
-    {
-        return MOS_SUCCEEDED(packetLegacy->SetHdrParams(pParams));
-    }
-#endif
 
     VP_PUBLIC_ASSERTMESSAGE("Invalid packet for Vebox hdr");
     return false;

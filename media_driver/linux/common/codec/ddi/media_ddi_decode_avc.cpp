@@ -269,9 +269,7 @@ VAStatus DdiDecodeAVC::ParsePicParams(
 
     //Accoding to RecList, if the surface id is invalid, set PicFlags equal to PICTURE_INVALID
     for (i = 0; i < CODEC_MAX_NUM_REF_FRAME; i++)
-    {
-        if (avcPicParams->RefFrameList[i].FrameIdx >= CODEC_AVC_NUM_UNCOMPRESSED_SURFACE)
-            return VA_STATUS_ERROR_INVALID_PARAMETER;        
+    {     
         //Check the surface id of reference list
         if (VA_INVALID_ID == m_ddiDecodeCtx->RecListSurfaceID[avcPicParams->RefFrameList[i].FrameIdx])
         {
@@ -446,14 +444,14 @@ VAStatus DdiDecodeAVC::RenderPicture(
             uint8_t * pDataBuf = (uint8_t *)DdiMediaUtil_LockBuffer(m_ddiDecodeCtx->BufMgr.pBitStreamBuffObject[index], MOS_LOCKFLAG_READONLY);
             DDI_CHK_NULL(pDataBuf, "nullptr bitstream", VA_STATUS_ERROR_INVALID_BUFFER);
 
-            if (MOS_TraceKeyEnabled(TR_KEY_DECODE_BITSTREAM_32BYTE))
+            if (MOS_TraceKeyEnabled(TR_KEY_DECODE_BITSTREAM_INFO))
             {
                 DECODE_EVENTDATA_BITSTREAM eventData;
                 for (int i = 0; i < 32; i++)
                 {
                     eventData.Data[i] = pDataBuf[i];
                 }
-                MOS_TraceEvent(EVENT_DECODE_BUFFER_Bitstream, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0);
+                MOS_TraceEvent(EVENT_DECODE_INFO_BITSTREAM, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0);
             }
 
             if (MOS_TraceKeyEnabled(TR_KEY_DECODE_BITSTREAM))
@@ -549,6 +547,14 @@ VAStatus DdiDecodeAVC::SetDecodeParams()
         procParams->m_inputSurface->dwHeight = procParams->m_inputSurface->OsResource.iHeight;
         procParams->m_inputSurface->dwPitch  = procParams->m_inputSurface->OsResource.iPitch;
         procParams->m_inputSurface->Format   = procParams->m_inputSurface->OsResource.Format;
+
+        if(m_requireInputRegion)
+        {
+            procParams->m_inputSurfaceRegion.m_x = 0;
+            procParams->m_inputSurfaceRegion.m_y = 0;
+            procParams->m_inputSurfaceRegion.m_width = procParams->m_inputSurface->dwWidth;
+            procParams->m_inputSurfaceRegion.m_height = procParams->m_inputSurface->dwHeight;
+        }
     }
 #endif
 
@@ -920,8 +926,15 @@ void DdiDecodeAVC::SetupCodecPicture(
     if(vaPic.picture_id != DDI_CODEC_INVALID_FRAME_INDEX)
     {
         DDI_MEDIA_SURFACE *surface = DdiMedia_GetSurfaceFromVASurfaceID(mediaCtx, vaPic.picture_id);
-        vaPic.frame_idx    = GetRenderTargetID(rtTbl, surface);
-        codecHalPic->FrameIdx = (uint8_t)vaPic.frame_idx;
+        vaPic.frame_idx    = GetRenderTargetID(rtTbl, surface);    
+        if(vaPic.frame_idx == DDI_CODEC_INVALID_FRAME_INDEX)
+        {
+            codecHalPic->FrameIdx = CODEC_AVC_NUM_UNCOMPRESSED_SURFACE - 1;
+        }
+        else
+        {
+            codecHalPic->FrameIdx = (uint8_t)vaPic.frame_idx;
+        }
     }
     else
     {

@@ -63,6 +63,8 @@
 #include "media_libva_apo_decision.h"
 #include "mos_oca_interface_specific.h"
 
+#define BO_BUSY_TIMEOUT_LIMIT 100
+
 #ifdef _MANUAL_SOFTLET_
 #include "media_libva_interface.h"
 #include "media_libva_interface_next.h"
@@ -1755,7 +1757,6 @@ VAStatus DdiMedia_InitMediaContext (
     MOS_CONTEXT mosCtx     = {};
     mosCtx.fd              = mediaCtx->fd;
     MosInterface::InitOsUtilities(&mosCtx);
-
     mediaCtx->m_apoMosEnabled = SetupApoMosSwitch(devicefd);
 
 #ifdef _MMC_SUPPORTED
@@ -1771,7 +1772,7 @@ VAStatus DdiMedia_InitMediaContext (
         mosCtx.fd              = mediaCtx->fd;
         mosCtx.m_apoMosEnabled = mediaCtx->m_apoMosEnabled;
 
-        MosOcaInterfaceSpecific::InitInterface();
+        MosOcaInterfaceSpecific::InitInterface(&mosCtx);
 
         mediaCtx->pGtSystemInfo = (MEDIA_SYSTEM_INFO *)MOS_AllocAndZeroMemory(sizeof(MEDIA_SYSTEM_INFO));
         if (nullptr == mediaCtx->pGtSystemInfo)
@@ -1798,6 +1799,8 @@ VAStatus DdiMedia_InitMediaContext (
         mediaCtx->m_tileYFlag               = mosCtx.bTileYFlag;
         mediaCtx->bIsAtomSOC                = mosCtx.bIsAtomSOC;
         mediaCtx->perfData                  = mosCtx.pPerfData;
+
+        MediaUserSettingsMgr::MediaUserSettingsInit(mediaCtx->platform.eProductFamily);
 
 #ifdef _MMC_SUPPORTED
         if (mosCtx.ppMediaMemDecompState == nullptr)
@@ -1943,17 +1946,16 @@ VAStatus DdiMedia_InitMediaContext (
         // Create GMM page table manager
         mediaCtx->m_auxTableMgr = AuxTableMgr::CreateAuxTableMgr(mediaCtx->pDrmBufMgr, &mediaCtx->SkuTable, mediaCtx->pGmmClientContext);
 
-        MOS_USER_FEATURE_VALUE_DATA UserFeatureData;
-        MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
+        bool bSimulationEnable = false;
 #if (_DEBUG || _RELEASE_INTERNAL)
-        MOS_UserFeature_ReadValue_ID(
+        ReadUserSettingForDebug(
             nullptr,
-            __MEDIA_USER_FEATURE_VALUE_SIM_ENABLE_ID,
-            &UserFeatureData,
-            (MOS_CONTEXT_HANDLE)nullptr);
+            bSimulationEnable,
+            __MEDIA_USER_FEATURE_VALUE_SIM_ENABLE,
+            MediaUserSetting::Group::Device);
 #endif
 
-        mediaCtx->m_useSwSwizzling = UserFeatureData.i32Data || MEDIA_IS_SKU(&mediaCtx->SkuTable, FtrUseSwSwizzling);
+        mediaCtx->m_useSwSwizzling = bSimulationEnable || MEDIA_IS_SKU(&mediaCtx->SkuTable, FtrUseSwSwizzling);
         mediaCtx->m_tileYFlag      = MEDIA_IS_SKU(&mediaCtx->SkuTable, FtrTileY);
 
         mediaCtx->m_osContext = OsContext::GetOsContextObject();
@@ -2254,6 +2256,7 @@ VAStatus DdiMedia_Terminate (
         mediaCtx->m_osDeviceContext = MOS_INVALID_HANDLE;
         MOS_FreeMemory(mediaCtx->pGtSystemInfo);
         MosOcaInterfaceSpecific::UninitInterface();
+        MediaUserSettingsMgr::MediaUserSettingClose();
         MosInterface::CloseOsUtilities(nullptr);
     }
     else if (mediaCtx->modularizedGpuCtxEnabled)
@@ -2292,6 +2295,7 @@ VAStatus DdiMedia_Terminate (
         gmmOutArgs.pGmmClientContext = mediaCtx->pGmmClientContext;
         GmmAdapterDestroy(&gmmOutArgs);
         mediaCtx->pGmmClientContext = nullptr;
+        MediaUserSettingsMgr::MediaUserSettingClose();
         MosUtilities::MosUtilitiesClose(nullptr);
     }
 
@@ -2544,6 +2548,23 @@ VAStatus DdiMedia_DestroySurfaces (
 
         DdiMediaUtil_UnRegisterRTSurfaces(ctx, surface);
 
+        uint64_t freq = 1, countStart = 0, countCur = 0;
+        MosUtilities::MosQueryPerformanceFrequency(&freq);
+        uint64_t countTimeout = freq * BO_BUSY_TIMEOUT_LIMIT / 1000;
+        MOS_TraceEventExt(EVENT_VA_SYNC, EVENT_TYPE_START, nullptr, 0, nullptr, 0);
+        MosUtilities::MosQueryPerformanceCounter(&countStart);
+        while (1)
+        {
+            MosUtilities::MosQueryPerformanceCounter(&countCur);
+
+            if(mos_bo_busy(surface->bo) == 0 || countCur - countStart > countTimeout)
+            {
+                break;
+            }
+            MosUtilities::MosSleep(10);
+        }
+        MOS_TraceEventExt(EVENT_VA_SYNC, EVENT_TYPE_END, nullptr, 0, nullptr, 0);
+
         DdiMediaUtil_LockMutex(&mediaCtx->SurfaceMutex);
         DdiMediaUtil_FreeSurface(surface);
         MOS_FreeMemory(surface);
@@ -2724,6 +2745,9 @@ VAStatus DdiMedia_CreateSurfaces2(
             break;
         case VA_FOURCC_I420:
             expected_fourcc = VA_FOURCC_I420;
+            break;
+        case VA_FOURCC_UYVY:
+            expected_fourcc = VA_FOURCC_UYVY;
             break;
 #endif
         default:
@@ -4814,6 +4838,7 @@ VAStatus DdiMedia_DeriveImage (
     {
     case Media_Format_YV12:
     case Media_Format_I420:
+    case Media_Format_IYUV:
         vaimg->format.bits_per_pixel    = 12;
         vaimg->num_planes               = 3;
         vaimg->pitches[0]               = mediaSurface->iPitch;
@@ -6548,14 +6573,21 @@ DdiMedia_QueryVideoProcFilters(
 
     // Set the filters
     uint32_t i = 0;
-    while(i < *num_filters && i < DDI_VP_MAX_NUM_FILTERS)
+    uint32_t num_supported_filters = 0;
+    while(num_supported_filters < *num_filters && i < DDI_VP_MAX_NUM_FILTERS)
     {
-        filters[i] = vp_supported_filters[i];
+        uint32_t num_filter_caps = 0;
+        VAStatus vaStatus = DdiVp_QueryVideoProcFilterCaps(ctx, context, vp_supported_filters[i], nullptr, &num_filter_caps);
+        if(vaStatus == VA_STATUS_SUCCESS && num_filter_caps != 0)
+        {
+            filters[num_supported_filters] = vp_supported_filters[i];
+            num_supported_filters++;
+        }
         i++;
     }
 
     // Tell the app how many valid filters are filled in the array
-    *num_filters = DDI_VP_MAX_NUM_FILTERS;
+    *num_filters = num_supported_filters;
 
     return VA_STATUS_SUCCESS;
 }
@@ -7060,6 +7092,8 @@ static uint32_t DdiMedia_GetDrmFormatOfCompositeObject(uint32_t fourcc)
         return DRM_FORMAT_VYUY;
     case VA_FOURCC_UYVY:
         return DRM_FORMAT_UYVY;
+    case VA_FOURCC_AYUV:
+        return DRM_FORMAT_AYUV;
     case VA_FOURCC_Y210:
         return DRM_FORMAT_Y210;
 #if VA_CHECK_VERSION(1, 9, 0)

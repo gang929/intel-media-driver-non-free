@@ -123,6 +123,114 @@ extern "C" {
 #define VPHAL_TOP_FIELD_FIRST 0
 #define VPHAL_BOTTOM_FIELD_FIRST 1
 
+//*-----------------------------------------------------------------------------
+//| DEFINITIONS
+//*-----------------------------------------------------------------------------
+// Incremental size for allocating/reallocating resource
+#define VPHAL_BUFFER_SIZE_INCREMENT 128
+
+// VPP internal resource NotLockable flag macro
+#define VPP_INTER_RESOURCE_NOTLOCKABLE true
+#define VPP_INTER_RESOURCE_LOCKABLE false
+
+// Media Features width
+#define VPHAL_RNDR_8K_WIDTH (7680)
+#define VPHAL_RNDR_16K_HEIGHT_LIMIT (16352)
+
+// Media Features height
+#define VPHAL_RNDR_2K_HEIGHT 1080
+// The reason that the definition is not (VPHAL_RNDR_2K_HEIGHT*2) is because some 4K clips have 1200 height.
+#define VPHAL_RNDR_4K_HEIGHT 1200
+#define VPHAL_RNDR_4K_MAX_HEIGHT 3112
+#define VPHAL_RNDR_4K_MAX_WIDTH 4096
+#define VPHAL_RNDR_6K_HEIGHT (VPHAL_RNDR_2K_HEIGHT * 3)
+#define VPHAL_RNDR_8K_HEIGHT (VPHAL_RNDR_2K_HEIGHT * 4)
+#define VPHAL_RNDR_10K_HEIGHT (VPHAL_RNDR_2K_HEIGHT * 5)
+#define VPHAL_RNDR_12K_HEIGHT (VPHAL_RNDR_2K_HEIGHT * 6)
+#define VPHAL_RNDR_14K_HEIGHT (VPHAL_RNDR_2K_HEIGHT * 7)
+#define VPHAL_RNDR_16K_HEIGHT (VPHAL_RNDR_2K_HEIGHT * 8)
+#define VPHAL_RNDR_18K_HEIGHT (VPHAL_RNDR_2K_HEIGHT * 9)
+#define VPHAL_RNDR_20K_HEIGHT (VPHAL_RNDR_2K_HEIGHT * 10)
+#define VPHAL_RNDR_22K_HEIGHT (VPHAL_RNDR_2K_HEIGHT * 11)
+#define VPHAL_RNDR_24K_HEIGHT (VPHAL_RNDR_2K_HEIGHT * 12)
+#define VPHAL_RNDR_26K_HEIGHT (VPHAL_RNDR_2K_HEIGHT * 13)
+#define VPHAL_RNDR_28K_HEIGHT (VPHAL_RNDR_2K_HEIGHT * 14)
+
+//!
+//! \def MEDIA_IS_HDCONTENT(dwWidth, dwHeight)
+//! Determine if the size of content is HD
+//!
+#define MEDIA_SDCONTENT_MAX_WIDTH 720
+#define MEDIA_SDCONTENT_MAX_PAL_HEIGHT 576
+#define MEDIA_SDCONTENT_MAX_SW_WIDTH 768
+#define MEDIA_IS_HDCONTENT(dwWidth, dwHeight) ((dwWidth > MEDIA_SDCONTENT_MAX_SW_WIDTH) || (dwHeight > MEDIA_SDCONTENT_MAX_PAL_HEIGHT))
+
+//! \brief  Surface cache attributes
+//!
+#define VPHAL_SET_SURF_MEMOBJCTL(VpField, GmmUsageEnum)                                                                      \
+    {                                                                                                                        \
+        Usage      = GmmUsageEnum;                                                                                           \
+        MemObjCtrl = pOsInterface->pfnCachePolicyGetMemoryObject(Usage, pOsInterface->pfnGetGmmClientContext(pOsInterface)); \
+        VpField    = MemObjCtrl.DwordValue;                                                                                  \
+    }
+
+//!
+//! \def WITHIN_BOUNDS(a, min, max)
+//! Calcualte if \a a within the range of  [\a min, \a max].
+//!
+#define WITHIN_BOUNDS(a, min, max) (((a) >= (min)) && ((a) <= (max)))
+
+//!
+//! \def SAME_SIZE_RECT(rect1, rect2)
+//! Compare if the size of two rectangles is the same
+//!
+#define SAME_SIZE_RECT(rect1, rect2)                                   \
+    (((rect1).right - (rect1).left == (rect2).right - (rect2).left) && \
+        ((rect1).bottom - (rect1).top == (rect2).bottom - (rect2).top))
+
+//!
+//! \def IS_YUV_FULL_RANGE(_a)
+//! Check if YUV full range
+//!
+#define IS_YUV_FULL_RANGE(_a) (_a == CSpace_BT601_FullRange ||     \
+                               _a == CSpace_BT709_FullRange ||     \
+                               _a == CSpace_BT601Gray_FullRange || \
+                               _a == CSpace_BT2020_FullRange)
+
+//!
+//! \brief Base VP kernel list
+//!
+enum VpKernelID
+{
+    // FC
+    kernelCombinedFc = 0,
+
+    // 2 VEBOX KERNELS
+    kernelVeboxSecureBlockCopy,
+    kernelVeboxUpdateDnState,
+
+    // User Ptr
+    kernelUserPtr,
+    // Fast 1toN
+    kernelFast1toN,
+
+    // HDR
+    kernelHdrMandatory,
+    kernelHdrPreprocess,
+
+    // mediacopy-render copy
+    kernelRenderCopy,
+
+    baseKernelMaxNumID
+};
+
+enum VpKernelIDNext
+{
+    vpKernelIDNextBase = 0x200,
+    kernelHdr3DLutCalc = vpKernelIDNextBase,
+    kernelHVSCalc,
+    vpKernelIDNextMax
+};
 
 
 typedef struct _VPHAL_COMPOSITE_CACHE_CNTL
@@ -132,6 +240,29 @@ typedef struct _VPHAL_COMPOSITE_CACHE_CNTL
     VPHAL_MEMORY_OBJECT_CONTROL InputSurfMemObjCtl;
     VPHAL_MEMORY_OBJECT_CONTROL TargetSurfMemObjCtl;
 } VPHAL_COMPOSITE_CACHE_CNTL, *PVPHAL_COMPOSITE_CACHE_CNTL;
+
+//!
+//! \brief Vphal Output chroma configuration enum
+//!
+typedef enum _VPHAL_CHROMA_SUBSAMPLING
+{
+    CHROMA_SUBSAMPLING_TOP_CENTER = 0,
+    CHROMA_SUBSAMPLING_CENTER_CENTER,
+    CHROMA_SUBSAMPLING_BOTTOM_CENTER,
+    CHROMA_SUBSAMPLING_TOP_LEFT,
+    CHROMA_SUBSAMPLING_CENTER_LEFT,
+    CHROMA_SUBSAMPLING_BOTTOM_LEFT
+} VPHAL_CHROMA_SUBSAMPLING;
+
+//!
+//! \brief Vphal Gamma Values configuration enum
+//!
+typedef enum _VPHAL_GAMMA_VALUE
+{
+    GAMMA_1P0 = 0,
+    GAMMA_2P2,
+    GAMMA_2P6
+} VPHAL_GAMMA_VALUE;
 
 typedef struct _VPHAL_DNDI_CACHE_CNTL
 {
@@ -581,8 +712,8 @@ typedef struct _VPHAL_PALETTE
 //!
 typedef struct _VPHAL_BLENDING_PARAMS
 {
-    VPHAL_BLEND_TYPE BlendType;
-    float            fAlpha;
+    VPHAL_BLEND_TYPE BlendType = BLEND_NONE;
+    float            fAlpha    = 0.0;
 } VPHAL_BLENDING_PARAMS, *PVPHAL_BLENDING_PARAMS;
 
 //!
@@ -591,8 +722,8 @@ typedef struct _VPHAL_BLENDING_PARAMS
 //!
 typedef struct _VPHAL_LUMAKEY_PARAMS
 {
-    int16_t LumaLow;
-    int16_t LumaHigh;
+    int16_t LumaLow  = 0;
+    int16_t LumaHigh = 0;
 } VPHAL_LUMAKEY_PARAMS, *PVPHAL_LUMAKEY_PARAMS;
 
 //!
@@ -601,11 +732,11 @@ typedef struct _VPHAL_LUMAKEY_PARAMS
 //!
 typedef struct _VPHAL_PROCAMP_PARAMS
 {
-    bool  bEnabled;
-    float fBrightness;
-    float fContrast;
-    float fHue;
-    float fSaturation;
+    bool  bEnabled    = false;
+    float fBrightness = 0.0;
+    float fContrast   = 0.0;
+    float fHue        = 0.0;
+    float fSaturation = 0.0;
 } VPHAL_PROCAMP_PARAMS, *PVPHAL_PROCAMP_PARAMS;
 
 //!
@@ -614,15 +745,15 @@ typedef struct _VPHAL_PROCAMP_PARAMS
 //!
 typedef struct _VPHAL_IEF_PARAMS
 {
-    bool     bEnabled;
-    bool     bSmoothMode;
-    bool     bSkintoneTuned;
-    bool     bEmphasizeSkinDetail;
-    float    fIEFFactor;
-    uint16_t StrongEdgeWeight;
-    uint16_t RegularWeight;
-    uint16_t StrongEdgeThreshold;
-    void *   pExtParam;
+    bool     bEnabled             = false;
+    bool     bSmoothMode          = false;
+    bool     bSkintoneTuned       = false;
+    bool     bEmphasizeSkinDetail = false;
+    float    fIEFFactor           = 0.0;
+    uint16_t StrongEdgeWeight     = 0;
+    uint16_t RegularWeight        = 0;
+    uint16_t StrongEdgeThreshold  = 0;
+    void *   pExtParam            = nullptr;
 } VPHAL_IEF_PARAMS, *PVPHAL_IEF_PARAMS;
 
 //!
@@ -631,10 +762,10 @@ typedef struct _VPHAL_IEF_PARAMS
 //!
 typedef struct _VPHAL_DI_PARAMS
 {
-    VPHAL_DI_MODE DIMode;        //!< DeInterlacing mode
-    bool          bEnableFMD;    //!< FMD
-    bool          bSingleField;  //!< Used in frame Recon - if 30fps (one call per sample pair)
-    bool          bSCDEnable;    //!< Scene change detection
+    VPHAL_DI_MODE DIMode       = DI_MODE_BOB;        //!< DeInterlacing mode
+    bool          bEnableFMD   = false;              //!< FMD
+    bool          bSingleField = false;              //!< Used in frame Recon - if 30fps (one call per sample pair)
+    bool          bSCDEnable   = false;              //!< Scene change detection
 } VPHAL_DI_PARAMS, *PVPHAL_DI_PARAMS;
 
 //!
@@ -715,7 +846,7 @@ typedef struct _VPHAL_DENOISE_PARAMS
 //!
 typedef struct _VPHAL_STE_PARAMS
 {
-    uint32_t dwSTEFactor;
+    uint32_t dwSTEFactor = 0;
 } VPHAL_STE_PARAMS, *PVPHAL_STE_PARAMS;
 
 //!
@@ -724,12 +855,12 @@ typedef struct _VPHAL_STE_PARAMS
 //!
 typedef struct _VPHAL_TCC_PARAMS
 {
-    uint8_t Red;
-    uint8_t Green;
-    uint8_t Blue;
-    uint8_t Cyan;
-    uint8_t Magenta;
-    uint8_t Yellow;
+    uint8_t Red     = 0;
+    uint8_t Green   = 0;
+    uint8_t Blue    = 0;
+    uint8_t Cyan    = 0;
+    uint8_t Magenta = 0;
+    uint8_t Yellow  = 0;
 } VPHAL_TCC_PARAMS, *PVPHAL_TCC_PARAMS;
 
 //!
@@ -738,14 +869,14 @@ typedef struct _VPHAL_TCC_PARAMS
 //!
 typedef struct _VPHAL_COLORPIPE_PARAMS
 {
-    bool             bEnableACE;
-    bool             bEnableSTE;
-    bool             bEnableTCC;
-    bool             bAceLevelChanged;
-    uint32_t         dwAceLevel;
-    uint32_t         dwAceStrength;
-    VPHAL_STE_PARAMS SteParams;
-    VPHAL_TCC_PARAMS TccParams;
+    bool             bEnableACE       = false;
+    bool             bEnableSTE       = false;
+    bool             bEnableTCC       = false;
+    bool             bAceLevelChanged = false;
+    uint32_t         dwAceLevel       = 0;
+    uint32_t         dwAceStrength    = 0;
+    VPHAL_STE_PARAMS SteParams        = {};
+    VPHAL_TCC_PARAMS TccParams        = {};
 } VPHAL_COLORPIPE_PARAMS, *PVPHAL_COLORPIPE_PARAMS;
 
 //!
@@ -754,12 +885,28 @@ typedef struct _VPHAL_COLORPIPE_PARAMS
 //!
 typedef struct _VPHAL_3DLUT_PARAMS
 {
-    PVPHAL_SURFACE pExt3DLutSurface;    // Pointer to the 3DLUT surface which app passes to driver.
-    uint32_t       LutSize;             // Size of 3DLUT, i.e, how many entries LUT has.
-    uint32_t       ChannelMapping;      // Channel Mapping for the 3DLUT input to 3DLUT output.
-    uint16_t       BitDepthPerChannel;  // Bit Depth Per Channel(4 channels for 3DLUT).
-    uint16_t       ByteCountPerEntry;   // Byte Count Per Entry including reserved bytes.
+    PVPHAL_SURFACE pExt3DLutSurface   = nullptr;   // Pointer to the 3DLUT surface which app passes to driver.
+    uint32_t       LutSize            = 0;    // Size of 3DLUT, i.e, how many entries LUT has.
+    uint32_t       ChannelMapping     = 0;    // Channel Mapping for the 3DLUT input to 3DLUT output.
+    uint16_t       BitDepthPerChannel = 0;    // Bit Depth Per Channel(4 channels for 3DLUT).
+    uint16_t       ByteCountPerEntry  = 0;    // Byte Count Per Entry including reserved bytes.
 } VPHAL_3DLUT_PARAMS, *PVPHAL_3DLUT_PARAMS;
+
+//!
+//! Structure VPHAL_GAMUT_PARAMS
+//! \brief IECP Gamut Mapping Parameters
+//!
+typedef struct _VPHAL_GAMUT_PARAMS
+{
+    VPHAL_GAMUT_MODE  GCompMode;
+    VPHAL_GAMUT_MODE  GExpMode;
+    VPHAL_GAMMA_VALUE GammaValue;
+    uint32_t          dwAttenuation;  //!< U2.10 [0, 1024] 0 = No down scaling, 1024 = Full down scaling
+    float             displayRGBW_x[4];
+    float             displayRGBW_y[4];
+    bool              bColorBalance;
+    int32_t           colorBalanceMatrix[3][3];
+} VPHAL_GAMUT_PARAMS, *PVPHAL_GAMUT_PARAMS;
 
 //!
 //! Structure VPHAL_SURFACE
@@ -885,11 +1032,11 @@ typedef struct _VPHAL_NLAS_PARAMS
 //!
 typedef struct _VPHAL_COLORFILL_PARAMS
 {
-    bool         bYCbCr;
-    uint32_t     Color;
-    VPHAL_CSPACE CSpace;
-    bool         bDisableColorfillinSFC;
-    bool         bOnePixelBiasinSFC;
+    bool         bYCbCr                 = false;
+    uint32_t     Color                  = 0;
+    VPHAL_CSPACE CSpace                 = CSpace_None;
+    bool         bDisableColorfillinSFC = false;
+    bool         bOnePixelBiasinSFC     = false;
 } VPHAL_COLORFILL_PARAMS, *PVPHAL_COLORFILL_PARAMS;
 
 //!
@@ -957,37 +1104,37 @@ typedef struct _VPHAL_SPLIT_SCREEN_DEMO_MODE_PARAMS
 struct VPHAL_RENDER_PARAMS
 {
     // Input/output surfaces
-    uint32_t       uSrcCount;                   //!< Num sources
-    VPHAL_SURFACE *pSrc[VPHAL_MAX_SOURCES];     //!< Source Samples
-    uint32_t       uDstCount;                   //!< Num Targets
-    VPHAL_SURFACE *pTarget[VPHAL_MAX_TARGETS];  //!< Render Target
+    uint32_t       uSrcCount                   = 0;   //!< Num sources
+    VPHAL_SURFACE  *pSrc[VPHAL_MAX_SOURCES]    = {};  //!< Source Samples
+    uint32_t       uDstCount                   = 0;   //!< Num Targets
+    VPHAL_SURFACE  *pTarget[VPHAL_MAX_TARGETS] = {};  //!< Render Target
 
     // Additional parameters not included in PVPHAL_SURFACE
-    PRECT                                pConstriction;               //!< Constriction rectangle
-    PVPHAL_COLORFILL_PARAMS              pColorFillParams;            //!< ColorFill - BG only
-    bool                                 bTurboMode;                  //!< Enable Media Turbo Mode
-    bool                                 bStereoMode;                 //!< Stereo BLT mode
-    PVPHAL_ALPHA_PARAMS                  pCompAlpha;                  //!< Alpha for composited surfaces
-    bool                                 bDisableDemoMode;            //!< Enable/Disable demo mode function calls
-    PVPHAL_SPLIT_SCREEN_DEMO_MODE_PARAMS pSplitScreenDemoModeParams;  //!< Split-screen demo mode for VP features
-    bool                                 bIsDefaultStream;            //!< Identifier to differentiate default stream
+    PRECT                                pConstriction              = nullptr;  //!< Constriction rectangle
+    PVPHAL_COLORFILL_PARAMS              pColorFillParams           = nullptr;  //!< ColorFill - BG only
+    bool                                 bTurboMode                 = false;    //!< Enable Media Turbo Mode
+    bool                                 bStereoMode                = false;    //!< Stereo BLT mode
+    PVPHAL_ALPHA_PARAMS                  pCompAlpha                 = nullptr;  //!< Alpha for composited surfaces
+    bool                                 bDisableDemoMode           = false;    //!< Enable/Disable demo mode function calls
+    PVPHAL_SPLIT_SCREEN_DEMO_MODE_PARAMS pSplitScreenDemoModeParams = nullptr;  //!< Split-screen demo mode for VP features
+    bool                                 bIsDefaultStream           = false;    //!< Identifier to differentiate default stream
 
     // Debugging parameters
-    MOS_COMPONENT Component;  //!< DDI component (for DEBUGGING only)
+    MOS_COMPONENT Component = COMPONENT_UNKNOWN;  //!< DDI component (for DEBUGGING only)
 
     // Status Report
-    bool     bReportStatus;     //!< Report current media BB status (Pre-Processing)
-    uint32_t StatusFeedBackID;  //!< Unique Staus ID;
+    bool     bReportStatus    = false; //!< Report current media BB status (Pre-Processing)
+    uint32_t StatusFeedBackID = 0;     //!< Unique Staus ID;
 #if (_DEBUG || _RELEASE_INTERNAL)
-    bool bTriggerGPUHang;  //!< Trigger GPU HANG
+    bool bTriggerGPUHang = false;  //!< Trigger GPU HANG
 #endif
 
-    bool bCalculatingAlpha;  //!< Alpha calculation parameters
+    bool bCalculatingAlpha  = false;  //!< Alpha calculation parameters
 
     // extension parameters
-    void *pExtensionData;  //!< Extension data
+    void *pExtensionData    = nullptr;  //!< Extension data
 
-    bool bPathKernel;                 // HDR path config if use kernel
+    bool bPathKernel        = false;  // HDR path config if use kernel
     bool bAPGWorkloadEnable = false;  //!< Identify Whether APG workload Enabled or not
 
     bool bDisableVeboxFor8K = false;
@@ -1139,6 +1286,40 @@ MOS_STATUS VpHal_GetSurfaceInfo(
     PMOS_INTERFACE          pOsInterface,
     PVPHAL_GET_SURFACE_INFO pInfo,
     PVPHAL_SURFACE          pSurface);
+
+//!
+//! \brief
+//! \details  Get CSC matrix in a form usable by Vebox, SFC and IECP kernels
+//! \param    [in] SrcCspace
+//!           Source Cspace
+//! \param    [in] DstCspace
+//!           Destination Cspace
+//! \param    [out] pfCscCoeff
+//!           [3x3] Coefficients matrix
+//! \param    [out] pfCscInOffset
+//!           [3x1] Input Offset matrix
+//! \param    [out] pfCscOutOffset
+//!           [3x1] Output Offset matrix
+//! \return   void
+//!
+void VpHal_GetCscMatrix(
+    VPHAL_CSPACE SrcCspace,
+    VPHAL_CSPACE DstCspace,
+    float *      pfCscCoeff,
+    float *      pfCscInOffset,
+    float *      pfCscOutOffset);
+
+//!
+//! \brief    Get the color pack type of a surface
+//! \details  Map mos surface format to color pack format and return.
+//!           For unknown format return VPHAL_COLORPACK_UNKNOWN
+//! \param    [in] Format
+//!           MOS_FORMAT of a surface
+//! \return   VPHAL_COLORPACK
+//!           Color pack type of the surface
+//!
+VPHAL_COLORPACK VpHal_GetSurfaceColorPack(
+    MOS_FORMAT Format);
 
 #ifdef __cplusplus
 }

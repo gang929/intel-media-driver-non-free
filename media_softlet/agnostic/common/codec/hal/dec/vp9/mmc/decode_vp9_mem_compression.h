@@ -66,6 +66,10 @@ public:
         Vp9BasicFeature         &vp9BasicFeature,
         MHW_VDBOX_SURFACE_PARAMS refSurfaceParams[]);
 
+    MOS_STATUS SetRefSurfaceCompressionFormat(
+        Vp9BasicFeature         &vp9BasicFeature,
+        MHW_VDBOX_SURFACE_PARAMS refSurfaceParams[]);
+
     virtual MOS_STATUS SetRefSurfaceMask(
         Vp9BasicFeature                       &vp9BasicFeature,
         mhw::vdbox::hcp::HCP_SURFACE_STATE_PAR refSurfaceParams[]);
@@ -74,7 +78,7 @@ protected:
     PMOS_INTERFACE m_osInterface = nullptr;
     uint8_t        m_skipMask    = 0;
 
-MEDIA_CLASS_DEFINE_END(Vp9DecodeMemComp)
+MEDIA_CLASS_DEFINE_END(decode__Vp9DecodeMemComp)
 };
 }  // namespace decode
 

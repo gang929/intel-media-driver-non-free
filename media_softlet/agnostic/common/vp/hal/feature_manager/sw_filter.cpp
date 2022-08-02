@@ -30,6 +30,7 @@
 #include "vp_obj_factories.h"
 #include "sw_filter_handle.h"
 #include "vp_utils.h"
+#include "vp_user_feature_control.h"
 using namespace vp;
 
 template <typename T>
@@ -782,7 +783,7 @@ MOS_STATUS SwFilterDenoise::Configure(VP_PIPELINE_PARAMS& params, bool isInputSu
 
     m_Params.denoiseParams.bEnableChroma =
         m_Params.denoiseParams.bEnableChroma && m_Params.denoiseParams.bEnableLuma;
-
+#if !EMUL
     GMM_RESOURCE_INFO* pSrcGmmResInfo    = surfInput->OsResource.pGmmResInfo;
     GMM_RESOURCE_INFO* pTargetGmmResInfo = params.pTarget[0]->OsResource.pGmmResInfo;
     VP_PUBLIC_CHK_NULL_RETURN(pSrcGmmResInfo);
@@ -791,13 +792,25 @@ MOS_STATUS SwFilterDenoise::Configure(VP_PIPELINE_PARAMS& params, bool isInputSu
     bool inputProtected = pSrcGmmResInfo->GetSetCpSurfTag(0, 0);
     bool outputProtected = pTargetGmmResInfo->GetSetCpSurfTag(0, 0);
 
+    auto userFeatureControl = m_vpInterface.GetHwInterface()->m_userFeatureControl;
+    VP_PUBLIC_CHK_NULL_RETURN(userFeatureControl);
+    bool disableAutoDN      = userFeatureControl->IsAutoDnDisabled();
+
     if (inputProtected || outputProtected ||
        (m_vpInterface.GetHwInterface()->m_osInterface->osCpInterface &&
         m_vpInterface.GetHwInterface()->m_osInterface->osCpInterface->IsHMEnabled()))
     {
         m_Params.secureDnNeeded = true;
     }
+    else if (disableAutoDN && m_Params.denoiseParams.bAutoDetect)
+    {
+        // disable AutoDN in clear mode
+        m_Params.denoiseParams.bAutoDetect = false;
+        VP_PUBLIC_NORMALMESSAGE("AutoDN is disabled in clear mode.");
+    }
+#endif
 
+    VP_PUBLIC_NORMALMESSAGE("denoiseLevel = %d,secureDn = %d, AutoDn = %d", m_Params.denoiseParams.NoiseLevel, m_Params.secureDnNeeded, m_Params.denoiseParams.bAutoDetect);
     return MOS_STATUS_SUCCESS;
 }
 

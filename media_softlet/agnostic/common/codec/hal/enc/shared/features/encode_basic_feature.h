@@ -32,6 +32,7 @@
 #include "encode_tracked_buffer.h"
 #include "encode_recycle_resource.h"
 #include "media_feature.h"
+#include "mhw_vdbox.h"
 
 namespace encode
 {
@@ -199,7 +200,7 @@ protected:
     EncodeAllocator *m_allocator = nullptr;
     MOS_INTERFACE   *m_osInterface = nullptr;
 
-MEDIA_CLASS_DEFINE_END(EncodeBasicFeature)
+MEDIA_CLASS_DEFINE_END(encode__EncodeBasicFeature)
 };
 
 }  // namespace encode

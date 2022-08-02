@@ -27,7 +27,16 @@
 #ifndef __MEDIA_RENDER_CMD_PACKET_H__
 #define __MEDIA_RENDER_CMD_PACKET_H__
 
+#include <stdint.h>
+#include "media_packet.h"
+#include "mhw_mi.h"
+#include "mhw_utilities_next.h"
+#include "mos_defs.h"
+#include "mos_os.h"
+#include "mos_os_specific.h"
+#include "renderhal.h"
 #include "media_render_cmd_packet_next.h"
+class MediaTask;
 
 class RenderCmdPacket : public RenderCmdPacketNext
 {
@@ -38,13 +47,6 @@ public:
     //virtual MOS_STATUS Init();
     //virtual MOS_STATUS Destroy();
     virtual MOS_STATUS Submit(MOS_COMMAND_BUFFER* commandBuffer, uint8_t packetPhase = otherPacket);
-
-protected:
-    MOS_STATUS AddPipeControl(PMHW_MI_INTERFACE mhwMiInterface, MOS_COMMAND_BUFFER* commandBuffer, PMHW_PIPE_CONTROL_PARAMS pipeControlParams);
-
-    MOS_STATUS MediaStateFlush(PMHW_MI_INTERFACE mhwMiInterface, MOS_COMMAND_BUFFER* commandBuffer, MHW_MEDIA_STATE_FLUSH_PARAM *flushParam);
-
-    MOS_STATUS AddMiBatchBufferEnd(PMHW_MI_INTERFACE mhwMiInterface, PMOS_COMMAND_BUFFER commandBuffer, PMHW_BATCH_BUFFER batchBuffer);
 
 MEDIA_CLASS_DEFINE_END(RenderCmdPacket)
 };

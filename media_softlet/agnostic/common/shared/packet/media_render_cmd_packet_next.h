@@ -27,11 +27,27 @@
 #ifndef __MEDIA_RENDER_CMD_PACKET_NEXT_H__
 #define __MEDIA_RENDER_CMD_PACKET_NEXT_H__
 
+#include <stdint.h>
+#include "hal_kerneldll_next.h"
+#include "media_packet.h"
+#include "mhw_mi.h"
+#include "mhw_render.h"
+#include "mhw_state_heap.h"
+#include "mhw_utilities_next.h"
+#include "mos_defs.h"
+#include "mos_defs_specific.h"
+#include "mos_os.h"
+#include "mos_os_specific.h"
+#include "mos_util_debug.h"
+#include "mos_utilities.h"
+#include "umKmInc/UmKmDmaPerfTimer.h"
+#include "vp_common.h"
 #include "media_cmd_packet.h"
 #include "renderhal.h"
-#include "hal_kerneldll.h"
 #include "mhw_mi_itf.h"
-#include "media_feature_manager.h"
+class MediaFeatureManager;
+class MediaTask;
+class MhwCpInterface;
 
 #define RENDER_PACKET_CHK_NULL_RETURN(_ptr) \
     MOS_CHK_NULL_RETURN(MOS_COMPONENT_HW, 0, _ptr)
@@ -144,7 +160,7 @@ public:
     virtual ~RenderCmdPacketNext();
     virtual MOS_STATUS Init();
     virtual MOS_STATUS Destroy();
-    virtual MOS_STATUS Submit(MOS_COMMAND_BUFFER* commandBuffer, uint8_t packetPhase = otherPacket);
+    //virtual MOS_STATUS Submit(MOS_COMMAND_BUFFER* commandBuffer, uint8_t packetPhase = otherPacket);
 
     // Currently only support HDC read/write, for sampler enabling will be in next step
     // Step1 : render engine set up
@@ -210,7 +226,9 @@ public:
 
     MOS_STATUS PrepareComputeWalkerParams(KERNEL_WALKER_PARAMS params, MHW_GPGPU_WALKER_PARAMS &gpgpuWalker);
 
-    bool isMultiBindingTables = false;
+    bool m_isMultiBindingTables = false;
+
+    bool m_isLargeSurfaceStateNeeded = false;
 
 protected:
     // Step5: Load Kernel
@@ -254,13 +272,6 @@ protected:
     }
 
     virtual void UpdateKernelConfigParam(RENDERHAL_KERNEL_PARAM &kernelParam);
-
-protected:
-    MOS_STATUS AddPipeControl(MOS_COMMAND_BUFFER* commandBuffer, PMHW_PIPE_CONTROL_PARAMS pipeControlParams);
-
-    MOS_STATUS MediaStateFlush(MOS_COMMAND_BUFFER* commandBuffer, MHW_MEDIA_STATE_FLUSH_PARAM *flushParam);
-
-    MOS_STATUS AddMiBatchBufferEnd(MOS_COMMAND_BUFFER* commandBuffer, PMHW_BATCH_BUFFER batchBuffer);
 
 protected:
     PRENDERHAL_INTERFACE        m_renderHal = nullptr;

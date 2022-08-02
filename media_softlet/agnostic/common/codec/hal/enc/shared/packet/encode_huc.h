@@ -31,9 +31,6 @@
 #define __ENCODE_HUC_H__
 
 #include "codechal_hw.h"
-#include "mhw_vdbox_huc_interface.h"
-#include "mhw_vdbox_hcp_interface.h"
-#include "mhw_vdbox_mfx_interface.h"
 #include "mos_defs.h"
 #include "media_cmd_packet.h"
 #include "encode_pipeline.h"
@@ -230,7 +227,7 @@ namespace encode
         uint32_t m_hucStatus2ImemLoadedMask = 0x40;
         bool m_enableHucStatusReport        = false;
 
-    MEDIA_CLASS_DEFINE_END(EncodeHucBasic)
+    MEDIA_CLASS_DEFINE_END(encode__EncodeHucBasic)
     };
 
 
@@ -275,7 +272,7 @@ namespace encode
         void LoadLegacyHucRegions();
         void LoadLegacyHucDmemParams();
 
-    MEDIA_CLASS_DEFINE_END(EncodeHucPkt)
+    MEDIA_CLASS_DEFINE_END(encode__EncodeHucPkt)
     };
 }
 #endif  // !__ENCODE_HUC_H__

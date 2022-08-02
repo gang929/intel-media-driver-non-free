@@ -86,8 +86,9 @@ protected:
     MOS_STATUS GetCSCExecutionCaps(SwFilter* feature);
     bool IsSfcSupported(MOS_FORMAT format);
     MOS_STATUS GetScalingExecutionCaps(SwFilter* feature);
-    MOS_STATUS GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled);
+    MOS_STATUS GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled, bool isSREnabled);
     MOS_STATUS GetScalingExecutionCapsHdr(SwFilter *feature);
+    MOS_STATUS GetScalingExecutionCapsSR(SwFilter *feature);
     bool IsSfcRotationSupported(FeatureParamRotMir *rotationParams);
     MOS_STATUS GetRotationExecutionCaps(SwFilter* feature);
     virtual MOS_STATUS GetDenoiseExecutionCaps(SwFilter* feature);
@@ -129,6 +130,7 @@ protected:
 
     bool IsAlphaSettingSupportedBySfc(MOS_FORMAT formatInput, MOS_FORMAT formatOutput, PVPHAL_ALPHA_PARAMS compAlpha);
     bool IsAlphaSettingSupportedByVebox(MOS_FORMAT formatInput, MOS_FORMAT formatOutput, PVPHAL_ALPHA_PARAMS compAlpha);
+    bool IsIsolateFeatureOutputPipeNeeded(SwFilterSubPipe *featureSubPipe, SwFilter *swFilter);
 
     virtual MOS_STATUS AddFiltersBasedOnCaps(
         SwFilterPipe& featurePipe,
@@ -217,7 +219,7 @@ protected:
 
     void PrintFeatureExecutionCaps(const char *name, VP_EngineEntry &engineCaps);
 
-MEDIA_CLASS_DEFINE_END(Policy)
+MEDIA_CLASS_DEFINE_END(vp__Policy)
 };
 
 }

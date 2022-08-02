@@ -91,10 +91,12 @@ public:
         PVP_MHWINTERFACE          pvpMhwInterface,
         const MHW_VEBOX_HEAP    **ppVeboxHeap);
 
-    virtual bool IsVeboxScalabilitywith4K(
+    virtual bool VeboxScalabilitywith4K(
         VP_MHWINTERFACE           vpMhwInterface);
 
-    MEDIA_CLASS_DEFINE_END(VpPlatformInterfaceG12Tgllp)
+    virtual MOS_STATUS ConfigureVpScalability(VP_MHWINTERFACE &vpMhwInterface);
+
+    MEDIA_CLASS_DEFINE_END(vp__VpPlatformInterfaceG12Tgllp)
 };
 
 }

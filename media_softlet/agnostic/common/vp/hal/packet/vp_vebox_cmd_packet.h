@@ -28,7 +28,6 @@
 #ifndef __VP_VEBOX_CMD_PACKET_H__
 #define __VP_VEBOX_CMD_PACKET_H__
 
-#include "mhw_vebox_g12_X.h"
 #include "vp_vebox_cmd_packet_base.h"
 #include "vp_vebox_common.h"
 #include "vp_render_sfc_base_legacy.h"
@@ -337,7 +336,7 @@ typedef struct _VP_VEBOX_CACHE_CNTL
 
 namespace vp {
 
-class VpVeboxCmdPacket : public VpVeboxCmdPacketBase
+class VpVeboxCmdPacket : virtual public VpVeboxCmdPacketBase
 {
 public:
     VpVeboxCmdPacket(MediaTask * task, PVP_MHWINTERFACE hwInterface, PVpAllocator &allocator, VPMediaMemComp *mmc);
@@ -432,7 +431,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetScalingParams(PSFC_SCALING_PARAMS scalingParams);
+    virtual MOS_STATUS SetScalingParams(PSFC_SCALING_PARAMS scalingParams) override;
 
     //!
     //! \brief    Setup CSC Params for Vebox/SFC
@@ -442,7 +441,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetSfcCSCParams(PSFC_CSC_PARAMS cscParams);
+    virtual MOS_STATUS SetSfcCSCParams(PSFC_CSC_PARAMS cscParams) override;
 
     //!
     //! \brief    Setup CSC Params for Vebox back end
@@ -452,7 +451,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetVeboxBeCSCParams(PVEBOX_CSC_PARAMS cscParams);
+    virtual MOS_STATUS SetVeboxBeCSCParams(PVEBOX_CSC_PARAMS cscParams) override;
 
     //!
     //! \brief    Setup Vebox Output Alpha Value
@@ -462,7 +461,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetVeboxOutputAlphaParams(PVEBOX_CSC_PARAMS cscParams);
+    virtual MOS_STATUS SetVeboxOutputAlphaParams(PVEBOX_CSC_PARAMS cscParams) ;
 
     //!
     //! \brief    Setup Vebox Chroma sub sampling
@@ -482,7 +481,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetSfcRotMirParams(PSFC_ROT_MIR_PARAMS rotMirParams);
+    virtual MOS_STATUS SetSfcRotMirParams(PSFC_ROT_MIR_PARAMS rotMirParams) override;
 
     //!
     //! \brief    Setup DN Params for Vebox
@@ -492,7 +491,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetDnParams(PVEBOX_DN_PARAMS dnParams);
+    virtual MOS_STATUS SetDnParams(PVEBOX_DN_PARAMS dnParams) override;
 
     //!
     //! \brief    Setup STE Params for Vebox
@@ -502,7 +501,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetSteParams(PVEBOX_STE_PARAMS steParams);
+    virtual MOS_STATUS SetSteParams(PVEBOX_STE_PARAMS steParams) override;
 
     //!
     //! \brief    Setup HDR Params for Vebox
@@ -512,7 +511,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetHdrParams(PVEBOX_HDR_PARAMS hdrParams);
+    virtual MOS_STATUS SetHdrParams(PVEBOX_HDR_PARAMS hdrParams) override;
 
     //!
     //! \brief    Setup TCC Params for Vebox
@@ -522,7 +521,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetTccParams(PVEBOX_TCC_PARAMS tccParams);
+    virtual MOS_STATUS SetTccParams(PVEBOX_TCC_PARAMS tccParams) override;
 
     //!
     //! \brief    Setup Procamp Params for Vebox
@@ -532,7 +531,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetProcampParams(PVEBOX_PROCAMP_PARAMS procampParams);
+    virtual MOS_STATUS SetProcampParams(PVEBOX_PROCAMP_PARAMS procampParams) override;
 
     //!
     //! \brief    Setup DI Params for Vebox
@@ -542,7 +541,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    virtual MOS_STATUS SetDiParams(PVEBOX_DI_PARAMS diParams);
+    virtual MOS_STATUS SetDiParams(PVEBOX_DI_PARAMS diParams) override;
 
     //!
     //! \brief    Get DN luma parameters
@@ -831,6 +830,53 @@ public:
     //!
     virtual MOS_STATUS UpdateVeboxStates();
 
+    //! \brief    Vebox get statistics surface base
+    //! \details  Calculate address of statistics surface address based on the
+    //!           functions which were enabled in the previous call.
+    //! \param    uint8_t* pStat
+    //!           [in] Pointer to Statistics surface
+    //! \param    uint8_t* * pStatSlice0Base
+    //!           [out] Statistics surface Slice 0 base pointer
+    //! \param    uint8_t* * pStatSlice1Base
+    //!           [out] Statistics surface Slice 1 base pointer
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS GetStatisticsSurfaceBase(
+        uint8_t  *pStat,
+        uint8_t **pStatSlice0Base,
+        uint8_t **pStatSlice1Base);
+
+    virtual MOS_STATUS QueryStatLayoutGNE(
+        VEBOX_STAT_QUERY_TYPE QueryType,
+        uint32_t             *pQuery,
+        uint8_t              *pStatSlice0Base,
+        uint8_t              *pStatSlice1Base);
+
+    virtual MOS_STATUS CheckTGNEValid(
+        uint32_t *pStatSlice0GNEPtr,
+        uint32_t *pStatSlice1GNEPtr,
+        uint32_t *pQuery);
+    //!
+    //! \brief    Vebox update HVS DN states
+    //! \details  CPU update for VEBOX DN states
+    //! \param    bDnEnabled
+    //!           [in] true if DN enabled
+    //! \param    bChromaDenoise
+    //!           [in] true if chroma DN enabled
+    //! \param    bAutoDenoise
+    //!           [in] true if auto DN enabled
+    //! \param    uint32_t* pStatSlice0GNEPtr
+    //!           [out] Pointer to Vebox slice0 GNE data
+    //! \param    uint32_t* pStatSlice1GNEPtr
+    //!           [out] Pointer to Vebox slice1 GNE data
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS UpdateDnHVSParameters(
+        uint32_t *pStatSlice0GNEPtr,
+        uint32_t *pStatSlice1GNEPtr);
+
     //!
     //! \brief    Vebox state adjust boundary for statistics surface
     //! \details  Adjust boundary for statistics surface block
@@ -838,6 +884,23 @@ public:
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
     virtual MOS_STATUS AdjustBlockStatistics();
+
+    virtual MOS_STATUS GNELumaConsistentCheck(
+        uint32_t &dwGNELuma,
+        uint32_t *pStatSlice0GNEPtr,
+        uint32_t *pStatSlice1GNEPtr);
+
+    // TGNE
+    uint32_t dwGlobalNoiseLevel_Temporal  = 0;  //!< Global Temporal Noise Level for Y
+    uint32_t dwGlobalNoiseLevelU_Temporal = 0;  //!< Global Temporal Noise Level for U
+    uint32_t dwGlobalNoiseLevelV_Temporal = 0;  //!< Global Temporal Noise Level for V
+    uint32_t curNoiseLevel_Temporal       = 0;  //!< Temporal Noise Level for Y
+    uint32_t curNoiseLevelU_Temporal      = 0;  //!< Temporal Noise Level for U
+    uint32_t curNoiseLevelV_Temporal      = 0;  //!< Temporal Noise Level for V
+    bool     m_bTgneEnable                = true;
+    bool     m_bTgneValid                 = false;
+
+    mhw::vebox::MHW_VEBOX_CHROMA_PARAMS veboxChromaParams = {};
 
 protected:
 
@@ -1013,6 +1076,9 @@ protected:
 
     virtual MHW_CSPACE VpHalCspace2MhwCspace(VPHAL_CSPACE cspace);
 
+    virtual MOS_STATUS SetupDNTableForHVS(
+        mhw::vebox::VEBOX_STATE_PAR &veboxStateCmdParams);
+
     virtual MOS_STATUS SetupHDRLuts(
         mhw::vebox::VEBOX_STATE_PAR &veboxStateCmdParams);
     virtual MOS_STATUS Init3DLutTable(PVP_SURFACE surf3DLut);
@@ -1109,7 +1175,7 @@ protected:
     MediaFeatureManager        *m_featureManager           = nullptr;
     std::shared_ptr<mhw::mi::Itf> m_miItf                  = nullptr;
 
-MEDIA_CLASS_DEFINE_END(VpVeboxCmdPacket)
+MEDIA_CLASS_DEFINE_END(vp__VpVeboxCmdPacket)
 };
 
 }

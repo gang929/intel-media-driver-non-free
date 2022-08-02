@@ -200,6 +200,7 @@ CodechalHwInterfaceG12::CodechalHwInterfaceG12(
 {
     CODECHAL_HW_FUNCTION_ENTER;
     m_avpInterface = static_cast<MhwInterfacesG12Tgllp*>(mhwInterfaces)->m_avpInterface;
+    m_mediaSfcItf  = std::make_shared<MediaSfcInterfaceLegacy>(m_osInterface);
 
     InternalInit(codecFunction);
 }
@@ -428,14 +429,14 @@ MOS_STATUS CodechalHwInterfaceG12::Initialize(
     if (settings-> codecFunction == CODECHAL_FUNCTION_DECODE && settings-> standard == CODECHAL_AV1)
     {
         //Initialize renderHal
-        m_renderHal = (PRENDERHAL_INTERFACE)MOS_AllocAndZeroMemory(sizeof(RENDERHAL_INTERFACE));
+        m_renderHal = (PRENDERHAL_INTERFACE_LEGACY)MOS_AllocAndZeroMemory(sizeof(RENDERHAL_INTERFACE_LEGACY));
         CODECHAL_HW_CHK_NULL_RETURN(m_renderHal);
-        CODECHAL_HW_CHK_STATUS_RETURN(RenderHal_InitInterface(
-            m_renderHal,
+        CODECHAL_HW_CHK_STATUS_RETURN(RenderHal_InitInterface_Legacy(
+            (PRENDERHAL_INTERFACE_LEGACY)m_renderHal,
             &m_renderHalCpInterface,
             m_osInterface));
 
-        RENDERHAL_SETTINGS RenderHalSettings;
+        RENDERHAL_SETTINGS_LEGACY RenderHalSettings;
         RenderHalSettings.iMediaStates = 32;
         CODECHAL_HW_CHK_STATUS_RETURN(m_renderHal->pfnInitialize(m_renderHal, &RenderHalSettings));
 

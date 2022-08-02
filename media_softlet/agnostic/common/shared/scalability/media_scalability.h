@@ -29,17 +29,23 @@
 
 #ifndef __MEDIA_SCALABILITY_H__
 #define __MEDIA_SCALABILITY_H__
-#include "mos_os.h"
-#include "media_scalability_defs.h"
-#include "media_scalability_option.h"
-#include "cm_rt_umd.h"
-#include "mos_interface.h"
-#include "mhw_mi_itf.h"
+#include <stdint.h>
+#include <memory>
+#include "mos_defs.h"
+#include "mos_os_specific.h"
 
+#include "mos_os_virtualengine_specific.h"
+
+#include "mos_os.h"
+
+#include "mhw_mi_itf.h"
+class MediaScalabilityOption;
+
+struct ComponentState;
+struct ScalabilityPars;
+#define COMMAND_BUFFER_RESERVED_SPACE 0x80
 class MediaStatusReport;
 class MediaContext;
-class MhwMiInterface;
-class CodechalHwInterface;
 class MediaScalability : public mhw::mi::Itf::ParSetting
 {
     friend class MediaContext;
@@ -157,17 +163,7 @@ public:
     virtual MOS_STATUS GetCmdBuffer(PMOS_COMMAND_BUFFER cmdBuffer, bool frameTrackingRequested = true) = 0;
 
     //!
-    //! \brief  Get command buffer
-    //! \param  [in] newQueue
-    //!         if need a new queue
-    //! \param  [out] queue
-    //!         Pointer to cmQueue
-    //! \return MOS_STATUS
-    //!         MOS_STATUS_SUCCESS if success, else fail reason
-    //!
-    virtual MOS_STATUS GetQueue(bool newQueue, CmQueue *&queue) { return MOS_STATUS_SUCCESS; };
 
-    //!
     //! \brief  Return command buffer
     //! \param  [in, out] cmdBuffer
     //!         Pointer to command buffer
@@ -361,11 +357,11 @@ protected:
     bool                     m_attrReady            = false;    //!< Indicate if cmd buf attribute is ready
     bool                     m_frameTrackingEnabled = true;     //!< Indicate if frame tracking is enabled
 
-    PMOS_VIRTUALENGINE_INTERFACE   m_veInterface = nullptr;  //!< Virtual Engine Interface
     PMOS_VIRTUALENGINE_HINT_PARAMS m_veHitParams = nullptr;  //!< Virtual Engine hint parameters
 
     MOS_VE_HANDLE     m_veState = nullptr; //!< Virtual Engine State
     std::shared_ptr<mhw::mi::Itf> m_miItf = nullptr;
+    PMOS_VIRTUALENGINE_INTERFACE  m_veInterface = nullptr;  //!< Virtual Engine Interface
 
 MEDIA_CLASS_DEFINE_END(MediaScalability)
 };

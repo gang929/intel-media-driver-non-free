@@ -26,7 +26,7 @@
 //!
 
 #include "decode_scalability_option.h"
-#include "decode_utils.h"
+#include "media_scalability_defs.h"
 
 namespace decode
 {
@@ -119,11 +119,6 @@ bool DecodeScalabilityOption::IsScalabilityOptionMatched(ScalabilityPars *params
     if (params == nullptr)
     {
         return false;
-    }
-
-    if (params->enableMdf == true)
-    {
-        return true;
     }
 
     bool                   matched  = false;

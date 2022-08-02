@@ -878,21 +878,29 @@ MOS_STATUS Policy::GetCSCExecutionCaps(SwFilter* feature)
     PrintFeatureExecutionCaps(__FUNCTION__, *cscEngine);
     return MOS_STATUS_SUCCESS;
 }
+
 MOS_STATUS Policy::GetScalingExecutionCapsHdr(SwFilter *feature)
 {
     VP_FUNC_CALL();
-    VP_PUBLIC_CHK_STATUS_RETURN(GetScalingExecutionCaps(feature, true));
+    VP_PUBLIC_CHK_STATUS_RETURN(GetScalingExecutionCaps(feature, true, false));
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS Policy::GetScalingExecutionCapsSR(SwFilter *feature)
+{
+    VP_FUNC_CALL();
+    VP_PUBLIC_CHK_STATUS_RETURN(GetScalingExecutionCaps(feature, false, true));
     return MOS_STATUS_SUCCESS;
 }
 
 MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature)
 {
     VP_FUNC_CALL();
-    VP_PUBLIC_CHK_STATUS_RETURN(GetScalingExecutionCaps(feature, false));
+    VP_PUBLIC_CHK_STATUS_RETURN(GetScalingExecutionCaps(feature, false, false));
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled)
+MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled, bool isSREnabled)
 {
     VP_FUNC_CALL();
 
@@ -921,6 +929,16 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled)
     bool isAlphaSettingSupportedByVebox =
         IsAlphaSettingSupportedByVebox(scalingParams->formatInput, scalingParams->formatOutput, scalingParams->pCompAlpha);
 
+    if (isSREnabled)
+    {
+        // SR is enabled, scaling is not needed
+        scalingEngine->value = 0;
+        VP_PUBLIC_NORMALMESSAGE("SR is enabled, scaling is not needed.");
+
+        PrintFeatureExecutionCaps(__FUNCTION__, *scalingEngine);
+        return MOS_STATUS_SUCCESS;
+    }
+
     // Clean usedForNextPass flag.
     if (scalingEngine->usedForNextPass)
     {
@@ -943,17 +961,40 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled)
         scalingParams->scalingPreference = VPHAL_SCALING_PREFER_SFC;
     }
 
+    dwSurfaceWidth        = scalingParams->input.dwWidth;
+    dwSurfaceHeight       = scalingParams->input.dwHeight;
+    dwOutputSurfaceWidth  = scalingParams->output.dwWidth;
+    dwOutputSurfaceHeight = scalingParams->output.dwHeight;
+
+    // Region of the input frame which needs to be processed by SFC
+    uint32_t dwSourceRegionHeight = MOS_ALIGN_FLOOR(
+        MOS_MIN((uint32_t)(scalingParams->input.rcSrc.bottom - scalingParams->input.rcSrc.top), dwSurfaceHeight),
+        m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].verticalAlignUnit);
+    uint32_t dwSourceRegionWidth = MOS_ALIGN_FLOOR(
+        MOS_MIN((uint32_t)(scalingParams->input.rcSrc.right - scalingParams->input.rcSrc.left), dwSurfaceWidth),
+        m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].horizontalAlignUnit);
+
+    // Size of the Output Region over the Render Target
+    uint32_t dwOutputRegionHeight = MOS_ALIGN_CEIL(
+        (uint32_t)(scalingParams->input.rcDst.bottom - scalingParams->input.rcDst.top),
+        m_hwCaps.m_sfcHwEntry[scalingParams->formatOutput].verticalAlignUnit);
+    uint32_t dwOutputRegionWidth = MOS_ALIGN_CEIL(
+        (uint32_t)(scalingParams->input.rcDst.right - scalingParams->input.rcDst.left),
+        m_hwCaps.m_sfcHwEntry[scalingParams->formatOutput].horizontalAlignUnit);
+
     if (!m_hwCaps.m_veboxHwEntry[scalingParams->formatInput].inputSupported)
     {
-        VP_PUBLIC_NORMALMESSAGE("Input format %d is not support vebox, force to use fc.", scalingParams->formatInput);
-        scalingEngine->bEnabled             = 1;
-        scalingEngine->SfcNeeded            = 0;
-        scalingEngine->VeboxNeeded          = 0;
-        scalingEngine->RenderNeeded         = 1;
-        scalingEngine->fcSupported          = 1;
-        scalingEngine->forceEnableForSfc    = 0;
-        scalingEngine->forceEnableForRender = 0;
-        scalingEngine->veboxNotSupported    = 1;
+        // For non-scaling cases with vebox unsupported format, will force to use fc.
+        scalingEngine->bEnabled          = (dwOutputRegionHeight != dwSourceRegionHeight ||
+                                            dwOutputRegionWidth != dwSourceRegionWidth);
+        scalingEngine->SfcNeeded         = 0;
+        scalingEngine->VeboxNeeded       = 0;
+        scalingEngine->RenderNeeded      = 1;
+        scalingEngine->fcSupported       = 1;
+        scalingEngine->forceEnableForSfc = 0;
+        scalingEngine->forceEnableForFc  = 1;
+        scalingEngine->veboxNotSupported = 1;
+
         PrintFeatureExecutionCaps(__FUNCTION__, *scalingEngine);
         return MOS_STATUS_SUCCESS;
     }
@@ -983,45 +1024,26 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled)
         dwDstMinHeight = dwSfcMinHeight;
     }
 
-    dwSurfaceWidth  = scalingParams->input.dwWidth;
-    dwSurfaceHeight = scalingParams->input.dwHeight;
-    dwOutputSurfaceWidth  = scalingParams->output.dwWidth;
-    dwOutputSurfaceHeight = scalingParams->output.dwHeight;
-
     if (OUT_OF_BOUNDS(dwSurfaceWidth, veboxMinWidth, veboxMaxWidth) ||
         OUT_OF_BOUNDS(dwSurfaceHeight, veboxMinHeight, veboxMaxHeight))
     {
-        // for non-Scaling cases, all engine supported
-        scalingEngine->bEnabled             = 1;
-        scalingEngine->SfcNeeded            = 0;
-        scalingEngine->VeboxNeeded          = 0;
-        scalingEngine->RenderNeeded         = 1;
-        scalingEngine->fcSupported          = 1;
-        scalingEngine->forceEnableForSfc    = 0;
-        scalingEngine->forceEnableForRender = 0;
-        scalingEngine->veboxNotSupported    = 1;
+        // For non-scaling cases with vebox unsupported format, will force to use fc.
+        scalingEngine->bEnabled          = (dwOutputRegionHeight != dwSourceRegionHeight ||
+                                            dwOutputRegionWidth != dwSourceRegionWidth);
+        scalingEngine->SfcNeeded         = 0;
+        scalingEngine->VeboxNeeded       = 0;
+        scalingEngine->RenderNeeded      = 1;
+        scalingEngine->fcSupported       = 1;
+        scalingEngine->forceEnableForSfc = 0;
+        scalingEngine->forceEnableForFc  = 1;
+        scalingEngine->veboxNotSupported = 1;
+
         VP_PUBLIC_NORMALMESSAGE("The surface resolution (%d x %d) is not supported by vebox (%d x %d) ~ (%d x %d).",
             dwSurfaceWidth, dwSurfaceHeight, veboxMinWidth, veboxMinHeight, veboxMaxWidth, veboxMaxHeight);
 
         PrintFeatureExecutionCaps(__FUNCTION__, *scalingEngine);
         return MOS_STATUS_SUCCESS;
     }
-
-    // Region of the input frame which needs to be processed by SFC
-    uint32_t dwSourceRegionHeight = MOS_ALIGN_FLOOR(
-        MOS_MIN((uint32_t)(scalingParams->input.rcSrc.bottom - scalingParams->input.rcSrc.top), dwSurfaceHeight),
-        m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].verticalAlignUnit);
-    uint32_t dwSourceRegionWidth = MOS_ALIGN_FLOOR(
-        MOS_MIN((uint32_t)(scalingParams->input.rcSrc.right - scalingParams->input.rcSrc.left), dwSurfaceWidth),
-        m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].horizontalAlignUnit);
-
-    // Size of the Output Region over the Render Target
-    uint32_t dwOutputRegionHeight = MOS_ALIGN_CEIL(
-        (uint32_t)(scalingParams->input.rcDst.bottom - scalingParams->input.rcDst.top),
-        m_hwCaps.m_sfcHwEntry[scalingParams->formatOutput].verticalAlignUnit);
-    uint32_t dwOutputRegionWidth = MOS_ALIGN_CEIL(
-        (uint32_t)(scalingParams->input.rcDst.right - scalingParams->input.rcDst.left),
-        m_hwCaps.m_sfcHwEntry[scalingParams->formatOutput].horizontalAlignUnit);
 
     // Calculate the scaling ratio
     // Both source region and scaled region are pre-rotated
@@ -1049,7 +1071,7 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled)
             scalingEngine->VeboxNeeded          = 0;
             scalingEngine->RenderNeeded         = 0;
             scalingEngine->forceEnableForSfc    = 0;
-            scalingEngine->forceEnableForRender = 1;
+            scalingEngine->forceEnableForFc     = 1;
             scalingEngine->fcSupported          = 1;
             scalingEngine->sfcNotSupported      = 1;
             VP_PUBLIC_NORMALMESSAGE("The surface resolution (%d x %d) is not supported by sfc (%d x %d) ~ (%d x %d).",
@@ -1074,7 +1096,7 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled)
             scalingEngine->VeboxNeeded          = 0;
             scalingEngine->RenderNeeded         = 0;
             scalingEngine->forceEnableForSfc    = isAlphaSettingSupportedBySfc;
-            scalingEngine->forceEnableForRender = 1;
+            scalingEngine->forceEnableForFc     = 1;
             scalingEngine->fcSupported          = 1;
             scalingEngine->sfcNotSupported      = !isAlphaSettingSupportedBySfc;
         }
@@ -1835,6 +1857,7 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
     }
     else if (engineCapsInputPipe.isolated)
     {
+        caps.bTemperalInputInuse  = engineCapsInputPipe.bTemperalInputInuse;
         if (engineCapsInputPipe.VeboxNeeded != 0 || engineCapsInputPipe.SfcNeeded != 0)
         {
             caps.bVebox = true;
@@ -1844,7 +1867,7 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
         else if (engineCapsInputPipe.RenderNeeded)
         {
             caps.bRender = 1;
-            if (!engineCapsInputPipe.onlyParamCalculation)
+            if (engineCapsInputPipe.isOutputPipeNeeded)
             {
                 caps.bOutputPipeFeatureInuse = true;
             }
@@ -1868,6 +1891,7 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
         caps.bVebox = true;
         caps.bIECP = engineCaps.VeboxIECPNeeded;
         caps.bDiProcess2ndField = engineCaps.diProcess2ndField;
+        caps.bTemperalInputInuse = engineCaps.bTemperalInputInuse;
 
         if (engineCaps.fcOnlyFeatureExists)
         {
@@ -1897,7 +1921,7 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
         engineCaps.value |= engineCapsOutputPipe.value;
         caps.bOutputPipeFeatureInuse = true;
         // Fc cases.
-        if (!engineCaps.fcOnlyFeatureExists)
+        if (!engineCaps.fcOnlyFeatureExists && !engineCaps.veboxNotSupported)
         {
             // If all feature can support both vebox/sfc and fc.
             caps.bVebox = true;
@@ -1911,6 +1935,7 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
         }
 
         caps.bDiProcess2ndField = engineCaps.diProcess2ndField;
+        caps.bTemperalInputInuse = engineCaps.bTemperalInputInuse;
     }
 
     VP_PUBLIC_NORMALMESSAGE("Execute Caps, value 0x%llx (bVebox %d, bSFC %d, bRender %d, bComposite %d, bOutputPipeFeatureInuse %d, bIECP %d, bForceCscToRender %d, bDiProcess2ndField %d)",
@@ -1984,6 +2009,34 @@ bool Policy::IsExcludedFeatureForHdr(FeatureType feature)
         FeatureTypeProcamp  == feature);
 }
 
+bool Policy::IsIsolateFeatureOutputPipeNeeded(SwFilterSubPipe *featureSubPipe, SwFilter *swFilter)
+{
+    if (RenderTargetTypeSurface == swFilter->GetRenderTargetType())
+    {
+        bool isIsolateFeatureOutputPipeNeeded = true;
+        for (auto featureType : m_featurePool)
+        {
+            SwFilter      *curSwFilter = featureSubPipe->GetSwFilter(featureType);
+            VP_EngineEntry caps        = curSwFilter->GetFilterEngineCaps();
+            if (nullptr == curSwFilter || caps.bEnabled == false || featureType == swFilter->GetFeatureType())
+            {
+                continue;
+            }
+            auto renderTargetType = curSwFilter->GetRenderTargetType();
+            if (renderTargetType == RenderTargetTypeSurface)
+            {
+                isIsolateFeatureOutputPipeNeeded = false;
+                break;
+            }
+        }
+        return isIsolateFeatureOutputPipeNeeded;
+    }
+    else
+    {
+        return false;
+    }
+}
+
 MOS_STATUS Policy::GetInputPipeEngineCaps(SwFilterPipe& featurePipe, VP_EngineEntry &engineCapsInputPipe,
                                         SwFilterSubPipe *&singlePipeSelected, bool &isSingleSubPipe, uint32_t &selectedPipeIndex)
 {
@@ -2039,6 +2092,14 @@ MOS_STATUS Policy::GetInputPipeEngineCaps(SwFilterPipe& featurePipe, VP_EngineEn
                     engineCapsForFc.sfcNotSupported = engineCaps.sfcNotSupported;
                     VP_PUBLIC_NORMALMESSAGE("sfcNotSupported flag is set.");
                 }
+                if (engineCaps.veboxNotSupported)
+                {
+                    // vebox cannot be selected. Resolution limit is checked with scaling filter, even scaling
+                    // feature itself not being enabled.
+                    engineCapsForVeboxSfc.veboxNotSupported = engineCaps.veboxNotSupported;
+                    engineCapsForFc.veboxNotSupported       = engineCaps.veboxNotSupported;
+                    VP_PUBLIC_NORMALMESSAGE("veboxNotSupported flag is set.");
+                }
                 continue;
             }
 
@@ -2049,9 +2110,7 @@ MOS_STATUS Policy::GetInputPipeEngineCaps(SwFilterPipe& featurePipe, VP_EngineEn
                 selectedPipeIndex = pipeIndex;
                 singlePipeSelected = featureSubPipe;
                 engineCapsIsolated = engineCaps;
-                auto renderTargetType = swFilter->GetRenderTargetType();
-                engineCapsIsolated.onlyParamCalculation =
-                    RenderTargetTypeParameter == renderTargetType;
+                engineCapsIsolated.isOutputPipeNeeded = IsIsolateFeatureOutputPipeNeeded(featureSubPipe, swFilter);
                 break;
             }
             else if (!engineCaps.fcSupported)
@@ -2327,7 +2386,12 @@ MOS_STATUS Policy::FilterFeatureCombination(SwFilterPipe &swFilterPipe, bool isI
                 {
                     feature->GetFilterEngineCaps().SfcNeeded = 0;
                     VP_PUBLIC_NORMALMESSAGE("Force feature 0x%x to render for render DI", filterID);
-                    PrintFeatureExecutionCaps("Force feature to render for render DI", feature->GetFilterEngineCaps());
+                    MT_LOG2(MT_VP_HAL_POLICY_FLITER_FTR_COMBINE, MT_NORMAL, MT_VP_HAL_FEATUERTYPE, filterID, MT_VP_HAL_EXECCAPS_FORCE_DI2RENDER, feature->GetFilterEngineCaps().RenderNeeded);
+                    auto engineCaps = feature->GetFilterEngineCaps();
+                    PrintFeatureExecutionCaps("Force feature to render for render DI", engineCaps);
+                    MT_LOG7(MT_VP_HAL_POLICY_FLITER_FTR_COMBINE, MT_NORMAL, MT_VP_HAL_FEATUERTYPE, filterID, MT_VP_HAL_ENGINECAPS, engineCaps.value, MT_VP_HAL_ENGINECAPS_EN, engineCaps.bEnabled,
+                        MT_VP_HAL_ENGINECAPS_VE_NEEDED, engineCaps.VeboxNeeded, MT_VP_HAL_ENGINECAPS_SFC_NEEDED, engineCaps.SfcNeeded, 
+                        MT_VP_HAL_ENGINECAPS_RENDER_NEEDED, engineCaps.RenderNeeded, MT_VP_HAL_ENGINECAPS_FC_SUPPORT, engineCaps.fcSupported);
                 }
             }
         }
@@ -2523,10 +2587,10 @@ MOS_STATUS Policy::UpdateFeatureTypeWithEngineSingleLayer(SwFilterSubPipe *featu
                 VP_PUBLIC_CHK_STATUS_RETURN(UpdateExeCaps(feature, caps, EngineTypeVebox));
             }
             else if (caps.bRender                   &&
-                (engineCaps->forceEnableForRender ||
+                (engineCaps->forceEnableForFc       ||
                 engineCaps->bEnabled && engineCaps->RenderNeeded))
             {
-                if (engineCaps->forceEnableForRender)
+                if (engineCaps->forceEnableForFc)
                 {
                     engineCaps->bEnabled = 1;
                     engineCaps->RenderNeeded = 1;

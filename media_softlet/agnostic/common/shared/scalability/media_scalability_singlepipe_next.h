@@ -29,9 +29,13 @@
 
 #ifndef __MEDIA_SCALABILITY_SINGLEPIPE_NEXT_H__
 #define __MEDIA_SCALABILITY_SINGLEPIPE_NEXT_H__
+#include <stdint.h>
+#include "mos_os_specific.h"
 #include "mos_defs.h"
 #include "mos_os.h"
 #include "media_scalability.h"
+class MediaContext;
+class MediaScalabilityOption;
 
 class MediaScalabilitySinglePipeNext: public MediaScalability
 {
@@ -170,7 +174,7 @@ public:
     //! \return MOS_STATUS
     //!         MOS_STATUS_SUCCESS if success, else fail reason
     //!
-    MOS_STATUS SetHintParams();
+    virtual MOS_STATUS SetHintParams();
 
     //!
     //! \brief  Populate hint parameters

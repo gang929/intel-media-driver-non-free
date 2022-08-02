@@ -521,27 +521,28 @@ finish:
 MOS_STATUS Mos_DumpCommandBufferInit(
     PMOS_INTERFACE pOsInterface)
 {
-    char                                sFileName[MOS_MAX_HLT_FILENAME_LEN];
-    MOS_STATUS                          eStatus = MOS_STATUS_UNKNOWN;
-    MOS_USER_FEATURE_VALUE_DATA         UserFeatureData;
-    char                                *psFileNameAfterPrefix = nullptr;
-    size_t                              nSizeFileNamePrefix = 0;
-    MediaUserSettingSharedPtr           userSettingPtr = nullptr;
-
+    char                                sFileName[MOS_MAX_HLT_FILENAME_LEN] = {};
+    MOS_STATUS                          eStatus                             = MOS_STATUS_UNKNOWN;
+    size_t                              nSizeFileNamePrefix                 = 0;
+    MediaUserSettingSharedPtr           userSettingPtr                      = nullptr;
+    uint32_t                            value                               = 0;
     MOS_OS_CHK_NULL_RETURN(pOsInterface);
 
     userSettingPtr = pOsInterface->pfnGetUserSettingInstance(pOsInterface);
+
     // Setup member function and variable.
     pOsInterface->pfnDumpCommandBuffer  = Mos_DumpCommandBuffer;
+
     // Check if command buffer dump was enabled in user feature.
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_DUMP_COMMAND_BUFFER_ENABLE_ID,
-        &UserFeatureData,
-        pOsInterface->pOsContext);
-    pOsInterface->bDumpCommandBuffer = (UserFeatureData.i32Data != 0);
-    pOsInterface->bDumpCommandBufferToFile = ((UserFeatureData.i32Data & 1) != 0);
-    pOsInterface->bDumpCommandBufferAsMessages = ((UserFeatureData.i32Data & 2) != 0);
+    ReadUserSetting(
+        userSettingPtr,
+        value,
+        __MEDIA_USER_FEATURE_VALUE_DUMP_COMMAND_BUFFER_ENABLE,
+        MediaUserSetting::Group::Device);
+
+    pOsInterface->bDumpCommandBuffer            = (value != 0);
+    pOsInterface->bDumpCommandBufferToFile      = ((value & 1) != 0);
+    pOsInterface->bDumpCommandBufferAsMessages  = ((value & 2) != 0);
 
     if (pOsInterface->bDumpCommandBufferToFile)
     {
@@ -550,7 +551,7 @@ MOS_STATUS Mos_DumpCommandBufferInit(
         if (eStatus != MOS_STATUS_SUCCESS)
         {
             MOS_OS_NORMALMESSAGE("Failed to create log file prefix. Status = %d", eStatus);
-            goto finish;
+            return eStatus;
         }
 
         memcpy(sFileName, pOsInterface->sDirName, MOS_MAX_HLT_FILENAME_LEN);
@@ -566,16 +567,13 @@ MOS_STATUS Mos_DumpCommandBufferInit(
         if (eStatus != MOS_STATUS_SUCCESS)
         {
             MOS_OS_NORMALMESSAGE("Failed to create output directory. Status = %d", eStatus);
-            goto finish;
+            return eStatus;
         }
     }
 
     Mos_GetPlatformName(pOsInterface, pOsInterface->sPlatformName);
 
-    eStatus = MOS_STATUS_SUCCESS;
-
-finish:
-    return eStatus;
+    return MOS_STATUS_SUCCESS;
 }
 #endif // MOS_COMMAND_BUFFER_DUMP_SUPPORTED
 
@@ -594,45 +592,38 @@ const GpuCmdResInfoDump *GpuCmdResInfoDump::GetInstance(PMOS_CONTEXT mosCtx)
 
 GpuCmdResInfoDump::GpuCmdResInfoDump(PMOS_CONTEXT mosCtx)
 {
-    MOS_USER_FEATURE_VALUE_DATA userFeatureData;
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_DUMP_COMMAND_INFO_ENABLE_ID,
-        &userFeatureData,
-        mosCtx);
-    m_dumpEnabled = userFeatureData.bData;
+    MediaUserSettingSharedPtr   userSettingPtr  = nullptr;
+    MediaUserSetting::Value     value;
+
+    userSettingPtr = MosInterface::MosGetUserSettingInstance(mosCtx);
+
+    ReadUserSetting(
+        userSettingPtr,
+        m_dumpEnabled,
+        __MEDIA_USER_FEATURE_VALUE_DUMP_COMMAND_INFO_ENABLE,
+        MediaUserSetting::Group::Device);
 
     if (!m_dumpEnabled)
     {
         return;
     }
 
-    char path[MOS_MAX_PATH_LENGTH + 1];
-    MOS_ZeroMemory(path, sizeof(path));
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    userFeatureData.StringData.pStringData = path;
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_DUMP_COMMAND_INFO_PATH_ID,
-        &userFeatureData,
-        mosCtx);
-    if (userFeatureData.StringData.uSize > MOS_MAX_PATH_LENGTH)
-    {
-        userFeatureData.StringData.uSize = 0;
-    }
-    if (userFeatureData.StringData.uSize > 0)
-    {
-        userFeatureData.StringData.pStringData[userFeatureData.StringData.uSize] = '\0';
-        userFeatureData.StringData.uSize++;
-    }
+    ReadUserSetting(
+        userSettingPtr,
+        value,
+        __MEDIA_USER_FEATURE_VALUE_DUMP_COMMAND_INFO_PATH,
+        MediaUserSetting::Group::Device);
 
-    auto tmpPath = std::string(path);
-    if (tmpPath.back() != '/' && tmpPath.back() != '\\')
+    auto path = value.ConstString();
+    if(path.size() > 0)
     {
-        tmpPath += '/';
+        m_path = path;
+        if (path.back() != '/' && path.back() != '\\')
+        {
+            m_path += '/';
+        }
     }
-    m_path = tmpPath + "gpuCmdResInfo_" + std::to_string(MosUtilities::MosGetPid()) + ".txt";
+    m_path = m_path + "gpuCmdResInfo_" + std::to_string(MosUtilities::MosGetPid()) + ".txt";
 }
 
 void GpuCmdResInfoDump::Dump(PMOS_INTERFACE pOsInterface) const
@@ -721,11 +712,7 @@ MOS_STATUS Mos_InitInterface(
     MOS_OS_CHK_NULL_RETURN(pOsDriverContext);
 #endif
     MOS_STATUS                  eStatus = MOS_STATUS_UNKNOWN;
-    PMOS_USER_FEATURE_INTERFACE pOsUserFeatureInterface = nullptr;
-    MOS_USER_FEATURE_VALUE_WRITE_DATA UserFeatureWriteData = __NULL_USER_FEATURE_VALUE_WRITE_DATA__;
-
-    pOsUserFeatureInterface = &pOsInterface->UserFeatureInterface;
-    MOS_OS_CHK_NULL_RETURN(pOsUserFeatureInterface);
+    MediaUserSettingSharedPtr   userSettingPtr = nullptr;
 
     // Setup Member functions
     pOsInterface->pfnFillResource       = Mos_OsFillResource;
@@ -745,18 +732,21 @@ MOS_STATUS Mos_InitInterface(
         MOS_OS_ASSERTMESSAGE("Mos_Specific_InitInterface FAILED, errno = 0x%x", eStatus);
         return eStatus;
     }
+
+    userSettingPtr = pOsInterface->pfnGetUserSettingInstance(pOsInterface);
+
 #if MOS_COMMAND_BUFFER_DUMP_SUPPORTED
     Mos_DumpCommandBufferInit(pOsInterface);
 #endif // MOS_COMMAND_BUFFER_DUMP_SUPPORTED
 
+#if (_DEBUG || _RELEASE_INTERNAL)
     // Report if pre-si environment is in use
-    UserFeatureWriteData.Value.i32Data  = pOsInterface->bSimIsActive;
-    UserFeatureWriteData.ValueID        = __MEDIA_USER_FEATURE_VALUE_SIM_IN_USE_ID;
-    MOS_UserFeature_WriteValues_ID(
-        nullptr,
-        &UserFeatureWriteData,
-        1,
-        pOsInterface->pOsContext);
+    ReportUserSettingForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_SIM_IN_USE,
+        pOsInterface->bSimIsActive,
+        MediaUserSetting::Group::Device);
+#endif
 
     // Apo wrapper
     if (pOsInterface->apoMosEnabled && !pOsInterface->streamStateIniter)
@@ -976,27 +966,28 @@ MOS_STATUS Mos_CheckVirtualEngineSupported(
     bool                veDefaultEnable)
 {
     MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
-    PLATFORM                    platform;
-    MOS_USER_FEATURE_VALUE_DATA userFeatureData;
+    PLATFORM                    platform = {};
+    MediaUserSettingSharedPtr   userSettingPtr = nullptr;
+    uint32_t                    value = 0;
 
     MOS_OS_CHK_NULL_RETURN(osInterface);
-    MOS_ZeroMemory(&platform, sizeof(PLATFORM));
-
     osInterface->pfnGetPlatform(osInterface, &platform);
 
+    userSettingPtr = osInterface->pfnGetUserSettingInstance(osInterface);
     if (isNotEncode)
     {
         //UMD Decode Virtual Engine Override
         // 0: disable. can set to 1 only when KMD VE is enabled.
         // Default value is 1 if not set this key
-        memset(&userFeatureData, 0, sizeof(userFeatureData));
-        eStatus = MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_ENABLE_DECODE_VIRTUAL_ENGINE_ID,
-            &userFeatureData,
-            osInterface->pOsContext);
-        osInterface->bSupportVirtualEngine = userFeatureData.u32Data ? true : false;
-
+        osInterface->bSupportVirtualEngine = true;
+#if (_DEBUG || _RELEASE_INTERNAL)
+        ReadUserSettingForDebug(
+            userSettingPtr,
+            value,
+            __MEDIA_USER_FEATURE_VALUE_ENABLE_DECODE_VIRTUAL_ENGINE,
+            MediaUserSetting::Group::Device);
+        osInterface->bSupportVirtualEngine = value ? true : false;
+#endif
         // force bSupportVirtualEngine to false when virtual engine not enabled by default
         if ((!veDefaultEnable || !osInterface->veDefaultEnable) && 
             (eStatus == MOS_STATUS_USER_FEATURE_KEY_OPEN_FAILED))
@@ -1023,23 +1014,26 @@ MOS_STATUS Mos_CheckVirtualEngineSupported(
         osInterface->multiNodeScaling = osInterface->ctxBasedScheduling && MEDIA_IS_SKU(skuTable, FtrVcs2) ? true : false;
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-        MOS_USER_FEATURE_VALUE_WRITE_DATA  userFeatureWriteData = __NULL_USER_FEATURE_VALUE_WRITE_DATA__;
-        userFeatureWriteData.Value.i32Data = osInterface->ctxBasedScheduling ? true : false;
-        userFeatureWriteData.ValueID = __MEDIA_USER_FEATURE_VALUE_ENABLE_DECODE_VE_CTXSCHEDULING_ID;
-        MOS_UserFeature_WriteValues_ID(nullptr, &userFeatureWriteData, 1, osInterface->pOsContext);
+        value = osInterface->ctxBasedScheduling ? true : false;
+        ReportUserSettingForDebug(
+            userSettingPtr,
+            __MEDIA_USER_FEATURE_VALUE_ENABLE_DECODE_VE_CTXSCHEDULING,
+            value,
+            MediaUserSetting::Group::Device);
 #endif
     }
     else
     {
         //UMD Encode Virtual Engine Override
-        memset(&userFeatureData, 0, sizeof(userFeatureData));
-        eStatus = MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_ENABLE_ENCODE_VIRTUAL_ENGINE_ID,
-            &userFeatureData,
-            osInterface->pOsContext);
-        osInterface->bSupportVirtualEngine = userFeatureData.u32Data ? true : false;
-
+        osInterface->bSupportVirtualEngine = true;
+#if (_DEBUG || _RELEASE_INTERNAL)
+        ReadUserSettingForDebug(
+            userSettingPtr,
+            value,
+            __MEDIA_USER_FEATURE_VALUE_ENABLE_ENCODE_VIRTUAL_ENGINE,
+            MediaUserSetting::Group::Device);
+        osInterface->bSupportVirtualEngine = value ? true : false;
+#endif
         // force bSupportVirtualEngine to false when virtual engine not enabled by default
         if (!osInterface->veDefaultEnable && (eStatus == MOS_STATUS_USER_FEATURE_KEY_READ_FAILED || eStatus == MOS_STATUS_USER_FEATURE_KEY_OPEN_FAILED))
         {

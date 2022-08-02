@@ -50,8 +50,6 @@ public:
 
     virtual MOS_STATUS Prepare(void *params) override;
 
-    MOS_STATUS ContextSwitchBack();
-
 protected:
     virtual MOS_STATUS Initialize(void *settings) override;
     virtual MOS_STATUS Uninitialize() override;
@@ -60,10 +58,7 @@ protected:
     virtual MOS_STATUS CreateFeatureManager() override;
     virtual MOS_STATUS SwitchContext(uint8_t outputChromaFormat, uint16_t numTileRows, uint16_t numTileColumns);
 
-protected:
-    std::shared_ptr<EncodeScalabilityPars> m_scalPars = nullptr;
-
-MEDIA_CLASS_DEFINE_END(Av1VdencPipeline)
+MEDIA_CLASS_DEFINE_END(encode__Av1VdencPipeline)
 };
 
 }

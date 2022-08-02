@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2021, Intel Corporation
+# Copyright (c) 2020-2022, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -46,29 +46,26 @@ set(TMP_HEADERS_
 )
 
 set(TMP_SOURCES_
-    ${CMAKE_CURRENT_LIST_DIR}/mhw_utilities_next.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/mhw_state_heap.c
+    ${CMAKE_CURRENT_LIST_DIR}/mhw_block_manager.c
+    ${CMAKE_CURRENT_LIST_DIR}/mhw_memory_pool.c
+    ${CMAKE_CURRENT_LIST_DIR}/mhw_blt.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/mhw_utilities_next.cpp  
 )
 
-set(SOURCES_
-    ${SOURCES_}
-    ${TMP_SOURCES_}
- )
-
-set(HEADERS_
-    ${HEADERS_}
-    ${TMP_HEADERS_}
-)
-
-set(COMMON_SOURCES_
-    ${COMMON_SOURCES_}
+set(SOFTLET_COMMON_SOURCES_
+    ${SOFTLET_COMMON_SOURCES_}
     ${TMP_SOURCES_}
 )
 
-set(COMMON_HEADERS_
-    ${COMMON_HEADERS_}
+set(SOFTLET_COMMON_HEADERS_
+    ${SOFTLET_COMMON_HEADERS_}
     ${TMP_HEADERS_}
 )
 
 source_group( "MHW" FILES ${TMP_SOURCES_} ${TMP_HEADERS_} )
 
-media_add_curr_to_include_path()
+set(SOFTLET_COMMON_PRIVATE_INCLUDE_DIRS_
+    ${SOFTLET_COMMON_PRIVATE_INCLUDE_DIRS_}
+    ${CMAKE_CURRENT_LIST_DIR}
+)

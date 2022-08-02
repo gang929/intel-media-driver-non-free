@@ -72,11 +72,11 @@ public:
 
     virtual MOS_STATUS AddVeboxSurfaces(PMOS_COMMAND_BUFFER pCmdBufferInUse, PMHW_VEBOX_SURFACE_STATE_CMD_PARAMS pVeboxSurfaceStateCmdParams) = 0;
 
-    virtual MOS_STATUS setVeboxPrologCmd(std::shared_ptr<mhw::mi::Itf> miItf, PMOS_COMMAND_BUFFER CmdBuffer) = 0;
-
     virtual MOS_STATUS SetVeboxDndiState(PMHW_VEBOX_DNDI_PARAMS pVeboxDndiParams) = 0;
 
     virtual MOS_STATUS SetVeboxIecpState(PMHW_VEBOX_IECP_PARAMS pVeboxIecpParams) = 0;
+
+    virtual MOS_STATUS SetDisableHistogram(PMHW_VEBOX_IECP_PARAMS pVeboxIecpParams) = 0;
 
     virtual MOS_STATUS SetVeboxLaceColorParams(MHW_LACE_COLOR_CORRECTION *pLaceColorParams)  = 0;
 
@@ -93,6 +93,10 @@ public:
     virtual MOS_STATUS SetgnLumaWgts(uint32_t dwLumaStadTh, uint32_t dw4X4TGNEThCnt, bool bTGNEEnable) = 0;
 
     virtual MOS_STATUS SetgnChromaWgts(uint32_t dwChromaStadTh) = 0;
+
+    virtual MOS_STATUS SetgnHVSParams(bool tGNEEnable, uint32_t lumaStadTh, uint32_t chromaStadTh, uint32_t tGNEThCnt, uint32_t historyInit, bool fallBack) = 0;
+
+    virtual MOS_STATUS SetgnHVSMode(bool hVSAutoBdrate, bool hVSAutoSubjective, uint32_t bSDThreshold) = 0;
 
     virtual MOS_STATUS FindVeboxGpuNodeToUse(PMHW_VEBOX_GPUNODE_LIMIT pVeboxGpuNodeLimit) = 0;
 

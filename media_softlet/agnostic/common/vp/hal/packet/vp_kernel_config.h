@@ -23,9 +23,10 @@
 #define __VP_KERNEL_CONFIG_H__
 
 #include <map>
+#include "mos_defs.h"
 #include "renderhal.h"
-#include "vphal.h"
-#include "hal_kerneldll.h"
+#include "hal_kerneldll_next.h"
+#include "media_class_trace.h"
 
 #define VP_USE_MEDIA_THREADS_MAX    0
 // Compositing Block size
@@ -64,7 +65,7 @@ public:
 protected:
     std::map<VpKernelID, RENDERHAL_KERNEL_PARAM> m_kernelParams;    // Kernel params.
 
-MEDIA_CLASS_DEFINE_END(VpKernelConfig)
+MEDIA_CLASS_DEFINE_END(vp__VpKernelConfig)
 };
 }
 #endif // __VP_KERNEL_CONFIG_H__

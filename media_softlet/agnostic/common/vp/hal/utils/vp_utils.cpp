@@ -20,8 +20,15 @@
 * OTHER DEALINGS IN THE SOFTWARE.
 */
 
+#include <algorithm>
+#include <map>
+#include <utility>
 #include "vp_utils.h"
 #include "vp_common.h"
+#include "hal_kerneldll_next.h"
+#include "media_common_defs.h"
+#include "media_user_setting_configure.h"
+#include "mos_interface.h"
 
 MOS_SURFACE VpUtils::VpHalConvertVphalSurfaceToMosSurface(PVPHAL_SURFACE surface)
 {
@@ -171,7 +178,7 @@ MOS_STATUS VpUtils::ReAllocateSurface(
 
     //---------------------------------
     VP_PUBLIC_ASSERT(osInterface);
-    VP_PUBLIC_ASSERT(&surface->OsResource);
+    VP_PUBLIC_ASSERT(surface);
     //---------------------------------
 
     *bAllocated = false;
@@ -593,13 +600,6 @@ MOS_STATUS VpUtils::DeclareUserSettings(MediaUserSettingSharedPtr userSettingPtr
         0,
         true);
 
-    DeclareUserSettingKey(  //TRUE for Enabling Vebox Scalability. (Default FALSE: disabled")
-        userSettingPtr,
-        __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE,
-        MediaUserSetting::Group::Sequence,
-        0,
-        true);
-
     DeclareUserSettingKey( //Disabling SFC Centering output. 1 -- Disable, 0 -- Enable.
         userSettingPtr,
         __MEDIA_USER_FEATURE_VALUE_SFC_OUTPUT_CENTERING_DISABLE,
@@ -638,6 +638,13 @@ MOS_STATUS VpUtils::DeclareUserSettings(MediaUserSettingSharedPtr userSettingPtr
     DeclareUserSettingKey(  // FALSE if CSC coefficient setting mode is Patch mode, otherwise Curbe mode
         userSettingPtr,
         __MEDIA_USER_FEATURE_VALUE_CSC_COEFF_PATCH_MODE_DISABLE,
+        MediaUserSetting::Group::Sequence,
+        0,
+        true);
+
+    DeclareUserSettingKey(  
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_DISABLE_AUTODN,
         MediaUserSetting::Group::Sequence,
         0,
         true);

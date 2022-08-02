@@ -22,14 +22,18 @@
 #ifndef __VP_UTILS_H__
 #define __VP_UTILS_H__
 
-#include <mutex>
+#include <stdint.h>
+#include <vector>
+#include "mos_defs.h"
+#include "mos_os_hw.h"
+#include "mos_os_specific.h"
+#include "mos_resource_defs.h"
+#include "mos_util_debug_specific.h"
+#include "mos_utilities.h"
 #include "mos_util_debug.h"
 #include "mos_os.h"
 #include "vp_common.h"
-#include "media_class_trace.h"
-#include "hal_kerneldll_next.h"
-#include <functional>
-#include <algorithm>
+#include "media_user_setting.h"
 
 using MosFormatArray = std::vector<MOS_FORMAT>;
 
@@ -270,13 +274,13 @@ protected:
 #define __VPHAL_VEBOX_DISABLE_SFC                                       "Disable SFC"
 #define __MEDIA_USER_FEATURE_VALUE_SFC_OUTPUT_DTR_DISABLE               "Disable SFC DTR"
 #define __VPHAL_ENABLE_MMC                                              "Enable VP MMC"
-#define __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE        "Enable Vebox Scalability"
 #define __MEDIA_USER_FEATURE_VALUE_SFC_OUTPUT_CENTERING_DISABLE         "SFC Output Centering Disable"
 #define __VPHAL_BYPASS_COMPOSITION                                      "Bypass Composition"
 #define __MEDIA_USER_FEATURE_VALUE_VEBOX_TGNE_ENABLE_VP                 "Enable Vebox GNE"
 
 #define __VPHAL_RNDR_SSD_CONTROL                                        "SSD Control"
 #define __MEDIA_USER_FEATURE_VALUE_CSC_COEFF_PATCH_MODE_DISABLE         "CSC Patch Mode Disable"
+#define __MEDIA_USER_FEATURE_VALUE_DISABLE_AUTODN                       "Disable AutoDn"
 
 #if (_DEBUG || _RELEASE_INTERNAL)
 #define __VPHAL_ENABLE_COMPUTE_CONTEXT                                  "VP Enable Compute Context"

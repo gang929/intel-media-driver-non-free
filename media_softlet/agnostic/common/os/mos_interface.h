@@ -396,20 +396,6 @@ public:
         MOS_STREAM_HANDLE streamState,
         GPU_CONTEXT_HANDLE gpuContext);
 
-    //!
-    //! \brief    Get GPU context pointer
-    //! \details  Get GPU context pointer
-    //! \param    [in] streamState
-    //!           Handle of Os Stream State
-    //! \param    GPU_CONTEXT_HANDLE gpuContextHandle
-    //!           [in] GPU Context Handle
-    //! \return   void *
-    //!           a pointer to a gpu context
-    //!
-    static void *GetGpuContextbyHandle(
-        MOS_STREAM_HANDLE  streamState,
-        GPU_CONTEXT_HANDLE gpuContextHandle);
-
     //! \brief    Sets the object capture flags for Linux OCA dump
     //! \details  Sets the object capture flags for Linux OCA dump
     //!
@@ -1990,6 +1976,36 @@ public:
         MOS_STREAM_HANDLE streamState);
 
     //!
+    //! \brief    Check if OS resource is nullptr
+    //! \details  Check if OS resource is nullptr
+    //! \param    PMOS_RESOURCE pOsResource
+    //!           [in] Pointer to OS Resource
+    //! \return   int32_t
+    //!           Return true if nullptr, otherwise false
+    //!
+    static bool MosResourceIsNull(PMOS_RESOURCE   resource);
+
+    //!
+    //! \brief    OS reset resource
+    //! \details  Resets the OS resource
+    //! \param    PMOS_RESOURCE pOsResource
+    //!           [in] Pointer to OS Resource
+    //! \return   void
+    //!           Return NONE
+    //!
+    static void MosResetResource(PMOS_RESOURCE   resource);
+
+//!
+//! \brief    Get Gmm Resource Info
+//! \details  Get Gmm Resource Info
+//! \param    PMOS_RESOURCE resource
+//!           [in/out] pointer to OS resource
+//! \return   MOS_STATUS
+//!           MOS_STATUS_SUCCESS if successful
+//!
+    static MOS_STATUS GetGmmResourceInfo(PMOS_RESOURCE resource);
+
+    //!
     //! \brief    Get plane offset inside surface
     //! \details  Returns the offset
     //! \param    MOS_PLANE_OFFSET planeOffset
@@ -2015,23 +2031,37 @@ public:
     static GMM_RESOURCE_FORMAT MosFmtToGmmFmt(MOS_FORMAT format);
 
     //!
+    //! \brief  Translate GMM_RESOURCE_FORMAT into MOS_FORMAT
+    //!
+    static MOS_FORMAT GmmFmtToMosFmt(GMM_RESOURCE_FORMAT format);
+
+    //!
     //! \brief  Translate MOS_FORMAT into MOS_OS_FORMAT
     //!
-    static MOS_OS_FORMAT MosFmtToOsFmt(MOS_FORMAT format);
+    static uint32_t MosFmtToOsFmt(MOS_FORMAT format);
 
     //!
     //! \brief  Translate MOS_OS_FORMT into MOS_FORMAT
     //!
-    static MOS_FORMAT OsFmtToMosFmt(MOS_OS_FORMAT format);
+    static MOS_FORMAT OsFmtToMosFmt(uint32_t format);
 
     //! \brief    Get usersetting instance for each stream
     //! \details  the user setting instance
-    //! \param    MOS_PLANE_OFFSET planeOffset
-    //!           [in] Reference to MOS_PLANE_OFFSET structure
-    //! \return   int - offset of the plane
+    //! \param    MOS_STREAM_HANDLE streamState
+    //!           [in] streamState
+    //! \return   MediaUserSettingSharedPtr - user setting instance
     //!
     static MediaUserSettingSharedPtr MosGetUserSettingInstance(
         MOS_STREAM_HANDLE streamState);
+
+    //! \brief    Get usersetting instance for each stream
+    //! \details  the user setting instance
+    //! \param    PMOS_CONTEXT mosCtx
+    //!           [in] mosCtx
+    //! \return   MediaUserSettingSharedPtr - user setting instance
+    //!
+    static MediaUserSettingSharedPtr MosGetUserSettingInstance(
+        PMOS_CONTEXT mosCtx);
 
     //!
     //! \brief  Translate MOS_OS_FORMT into MOS_FORMAT
@@ -2042,6 +2072,16 @@ public:
     //! \brief  Check if Mismatch Order Programming model is supported
     //!
     static bool IsMismatchOrderProgrammingSupported();
+
+    //!
+    //! \brief  Translate GMM_TILE_TYPE to MOS_TILE_TYPE
+    //!
+    static MOS_TILE_TYPE MapTileType(GMM_RESOURCE_FLAG flags, GMM_TILE_TYPE type);
+
+    //!
+    //! \brief  Check if Multiple Codec Devices is in use
+    //!
+    static bool IsMultipleCodecDevicesInUse(PMOS_INTERFACE osInterface);
 
 private:
     //!
@@ -2120,7 +2160,7 @@ private:
     //!           os device ctx handle
     //! \return   void
     //!
-    static void MosInitOsApiFailSimulateFlag(MOS_CONTEXT_HANDLE mosCtx);
+    static void MosInitOsApiFailSimulateFlag(MediaUserSettingSharedPtr userSettingPtr);
 
     //!
     //! \brief    Deinit OS API fail simulate flags
@@ -2144,5 +2184,8 @@ private:
 #endif
 MEDIA_CLASS_DEFINE_END(MosInterface)
 };
+
+#define Mos_ResetResource(resource)     MosInterface::MosResetResource(resource)
+#define Mos_ResourceIsNull(resource)    MosInterface::MosResourceIsNull(resource)
 
 #endif  // __MOS_INTERFACE_H__

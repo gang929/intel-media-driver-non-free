@@ -30,6 +30,11 @@
 #define __RENDERHAL_XE_HPG_H__
 
 #include "renderhal_xe_hp_base.h"
+#include "media_class_trace.h"
+#include "mhw_render.h"
+#include "mos_defs.h"
+#include "mos_os_specific.h"
+#include "renderhal.h"
 
 class XRenderHal_Interface_Xe_Hpg : public XRenderHal_Interface_Xe_Hp_Base
 {
@@ -64,6 +69,15 @@ public:
         PRENDERHAL_INTERFACE        pRenderHal,
         PMOS_COMMAND_BUFFER         pCmdBuffer,
         PMHW_GPGPU_WALKER_PARAMS    pGpGpuWalkerParams);
+
+    //!
+    //! \brief    Initialize the State Heap Settings per platform
+    //! \param    PRENDERHAL_INTERFACE    pRenderHal
+    //!           [out] Pointer to PRENDERHAL_INTERFACE
+    //! \return   void
+    //!
+    void InitStateHeapSettings(
+        PRENDERHAL_INTERFACE    pRenderHal);
 MEDIA_CLASS_DEFINE_END(XRenderHal_Interface_Xe_Hpg)
 };
 

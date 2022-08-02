@@ -31,16 +31,20 @@
 #ifndef __RENDERHAL_PLATFORM_INTERFACE_NEXT_H__
 #define __RENDERHAL_PLATFORM_INTERFACE_NEXT_H__
 
-#include "mos_os.h"
-#include "renderhal.h"
+#include <memory>
+#include "media_class_trace.h"
+#include "mhw_mi.h"
+#include "mhw_mmio.h"
+#include "mhw_render.h"
+#include "mhw_state_heap.h"
+#include "mhw_utilities_next.h"
+#include "mos_defs.h"
+#include "mos_os_specific.h"
+#include "vp_common.h"
 #include "renderhal_platform_interface.h"
 #include "mhw_render_itf.h"
-#include "mhw_render_cmdpar.h"
-#include "media_packet.h"
-#include "vp_utils.h"
-#include "media_feature_manager.h"
-#include "media_interfaces_mhw_next.h"
-#include "mhw_mi_itf.h"
+class MediaFeatureManager;
+namespace mhw { namespace mi { class Itf; } }
 
 class XRenderHal_Platform_Interface_Next : public XRenderHal_Platform_Interface, public mhw::render::Itf::ParSetting
 {
@@ -68,15 +72,31 @@ public:
 
     MOS_STATUS SendChromaKey(
         PRENDERHAL_INTERFACE        pRenderHal,
-        PMOS_COMMAND_BUFFER         pCmdBuffer);
+        PMOS_COMMAND_BUFFER         pCmdBuffer,
+        PMHW_CHROMAKEY_PARAMS       pChromaKeyParams);
 
     MOS_STATUS SendPalette(
         PRENDERHAL_INTERFACE        pRenderHal,
-        PMOS_COMMAND_BUFFER         pCmdBuffer);
+        PMOS_COMMAND_BUFFER         pCmdBuffer,
+        PMHW_PALETTE_PARAMS         pPaletteLoadParams);
 
     MOS_STATUS SetL3Cache(
         PRENDERHAL_INTERFACE        pRenderHal,
         PMOS_COMMAND_BUFFER         pCmdBuffer);
+    
+    //!
+    //! \brief    Get the size of render hal media state
+    //! \return   size_t
+    //!           The size of render hal media state
+    //!
+    size_t GetRenderHalMediaStateSize();
+    
+    //!
+    //! \brief    Get the size of render hal state heap
+    //! \return   size_t
+    //!           The size of render hal state heap
+    //!
+    size_t GetRenderHalStateHeapSize();
 
     PMHW_MI_MMIOREGISTERS GetMmioRegisters(
         PRENDERHAL_INTERFACE        pRenderHal);
@@ -132,6 +152,103 @@ public:
     MOS_STATUS CreateMhwInterfaces(
         PRENDERHAL_INTERFACE        pRenderHal,
         PMOS_INTERFACE              pOsInterface);
+
+    MOS_STATUS On1stLevelBBStart(
+        PRENDERHAL_INTERFACE pRenderHal,
+        PMOS_COMMAND_BUFFER  pCmdBuffer,
+        PMOS_CONTEXT         pOsContext,
+        uint32_t             gpuContextHandle,
+        MHW_MI_MMIOREGISTERS *pMmioReg);
+
+    MOS_STATUS OnDispatch(
+        PRENDERHAL_INTERFACE pRenderHal,
+        PMOS_COMMAND_BUFFER  pCmdBuffer,
+        PMOS_CONTEXT         pOsContext,
+        MHW_MI_MMIOREGISTERS *pMmioReg);
+
+    MOS_STATUS CreatePerfProfiler(
+        PRENDERHAL_INTERFACE pRenderHal);
+
+    MOS_STATUS DestroyPerfProfiler(
+        PRENDERHAL_INTERFACE pRenderHal);
+        
+    MOS_STATUS AddPerfCollectStartCmd(
+        PRENDERHAL_INTERFACE pRenderHal,
+        MOS_INTERFACE        *osInterface,
+        MOS_COMMAND_BUFFER   *cmdBuffer);
+
+    MOS_STATUS StartPredicate(
+        PRENDERHAL_INTERFACE pRenderHal,
+        PMOS_COMMAND_BUFFER  cmdBuffer);
+
+    MOS_STATUS StopPredicate(
+        PRENDERHAL_INTERFACE pRenderHal,
+        PMOS_COMMAND_BUFFER  cmdBuffer);
+
+    MOS_STATUS AddPerfCollectEndCmd(
+        PRENDERHAL_INTERFACE pRenderHal,
+        PMOS_INTERFACE       pOsInterface,
+        MOS_COMMAND_BUFFER   *cmdBuffer);
+
+    MOS_STATUS AddMediaVfeCmd(
+        PRENDERHAL_INTERFACE    pRenderHal,
+        PMOS_COMMAND_BUFFER     pCmdBuffer,
+        MHW_VFE_PARAMS          *params);
+
+    MOS_STATUS AddMediaStateFlush(
+        PRENDERHAL_INTERFACE         pRenderHal,
+        PMOS_COMMAND_BUFFER          pCmdBuffer,
+        MHW_MEDIA_STATE_FLUSH_PARAM  *params);
+
+    MOS_STATUS AddMiBatchBufferEnd(
+        PRENDERHAL_INTERFACE         pRenderHal,
+        PMOS_COMMAND_BUFFER          pCmdBuffer,
+        PMHW_BATCH_BUFFER            batchBuffer);
+
+    MOS_STATUS AddMediaObjectWalkerCmd(
+        PRENDERHAL_INTERFACE         pRenderHal,
+        PMOS_COMMAND_BUFFER          pCmdBuffer,
+        PMHW_WALKER_PARAMS           params);
+
+    MOS_STATUS AddGpGpuWalkerStateCmd(
+        PRENDERHAL_INTERFACE     pRenderHal,
+        PMOS_COMMAND_BUFFER      pCmdBuffer,
+        PMHW_GPGPU_WALKER_PARAMS params);
+
+    MOS_STATUS AllocateHeaps(
+        PRENDERHAL_INTERFACE     pRenderHal,
+        MHW_STATE_HEAP_SETTINGS  MhwStateHeapSettings);
+
+    PMHW_STATE_HEAP_INTERFACE GetStateHeapInterface(
+        PRENDERHAL_INTERFACE     pRenderHal);
+
+    MOS_STATUS DestoryMhwInterface(
+        PRENDERHAL_INTERFACE     pRenderHal);
+
+    MOS_STATUS AddMediaCurbeLoadCmd(
+        PRENDERHAL_INTERFACE         pRenderHal,
+        PMOS_COMMAND_BUFFER          pCmdBuffer,
+        PMHW_CURBE_LOAD_PARAMS       params);
+
+    MOS_STATUS AddMediaIDLoadCmd(
+        PRENDERHAL_INTERFACE         pRenderHal,
+        PMOS_COMMAND_BUFFER          pCmdBuffer,
+        PMHW_ID_LOAD_PARAMS          params);
+
+    bool IsPreemptionEnabled(
+        PRENDERHAL_INTERFACE         pRenderHal);
+
+    void GetSamplerResolutionAlignUnit(
+        PRENDERHAL_INTERFACE         pRenderHal,
+        bool                         isAVSSampler,
+        uint32_t                     &widthAlignUnit,
+        uint32_t                     &heightAlignUnit);
+
+    PMHW_RENDER_ENGINE_CAPS GetHwCaps(
+        PRENDERHAL_INTERFACE         pRenderHal);
+
+    bool IsComputeContextInUse(
+         PRENDERHAL_INTERFACE    pRenderHal);
 
     std::shared_ptr<mhw::mi::Itf> GetMhwMiItf();
 

@@ -18,6 +18,8 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
+media_include_subdirectory(private)
+
 set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/mos_context_next.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_graphicsresource_next.cpp
@@ -40,51 +42,43 @@ set(TMP_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/mos_gpucontextmgr_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_cmdbufmgr_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_commandbuffer_next.h
-    ${CMAKE_CURRENT_LIST_DIR}/mos_oca_interface_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_interface.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_user_setting.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_utilities.h
+    ${CMAKE_CURRENT_LIST_DIR}/mos_solo_generic.h
+    ${CMAKE_CURRENT_LIST_DIR}/mos_mediacopy.h
+    ${CMAKE_CURRENT_LIST_DIR}/mos_mediacopy_base.h
 )
-
-set(SOURCES_
-    ${SOURCES_}
-    ${TMP_SOURCES_}
- )
-
-set(HEADERS_
-    ${HEADERS_}
-    ${TMP_HEADERS_}
-)
-
-source_group( "MOSNext" FILES ${TMP_SOURCES_} ${TMP_HEADERS_} )
-
 
 if(${Media_Scalability_Supported} STREQUAL "yes")
-
-set(TMP_2_SOURCES_
+set(TMP_SOURCES_
+    ${TMP_SOURCES_}
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_virtualengine_next.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_virtualengine_scalability_next.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_virtualengine_singlepipe_next.cpp
 )
 
-set(TMP_2_HEADERS_
+set(TMP_HEADERS_
+    ${TMP_HEADERS_}
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_virtualengine_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_virtualengine_scalability_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_virtualengine_singlepipe_next.h
 )
+endif() #if(${Media_Scalability_Supported} STREQUAL "yes")
 
-set(SOURCES_
-    ${SOURCES_}
-    ${TMP_2_SOURCES_}
+set(SOFTLET_MOS_COMMON_SOURCES_
+    ${SOFTLET_MOS_COMMON_SOURCES_}
+    ${TMP_SOURCES_}
  )
 
-set(HEADERS_
-    ${HEADERS_}
-    ${TMP_2_HEADERS_}
+set(SOFTLET_MOS_COMMON_HEADERS_
+    ${SOFTLET_MOS_COMMON_HEADERS_}
+    ${TMP_HEADERS_}
 )
 
-source_group( "MOSNext" FILES ${TMP_2_SOURCES_} ${TMP_2_HEADERS_} )
+set(SOFTLET_MOS_PUBLIC_INCLUDE_DIRS_
+    ${SOFTLET_MOS_PUBLIC_INCLUDE_DIRS_}
+    ${CMAKE_CURRENT_LIST_DIR}
+)
 
-endif()
-
-media_add_curr_to_include_path()
+source_group( "mos_softlet" FILES ${TMP_SOURCES_} ${TMP_HEADERS_} )

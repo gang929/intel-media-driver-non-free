@@ -29,8 +29,12 @@
 #define __MEDIA_CMD_TASK_H__
 #include "media_task.h"
 #include "mos_os.h"
+#include "mos_defs.h"
+#include "mos_os_specific.h"
+#if !EMUL
 #include "codechal_debug.h"
-
+#endif
+class MediaScalability;
 class CmdTask : public MediaTask
 {
 public:
@@ -46,7 +50,7 @@ public:
     virtual MOS_STATUS Submit(bool immediateSubmit, MediaScalability *scalability, CodechalDebugInterface *debugInterface) override;
 
 protected:
-#if (_DEBUG || _RELEASE_INTERNAL)
+#if (_DEBUG || _RELEASE_INTERNAL) && !EMUL
     virtual MOS_STATUS DumpCmdBuffer(PMOS_COMMAND_BUFFER cmdBuffer, CodechalDebugInterface *debugInterface, uint8_t pipeIdx = 0);
     virtual MOS_STATUS DumpCmdBufferAllPipes(PMOS_COMMAND_BUFFER cmdBuffer, CodechalDebugInterface *debugInterface, MediaScalability *scalability);
 #endif // _DEBUG || _RELEASE_INTERNAL

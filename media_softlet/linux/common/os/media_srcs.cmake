@@ -19,8 +19,12 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 
 media_include_subdirectory(osservice)
+media_include_subdirectory(private)
 
 if(NOT CMAKE_WDDM_LINUX)
+
+media_include_subdirectory(private)
+
 set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/mos_context_specific_next.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_graphicsresource_specific_next.cpp
@@ -28,8 +32,8 @@ set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/mos_gpucontext_specific_next.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_gpucontext_specific_next_ext.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_specific_next.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/mos_decompression.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/mos_mediacopy.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/mos_decompression_base.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/mos_mediacopy_base.cpp
     ${CMAKE_CURRENT_LIST_DIR}/mos_user_setting_specific.cpp
 )
 
@@ -39,13 +43,12 @@ set(TMP_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/mos_util_devult_specific_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_commandbuffer_specific_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_gpucontext_specific_next.h
-    ${CMAKE_CURRENT_LIST_DIR}/mos_os_specific_next.h
+    ${CMAKE_CURRENT_LIST_DIR}/mos_decompression_base.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_decompression.h
     ${CMAKE_CURRENT_LIST_DIR}/media_skuwa_specific.h
 )
 
 if(${Media_Scalability_Supported} STREQUAL "yes")
-
 set(TMP_SOURCES_
     ${TMP_SOURCES_}
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_virtualengine_scalability_specific_next.cpp
@@ -57,19 +60,22 @@ set(TMP_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_virtualengine_scalability_specific_next.h
     ${CMAKE_CURRENT_LIST_DIR}/mos_os_virtualengine_singlepipe_specific_next.h
 )
+endif() #if(${Media_Scalability_Supported} STREQUAL "yes")
 
-endif()
-
-set(SOURCES_
-    ${SOURCES_}
+set(SOFTLET_MOS_COMMON_SOURCES_
+    ${SOFTLET_MOS_COMMON_SOURCES_}
     ${TMP_SOURCES_}
  )
 
-set(HEADERS_
-    ${HEADERS_}
+set(SOFTLET_MOS_COMMON_HEADERS_
+    ${SOFTLET_MOS_COMMON_HEADERS_}
     ${TMP_HEADERS_}
 )
 
+set(SOFTLET_MOS_PUBLIC_INCLUDE_DIRS_
+    ${SOFTLET_MOS_PUBLIC_INCLUDE_DIRS_}
+    ${CMAKE_CURRENT_LIST_DIR}
+)
+source_group( "mos_softlet" FILES ${TMP_SOURCES_} ${TMP_HEADERS_} )
 
-media_add_curr_to_include_path()
 endif() # CMAKE_WDDM_LINUX

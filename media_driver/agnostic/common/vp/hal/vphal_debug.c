@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2011-2021, Intel Corporation
+* Copyright (c) 2011-2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -512,7 +512,7 @@ MOS_STATUS VphalSurfaceDumper::DumpSurfaceToFile(
     bool                                enableAuxDump;
     bool                                enablePlaneDump = false;
     PMOS_RESOURCE                       pLockedResource = nullptr;
-
+    PVPHAL_SURFACE                      temp2DSurfForCopy = nullptr;
     VPHAL_DEBUG_ASSERT(pSurface);
     VPHAL_DEBUG_ASSERT(pOsInterface);
     VPHAL_DEBUG_ASSERT(psPathPrefix);
@@ -570,11 +570,11 @@ MOS_STATUS VphalSurfaceDumper::DumpSurfaceToFile(
         {
             bool bAllocated;
 
-            PVPHAL_SURFACE m_temp2DSurfForCopy = (PVPHAL_SURFACE)MOS_AllocAndZeroMemory(sizeof(VPHAL_SURFACE));
-
+            temp2DSurfForCopy = (PVPHAL_SURFACE)MOS_AllocAndZeroMemory(sizeof(VPHAL_SURFACE));
+            VPHAL_DEBUG_CHK_NULL(temp2DSurfForCopy);
             VPHAL_RENDER_CHK_STATUS(VpHal_ReAllocateSurface(
                 pOsInterface,
-                m_temp2DSurfForCopy,
+                temp2DSurfForCopy,
                 "Temp2DSurfForSurfDumper",
                 pSurface->Format,
                 MOS_GFXRES_2D,
@@ -588,18 +588,18 @@ MOS_STATUS VphalSurfaceDumper::DumpSurfaceToFile(
             m_osInterface->pfnDoubleBufferCopyResource(
                 m_osInterface,
                 &pSurface->OsResource,
-                &m_temp2DSurfForCopy->OsResource,
+                &temp2DSurfForCopy->OsResource,
                 false);
 
             pData = (uint8_t *)pOsInterface->pfnLockResource(
                 pOsInterface,
-                &m_temp2DSurfForCopy->OsResource,
+                &temp2DSurfForCopy->OsResource,
                 &LockFlags);
-            pLockedResource = &m_temp2DSurfForCopy->OsResource;
+            pLockedResource = &temp2DSurfForCopy->OsResource;
 
             // get plane definitions
             VPHAL_DEBUG_CHK_STATUS(GetPlaneDefs(
-                m_temp2DSurfForCopy,
+                temp2DSurfForCopy,
                 planes,
                 &dwNumPlanes,
                 &dwSize,
@@ -814,6 +814,16 @@ finish:
         eStatus = (MOS_STATUS)pOsInterface->pfnUnlockResource(pOsInterface, pLockedResource);
         VPHAL_DEBUG_ASSERT(eStatus == MOS_STATUS_SUCCESS);
     }
+    if (temp2DSurfForCopy)
+    {
+        MOS_GFXRES_FREE_FLAGS resFreeFlags = {0};
+        if (IsSyncFreeNeededForMMCSurface(temp2DSurfForCopy, pOsInterface))
+        {
+            resFreeFlags.SynchronousDestroy = 1;
+        }
+        pOsInterface->pfnFreeResourceWithFlag(pOsInterface, &(temp2DSurfForCopy->OsResource), resFreeFlags.Value);
+    }
+    MOS_SafeFreeMemory(temp2DSurfForCopy);
 
     return eStatus;
 }
@@ -3227,6 +3237,16 @@ MOS_STATUS VphalParameterDumper::DumpSourceSurface(
         }
         VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t\t</VPHAL_LUMAKEY_PARAMS>\n"));
 
+        //ChromaSitting params
+        VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t\t<VPHAL_CHROMASITTING_PARAMS>\n"));
+        VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t\t\t<CHROMA_SITING_HORZ_LEFT>%d</CHROMA_SITING_HORZ_LEFT>\n", (pSrc->ChromaSiting & CHROMA_SITING_HORZ_LEFT) == CHROMA_SITING_HORZ_LEFT ? 1 : 0));
+        VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t\t\t<CHROMA_SITING_HORZ_CENTER>%d</CHROMA_SITING_HORZ_CENTER>\n", (pSrc->ChromaSiting & CHROMA_SITING_HORZ_CENTER) == CHROMA_SITING_HORZ_CENTER ? 1 : 0));
+        VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t\t\t<CHROMA_SITING_HORZ_RIGHT>%d</CHROMA_SITING_HORZ_RIGHT>\n", (pSrc->ChromaSiting & CHROMA_SITING_HORZ_RIGHT) == CHROMA_SITING_HORZ_RIGHT ? 1 : 0));
+        VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t\t\t<CHROMA_SITING_VERT_TOP>%d</CHROMA_SITING_VERT_TOP>\n", (pSrc->ChromaSiting & CHROMA_SITING_VERT_TOP) == CHROMA_SITING_VERT_TOP ? 1 : 0));
+        VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t\t\t<CHROMA_SITING_VERT_CENTER>%d</CHROMA_SITING_VERT_CENTER>\n", (pSrc->ChromaSiting & CHROMA_SITING_VERT_CENTER) == CHROMA_SITING_VERT_CENTER ? 1 : 0));
+        VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t\t\t<CHROMA_SITING_VERT_BOTTOM>%d</CHROMA_SITING_VERT_BOTTOM>\n", (pSrc->ChromaSiting & CHROMA_SITING_VERT_BOTTOM) == CHROMA_SITING_VERT_BOTTOM ? 1 : 0));
+        VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t\t</VPHAL_CHROMASITTING_PARAMS>\n"));
+
         //Propcamp params
         VPHAL_DEBUG_CHK_STATUS(VphalDumperTool::AppendString(false, &pcOutContents, "\t\t<VPHAL_PROCAMP_PARAMS>\n"));
         if (pSrc->pProcampParams)
@@ -4401,6 +4421,7 @@ const char * VphalParameterDumper::GetScalingModeStr(VPHAL_SCALING_MODE scaling_
     case VPHAL_SCALING_NEAREST:         return _T("VPHAL_SCALING_NEAREST");
     case VPHAL_SCALING_BILINEAR:        return _T("VPHAL_SCALING_BILINEAR");
     case VPHAL_SCALING_AVS:             return _T("VPHAL_SCALING_AVS");
+    case VPHAL_SCALING_ADV_QUALITY:     return _T("VPHAL_SCALING_ADV_QUALITY");
     default:                            return _T("Err");
     }
 
@@ -4530,8 +4551,7 @@ void VphalOcaDumper::SetRenderParam(VPHAL_RENDER_PARAMS *pRenderParams)
             return;
         }
     }
-
-    memset(m_pOcaRenderParam, 0, size);
+    MOS_ZeroMemory(m_pOcaRenderParam, size);
 
     m_pOcaRenderParam->Header.size          = size;
     m_pOcaRenderParam->Header.allocSize     = allocSize;

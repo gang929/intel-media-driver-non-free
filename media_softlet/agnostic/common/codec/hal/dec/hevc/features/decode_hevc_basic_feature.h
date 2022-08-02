@@ -91,17 +91,19 @@ public:
     uint32_t                        m_heightInCtb  = 0;             //!< Frame height in LCU
 
     bool                            m_dummyReferenceSlot[CODECHAL_MAX_CUR_NUM_REF_FRAME_HEVC];
+    bool                            m_shortFormatInUse = false;     //!< Indicate if short format
 
 protected:
     virtual MOS_STATUS SetRequiredBitstreamSize(uint32_t requiredSize) override;
 
     MOS_STATUS SetPictureStructs();
     MOS_STATUS SetSliceStructs();
+    MOS_STATUS ErrorDetectAndConceal();
 
     MhwVdboxHcpInterface * m_hcpInterface = nullptr;
     PMOS_INTERFACE        m_osInterface  = nullptr;
 
-MEDIA_CLASS_DEFINE_END(HevcBasicFeature)
+MEDIA_CLASS_DEFINE_END(decode__HevcBasicFeature)
 };
 
 }  // namespace encode

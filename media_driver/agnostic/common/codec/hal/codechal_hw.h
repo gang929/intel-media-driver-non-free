@@ -28,14 +28,15 @@
 #define __CODECHAL_HW_H__
 
 #include "codechal.h"
-#include "renderhal.h"
+#include "renderhal_legacy.h"
 #include "mhw_mi.h"
-#include "mhw_render.h"
+#include "mhw_render_legacy.h"
 #include "mhw_state_heap.h"
 #include "mhw_vdbox.h"
 #include "mhw_vebox.h"
 #include "mhw_sfc.h"
 #include "mhw_cp_interface.h"
+#include "media_blt_copy.h"
 
 #include "mhw_vdbox_mfx_interface.h"
 #include "mhw_vdbox_hcp_interface.h"
@@ -45,6 +46,7 @@
 #include "mhw_vdbox_hcp_itf.h"
 
 #include "media_interfaces_mhw.h"
+#include "media_sfc_interface.h"
 
 #include "gfxmacro.h"
 
@@ -91,8 +93,6 @@
 #define CODECHAL_HW_CHK_COND_RETURN(_expr, _message, ...)                           \
     MOS_CHK_COND_RETURN(MOS_COMPONENT_CODEC, MOS_CODEC_SUBCOMP_HW,_expr,_message, ##__VA_ARGS__)
 
-#define CODECHAL_CACHELINE_SIZE                 64
-#define CODECHAL_PAGE_SIZE                      0x1000
 #define CODECHAL_PAK_OBJ_EACH_CU                66
 
 #define CODECHAL_SURFACE_PITCH_ALIGNMENT        128
@@ -106,9 +106,6 @@
 #define CODECHAL_VLINESTRIDE_FIELD              1
 #define CODECHAL_VLINESTRIDEOFFSET_TOP_FIELD    0
 #define CODECHAL_VLINESTRIDEOFFSET_BOT_FIELD    1
-
-// Params for Huc
-#define HUC_DMEM_OFFSET_RTOS_GEMS                       0x2000
 
 #define CODECHAL_MAX_DEPENDENCY_COUNT  8
 
@@ -151,73 +148,6 @@ enum CodechalWalkingPattern
     codechalVerticalRasterScan               = 4
 };
 
-typedef enum _CODECHAL_MEDIA_STATE_TYPE
-{
-    CODECHAL_MEDIA_STATE_OLP                                = 0,
-    CODECHAL_MEDIA_STATE_ENC_NORMAL                         = 1,
-    CODECHAL_MEDIA_STATE_ENC_PERFORMANCE                    = 2,
-    CODECHAL_MEDIA_STATE_ENC_QUALITY                        = 3,
-    CODECHAL_MEDIA_STATE_ENC_I_FRAME_DIST                   = 4,
-    CODECHAL_MEDIA_STATE_32X_SCALING                        = 5,
-    CODECHAL_MEDIA_STATE_16X_SCALING                        = 6,
-    CODECHAL_MEDIA_STATE_4X_SCALING                         = 7,
-    CODECHAL_MEDIA_STATE_32X_ME                             = 8,
-    CODECHAL_MEDIA_STATE_16X_ME                             = 9,
-    CODECHAL_MEDIA_STATE_4X_ME                              = 10,
-    CODECHAL_MEDIA_STATE_BRC_INIT_RESET                     = 11,
-    CODECHAL_MEDIA_STATE_BRC_UPDATE                         = 12,
-    CODECHAL_MEDIA_STATE_BRC_BLOCK_COPY                     = 13,
-    CODECHAL_MEDIA_STATE_HYBRID_PAK_P1                      = 14,
-    CODECHAL_MEDIA_STATE_HYBRID_PAK_P2                      = 15,
-    CODECHAL_MEDIA_STATE_ENC_I_FRAME_CHROMA                 = 16,
-    CODECHAL_MEDIA_STATE_ENC_I_FRAME_LUMA                   = 17,
-    CODECHAL_MEDIA_STATE_MPU_FHB                            = 18,
-    CODECHAL_MEDIA_STATE_TPU_FHB                            = 19,
-    CODECHAL_MEDIA_STATE_PA_COPY                            = 20,
-    CODECHAL_MEDIA_STATE_PL2_COPY                           = 21,
-    CODECHAL_MEDIA_STATE_ENC_ADV                            = 22,
-    CODECHAL_MEDIA_STATE_2X_SCALING                         = 23,
-    CODECHAL_MEDIA_STATE_32x32_PU_MODE_DECISION             = 24,
-    CODECHAL_MEDIA_STATE_16x16_PU_SAD                       = 25,
-    CODECHAL_MEDIA_STATE_16x16_PU_MODE_DECISION             = 26,
-    CODECHAL_MEDIA_STATE_8x8_PU                             = 27,
-    CODECHAL_MEDIA_STATE_8x8_PU_FMODE                       = 28,
-    CODECHAL_MEDIA_STATE_32x32_B_INTRA_CHECK                = 29,
-    CODECHAL_MEDIA_STATE_HEVC_B_MBENC                       = 30,
-    CODECHAL_MEDIA_STATE_RESET_VLINE_STRIDE                 = 31,
-    CODECHAL_MEDIA_STATE_HEVC_B_PAK                         = 32,
-    CODECHAL_MEDIA_STATE_HEVC_BRC_LCU_UPDATE                = 33,
-    CODECHAL_MEDIA_STATE_ME_VDENC_STREAMIN                  = 34,
-    CODECHAL_MEDIA_STATE_VP9_ENC_I_32x32                    = 35,
-    CODECHAL_MEDIA_STATE_VP9_ENC_I_16x16                    = 36,
-    CODECHAL_MEDIA_STATE_VP9_ENC_P                          = 37,
-    CODECHAL_MEDIA_STATE_VP9_ENC_TX                         = 38,
-    CODECHAL_MEDIA_STATE_VP9_DYS                            = 39,
-    CODECHAL_MEDIA_STATE_VP9_PAK_LUMA_RECON                 = 40,
-    CODECHAL_MEDIA_STATE_VP9_PAK_CHROMA_RECON               = 41,
-    CODECHAL_MEDIA_STATE_VP9_PAK_DEBLOCK_MASK               = 42,
-    CODECHAL_MEDIA_STATE_VP9_PAK_LUMA_DEBLOCK               = 43,
-    CODECHAL_MEDIA_STATE_VP9_PAK_CHROMA_DEBLOCK             = 44,
-    CODECHAL_MEDIA_STATE_VP9_PAK_MC_PRED                    = 45,
-    CODECHAL_MEDIA_STATE_VP9_PAK_P_FRAME_LUMA_RECON         = 46,
-    CODECHAL_MEDIA_STATE_VP9_PAK_P_FRAME_LUMA_RECON_32x32   = 47,
-    CODECHAL_MEDIA_STATE_VP9_PAK_P_FRAME_CHROMA_RECON       = 48,
-    CODECHAL_MEDIA_STATE_VP9_PAK_P_FRAME_INTRA_LUMA_RECON   = 49,
-    CODECHAL_MEDIA_STATE_VP9_PAK_P_FRAME_INTRA_CHROMA_RECON = 50,
-    CODECHAL_MEDIA_STATE_PREPROC                            = 51,
-    CODECHAL_MEDIA_STATE_ENC_WP                             = 52,
-    CODECHAL_MEDIA_STATE_HEVC_I_MBENC                       = 53,
-    CODECHAL_MEDIA_STATE_CSC_DS_COPY                        = 54,
-    CODECHAL_MEDIA_STATE_2X_4X_SCALING                      = 55,
-    CODECHAL_MEDIA_STATE_HEVC_LCU64_B_MBENC                 = 56,
-    CODECHAL_MEDIA_STATE_MB_BRC_UPDATE                      = 57,
-    CODECHAL_MEDIA_STATE_STATIC_FRAME_DETECTION             = 58,
-    CODECHAL_MEDIA_STATE_HEVC_ROI                           = 59,
-    CODECHAL_MEDIA_STATE_SW_SCOREBOARD_INIT                 = 60,
-    CODECHAL_NUM_MEDIA_STATES                               = 61
-} CODECHAL_MEDIA_STATE_TYPE;
-C_ASSERT(CODECHAL_NUM_MEDIA_STATES == CODECHAL_MEDIA_STATE_SW_SCOREBOARD_INIT + 1);  //!< update this and add new entry in the default SSEU table for each platform()
-
 typedef enum _CODECHAL_SLICE_STATE
 {
     CODECHAL_SLICE_SHUTDOWN_DEFAULT     = 0,
@@ -257,36 +187,6 @@ struct CodechalQpStatusCount
 };
 
 //!
-//! \struct    CodechalHucStreamoutParams
-//! \brief     Codechal Huc streamout parameters
-//!
-struct CodechalHucStreamoutParams
-{
-    CODECHAL_MODE       mode;
-
-    // Indirect object addr command params
-    PMOS_RESOURCE       dataBuffer;
-    uint32_t            dataSize;              // 4k aligned
-    uint32_t            dataOffset;            // 4k aligned
-    PMOS_RESOURCE       streamOutObjectBuffer;
-    uint32_t            streamOutObjectSize;   // 4k aligned
-    uint32_t            streamOutObjectOffset; //4k aligned
-
-    // Stream object params
-    uint32_t            indStreamInLength;
-    uint32_t            inputRelativeOffset;
-    uint32_t            outputRelativeOffset;
-
-    // Segment Info
-    void               *segmentInfo;
-
-    // Indirect Security State
-    MOS_RESOURCE        hucIndState;
-    uint32_t            curIndEntriesNum;
-    uint32_t            curNumSegments;
-};
-
-//!
 //! \struct    CodechalDataCopyParams
 //! \brief     Codechal data copy parameters
 //!
@@ -301,38 +201,6 @@ struct CodechalDataCopyParams
     PMOS_RESOURCE   dstResource;
     uint32_t        dstSize;
     uint32_t        dstOffset;
-};
-
-//!
-//! \struct    EncodeStatusReadParams
-//! \brief     Read encode states parameters
-//!
-struct EncodeStatusReadParams
-{
-    bool          vdencBrcEnabled;
-    bool          waReadVDEncOverflowStatus;
-    uint32_t      mode ;
-
-    uint32_t      vdencBrcNumOfSliceOffset;
-    PMOS_RESOURCE *resVdencBrcUpdateDmemBufferPtr;
-
-    PMOS_RESOURCE resBitstreamByteCountPerFrame;
-    uint32_t      bitstreamByteCountPerFrameOffset;
-
-    PMOS_RESOURCE resBitstreamSyntaxElementOnlyBitCount;
-    uint32_t      bitstreamSyntaxElementOnlyBitCountOffset;
-
-    PMOS_RESOURCE resQpStatusCount;
-    uint32_t      qpStatusCountOffset;
-
-    PMOS_RESOURCE resNumSlices;
-    uint32_t      numSlicesOffset;
-
-    PMOS_RESOURCE resImageStatusMask;
-    uint32_t      imageStatusMaskOffset;
-
-    PMOS_RESOURCE resImageStatusCtrl;
-    uint32_t      imageStatusCtrlOffset;
 };
 
 //!
@@ -387,6 +255,7 @@ protected:
     MhwVdboxVdencInterface          *m_vdencInterface = nullptr;      //!< Pointer to Mhw vdenc interface
     std::shared_ptr<mhw::vdbox::hcp::Itf>   m_hcpItf   = nullptr;
     std::shared_ptr<mhw::vdbox::vdenc::Itf> m_vdencItf = nullptr;
+    std::shared_ptr<MediaSfcInterface> m_mediaSfcItf = nullptr;
 
     CODECHAL_SSEU_SETTING const         *m_ssEuTable = nullptr;       //!< Pointer to the default SSEU settings table
     uint16_t                            m_numMediaStates = CODECHAL_NUM_MEDIA_STATES;  //!< number of media states
@@ -685,6 +554,11 @@ public:
         return m_osInterface;
     }
 
+    inline std::shared_ptr<MediaSfcInterface> GetMediaSfcInterface()
+    {
+        return m_mediaSfcItf;
+    }
+
     //!
     //! \brief    Get State Heap Settings
     //! \details  Get State Heap Settings in codechal hw interface 
@@ -875,6 +749,17 @@ public:
     inline MHW_MEMORY_OBJECT_CONTROL_PARAMS *GetCacheabilitySettings()
     {
         return m_cacheabilitySettings;
+    }
+
+    //! \brief    Get blt state
+    //! \details  Get blt interface in codechal hw interface
+    //!
+    //! \return   [out] BltState*
+    //!           Interface got.
+    //!
+    virtual BltState *GetBltState()
+    {
+        return nullptr;
     }
 
     //!

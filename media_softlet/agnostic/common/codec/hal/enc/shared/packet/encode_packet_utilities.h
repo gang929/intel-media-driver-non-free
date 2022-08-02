@@ -33,6 +33,7 @@
 #include "codechal_hw.h"
 #include "codechal_debug.h"
 #include "encode_basic_feature.h"
+#include "mhw_vdbox.h"
 
 namespace encode
 {
@@ -115,7 +116,7 @@ protected:
     int32_t m_fakePBFrameHrdSize    = 0;
 #endif
 
-MEDIA_CLASS_DEFINE_END(PacketUtilities)
+MEDIA_CLASS_DEFINE_END(encode__PacketUtilities)
 };
 
 }  // namespace encode

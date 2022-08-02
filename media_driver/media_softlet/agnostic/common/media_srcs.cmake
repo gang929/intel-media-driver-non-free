@@ -18,25 +18,5 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
-set(TMP_SOURCES_
-    ${CMAKE_CURRENT_LIST_DIR}/vp_vebox_cmd_packet_legacy.cpp
-)
-
-set(TMP_HEADERS_
-    ${CMAKE_CURRENT_LIST_DIR}/vp_vebox_cmd_packet_legacy.h
-)
-
-set(VP_SOURCES_
-    ${VP_SOURCES_}
-    ${TMP_SOURCES_}
-)
-
-set(VP_HEADERS_
-    ${VP_HEADERS_}
-    ${TMP_HEADERS_}
-)
-
-source_group( VpHalNext\\Shared FILES ${TMP_SOURCES_} ${TMP_HEADERS_})
-set(TMP_SOURCES_ "")
-set(TMP_HEADERS_ "")
-media_add_curr_to_include_path()
+media_include_subdirectory(shared)
+media_include_subdirectory(vp)

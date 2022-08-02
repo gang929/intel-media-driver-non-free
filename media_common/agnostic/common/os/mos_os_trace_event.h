@@ -88,7 +88,7 @@ typedef enum _MEDIA_EVENT_FILTER_KEYID
     TR_KEY_DECODE_SLICEPARAM,
     TR_KEY_DECODE_TILEPARAM,
     TR_KEY_DECODE_QMATRIX,
-    TR_KEY_DECODE_BITSTREAM_32BYTE,
+    TR_KEY_DECODE_BITSTREAM_INFO,
     TR_KEY_DECODE_BITSTREAM,
     TR_KEY_DECODE_INTERNAL,
     TR_KEY_DECODE_COMMAND,
@@ -101,7 +101,11 @@ typedef enum _MEDIA_EVENT_FILTER_KEYID
     TR_KEY_DATA_DUMP  = 16,
     TR_KEY_MOSMSG_CP,
     TR_KEY_MOSMSG_VP,
-    TR_KEY_MOSMSG_CODEC
+    TR_KEY_MOSMSG_CODEC,
+    TR_KEY_MOSMSG_DDI,
+    TR_KEY_MOSMSG_MOS,
+    TR_KEY_MOSMSG_MHW,
+    TR_KEY_DECODE_INFO
 } MEDIA_EVENT_FILTER_KEYID;
 
 typedef enum _MEDIA_EVENT
@@ -247,8 +251,8 @@ typedef enum _MEDIA_EVENT
     EVENT_DECODE_BUFFER_PICPARAM_VP9,              //! event for Decode VP9 Pic Paramters
     EVENT_DECODE_BUFFER_SEGPARAM_VP9,              //! event for Decode VP9 Segment Paramters
     EVENT_DECODE_BUFFER_SLICEPARAM_VP9,            //! event for Decode VP9 Slice Paramters
-    EVENT_DECODE_BUFFER_Bitstream,                 //! event for Decode Bitstream
-    EVENT_DECODE_CMD_HCP_PIPEMODESELECT,           //! event for Decode HcpPipeModeSelect Cmd
+    EVENT_DECODE_INFO_BITSTREAM,                   //! event for Decode Bitstream Info
+    EVENT_DECODE_INFO_PICTURE,                     //! event for Decode Picture Info
     EVENT_DECODE_CMD_HCP_SURFACESTATE,             //! event for Decode HcpSurfaceState Cmd
     EVENT_DECODE_CMD_HCP_PIPEBUFADDRSTATE,         //! event for Decode HcpPipeBufAddrState Cmd
     EVENT_DECODE_CMD_HCP_INDOBJBASEADDRSTATE,      //! event for Decode HcpIndObjBaseAddrState Cmd
@@ -272,9 +276,17 @@ typedef enum _MEDIA_EVENT
     EVENT_DECODE_FEATURE_VT_SCALABILITY,           //! event for Decode Feature Virtual Tile Scalability
     EVENT_DECODE_FEATURE_RT_SCALABILITY,           //! event for Decode Feature Real Tile Scalability
     EVENT_DECODE_FEATURE_DECODEMODE_REPORT,        //! event for Decode Feature Decode Mode Report
-    EVENT_DECODE_DST_DUMPINFO,                     //! event for Decode Dst Surface Info
-    EVENT_DECODE_REF_DUMPINFO,                     //! event for Decode Ref Surface Info
+    EVENT_DECODE_DUMPINFO_DST,                     //! event for Decode Dst Dump Info
+    EVENT_DECODE_DUMPINFO_REF,                     //! event for Decode Ref Dump Info
     EVENT_CALL_STACK,                              //! event for call stack dump
+    EVENT_ENCODE_DDI_11_CREATEVIDEOENCODER,        //! event for Encode Create Device
+    EVENT_ENCODE_DDI_11_ENCODEFRAME,               //! event for Encode frame, mainly excute
+    EVENT_ENCODE_DDI_11_GETCAPS,                   //! event for Encode getting caps
+    EVENT_ENCODE_DDI_11_GETPROFILECOUNT,           //! event for Encode get profile count
+    EVENT_ENCODE_DDI_11_GETPROFILE,                //! event for Encode get profile
+    EVENT_ENCODE_DDI_11_CHECKFORMAT,               //! event for Encode check format
+    EVENT_ENCODE_DDI_11_GETCONFIGCOUNT,            //! event for Encode get config count
+    EVENT_ENCODE_DDI_11_GETCONFIG,                 //! event for Encode get config
 } MEDIA_EVENT;
 
 typedef enum _MEDIA_EVENT_TYPE
@@ -482,6 +494,7 @@ typedef enum _MT_LOG_ID
     MT_VP_BLT_SEGMENTPARAM,
     MT_VP_BLT_MCPYPARAM,
     MT_VP_USERFEATURE_CTRL,
+    MT_VP_FTR_REPORT,
     MT_VP_HAL_ID_BASE = 0x02000400,
     MT_VP_HAL_PIPELINE_ADAPTER,
     MT_VP_HAL_PIPELINE_ADAPTER_EXT_ENTRY,
@@ -511,6 +524,11 @@ typedef enum _MT_LOG_ID
     MT_VP_HAL_POLICY_INIT_EXECCAPS,
     MT_VP_HAL_FC_SCALINGINFO,
     MT_VP_HAL_VESFC_HWLIMIT,
+    MT_VP_HAL_RENDER_SETUP_WALKER_PARAM,
+    MT_VP_HAL_RENDER_SETUP_CURBE_STATE,
+    MT_VP_HAL_POLICY_FLITER_FTR_COMBINE,
+    MT_VP_HAL_FC_UPDATE_COMP_PARAM,
+    MT_VP_HAL_FC_GET_CURBE_STATE,
     MT_VP_MHW_ID_BASE = 0x02002000,
     MT_VP_MHW_VE_SURFSTATE_INPUT,
     MT_VP_MHW_VE_SURFSTATE_OUT,
@@ -523,6 +541,7 @@ typedef enum _MT_LOG_ID
     MT_VP_KERNEL_CSC,
     MT_VP_KERNEL_RULE,
     MT_VP_KERNEL_LIST_ADD,
+    MT_VP_KERNEL_Init,
     MT_MEDIA_COPY_ID_BASE = 0x02004000,
     MT_VE_DECOMP_COPY,
     MT_MEDIA_COPY,
@@ -710,6 +729,14 @@ typedef enum _MT_PARAM_ID
     MT_VP_HAL_SAMPLER_INDEX,
     MT_VP_HAL_FC_LAYER,
     MT_VP_HAL_FC_LAYER_SURFENTRY,
+    MT_VP_RENDER_VE_FTRINUSE,
+    MT_VP_RENDER_VE_PREPROC_TCC,
+    MT_VP_RENDER_VE_PREPROC_IEF,
+    MT_VP_HAL_EXECCAPS_FORCE_DI2RENDER,
+    MT_VP_HAL_EUFUSION_BYPASS,
+    MT_VP_HAL_MMCINUSE,
+    MT_VP_HAL_FRC_MODE,
+    MT_VP_HAL_CAPTURE_PIPE,
     MT_PARAM_ID_VP_MHW_BASE = 0x02002000,
     MT_VP_MHW_VE_SCALABILITY_EN,
     MT_VP_MHW_VE_SCALABILITY_USE_SFC,

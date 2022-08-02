@@ -57,6 +57,12 @@ MOS_STATUS Av1VdencPipeline::UserFeatureReport()
     ENCODE_FUNC_CALL();
     ENCODE_CHK_STATUS_RETURN(Av1Pipeline::UserFeatureReport());
 
+    ReportUserSetting(
+        m_userSettingPtr,
+        "AV1 Encode Mode",
+        m_codecFunction,
+        MediaUserSetting::Group::Sequence);
+
 #if (_DEBUG || _RELEASE_INTERNAL)
     ReportUserSettingForDebug(
         m_userSettingPtr,
@@ -80,23 +86,6 @@ MOS_STATUS Av1VdencPipeline::Prepare(void *params)
     }
 
     ENCODE_CHK_STATUS_RETURN(Av1Pipeline::Prepare(params));
-
-    return MOS_STATUS_SUCCESS;
-}
-
-MOS_STATUS Av1VdencPipeline::ContextSwitchBack()
-{
-    ENCODE_FUNC_CALL();
-
-    ENCODE_CHK_NULL_RETURN(m_scalPars);
-
-    m_scalPars->IsContextSwitchBack = true;
-    m_mediaContext->SwitchContext(VdboxEncodeFunc, m_scalPars.get(), &m_scalability);
-    m_scalPars->IsContextSwitchBack = false;
-
-    ENCODE_CHK_NULL_RETURN(m_scalability);
-
-    m_scalability->SetPassNumber(m_featureManager->GetNumPass());
 
     return MOS_STATUS_SUCCESS;
 }

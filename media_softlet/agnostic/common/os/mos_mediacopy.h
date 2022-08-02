@@ -27,10 +27,9 @@
 #ifndef __MOS_MEDIACOPY_H__
 #define __MOS_MEDIACOPY_H__
 
-#include "mos_os.h"
-#include "media_copy.h"
+#include "mos_mediacopy_base.h"
 
-class MosMediaCopy
+class MosMediaCopy : public MosMediaCopyBase
 {
 public:
     //!
@@ -38,52 +37,7 @@ public:
     //!
     MosMediaCopy(PMOS_CONTEXT mosCtx);
 
-    //!
-    //! \brief    destructor
-    //!
-    virtual ~MosMediaCopy();
-
-    MediaCopyBaseState **GetMediaCopyState();
-
-    //!
-    //! \brief    Media copy
-    //! \details  Entry point to copy media memory, input can support both compressed/uncompressed
-    //! \param    [in] inputResource
-    //!            The surface resource will be decompressed
-    //! \param    [out] outputResource
-    //!            The target uncompressed surface resource will be copied to
-    //! \param    [in] preferMethod
-    //!            The preferred copy mode
-    //!
-    //! \return   MOS_STATUS_SUCCESS if succeeded, else error code.
-    //!
-    MOS_STATUS MediaCopy(
-        PMOS_RESOURCE inputResource,
-        PMOS_RESOURCE outputResource,
-        MCPY_METHOD   preferMethod);
-
-    //!
-    //! \brief    Media copy
-    //! \details  Entry point to copy media memory, input can support both compressed/uncompressed
-    //! \param    [in] inputResource
-    //!            The surface resource will be decompressed
-    //! \param    [out] outputResource
-    //!            The target uncompressed surface resource will be copied to
-    //! \param    [in] outputCompressed
-    //!            The surface resource will compressed if true for compressilbe surface
-    //!
-    //! \return   MOS_STATUS_SUCCESS if succeeded, else error code.
-    //!
-    MOS_STATUS MediaCopy(
-        MEDIAUMD_RESOURCE   inputResource,
-        uint32_t            inputResourceIndex,
-        MEDIAUMD_RESOURCE   outputResource,
-        uint32_t            outputResourceIndex,
-        MCPY_METHOD         preferMethod);
-
-protected:
-    MediaCopyBaseState *m_mediaCopyState = nullptr;
-    PMOS_CONTEXT        m_mosContext     = nullptr;
+    virtual MediaCopyBaseState **GetMediaCopyState() override;
 MEDIA_CLASS_DEFINE_END(MosMediaCopy)
 };
 

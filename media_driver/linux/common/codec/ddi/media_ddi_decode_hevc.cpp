@@ -437,14 +437,14 @@ VAStatus DdiDecodeHEVC::RenderPicture(
             uint8_t * pDataBuf = (uint8_t *)DdiMediaUtil_LockBuffer(m_ddiDecodeCtx->BufMgr.pBitStreamBuffObject[index], MOS_LOCKFLAG_READONLY);
             DDI_CHK_NULL(pDataBuf, "nullptr bitstream", VA_STATUS_ERROR_INVALID_BUFFER);
 
-            if (MOS_TraceKeyEnabled(TR_KEY_DECODE_BITSTREAM_32BYTE))
+            if (MOS_TraceKeyEnabled(TR_KEY_DECODE_BITSTREAM_INFO))
             {
                 DECODE_EVENTDATA_BITSTREAM eventData;
                 for (int i = 0; i < 32; i++)
                 {
                     eventData.Data[i] = pDataBuf[i];
                 }
-                MOS_TraceEvent(EVENT_DECODE_BUFFER_Bitstream, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0);
+                MOS_TraceEvent(EVENT_DECODE_INFO_BITSTREAM, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0);
             }
 
             if (MOS_TraceKeyEnabled(TR_KEY_DECODE_BITSTREAM))
@@ -626,6 +626,14 @@ VAStatus DdiDecodeHEVC::SetDecodeParams()
         procParams->m_inputSurface->dwHeight = procParams->m_inputSurface->OsResource.iHeight;
         procParams->m_inputSurface->dwPitch  = procParams->m_inputSurface->OsResource.iPitch;
         procParams->m_inputSurface->Format   = procParams->m_inputSurface->OsResource.Format;
+
+        if(m_requireInputRegion)
+        {
+            procParams->m_inputSurfaceRegion.m_x = 0;
+            procParams->m_inputSurfaceRegion.m_y = 0;
+            procParams->m_inputSurfaceRegion.m_width = procParams->m_inputSurface->dwWidth;
+            procParams->m_inputSurfaceRegion.m_height = procParams->m_inputSurface->dwHeight;
+        }
     }
 #endif
      return VA_STATUS_SUCCESS;

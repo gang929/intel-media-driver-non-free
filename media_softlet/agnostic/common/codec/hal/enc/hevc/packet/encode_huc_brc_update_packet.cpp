@@ -27,8 +27,6 @@
 
 #include "encode_huc_brc_update_packet.h"
 #include "codechal_debug.h"
-#include "mhw_vdbox_hcp_g12_X.h"
-#include "codechal_vdenc_hevc_g12.h"
 #include "encode_hevc_vdenc_weighted_prediction.h"
 #include "encode_hevc_brc.h"
 #include "encode_hevc_vdenc_scc.h"
@@ -478,7 +476,12 @@ namespace encode
         hucVdencBrcUpdateDmem->FrameSizeBoostForSceneChange = m_tcbrcQualityBoost;
         hucVdencBrcUpdateDmem->TargetFrameSize              = m_basicFeature->m_hevcPicParams->TargetFrameSize << 3;
 
-        if (!(m_basicFeature->GetProfileLevelMaxFrameSize() < hucVdencBrcUpdateDmem->TargetFrameSize / 4) 
+        auto CalculatedMaxFrame                   = m_basicFeature->GetProfileLevelMaxFrameSize();
+        hucVdencBrcUpdateDmem->UPD_UserMaxFrame   = m_basicFeature->m_hevcSeqParams->UserMaxIFrameSize > 0 ? MOS_MIN(m_basicFeature->m_hevcSeqParams->UserMaxIFrameSize, CalculatedMaxFrame) : CalculatedMaxFrame;
+        hucVdencBrcUpdateDmem->UPD_UserMaxFramePB = m_basicFeature->m_hevcSeqParams->UserMaxPBFrameSize > 0 ? MOS_MIN(m_basicFeature->m_hevcSeqParams->UserMaxPBFrameSize, CalculatedMaxFrame) : CalculatedMaxFrame;
+
+        auto UserMaxFrame = m_basicFeature->m_hevcPicParams->CodingType == I_TYPE ? hucVdencBrcUpdateDmem->UPD_UserMaxFrame : hucVdencBrcUpdateDmem->UPD_UserMaxFramePB;
+        if (!(UserMaxFrame < hucVdencBrcUpdateDmem->TargetFrameSize / 4)  
             && !(hucVdencBrcUpdateDmem->FrameSizeBoostForSceneChange == 2) 
             && (m_basicFeature->m_hevcSeqParams->LookaheadDepth == 0))
         {

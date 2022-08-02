@@ -27,17 +27,25 @@
 //!
 #ifndef __VP_BASE_H__
 #define __VP_BASE_H__
+
+#include <stdint.h>
+#include "mos_defs.h"
 #include "vp_common.h"
-#include "vphal_common_tools.h"
+#include "vp_common_tools.h"
 #include "mhw_vebox.h"
 #include "mhw_sfc.h"
-#include "vp_utils.h"
-#include "media_interfaces_mhw.h"
+#include "igfxfmid.h"
+#include "media_class_trace.h"
+#include "media_skuwa_specific.h"
+#include "mos_os.h"
+#include "mos_os_specific.h"
 #include "vp_feature_report.h"
-#include "mhw_vebox_itf.h"
-#include "mhw_sfc_itf.h"
-#include "mhw_mi_itf.h"
-#include "mhw_render_itf.h"
+
+class MhwCpInterface;
+class MediaScalability;
+class MediaContext;
+
+using VphalFeatureReport = VpFeatureReport;
 
 namespace vp
 {
@@ -110,6 +118,15 @@ struct _VP_MHWINTERFACE
     void *m_debugInterface;
     vp::VpUserFeatureControl *m_userFeatureControl;
 
+    MediaScalability *m_singlePipeScalability;
+    MediaScalability *m_multiPipeScalability;
+
+    MOS_STATUS (*pfnCreateSinglePipe)(
+    void *hwInterface, MediaContext *mediaContext, uint8_t componentType);
+
+    MOS_STATUS (*pfnCreateMultiPipe)(
+    void *hwInterface, MediaContext *mediaContext, uint8_t componentType);
+
 };
 
 using VP_MHWINTERFACE  = _VP_MHWINTERFACE;
@@ -140,7 +157,7 @@ public:
     virtual MOS_STATUS Allocate(
         const VpSettings *pVpSettings) = 0;
 
-    virtual VpFeatureReport* GetRenderFeatureReport() = 0;
+    virtual VphalFeatureReport *GetRenderFeatureReport() = 0;
 
     virtual PLATFORM& GetPlatform() = 0;
 

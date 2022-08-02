@@ -34,7 +34,6 @@
 #include "encode_av1_basic_feature.h"
 #include "encode_status_report.h"
 #include "codec_def_encode_av1.h"
-#include "mhw_vdbox_avp_interface.h"
 #include "mhw_vdbox_vdenc_itf.h"
 #include "mhw_vdbox_avp_itf.h"
 #include "mhw_mi_itf.h"
@@ -46,6 +45,24 @@ namespace encode
 #define CODECHAL_AV1_PAK_STREAMOUT_SIZE 0x500000  //size is accounted for 4Kx4K with all 8x8 CU,based on streamout0 and streamout1 requirements
 //(4096*4096)/64 *16 (streamout0) + 1MB(streamout 1). there is scope to reduce streamout1 size. Need to check with HW team.
 // 8K is just an estimation
+
+//!
+//! \struct AtomicScratchBuffer
+//! \brief  The sturct of Atomic Scratch Buffer
+//!
+struct AtomicScratchBufferAv1
+{
+    PMOS_RESOURCE resAtomicScratchBuffer;  //!> Handle of eStatus buffer
+    uint32_t     *pData;                   //!> Pointer of the buffer of actual data
+    uint16_t      encodeUpdateIndex;       //!> used for VDBOX update encode status
+    uint16_t      tearDownIndex;           //!> Reserved for future extension
+    uint32_t      zeroValueOffset;         //!> Store the result of the ATOMIC_CMP
+    uint32_t      operand1Offset;          //!> Operand 1 of the ATOMIC_CMP
+    uint32_t      operand2Offset;          //!> Operand 2 of the ATOMIC_CMP
+    uint32_t      operand3Offset;          //!> Copy of the operand 1
+    uint32_t      size;                    //!> Size of the buffer
+    uint32_t      operandSetSize;          //!> Size of Operand set
+};
 
 inline uint32_t GetUseInterVsSkipSADWinner(uint32_t MrgCand8x8DepEn, uint32_t MrgCand16x16DepEn)
 {
@@ -167,6 +184,8 @@ protected:
 
     MOS_STATUS AddCondBBEndFor2ndPass(MOS_COMMAND_BUFFER &cmdBuffer);
 
+    virtual MOS_STATUS UpdateStatusReport(uint32_t srType, MOS_COMMAND_BUFFER *cmdBuffer) override;
+
     //!
     //! \brief  Calculate Command Buffer Size
     //!
@@ -258,6 +277,8 @@ protected:
 
     mutable uint8_t m_curAvpSurfStateId = 0;
 
+    AtomicScratchBufferAv1 m_atomicScratchBuf = {};  //!< Stores atomic operands and result
+
 #if USE_CODECHAL_DEBUG_TOOL
     EncodeAv1Par *m_av1Par = nullptr;
 #endif  // USE_CODECHAL_DEBUG_TOOL
@@ -313,7 +334,7 @@ protected:
 
     virtual MOS_STATUS GetAvpPrimitiveCommandsDataSize(uint32_t *commandsSize, uint32_t *patchListSize) const;
 
-MEDIA_CLASS_DEFINE_END(Av1VdencPkt)
+MEDIA_CLASS_DEFINE_END(encode__Av1VdencPkt)
 };
 
 }  // namespace encode

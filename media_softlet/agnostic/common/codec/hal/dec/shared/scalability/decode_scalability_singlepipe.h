@@ -32,13 +32,13 @@
 #include "mos_defs.h"
 #include "mos_os.h"
 #include "codechal_hw.h"
-#include "media_scalability_singlepipe.h"
+#include "decode_scalability_singlepipe_next.h"
 #include "decode_scalability_option.h"
 
 namespace decode
 {
 
-class DecodeScalabilitySinglePipe: public MediaScalabilitySinglePipe
+class DecodeScalabilitySinglePipe: public DecodeScalabilitySinglePipeNext
 {
 public:
     //!
@@ -132,7 +132,7 @@ protected:
 private:
     CodechalHwInterface *m_hwInterface   = nullptr;
 
-MEDIA_CLASS_DEFINE_END(DecodeScalabilitySinglePipe)
+MEDIA_CLASS_DEFINE_END(decode__DecodeScalabilitySinglePipe)
 };
 
 }

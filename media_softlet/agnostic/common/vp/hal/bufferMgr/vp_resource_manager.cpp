@@ -221,6 +221,10 @@ VpResourceManager::~VpResourceManager()
         m_allocator.DestroyVpSurface(m_vebox1DLookUpTables);
     }
 
+    if (m_temperalInput)
+    {
+        m_allocator.DestroyVpSurface(m_temperalInput);
+    }
     while (!m_intermediaSurfaces.empty())
     {
         VP_SURFACE * surf = m_intermediaSurfaces.back();
@@ -254,6 +258,7 @@ MOS_STATUS VpResourceManager::OnNewFrameProcessStart(SwFilterPipe &pipe)
 {
     VP_FUNC_CALL();
 
+    MT_LOG1(MT_VP_HAL_ONNEWFRAME_PROC_START, MT_NORMAL, MT_FUNC_START, 1);
     VP_SURFACE *inputSurface    = pipe.GetSurface(true, 0);
     VP_SURFACE *outputSurface   = pipe.GetSurface(false, 0);
     SwFilter   *diFilter        = pipe.GetSwFilter(true, 0, FeatureTypeDi);
@@ -580,6 +585,7 @@ MOS_STATUS VpResourceManager::PrepareFcIntermediateSurface(SwFilterPipe &feature
 void VpResourceManager::OnNewFrameProcessEnd()
 {
     VP_FUNC_CALL();
+    MT_LOG1(MT_VP_HAL_ONNEWFRAME_PROC_END, MT_NORMAL, MT_FUNC_END, 1);
     m_allocator.CleanRecycler();
     m_currentPipeIndex = 0;
     CleanTempSurfaces();
@@ -1290,7 +1296,7 @@ MOS_STATUS VpResourceManager::ReAllocateVeboxDenoiseOutputSurface(VP_EXECUTE_CAP
     if (skuTable)
     {
         //DN output surface must be tile64 only when input format is bayer
-        if (MEDIA_IS_SKU(skuTable, FtrMediaTile64) &&
+        if (!MEDIA_IS_SKU(skuTable, FtrTileY) &&
             IS_BAYER_FORMAT(inputSurface->osSurface->Format))
         {
             tileModeByForce = MOS_TILE_64_GMM;
@@ -1493,7 +1499,7 @@ MOS_STATUS VpResourceManager::ReAllocateVeboxSTMMSurface(VP_EXECUTE_CAPS& caps, 
     VP_PUBLIC_CHK_NULL_RETURN(inputSurface);
     VP_PUBLIC_CHK_NULL_RETURN(inputSurface->osSurface);
 
-    if (skuTable && MEDIA_IS_SKU(skuTable, FtrMediaTile64))
+    if (skuTable && !MEDIA_IS_SKU(skuTable, FtrTileY))
     {
         tileModeByForce = MOS_TILE_64_GMM;
     }
@@ -1811,7 +1817,7 @@ MOS_STATUS VpResourceManager::Allocate3DLut(VP_EXECUTE_CAPS& caps)
     uint32_t                        size = 0;
     bool                            isAllocated          = false;
 
-    if (caps.bHDR3DLUT)
+    if (caps.bHDR3DLUT || caps.b3DLutCalc)
     {
         // HDR
         uint32_t lutWidth = 0;
@@ -1831,6 +1837,7 @@ MOS_STATUS VpResourceManager::Allocate3DLut(VP_EXECUTE_CAPS& caps)
             false,
             IsDeferredResourceDestroyNeeded(),
             MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_WRITE_RENDER));
+
     }
 
     return MOS_STATUS_SUCCESS;
@@ -1851,28 +1858,7 @@ MOS_STATUS VpResourceManager::AllocateResourceFor3DLutKernel(VP_EXECUTE_CAPS& ca
         VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
     }
 
-    VP_PUBLIC_CHK_STATUS_RETURN(m_allocator.ReAllocateSurface(
-        m_vebox3DLookUpTables2D,
-        "Vebox3DLutTableSurface2D",
-        Format_A8R8G8B8,
-        MOS_GFXRES_2D,
-        MOS_TILE_Y,
-        lutWidth,
-        lutHeight,
-        false,
-        MOS_MMC_DISABLED,
-        isAllocated,
-        false,
-        IsDeferredResourceDestroyNeeded(),
-        MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_WRITE_RENDER,
-        MOS_TILE_4_GMM));
-
-    VP_PUBLIC_NORMALMESSAGE("m_vebox3DLookUpTables2D should be always tile-4 0x3  due to kernel alignment, current tile-mode is %d", m_vebox3DLookUpTables2D->osSurface->TileModeGMM);
-
-    if (isAllocated)
-    {
-        VP_PUBLIC_CHK_STATUS_RETURN(Init3DLutSurface2D(m_vebox3DLookUpTables2D));
-    }
+    VP_PUBLIC_CHK_STATUS_RETURN(Allocate3DLut(caps));
 
     uint32_t size_coef     = 8 * 8 * 4;
 
@@ -1900,7 +1886,7 @@ MOS_STATUS VpResourceManager::Assign3DLutKernelResource(VP_EXECUTE_CAPS &caps, R
 
     VP_PUBLIC_CHK_STATUS_RETURN(AllocateResourceFor3DLutKernel(caps));
 
-    surfSetting.surfGroup.insert(std::make_pair(SurfaceType3DLut2D, m_vebox3DLookUpTables2D));
+    surfSetting.surfGroup.insert(std::make_pair(SurfaceType3DLut, m_vebox3DLookUpTables));
     surfSetting.surfGroup.insert(std::make_pair(SurfaceType3DLutCoef, m_3DLutKernelCoefSurface));
 
     return MOS_STATUS_SUCCESS;
@@ -1981,7 +1967,7 @@ MOS_STATUS VpResourceManager::AssignSurface(VP_EXECUTE_CAPS caps, VEBOX_SURFACE_
 
             if (!caps.bDN                               ||
                 nullptr == curDnOutputSurface           ||
-                // When FtrMediaTile64 is true, DN output surface will be tile64 when input is bayer format,
+                // When FtrTileY is false, DN output surface will be tile64 when input is bayer format,
                 // while pastSurface passed by OS maybe tile4, which is different from DN output surface.
                 // For such case, passSurface cannot be used, as vebox previous input surface and vebox
                 // DN output surface must share same setting. The derive pitch in vebox output surface
@@ -2078,7 +2064,15 @@ MOS_STATUS VpResourceManager::AssignVeboxResource(VP_EXECUTE_CAPS& caps, VP_SURF
     }
     else
     {
-        surfGroup.insert(std::make_pair(SurfaceTypeVeboxInput, inputSurface));
+        if (caps.bTemperalInputInuse)
+        {
+            VP_PUBLIC_CHK_NULL_RETURN(m_temperalInput);
+            surfGroup.insert(std::make_pair(SurfaceTypeVeboxInput, m_temperalInput));
+        }
+        else
+        {
+            surfGroup.insert(std::make_pair(SurfaceTypeVeboxInput, inputSurface));
+        }
         surfGroup.insert(std::make_pair(SurfaceTypeVeboxCurrentOutput, GetVeboxOutputSurface(caps, outputSurface)));
 
         if (caps.bDN)
@@ -2127,13 +2121,6 @@ MOS_STATUS VpResourceManager::AssignVeboxResource(VP_EXECUTE_CAPS& caps, VP_SURF
     {
         // Insert Vebox 3Dlut surface
         surfGroup.insert(std::make_pair(SurfaceType3DLut, m_vebox3DLookUpTables));
-    }
-
-    if (resHint.is3DLut2DNeeded)
-    {
-        VP_PUBLIC_CHK_NULL_RETURN(m_vebox3DLookUpTables2D);
-        // Insert Vebox 3Dlut surface
-        surfGroup.insert(std::make_pair(SurfaceType3DLut2D, m_vebox3DLookUpTables2D));
     }
 
     if (resHint.isHVSTableNeeded)
@@ -2287,84 +2274,6 @@ bool VpResourceManager::VeboxSTMMNeeded(VP_EXECUTE_CAPS& caps, bool queryAssignm
     {
         return caps.bDI || caps.bDiProcess2ndField || caps.bDN;
     }
-}
-
-MOS_STATUS VpResourceManager::Init3DLutSurface2D(VP_SURFACE *surf)
-{
-    VP_FUNC_CALL();
-    int in_prec         = 16;
-    int max_input_level = ((1 << in_prec) - 1);
-    int R = 0, G = 0, B = 0;
-    int lutIndex = 0;
-    int lutMul   = 128;
-    int lutSeg   = 65;
-
-    uint32_t widthInByte = surf->osSurface->dwWidth * 4;
-    uint32_t pitchInByte = surf->osSurface->dwPitch;
-
-    uint8_t *lockedAddr = (uint8_t *)this->m_allocator.LockResourceForWrite(&surf->osSurface->OsResource);
-    VP_PUBLIC_CHK_NULL_RETURN(lockedAddr);
-
-    uint32_t indexByte = 0;
-    uint32_t indexByteInLine = 0;
-
-    for (int rr = 0; rr < lutSeg; rr++)
-    {
-        for (int gg = 0; gg < lutSeg; gg++)
-        {
-            for (int bb = 0; bb < lutMul; bb++)
-            {
-                uint16_t *lut = (uint16_t *)(lockedAddr + indexByte);
-                //--- convert fixed point to floating point
-
-                if (bb >= lutSeg)
-                {
-                    lut[3] = 0;
-                }
-                else
-                {
-                    if (rr == (lutSeg - 1))
-                        R = max_input_level;
-                    else
-                        R = rr * ((max_input_level + 1) / (lutSeg - 1));
-
-                    if (gg == (lutSeg - 1))
-                        G = max_input_level;
-                    else
-                        G = gg * ((max_input_level + 1) / (lutSeg - 1));
-
-                    if (bb == (lutSeg - 1))
-                        B = max_input_level;
-                    else
-                        B = bb * ((max_input_level + 1) / (lutSeg - 1));
-
-                    lut[0] = (unsigned short)R;
-                    lut[1] = (unsigned short)G;
-                    lut[2] = (unsigned short)B;
-                    lut[3] = 0;
-                }
-
-                indexByte += 8;
-                indexByteInLine += 8;
-
-                if (indexByteInLine >= widthInByte)
-                {
-                    indexByte += pitchInByte - indexByteInLine;
-                    indexByteInLine = 0;
-                }
-            }
-        }
-    }
-
-    // Unlock
-    VP_PUBLIC_CHK_STATUS_RETURN(this->m_allocator.UnLock(&surf->osSurface->OsResource));
-
-    if (indexByte > surf->osSurface->dwSize)
-    {
-        VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
-    }
-
-    return MOS_STATUS_SUCCESS;
 }
 
 MOS_STATUS VpResourceManager::ReAllocateVeboxStatisticsSurface(VP_SURFACE *&statisticsSurface, VP_EXECUTE_CAPS &caps, VP_SURFACE *inputSurface, uint32_t dwWidth, uint32_t dwHeight)
