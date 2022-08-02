@@ -35,10 +35,13 @@
 namespace decode
 {
 DecodeScalabilityMultiPipe::DecodeScalabilityMultiPipe(void *hwInterface, MediaContext *mediaContext, uint8_t componentType)
-    : MediaScalabilityMultiPipe(mediaContext)
+    : DecodeScalabilityMultiPipeNext(mediaContext, mediaContext, componentType)
 {
     m_hwInterface   = (CodechalHwInterface *)hwInterface;
     m_componentType = componentType;
+    m_secondaryCmdBuffers.clear();
+    m_resSemaphoreAllPipes.clear();
+    m_resSemaphoreOnePipeWait.clear();
 }
 
 DecodeScalabilityMultiPipe::~DecodeScalabilityMultiPipe()

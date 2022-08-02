@@ -31,6 +31,7 @@
 #include "media_cmd_task.h"
 #include "media_packet.h"
 #include "media_interfaces_mcpy.h"
+#include "media_debug_interface.h"
 
 MediaPipeline::MediaPipeline(PMOS_INTERFACE osInterface) : m_osInterface(osInterface)
 {
@@ -71,7 +72,7 @@ MediaPipeline::~MediaPipeline()
 
     MOS_Delete(m_mediaCopy);
 
-    CODECHAL_DEBUG_TOOL(MOS_Delete(m_debugInterface));
+    MEDIA_DEBUG_TOOL(MOS_Delete(m_debugInterface));
 
     MediaPerfProfiler *perfProfiler = MediaPerfProfiler::Instance();
 
@@ -84,6 +85,10 @@ MediaPipeline::~MediaPipeline()
         //Destruction of APO perfProfile will be done inside legacy one.
         MediaPerfProfiler::Destroy(perfProfiler, (void *)this, m_osInterface);
     }
+
+#if MHW_HWCMDPARSER_ENABLED
+    mhw::HwcmdParser::DestroyInstance();
+#endif
 }
 
 MOS_STATUS MediaPipeline::DeletePackets()
@@ -243,8 +248,6 @@ MediaTask *MediaPipeline::CreateTask(MediaTask::TaskType type)
     {
     case MediaTask::TaskType::cmdTask:
         task = MOS_New(CmdTask, m_osInterface);
-        break;
-    case MediaTask::TaskType::mdfTask:
         break;
     default:
         break;

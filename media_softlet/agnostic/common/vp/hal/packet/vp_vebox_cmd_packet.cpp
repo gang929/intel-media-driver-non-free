@@ -38,6 +38,7 @@
 #include "mhw_mi_cmdpar.h"
 #include "mhw_utilities.h"
 #include "hal_oca_interface.h"
+#include "media_scalability_defs.h"
 
 namespace vp {
 
@@ -70,7 +71,6 @@ void VpVeboxCmdPacket::SetupSurfaceStates(
 MOS_STATUS VpVeboxCmdPacket::Init3DLutTable(PVP_SURFACE surf3DLut)
 {
     VP_FUNC_CALL();
-    PVP_SURFACE        surf3DLut2D  = nullptr;
     VpVeboxRenderData *renderData   = GetLastExecRenderData();
 
     VP_RENDER_CHK_NULL_RETURN(renderData);
@@ -80,49 +80,7 @@ MOS_STATUS VpVeboxCmdPacket::Init3DLutTable(PVP_SURFACE surf3DLut)
         VP_RENDER_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
     }
 
-    // kernel already update this surface
-    surf3DLut2D = GetSurface(SurfaceType3DLut2D);
-
-    if (nullptr == surf3DLut2D)
-    {
-        // HDR_STAGE_VEBOX_3DLUT_NO_UPDATE should come here.
-        VP_RENDER_NORMALMESSAGE("3DLut table is calculated by kernel and no need be updated.");
-        return MOS_STATUS_SUCCESS;
-    }
-
-    VP_RENDER_CHK_NULL_RETURN(m_allocator);
-    VP_RENDER_CHK_NULL_RETURN(renderData);
-    VP_RENDER_CHK_NULL_RETURN(surf3DLut);
-    VP_RENDER_CHK_NULL_RETURN(surf3DLut->osSurface);
-    VP_RENDER_CHK_NULL_RETURN(surf3DLut2D->osSurface);
-
     VP_RENDER_NORMALMESSAGE("3DLut table is calculated by kernel.");
-
-    uint8_t *buf3DLut = (uint8_t *)m_allocator->LockResourceForWrite(&surf3DLut->osSurface->OsResource);
-    VP_RENDER_CHK_NULL_RETURN(buf3DLut);
-    uint8_t *buf3DLut2D = (uint8_t *)m_allocator->LockResourceForWrite(&surf3DLut2D->osSurface->OsResource);
-    VP_RENDER_CHK_NULL_RETURN(buf3DLut2D);
-
-    uint32_t widthInByte = surf3DLut2D->osSurface->dwWidth * 4;
-    uint32_t pitchInByte = surf3DLut2D->osSurface->dwPitch;
-    uint32_t height      = surf3DLut2D->osSurface->dwHeight;
-    uint32_t size        = surf3DLut->osSurface->dwSize;
-
-    if (size < widthInByte * height)
-    {
-        VP_RENDER_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
-    }
-
-    uint32_t offset   = 0;
-    uint32_t offset2D = 0;
-    for (uint32_t h = 0; h < height;
-         ++h, offset += widthInByte, offset2D += pitchInByte)
-    {
-        MOS_SecureMemcpy(buf3DLut + offset, widthInByte, buf3DLut2D + offset2D, widthInByte);
-    }
-
-    VP_PUBLIC_CHK_STATUS_RETURN(m_allocator->UnLock(&surf3DLut2D->osSurface->OsResource));
-    VP_PUBLIC_CHK_STATUS_RETURN(m_allocator->UnLock(&surf3DLut->osSurface->OsResource));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -235,6 +193,7 @@ MOS_STATUS VpVeboxCmdPacket::SetupVeboxState(mhw::vebox::VEBOX_STATE_PAR& veboxS
     }
 
     VP_RENDER_CHK_STATUS_RETURN(SetupHDRLuts(veboxStateCmdParams));
+    VP_RENDER_CHK_STATUS_RETURN(SetupDNTableForHVS(veboxStateCmdParams));
 
     veboxStateCmdParams.bCmBuffer = false;
 
@@ -338,7 +297,7 @@ MOS_STATUS VpVeboxCmdPacket::InitSTMMHistory()
         &stmmSurface->osSurface->OsResource,
         &LockFlags);
 
-    VPHAL_RENDER_CHK_NULL(pByte);
+    VP_RENDER_CHK_NULL(pByte);
 
     dwSize = stmmSurface->osSurface->dwWidth >> 2;
 
@@ -356,7 +315,7 @@ MOS_STATUS VpVeboxCmdPacket::InitSTMMHistory()
     }
 
     // Unlock the surface
-    VPHAL_RENDER_CHK_STATUS(m_allocator->UnLock(&stmmSurface->osSurface->OsResource));
+    VP_RENDER_CHK_STATUS(m_allocator->UnLock(&stmmSurface->osSurface->OsResource));
 
 finish:
     return eStatus;
@@ -1121,7 +1080,7 @@ MOS_STATUS VpVeboxCmdPacket::SetupDiIecpState(
         MOS_ZeroMemory(&VeboxSurfCntlParams, sizeof(VeboxSurfCntlParams));
         VeboxSurfCntlParams.bIsCompressed       = pSurface->osSurface->bIsCompressed;
         VeboxSurfCntlParams.CompressionMode     = pSurface->osSurface->CompressionMode;
-        VPHAL_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
+        VP_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
             &VeboxSurfCntlParams,
             (uint32_t *)&(veboxDiIecpCmdParams.CurrInputSurfCtrl.Value)));
     }
@@ -1141,7 +1100,7 @@ MOS_STATUS VpVeboxCmdPacket::SetupDiIecpState(
             MOS_ZeroMemory(&VeboxSurfCntlParams, sizeof(VeboxSurfCntlParams));
             VeboxSurfCntlParams.bIsCompressed       = pSurface->osSurface->bIsCompressed;
             VeboxSurfCntlParams.CompressionMode     = pSurface->osSurface->CompressionMode;
-            VPHAL_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
+            VP_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
                 &VeboxSurfCntlParams,
                 (uint32_t *)&(veboxDiIecpCmdParams.PrevInputSurfCtrl.Value)));
         }
@@ -1162,7 +1121,7 @@ MOS_STATUS VpVeboxCmdPacket::SetupDiIecpState(
             MOS_ZeroMemory(&VeboxSurfCntlParams, sizeof(VeboxSurfCntlParams));
             VeboxSurfCntlParams.bIsCompressed   = pSurface->osSurface->bIsCompressed;
             VeboxSurfCntlParams.CompressionMode = pSurface->osSurface->CompressionMode;
-            VPHAL_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
+            VP_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
                 &VeboxSurfCntlParams,
                 (uint32_t *)&(veboxDiIecpCmdParams.CurrOutputSurfCtrl.Value)));
         }
@@ -1181,7 +1140,7 @@ MOS_STATUS VpVeboxCmdPacket::SetupDiIecpState(
             MOS_ZeroMemory(&VeboxSurfCntlParams, sizeof(VeboxSurfCntlParams));
             VeboxSurfCntlParams.bIsCompressed   = pSurface->osSurface->bIsCompressed;
             VeboxSurfCntlParams.CompressionMode = pSurface->osSurface->CompressionMode;
-            VPHAL_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
+            VP_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
                 &VeboxSurfCntlParams,
                 (uint32_t *)&(veboxDiIecpCmdParams.PrevOutputSurfCtrl.Value)));
         }
@@ -1201,7 +1160,7 @@ MOS_STATUS VpVeboxCmdPacket::SetupDiIecpState(
             MOS_ZeroMemory(&VeboxSurfCntlParams, sizeof(VeboxSurfCntlParams));
             VeboxSurfCntlParams.bIsCompressed   = pSurface->osSurface->bIsCompressed;
             VeboxSurfCntlParams.CompressionMode = pSurface->osSurface->CompressionMode;
-            VPHAL_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
+            VP_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
                 &VeboxSurfCntlParams,
                 (uint32_t *)&(veboxDiIecpCmdParams.DenoisedCurrOutputSurfCtrl.Value)));
         }
@@ -1224,7 +1183,7 @@ MOS_STATUS VpVeboxCmdPacket::SetupDiIecpState(
             MOS_ZeroMemory(&VeboxSurfCntlParams, sizeof(VeboxSurfCntlParams));
             VeboxSurfCntlParams.bIsCompressed   = pSurface->osSurface->bIsCompressed;
             VeboxSurfCntlParams.CompressionMode = pSurface->osSurface->CompressionMode;
-            VPHAL_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
+            VP_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
                 &VeboxSurfCntlParams,
                 (uint32_t *)&(veboxDiIecpCmdParams.StmmInputSurfCtrl.Value)));
         }
@@ -1240,7 +1199,7 @@ MOS_STATUS VpVeboxCmdPacket::SetupDiIecpState(
             MOS_ZeroMemory(&VeboxSurfCntlParams, sizeof(VeboxSurfCntlParams));
             VeboxSurfCntlParams.bIsCompressed   = pSurface->osSurface->bIsCompressed;
             VeboxSurfCntlParams.CompressionMode = pSurface->osSurface->CompressionMode;
-            VPHAL_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
+            VP_RENDER_CHK_STATUS(SetVeboxSurfaceControlBits(
                 &VeboxSurfCntlParams,
                 (uint32_t *)&(veboxDiIecpCmdParams.StmmOutputSurfCtrl.Value)));
         }
@@ -1407,9 +1366,9 @@ MOS_STATUS VpVeboxCmdPacket::PrepareVeboxCmd(
 MOS_STATUS VpVeboxCmdPacket::SetVeboxProCmd(
     MOS_COMMAND_BUFFER*   CmdBuffer)
 {
-    VP_RENDER_CHK_NULL_RETURN(m_veboxItf);
+    VP_RENDER_CHK_NULL_RETURN(m_miItf);
 
-    VP_RENDER_CHK_STATUS_RETURN(m_veboxItf->setVeboxPrologCmd(m_miItf, CmdBuffer));
+    VP_RENDER_CHK_STATUS_RETURN(m_miItf->SetPrologCmd(CmdBuffer));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -1479,7 +1438,6 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
     bool                  bDiVarianceEnable;
     const MHW_VEBOX_HEAP *pVeboxHeap     = nullptr;
     VpVeboxRenderData *   pRenderData    = GetLastExecRenderData();
-    MediaPerfProfiler *   pPerfProfiler  = nullptr;
     MOS_CONTEXT *         pOsContext     = nullptr;
     PMHW_MI_MMIOREGISTERS pMmioRegisters = nullptr;
     MOS_COMMAND_BUFFER    CmdBufferInUse;
@@ -1502,7 +1460,6 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
     pRenderHal      = m_hwInterface->m_renderHal;
     pMhwMiInterface = m_hwInterface->m_mhwMiInterface;
     pOsInterface    = m_hwInterface->m_osInterface;
-    pPerfProfiler   = pRenderHal->pPerfProfiler;
     pOsContext      = m_hwInterface->m_osInterface->pOsContext;
     pMmioRegisters  = m_miItf->GetMmioRegisters();
     pCmdBufferInUse = CmdBuffer;
@@ -1582,7 +1539,7 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
         // Add vphal param to log.
         HalOcaInterfaceNext::DumpVphalParam(*pCmdBufferInUse, *pOsContext, pRenderHal->pVphalOcaDumper);
 
-        VP_RENDER_CHK_STATUS_RETURN(pPerfProfiler->AddPerfCollectStartCmd((void *)pRenderHal, pOsInterface, pRenderHal->pMhwMiInterface, pCmdBufferInUse));
+        VP_RENDER_CHK_STATUS_RETURN(pRenderHal->pRenderHalPltInterface->AddPerfCollectStartCmd(pRenderHal, pOsInterface, pCmdBufferInUse));
 
         VP_RENDER_CHK_STATUS_RETURN(NullHW::StartPredicateNext(m_miItf, pCmdBufferInUse));
 
@@ -1663,7 +1620,8 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
                 pCmdBufferInUse));
         }
 
-        HalOcaInterfaceNext::OnDispatch(*pCmdBufferInUse, *pOsContext, m_miItf, *pMmioRegisters);
+        pRenderHal->pRenderHalPltInterface->OnDispatch(pRenderHal, pCmdBufferInUse, pOsContext, pMmioRegisters);
+        //HalOcaInterfaceNext::OnDispatch(*pCmdBufferInUse, *pOsContext, m_miItf, *pMmioRegisters);
 
         //---------------------------------
         // Send CMD: Vebox_DI_IECP
@@ -1696,12 +1654,14 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
         //---------------------------------
         // Write GPU Status Tag for Tag based synchronization
         //---------------------------------
+#if !EMUL
         if (!pOsInterface->bEnableKmdMediaFrameTracking)
         {
             VP_RENDER_CHK_STATUS_RETURN(SendVecsStatusTag(
                 pOsInterface,
                 pCmdBufferInUse));
         }
+#endif
 
         //---------------------------------
         // Write Sync tag for Vebox Heap Synchronization
@@ -1726,7 +1686,7 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
 
         VP_RENDER_CHK_STATUS_RETURN(NullHW::StopPredicateNext(m_miItf, pCmdBufferInUse));
 
-        VP_RENDER_CHK_STATUS_RETURN(pPerfProfiler->AddPerfCollectEndCmd((void *)pRenderHal, pOsInterface, pRenderHal->pMhwMiInterface, pCmdBufferInUse));
+        VP_RENDER_CHK_STATUS_RETURN(pRenderHal->pRenderHalPltInterface->AddPerfCollectEndCmd(pRenderHal, pOsInterface, pCmdBufferInUse));
 
         HalOcaInterfaceNext::On1stLevelBBEnd(*pCmdBufferInUse, *pOsInterface);
 
@@ -1749,11 +1709,11 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
     if (bMultipipe)
     {
         scalability->SetCurrentPipeIndex(inputPipe);
-        ReportUserSetting(m_userSettingPtr, __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE, true, MediaUserSetting::Group::Sequence);
+        ReportUserSetting(m_userSettingPtr, __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE, true, MediaUserSetting::Group::Device);
     }
     else
     {
-        ReportUserSetting(m_userSettingPtr, __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE, false, MediaUserSetting::Group::Sequence);
+        ReportUserSetting(m_userSettingPtr, __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE, false, MediaUserSetting::Group::Device);
     }
 
     MT_LOG2(MT_VP_HAL_RENDER_VE, MT_NORMAL, MT_VP_MHW_VE_SCALABILITY_EN, bMultipipe, MT_VP_MHW_VE_SCALABILITY_USE_SFC, m_IsSfcUsed);
@@ -1912,7 +1872,7 @@ MOS_STATUS VpVeboxCmdPacket::DumpVeboxStateHeap()
     VP_FUNC_CALL();
 
     MOS_STATUS    eStatus = MOS_STATUS_SUCCESS;
-#if (_DEBUG || _RELEASE_INTERNAL)
+#if USE_VP_DEBUG_TOOL
     static uint32_t counter = 0;
     VP_SURFACE driverResource = {};
     VP_SURFACE kernelResource = {};
@@ -2242,6 +2202,7 @@ VpVeboxCmdPacket::VpVeboxCmdPacket(
     PVpAllocator &allocator,
     VPMediaMemComp *mmc) :
     CmdPacket(task),
+    VpCmdPacket(task, hwInterface, allocator, mmc, VP_PIPELINE_PACKET_VEBOX),
     VpVeboxCmdPacketBase(task, hwInterface, allocator, mmc)
 {
     m_veboxItf = hwInterface->m_vpPlatformInterface->GetMhwVeboxItf();
@@ -2369,6 +2330,13 @@ MOS_STATUS VpVeboxCmdPacket::AddVeboxDndiState()
 
     if (pRenderData->DN.bDnEnabled || pRenderData->DI.bDeinterlace || pRenderData->DI.bQueryVariance)
     {
+        mhw::vebox::MHW_VEBOX_CHROMA_PARAMS veboxChromaPar = {};
+
+        VP_RENDER_CHK_STATUS_RETURN(MOS_SecureMemcpy(&veboxChromaPar,
+            sizeof(veboxChromaPar),
+            &veboxChromaParams,
+            sizeof(veboxChromaParams)));
+        VP_RENDER_CHK_STATUS_RETURN(m_veboxItf->SetVeboxChromaParams(&veboxChromaPar));
         return m_veboxItf->SetVeboxDndiState(&pRenderData->GetDNDIParams());
     }
     return MOS_STATUS_SUCCESS;
@@ -2647,7 +2615,7 @@ MOS_STATUS VpVeboxCmdPacket::VeboxSetPerfTag()
             break;
 
         default:
-            VPHAL_RENDER_ASSERTMESSAGE("Format Not found.");
+            VP_RENDER_ASSERTMESSAGE("Format Not found.");
             *pPerfTag = VPHAL_NONE;
             eStatus = MOS_STATUS_INVALID_PARAMETER;
     } // switch (srcFmt)
@@ -2777,7 +2745,7 @@ MOS_STATUS VpVeboxCmdPacket::VeboxSetPerfTagNv12()
                         *pPerfTag = VPHAL_NONE;
                         break;
                     default:
-                        VPHAL_RENDER_ASSERTMESSAGE("Output Format Not found.");
+                        VP_RENDER_ASSERTMESSAGE("Output Format Not found.");
                         return MOS_STATUS_INVALID_PARAMETER;
                 }
             }
@@ -2869,7 +2837,7 @@ MOS_STATUS VpVeboxCmdPacket::VeboxSetPerfTagPaFormat()
                         *pPerfTag = VPHAL_NONE;
                         break;
                     default:
-                        VPHAL_RENDER_ASSERTMESSAGE("Output Format Not found.");
+                        VP_RENDER_ASSERTMESSAGE("Output Format Not found.");
                         return MOS_STATUS_INVALID_PARAMETER;
                 }
             }
@@ -2916,7 +2884,7 @@ MOS_STATUS VpVeboxCmdPacket::VeboxSetPerfTagPaFormat()
                         *pPerfTag = VPHAL_NONE;
                         break;
                     default:
-                        VPHAL_RENDER_ASSERTMESSAGE("Output Format Not found.");
+                        VP_RENDER_ASSERTMESSAGE("Output Format Not found.");
                         return MOS_STATUS_INVALID_PARAMETER;
                 }
             }
@@ -2930,10 +2898,666 @@ MOS_STATUS VpVeboxCmdPacket::VeboxSetPerfTagPaFormat()
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS VpVeboxCmdPacket::UpdateVeboxStates()
+//!
+//! \brief    Vebox get statistics surface base
+//! \details  Calculate address of statistics surface address based on the
+//!           functions which were enabled in the previous call.
+//! \param    uint8_t* pStat
+//!           [in] Pointer to Statistics surface
+//! \param    uint8_t* * pStatSlice0Base
+//!           [out] Statistics surface Slice 0 base pointer
+//! \param    uint8_t* * pStatSlice1Base
+//!           [out] Statistics surface Slice 1 base pointer
+//! \return   MOS_STATUS
+//!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+//!
+MOS_STATUS VpVeboxCmdPacket::GetStatisticsSurfaceBase(
+    uint8_t  *pStat,
+    uint8_t **pStatSlice0Base,
+    uint8_t **pStatSlice1Base)
 {
     VP_FUNC_CALL();
 
+    int32_t    iOffsetSlice0, iOffsetSlice1;
+    MOS_STATUS eStatus;
+
+    eStatus = MOS_STATUS_UNKNOWN;
+
+    // Calculate the offsets of Slice0 and Slice1
+    VP_RENDER_CHK_STATUS(VpVeboxCmdPacket::GetStatisticsSurfaceOffsets(
+        &iOffsetSlice0,
+        &iOffsetSlice1));
+
+    *pStatSlice0Base = pStat + iOffsetSlice0;  // Slice 0 current frame
+    *pStatSlice1Base = pStat + iOffsetSlice1;  // Slice 1 current frame
+
+finish:
+    return eStatus;
+}
+
+MOS_STATUS VpVeboxCmdPacket::CheckTGNEValid(
+    uint32_t *pStatSlice0GNEPtr,
+    uint32_t *pStatSlice1GNEPtr,
+    uint32_t *pQuery)
+{
+    VP_FUNC_CALL();
+    MOS_STATUS                eStatus            = MOS_STATUS_SUCCESS;
+    uint32_t                  bGNECountLumaValid = 0;
+    uint32_t                  dwTGNEoffset       = 0;
+    VP_PACKET_SHARED_CONTEXT *sharedContext      = (VP_PACKET_SHARED_CONTEXT *)m_packetSharedContext;
+
+    VP_PUBLIC_CHK_NULL_RETURN(sharedContext);
+
+    auto &tgneParams = sharedContext->tgneParams;
+    dwTGNEoffset     = (VP_VEBOX_STATISTICS_SURFACE_TGNE_OFFSET - VP_VEBOX_STATISTICS_SURFACE_GNE_OFFSET) / 4;
+
+    if (m_bTgneEnable)
+    {
+        bGNECountLumaValid = (pStatSlice0GNEPtr[dwTGNEoffset + 3] & 0x80000000) || (pStatSlice1GNEPtr[dwTGNEoffset + 3] & 0x80000000);
+
+        VP_PUBLIC_NORMALMESSAGE("TGNE:bGNECountLumaValid %x", bGNECountLumaValid);
+
+        if (bGNECountLumaValid)
+        {
+            *pQuery      = VP_VEBOX_STATISTICS_SURFACE_TGNE_OFFSET;
+            m_bTgneValid = true;
+
+            if (tgneParams.bTgneFirstFrame)
+            {
+                tgneParams.bTgneFirstFrame = false;
+            }
+        }
+        else
+        {
+            *pQuery      = VP_VEBOX_STATISTICS_SURFACE_GNE_OFFSET;
+            m_bTgneValid = false;
+        }
+    }
+    else
+    {
+        *pQuery                    = VP_VEBOX_STATISTICS_SURFACE_GNE_OFFSET;
+        m_bTgneValid               = false;
+        tgneParams.bTgneFirstFrame = true;
+    }
+
+    VP_PUBLIC_NORMALMESSAGE("TGNE:bTGNEValid %x", m_bTgneValid);
+    return eStatus;
+}
+
+MOS_STATUS VpVeboxCmdPacket::QueryStatLayoutGNE(
+    VEBOX_STAT_QUERY_TYPE QueryType,
+    uint32_t             *pQuery,
+    uint8_t              *pStatSlice0Base,
+    uint8_t              *pStatSlice1Base)
+{
+    VP_FUNC_CALL();
+
+    VP_PUBLIC_CHK_NULL_RETURN(pQuery);
+    // Query platform dependent GNE offset
+    VP_PUBLIC_CHK_STATUS_RETURN(QueryStatLayout(
+        VEBOX_STAT_QUERY_GNE_OFFEST,
+        pQuery));
+
+    // check TGNE is valid or not.
+    VP_PUBLIC_CHK_STATUS_RETURN(VpVeboxCmdPacket::CheckTGNEValid(
+        (uint32_t *)(pStatSlice0Base + *pQuery),
+        (uint32_t *)(pStatSlice1Base + *pQuery),
+        pQuery));
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacket::GNELumaConsistentCheck(
+    uint32_t &dwGNELuma,
+    uint32_t *pStatSlice0GNEPtr,
+    uint32_t *pStatSlice1GNEPtr)
+{
+    uint32_t dwGNEChromaU = 0, dwGNEChromaV = 0;
+    uint32_t dwGNECountChromaU = 0, dwGNECountChromaV = 0;
+    VP_PUBLIC_CHK_NULL_RETURN(pStatSlice0GNEPtr);
+    VP_PUBLIC_CHK_NULL_RETURN(pStatSlice1GNEPtr);
+
+    // Combine the GNE in slice0 and slice1 to generate the global GNE and Count
+    dwGNEChromaU = pStatSlice0GNEPtr[1] + pStatSlice1GNEPtr[1];
+    dwGNEChromaV = pStatSlice0GNEPtr[2] + pStatSlice1GNEPtr[2];
+
+    dwGNECountChromaU = pStatSlice0GNEPtr[4] + pStatSlice1GNEPtr[4];
+    dwGNECountChromaV = pStatSlice0GNEPtr[5] + pStatSlice1GNEPtr[5];
+
+    // Validate GNE
+    if (dwGNEChromaU == 0xFFFFFFFF || dwGNECountChromaU == 0xFFFFFFFF ||
+        dwGNEChromaV == 0xFFFFFFFF || dwGNECountChromaV == 0xFFFFFFFF)
+    {
+        VP_RENDER_ASSERTMESSAGE("Incorrect GNE / GNE count.");
+        return MOS_STATUS_UNKNOWN;
+    }
+
+    dwGNEChromaU = dwGNEChromaU * 100 / (dwGNECountChromaU + 1);
+    dwGNEChromaV = dwGNEChromaV * 100 / (dwGNECountChromaV + 1);
+    VP_RENDER_NORMALMESSAGE("Consistent Check: dwGNEChromaU %d  dwGNEChromaV %d", dwGNEChromaU, dwGNEChromaV);
+    if ((dwGNEChromaU < NOSIE_GNE_CHROMA_THRESHOLD) &&
+        (dwGNEChromaV < NOSIE_GNE_CHROMA_THRESHOLD) &&
+        (dwGNEChromaU != 0) &&
+        (dwGNEChromaV != 0) &&
+        (dwGNELuma > NOSIE_GNE_LUMA_THRESHOLD))
+    {
+        dwGNELuma = dwGNELuma >> 2;
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacket::UpdateDnHVSParameters(
+    uint32_t *pStatSlice0GNEPtr,
+    uint32_t *pStatSlice1GNEPtr)
+{
+    VP_FUNC_CALL();
+    uint32_t                  dwGNELuma = 0, dwGNEChromaU = 0, dwGNEChromaV = 0;
+    uint32_t                  dwSGNELuma = 0, dwSGNEChromaU = 0, dwSGNEChromaV = 0;
+    uint32_t                  dwGNECountLuma = 0, dwGNECountChromaU = 0, dwGNECountChromaV = 0;
+    uint32_t                  dwSGNECountLuma = 0, dwSGNECountChromaU = 0, dwSGNECountChromaV;
+    uint32_t                  resltn        = 0;
+    int32_t                   sgne_offset   = 0;
+    VP_PACKET_SHARED_CONTEXT *sharedContext = (VP_PACKET_SHARED_CONTEXT *)m_packetSharedContext;
+    VpVeboxRenderData        *renderData    = GetLastExecRenderData();
+    VP_PUBLIC_CHK_NULL_RETURN(renderData);
+    VP_PUBLIC_CHK_NULL_RETURN(sharedContext);
+    VP_PUBLIC_CHK_NULL_RETURN(m_hwInterface);
+    VP_PUBLIC_CHK_NULL_RETURN(m_veboxItf);
+    VP_PUBLIC_CHK_NULL_RETURN(m_hwInterface->m_waTable);
+    VP_PUBLIC_CHK_NULL_RETURN(m_currentSurface);
+    VP_PUBLIC_CHK_NULL_RETURN(m_currentSurface->osSurface);
+    auto &tgneParams = sharedContext->tgneParams;
+    auto &hvsParams  = sharedContext->hvsParams;
+    resltn           = m_currentSurface->rcSrc.right * m_currentSurface->rcSrc.bottom;
+
+    // Set HVS kernel params
+    hvsParams.Format            = 0;
+    hvsParams.Mode              = renderData->GetHVSParams().Mode;
+    hvsParams.Fallback          = !m_bTgneValid && !sharedContext->bFirstFrame && !tgneParams.bTgneFirstFrame;
+    hvsParams.EnableChroma      = renderData->DN.bChromaDnEnabled;
+    hvsParams.FirstFrame        = sharedContext->bFirstFrame;
+    hvsParams.TgneFirstFrame    = !sharedContext->bFirstFrame && tgneParams.bTgneFirstFrame;
+    hvsParams.EnableTemporalGNE = m_bTgneEnable;
+    hvsParams.Width             = (uint16_t)m_currentSurface->rcSrc.right;
+    hvsParams.Height            = (uint16_t)m_currentSurface->rcSrc.bottom;
+
+    // Set QP
+    if (renderData->GetHVSParams().Mode == HVSDENOISE_MANUAL)
+    {
+        if (renderData->GetHVSParams().QP <= 18)
+        {
+            hvsParams.QP = 0;
+        }
+        else if (renderData->GetHVSParams().QP <= 22)
+        {
+            hvsParams.QP = 1;
+        }
+        else if (renderData->GetHVSParams().QP <= 27)
+        {
+            hvsParams.QP = 2;
+        }
+        else if (renderData->GetHVSParams().QP <= 32)
+        {
+            hvsParams.QP = 3;
+        }
+        else if (renderData->GetHVSParams().QP <= 37)
+        {
+            hvsParams.QP = 4;
+        }
+    }
+    else
+    {
+        hvsParams.QP = renderData->GetHVSParams().QP;
+    }
+
+    // Combine the GNE in slice0 and slice1 to generate the global GNE and Count
+    dwGNELuma         = pStatSlice0GNEPtr[0] + pStatSlice1GNEPtr[0];
+    dwGNEChromaU      = pStatSlice0GNEPtr[1] + pStatSlice1GNEPtr[1];
+    dwGNEChromaV      = pStatSlice0GNEPtr[2] + pStatSlice1GNEPtr[2];
+    dwGNECountLuma    = pStatSlice0GNEPtr[3] + pStatSlice1GNEPtr[3];
+    dwGNECountChromaU = pStatSlice0GNEPtr[4] + pStatSlice1GNEPtr[4];
+    dwGNECountChromaV = pStatSlice0GNEPtr[5] + pStatSlice1GNEPtr[5];
+
+    // Validate GNE
+    if (dwGNELuma == 0xFFFFFFFF || dwGNECountLuma == 0xFFFFFFFF ||
+        dwGNEChromaU == 0xFFFFFFFF || dwGNECountChromaU == 0xFFFFFFFF ||
+        dwGNEChromaV == 0xFFFFFFFF || dwGNECountChromaV == 0xFFFFFFF)
+    {
+        VP_RENDER_ASSERTMESSAGE("Incorrect GNE / GNE count.");
+        return MOS_STATUS_UNKNOWN;
+    }
+
+    // Set HVS Mode in Mhw interface
+    if (renderData->GetHVSParams().Mode == HVSDENOISE_AUTO_BDRATE)
+    {
+        hvsParams.hVSAutoBdrateEnable = true;
+        tgneParams.dwBSDThreshold      = (resltn < NOSIE_GNE_RESOLUTION_THRESHOLD) ? 240 : 135;
+    }
+    else if (renderData->GetHVSParams().Mode == HVSDENOISE_AUTO_SUBJECTIVE)
+    {
+        hvsParams.hVSAutoSubjectiveEnable = true;
+    }
+    else
+    {
+        hvsParams.hVSAutoBdrateEnable     = false;
+        hvsParams.hVSAutoSubjectiveEnable = false;
+    }
+    m_veboxItf->SetgnHVSMode(hvsParams.hVSAutoBdrateEnable, hvsParams.hVSAutoSubjectiveEnable, tgneParams.dwBSDThreshold);
+
+    if (m_bTgneEnable && !sharedContext->bFirstFrame && tgneParams.bTgneFirstFrame)  //Second frame
+    {
+        tgneParams.bTgneFirstFrame = false;  // next frame bTgneFirstFrame should be false
+
+        // caculate GNE
+        dwGNELuma    = dwGNELuma * 100 / (dwGNECountLuma + 1);
+        dwGNEChromaU = dwGNEChromaU * 100 / (dwGNECountChromaU + 1);
+        dwGNEChromaV = dwGNEChromaV * 100 / (dwGNECountChromaV + 1);
+
+        // Set some mhw params
+        tgneParams.bTgneEnable  = true;
+        tgneParams.lumaStadTh   = 3200;
+        tgneParams.chromaStadTh = 1600;
+
+        if (MEDIA_IS_WA(m_hwInterface->m_waTable, Wa_1609102037) &&
+            VpHal_GetSurfaceColorPack(m_currentSurface->osSurface->Format) == VPHAL_COLORPACK_444)
+        {
+            tgneParams.dw4X4TGNEThCnt = ((m_currentSurface->osSurface->dwWidth - 32) *
+                                            (m_currentSurface->osSurface->dwHeight - 8)) /
+                                        1600;
+        }
+        else
+        {
+            tgneParams.dw4X4TGNEThCnt = ((m_currentSurface->osSurface->dwWidth - 8) *
+                                            (m_currentSurface->osSurface->dwHeight - 8)) /
+                                        1600;
+        }
+
+        if (renderData->GetHVSParams().Mode == HVSDENOISE_AUTO_BDRATE)
+        {
+            tgneParams.lumaStadTh    = 250;
+            tgneParams.chromaStadTh  = 250;
+            tgneParams.dwHistoryInit = 27;
+            GNELumaConsistentCheck(dwGNELuma, pStatSlice0GNEPtr, pStatSlice1GNEPtr);
+            // caculate temporal GNE
+            dwGlobalNoiseLevel_Temporal  = (dwGNELuma + 50) / 100;
+            dwGlobalNoiseLevelU_Temporal = (dwGNEChromaU + 50) / 100;
+            dwGlobalNoiseLevelV_Temporal = (dwGNEChromaV + 50) / 100;
+        }
+        m_veboxItf->SetgnHVSParams(
+            tgneParams.bTgneEnable, tgneParams.lumaStadTh, tgneParams.chromaStadTh, tgneParams.dw4X4TGNEThCnt, tgneParams.dwHistoryInit, hvsParams.hVSfallback);
+
+        hvsParams.Sgne_Level          = dwGNELuma;
+        hvsParams.Sgne_LevelU         = dwGNEChromaU;
+        hvsParams.Sgne_LevelV         = dwGNEChromaV;
+        hvsParams.Sgne_Count          = dwGNECountLuma;
+        hvsParams.Sgne_CountU         = dwGNECountChromaU;
+        hvsParams.Sgne_CountV         = dwGNECountChromaV;
+        hvsParams.PrevNslvTemporal    = -1;
+        hvsParams.PrevNslvTemporalU   = -1;
+        hvsParams.PrevNslvTemporalV   = -1;
+        hvsParams.dwGlobalNoiseLevel  = dwGlobalNoiseLevel_Temporal;
+        hvsParams.dwGlobalNoiseLevelU = dwGlobalNoiseLevelU_Temporal;
+        hvsParams.dwGlobalNoiseLevelV = dwGlobalNoiseLevelV_Temporal;
+    }
+    else if (m_bTgneEnable && m_bTgneValid && !sharedContext->bFirstFrame)  //Middle frame
+    {
+        dwGNECountLuma    = (pStatSlice0GNEPtr[3] & 0x7FFFFFFF) + (pStatSlice1GNEPtr[3] & 0x7FFFFFFF);
+        dwGNECountChromaU = (pStatSlice0GNEPtr[4] & 0x7FFFFFFF) + (pStatSlice1GNEPtr[4] & 0x7FFFFFFF);
+        dwGNECountChromaV = (pStatSlice0GNEPtr[5] & 0x7FFFFFFF) + (pStatSlice1GNEPtr[5] & 0x7FFFFFFF);
+
+        sgne_offset        = -12;
+        dwSGNELuma         = pStatSlice0GNEPtr[sgne_offset] + pStatSlice1GNEPtr[sgne_offset];
+        dwSGNEChromaU      = pStatSlice0GNEPtr[sgne_offset + 1] + pStatSlice1GNEPtr[sgne_offset + 1];
+        dwSGNEChromaV      = pStatSlice0GNEPtr[sgne_offset + 2] + pStatSlice1GNEPtr[sgne_offset + 2];
+        dwSGNECountLuma    = pStatSlice0GNEPtr[sgne_offset + 3] + pStatSlice1GNEPtr[sgne_offset + 3];
+        dwSGNECountChromaU = pStatSlice0GNEPtr[sgne_offset + 4] + pStatSlice1GNEPtr[sgne_offset + 4];
+        dwSGNECountChromaV = pStatSlice0GNEPtr[sgne_offset + 5] + pStatSlice1GNEPtr[sgne_offset + 5];
+
+        // Validate TGNE
+        if (dwGNECountLuma == 0 || dwGNECountChromaU == 0 || dwGNECountChromaV == 0 ||
+            dwSGNELuma == 0xFFFFFFFF || dwSGNECountLuma == 0xFFFFFFFF ||
+            dwSGNEChromaU == 0xFFFFFFFF || dwSGNECountChromaU == 0xFFFFFFFF ||
+            dwSGNEChromaV == 0xFFFFFFFF || dwSGNECountChromaV == 0xFFFFFFF)
+        {
+            VP_RENDER_ASSERTMESSAGE("Incorrect GNE count.");
+            return MOS_STATUS_UNKNOWN;
+        }
+
+        curNoiseLevel_Temporal  = dwGNELuma / dwGNECountLuma;
+        curNoiseLevelU_Temporal = dwGNEChromaU / dwGNECountChromaU;
+        curNoiseLevelV_Temporal = dwGNEChromaV / dwGNECountChromaV;
+
+        if (hvsParams.hVSfallback)
+        {
+            // last frame is fallback frame, nosie level use current noise level
+            dwGlobalNoiseLevel_Temporal  = curNoiseLevel_Temporal;
+            dwGlobalNoiseLevelU_Temporal = curNoiseLevelU_Temporal;
+            dwGlobalNoiseLevelV_Temporal = curNoiseLevelU_Temporal;
+            hvsParams.hVSfallback       = false;
+        }
+        else
+        {
+            // last frame is tgne frame, noise level use previous and current noise level
+            dwGlobalNoiseLevel_Temporal  = MOS_ROUNDUP_SHIFT(dwGlobalNoiseLevel_Temporal + curNoiseLevel_Temporal, 1);
+            dwGlobalNoiseLevelU_Temporal = MOS_ROUNDUP_SHIFT(dwGlobalNoiseLevelU_Temporal + curNoiseLevelU_Temporal, 1);
+            dwGlobalNoiseLevelV_Temporal = MOS_ROUNDUP_SHIFT(dwGlobalNoiseLevelV_Temporal + curNoiseLevelV_Temporal, 1);
+        }
+
+        //// Set mhw parameters
+        tgneParams.bTgneEnable  = true;
+        tgneParams.lumaStadTh   = (dwGlobalNoiseLevel_Temporal <= 1) ? 3200 : (tgneParams.lumaStadTh + (curNoiseLevel_Temporal << 1) + 1) >> 1;
+        tgneParams.chromaStadTh = (dwGlobalNoiseLevelU_Temporal <= 1 || dwGlobalNoiseLevelV_Temporal <= 1) ? 1600 : (tgneParams.chromaStadTh + curNoiseLevelU_Temporal + curNoiseLevelV_Temporal + 1) >> 1;
+
+        if (renderData->GetHVSParams().Mode == HVSDENOISE_AUTO_BDRATE)
+        {
+            tgneParams.lumaStadTh    = 250;
+            tgneParams.chromaStadTh  = 250;
+            tgneParams.dwHistoryInit = 27;
+        }
+
+        if (MEDIA_IS_WA(m_hwInterface->m_waTable, Wa_1609102037) &&
+            VpHal_GetSurfaceColorPack(m_currentSurface->osSurface->Format) == VPHAL_COLORPACK_444)
+        {
+            tgneParams.dw4X4TGNEThCnt = ((m_currentSurface->osSurface->dwWidth - 32) *
+                                            (m_currentSurface->osSurface->dwHeight - 8)) /
+                                        1600;
+        }
+        else
+        {
+            tgneParams.dw4X4TGNEThCnt = ((m_currentSurface->osSurface->dwWidth - 8) *
+                                            (m_currentSurface->osSurface->dwHeight - 8)) /
+                                        1600;
+        }
+        m_veboxItf->SetgnHVSParams(
+            tgneParams.bTgneEnable, tgneParams.lumaStadTh, tgneParams.chromaStadTh, tgneParams.dw4X4TGNEThCnt, tgneParams.dwHistoryInit, hvsParams.hVSfallback);
+
+        hvsParams.Sgne_Level          = dwSGNELuma * 100 / (dwSGNECountLuma + 1);
+        hvsParams.Sgne_LevelU         = dwSGNEChromaU * 100 / (dwSGNECountChromaU + 1);
+        hvsParams.Sgne_LevelV         = dwSGNEChromaV * 100 / (dwSGNECountChromaV + 1);
+        hvsParams.Sgne_Count          = dwSGNECountLuma;
+        hvsParams.Sgne_CountU         = dwSGNECountChromaU;
+        hvsParams.Sgne_CountV         = dwSGNECountChromaV;
+        hvsParams.PrevNslvTemporal    = curNoiseLevel_Temporal;
+        hvsParams.PrevNslvTemporalU   = curNoiseLevelU_Temporal;
+        hvsParams.PrevNslvTemporalV   = curNoiseLevelV_Temporal;
+        hvsParams.dwGlobalNoiseLevel  = dwGlobalNoiseLevel_Temporal;
+        hvsParams.dwGlobalNoiseLevelU = dwGlobalNoiseLevelU_Temporal;
+        hvsParams.dwGlobalNoiseLevelV = dwGlobalNoiseLevelV_Temporal;
+    }
+    else  //First frame and fallback frame
+    {
+        dwGNELuma    = dwGNELuma * 100 / (dwGNECountLuma + 1);
+        dwGNEChromaU = dwGNEChromaU * 100 / (dwGNECountChromaU + 1);
+        dwGNEChromaV = dwGNEChromaV * 100 / (dwGNECountChromaV + 1);
+
+        GNELumaConsistentCheck(dwGNELuma, pStatSlice0GNEPtr, pStatSlice1GNEPtr);
+
+        // Set some mhw params
+        if (hvsParams.Fallback)
+        {
+            hvsParams.hVSfallback   = true;
+            tgneParams.bTgneEnable   = true;
+            tgneParams.dwHistoryInit = 32;
+        }
+        else
+        {
+            if (renderData->GetHVSParams().Mode == HVSDENOISE_AUTO_BDRATE)
+            {
+                tgneParams.dwHistoryInit = 32;
+            }
+            tgneParams.bTgneEnable    = false;
+            tgneParams.lumaStadTh     = 0;
+            tgneParams.chromaStadTh   = 0;
+            tgneParams.dw4X4TGNEThCnt = 0;
+        }
+        m_veboxItf->SetgnHVSParams(
+            tgneParams.bTgneEnable, tgneParams.lumaStadTh, tgneParams.chromaStadTh, tgneParams.dw4X4TGNEThCnt, tgneParams.dwHistoryInit, hvsParams.hVSfallback);
+
+        hvsParams.Sgne_Level          = dwGNELuma;
+        hvsParams.Sgne_LevelU         = dwGNEChromaU;
+        hvsParams.Sgne_LevelV         = dwGNEChromaV;
+        hvsParams.Sgne_Count          = dwGNECountLuma;
+        hvsParams.Sgne_CountU         = dwGNECountChromaU;
+        hvsParams.Sgne_CountV         = dwGNECountChromaV;
+        hvsParams.PrevNslvTemporal    = -1;
+        hvsParams.PrevNslvTemporalU   = -1;
+        hvsParams.PrevNslvTemporalV   = -1;
+        hvsParams.dwGlobalNoiseLevel  = dwGNELuma;
+        hvsParams.dwGlobalNoiseLevelU = dwGNEChromaU;
+        hvsParams.dwGlobalNoiseLevelV = dwGNEChromaV;
+    }
+
+    if (renderData->GetHVSParams().Mode == HVSDENOISE_MANUAL)
+    {
+        hvsParams.dwGlobalNoiseLevel  = renderData->GetHVSParams().Strength;
+        hvsParams.dwGlobalNoiseLevelU = renderData->GetHVSParams().Strength;
+        hvsParams.dwGlobalNoiseLevelV = renderData->GetHVSParams().Strength;
+    }
+
+    VP_PUBLIC_NORMALMESSAGE("HVS Kernel params: hvsParams.QP %d, hvsParams.Mode %d, hvsParams.Width %d, hvsParams.Height %d, hvsParams.Format %d", hvsParams.QP, hvsParams.Strength, hvsParams.Mode, hvsParams.Width, hvsParams.Height, hvsParams.Format);
+    VP_PUBLIC_NORMALMESSAGE("HVS Kernel params: hvsParams.FirstFrame %d, hvsParams.TgneFirstFrame %d, hvsParams.EnableTemporalGNE %d, hvsParams.Fallback %d, hvsParams.EnableChroma %d", hvsParams.FirstFrame, hvsParams.TgneFirstFrame, hvsParams.EnableTemporalGNE, hvsParams.Fallback, hvsParams.EnableChroma);
+    VP_PUBLIC_NORMALMESSAGE("HVS Kernel params: hvsParams.dwGlobalNoiseLevel %d, hvsParams.dwGlobalNoiseLevelU %d, hvsParams.dwGlobalNoiseLevelV %d", hvsParams.dwGlobalNoiseLevel, hvsParams.dwGlobalNoiseLevelU, hvsParams.dwGlobalNoiseLevelV);
+    VP_PUBLIC_NORMALMESSAGE("HVS Kernel params: hvsParams.PrevNslvTemporal %d, hvsParams.PrevNslvTemporalU %d, hvsParams.PrevNslvTemporalV %d", hvsParams.PrevNslvTemporal, hvsParams.PrevNslvTemporalU, hvsParams.PrevNslvTemporalV);
+    VP_PUBLIC_NORMALMESSAGE("HVS Kernel params: hvsParams.Sgne_Count %d, hvsParams.Sgne_CountU %d, hvsParams.Sgne_CountV %d", hvsParams.Sgne_Count, hvsParams.Sgne_CountU, hvsParams.Sgne_CountV);
+    VP_PUBLIC_NORMALMESSAGE("HVS Kernel params: hvsParams.Sgne_Level %d, hvsParams.Sgne_LevelU %d, hvsParams.Sgne_LevelV %d", hvsParams.Sgne_Level, hvsParams.Sgne_LevelU, hvsParams.Sgne_LevelV);
+    VP_PUBLIC_NORMALMESSAGE("HVS Kernel params: veboxInterface->dwLumaStadTh %d, veboxInterface->dwChromaStadTh %d", tgneParams.lumaStadTh, tgneParams.chromaStadTh);
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacket::SetupDNTableForHVS(
+    mhw::vebox::VEBOX_STATE_PAR &veboxStateCmdParams)
+{
+    VP_FUNC_CALL();
+    VpVeboxRenderData *renderData   = GetLastExecRenderData();
+    PVP_SURFACE        surfHVSTable = GetSurface(SurfaceTypeHVSTable);
+    VP_RENDER_CHK_NULL_RETURN(renderData);
+
+    if (nullptr == surfHVSTable || !renderData->DN.bHvsDnEnabled)
+    {
+        // It is just for update HVS Kernel DNDI table.
+        // it will not overwrite params in SetDnParams() for other DN feature.
+        VP_RENDER_NORMALMESSAGE("HVS DN DI table not need be updated.");
+        return MOS_STATUS_SUCCESS;
+    }
+
+    VP_RENDER_CHK_NULL_RETURN(m_allocator);
+    VP_RENDER_CHK_NULL_RETURN(surfHVSTable);
+    VP_RENDER_CHK_NULL_RETURN(surfHVSTable->osSurface);
+
+    // Just HVS kernel stage will call this function.
+    // And SetDnParams() only call before the first stage.
+    // It wil not overwrite the params caculated here.
+    VP_RENDER_NORMALMESSAGE("HVS DN DI table caculated by kernel.");
+
+    uint8_t  *bufHVSSurface      = (uint8_t *)m_allocator->LockResourceForWrite(&surfHVSTable->osSurface->OsResource);
+    uint32_t *bufHVSDenoiseParam = (uint32_t *)bufHVSSurface;
+    VP_RENDER_CHK_NULL_RETURN(bufHVSSurface);
+    VP_RENDER_CHK_NULL_RETURN(bufHVSDenoiseParam);
+
+    VP_RENDER_NORMALMESSAGE("Set HVS Denoised Parameters to VEBOX DNDI params");
+    // DW0
+    renderData->GetDNDIParams().dwDenoiseMaximumHistory = (bufHVSDenoiseParam[0] & 0x000000ff);
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwDenoiseMaximumHistory %d", renderData->GetDNDIParams().dwDenoiseMaximumHistory);
+    renderData->GetDNDIParams().dwDenoiseSTADThreshold = (bufHVSDenoiseParam[0] & 0xfffe0000) >> 17;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwDenoiseSTADThreshold %d", renderData->GetDNDIParams().dwDenoiseSTADThreshold);
+    // DW1
+    renderData->GetDNDIParams().dwDenoiseASDThreshold = (bufHVSDenoiseParam[1] & 0x00000fff);
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwDenoiseASDThreshold %d", renderData->GetDNDIParams().dwDenoiseASDThreshold);
+    renderData->GetDNDIParams().dwDenoiseMPThreshold = (bufHVSDenoiseParam[1] & 0x0f800000) >> 23;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwDenoiseMPThreshold %d", renderData->GetDNDIParams().dwDenoiseMPThreshold);
+    renderData->GetDNDIParams().dwDenoiseHistoryDelta = (bufHVSDenoiseParam[1] & 0xf0000000) >> 28;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwDenoiseHistoryDelta %d", renderData->GetDNDIParams().dwDenoiseHistoryDelta);
+    // DW2
+    renderData->GetDNDIParams().dwTDThreshold = (bufHVSDenoiseParam[2] & 0xfff00000) >> 20;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwTDThreshold %d", renderData->GetDNDIParams().dwTDThreshold);
+    // DW3
+    renderData->GetDNDIParams().dwLTDThreshold = (bufHVSDenoiseParam[3] & 0xfff00000) >> 20;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwLTDThreshold %d", renderData->GetDNDIParams().dwLTDThreshold);
+    // DW4
+    renderData->GetDNDIParams().dwDenoiseSCMThreshold = (bufHVSDenoiseParam[4] & 0xfff00000) >> 20;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwDenoiseSCMThreshold %d", renderData->GetDNDIParams().dwDenoiseSCMThreshold);
+    // DW5
+    renderData->GetDNDIParams().dwChromaSTADThreshold = (bufHVSDenoiseParam[5] & 0xfffe0000) >> 17;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwChromaSTADThreshold %d", renderData->GetDNDIParams().dwChromaSTADThreshold);
+    // DW6
+    renderData->GetDNDIParams().dwChromaTDThreshold = (bufHVSDenoiseParam[6] & 0xfff00000) >> 20;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwChromaTDThreshold %d", renderData->GetDNDIParams().dwChromaTDThreshold);
+    // DW7
+    renderData->GetDNDIParams().dwChromaLTDThreshold = (bufHVSDenoiseParam[7] & 0xfff00000) >> 20;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwChromaLTDThreshold %d", renderData->GetDNDIParams().dwChromaLTDThreshold);
+    // DW9
+    renderData->GetDNDIParams().dwPixRangeWeight[0] = (bufHVSDenoiseParam[9] & 0x0000001f);
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwPixRangeWeight[0] %d", renderData->GetDNDIParams().dwPixRangeWeight[0]);
+    renderData->GetDNDIParams().dwPixRangeWeight[1] = (bufHVSDenoiseParam[9] & 0x000003e0) >> 5;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwPixRangeWeight[1] %d", renderData->GetDNDIParams().dwPixRangeWeight[1]);
+    renderData->GetDNDIParams().dwPixRangeWeight[2] = (bufHVSDenoiseParam[9] & 0x00007c00) >> 10;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwPixRangeWeight[2] %d", renderData->GetDNDIParams().dwPixRangeWeight[2]);
+    renderData->GetDNDIParams().dwPixRangeWeight[3] = (bufHVSDenoiseParam[9] & 0x000f8000) >> 15;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwPixRangeWeight[3] %d", renderData->GetDNDIParams().dwPixRangeWeight[3]);
+    renderData->GetDNDIParams().dwPixRangeWeight[4] = (bufHVSDenoiseParam[9] & 0x01f00000) >> 20;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwPixRangeWeight[4] %d", renderData->GetDNDIParams().dwPixRangeWeight[4]);
+    renderData->GetDNDIParams().dwPixRangeWeight[5] = (bufHVSDenoiseParam[9] & 0x3e000000) >> 25;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwPixRangeWeight[5] %d", renderData->GetDNDIParams().dwPixRangeWeight[5]);
+    // DW11
+    renderData->GetDNDIParams().dwPixRangeThreshold[5] = (bufHVSDenoiseParam[11] & 0x1fff0000) >> 16;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwPixRangeThreshold[5] %d", renderData->GetDNDIParams().dwPixRangeThreshold[5]);
+    // DW12
+    renderData->GetDNDIParams().dwPixRangeThreshold[4] = (bufHVSDenoiseParam[12] & 0x1fff0000) >> 16;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwPixRangeThreshold[4] %d", renderData->GetDNDIParams().dwPixRangeThreshold[4]);
+    renderData->GetDNDIParams().dwPixRangeThreshold[3] = (bufHVSDenoiseParam[12] & 0x00001fff);
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwPixRangeThreshold[3] %d", renderData->GetDNDIParams().dwPixRangeThreshold[3]);
+    // DW13
+    renderData->GetDNDIParams().dwPixRangeThreshold[2] = (bufHVSDenoiseParam[13] & 0x1fff0000) >> 16;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwPixRangeThreshold[2] %d", renderData->GetDNDIParams().dwPixRangeThreshold[2]);
+    renderData->GetDNDIParams().dwPixRangeThreshold[1] = (bufHVSDenoiseParam[13] & 0x00001fff);
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwPixRangeThreshold[1] %d", renderData->GetDNDIParams().dwPixRangeThreshold[1]);
+    // DW14
+    renderData->GetDNDIParams().dwPixRangeThreshold[0] = (bufHVSDenoiseParam[14] & 0x1fff0000) >> 16;
+    VP_RENDER_NORMALMESSAGE("HVS: renderData->GetDNDIParams().dwPixRangeThreshold[0] %d", renderData->GetDNDIParams().dwPixRangeThreshold[0]);
+    // DW16
+    veboxChromaParams.dwPixRangeWeightChromaU[0] = (bufHVSDenoiseParam[16] & 0x0000001f);
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeWeightChromaU[0] %d", veboxChromaParams.dwPixRangeWeightChromaU[0]);
+    veboxChromaParams.dwPixRangeWeightChromaU[1] = (bufHVSDenoiseParam[16] & 0x000003e0) >> 5;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeWeightChromaU[1] %d", veboxChromaParams.dwPixRangeWeightChromaU[1]);
+    veboxChromaParams.dwPixRangeWeightChromaU[2] = (bufHVSDenoiseParam[16] & 0x00007c00) >> 10;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeWeightChromaU[2] %d", veboxChromaParams.dwPixRangeWeightChromaU[2]);
+    veboxChromaParams.dwPixRangeWeightChromaU[3] = (bufHVSDenoiseParam[16] & 0x000f8000) >> 15;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeWeightChromaU[3] %d", veboxChromaParams.dwPixRangeWeightChromaU[3]);
+    veboxChromaParams.dwPixRangeWeightChromaU[4] = (bufHVSDenoiseParam[16] & 0x01f00000) >> 20;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeWeightChromaU[4] %d", veboxChromaParams.dwPixRangeWeightChromaU[4]);
+    veboxChromaParams.dwPixRangeWeightChromaU[5] = (bufHVSDenoiseParam[16] & 0x3e000000) >> 25;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeWeightChromaU[5] %d", veboxChromaParams.dwPixRangeWeightChromaU[5]);
+    //DW18
+    veboxChromaParams.dwPixRangeThresholdChromaU[5] = (bufHVSDenoiseParam[18] & 0x1fff0000) >> 16;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaU[5] %d", veboxChromaParams.dwPixRangeThresholdChromaU[5]);
+    //DW19
+    veboxChromaParams.dwPixRangeThresholdChromaU[4] = (bufHVSDenoiseParam[19] & 0x1fff0000) >> 16;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaU[4] %d", veboxChromaParams.dwPixRangeThresholdChromaU[4]);
+    veboxChromaParams.dwPixRangeThresholdChromaU[3] = (bufHVSDenoiseParam[19] & 0x00001fff);
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaU[3] %d", veboxChromaParams.dwPixRangeThresholdChromaU[3]);
+    //DW20
+    veboxChromaParams.dwPixRangeThresholdChromaU[2] = (bufHVSDenoiseParam[20] & 0x1fff0000) >> 16;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaU[2] %d", veboxChromaParams.dwPixRangeThresholdChromaU[2]);
+    veboxChromaParams.dwPixRangeThresholdChromaU[1] = (bufHVSDenoiseParam[20] & 0x00001fff);
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaU[1] %d", veboxChromaParams.dwPixRangeThresholdChromaU[1]);
+    //DW21
+    veboxChromaParams.dwPixRangeThresholdChromaU[0] = (bufHVSDenoiseParam[21] & 0x1fff0000) >> 16;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaU[0] %d", veboxChromaParams.dwPixRangeThresholdChromaU[0]);
+    //DW23
+    veboxChromaParams.dwPixRangeWeightChromaV[0] = (bufHVSDenoiseParam[23] & 0x0000001f);
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeWeightChromaV[0] %d", veboxChromaParams.dwPixRangeWeightChromaV[0]);
+    veboxChromaParams.dwPixRangeWeightChromaV[1] = (bufHVSDenoiseParam[23] & 0x000003e0) >> 5;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeWeightChromaV[1] %d", veboxChromaParams.dwPixRangeWeightChromaV[1]);
+    veboxChromaParams.dwPixRangeWeightChromaV[2] = (bufHVSDenoiseParam[23] & 0x00007c00) >> 10;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeWeightChromaV[2] %d", veboxChromaParams.dwPixRangeWeightChromaV[2]);
+    veboxChromaParams.dwPixRangeWeightChromaV[3] = (bufHVSDenoiseParam[23] & 0x000f8000) >> 15;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeWeightChromaV[3] %d", veboxChromaParams.dwPixRangeWeightChromaV[3]);
+    veboxChromaParams.dwPixRangeWeightChromaV[4] = (bufHVSDenoiseParam[23] & 0x01f00000) >> 20;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeWeightChromaV[4] %d", veboxChromaParams.dwPixRangeWeightChromaV[4]);
+    veboxChromaParams.dwPixRangeWeightChromaV[5] = (bufHVSDenoiseParam[23] & 0x3e000000) >> 25;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeWeightChromaV[5] %d", veboxChromaParams.dwPixRangeWeightChromaV[5]);
+    //DW25
+    veboxChromaParams.dwPixRangeThresholdChromaV[5] = (bufHVSDenoiseParam[25] & 0x1fff0000) >> 16;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaV[5] %d", veboxChromaParams.dwPixRangeThresholdChromaV[5]);
+    //DW26
+    veboxChromaParams.dwPixRangeThresholdChromaV[4] = (bufHVSDenoiseParam[26] & 0x1fff0000) >> 16;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaV[4] %d", veboxChromaParams.dwPixRangeThresholdChromaV[4]);
+    veboxChromaParams.dwPixRangeThresholdChromaV[3] = (bufHVSDenoiseParam[26] & 0x00001fff);
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaV[3] %d", veboxChromaParams.dwPixRangeThresholdChromaV[3]);
+    //DW27
+    veboxChromaParams.dwPixRangeThresholdChromaV[2] = (bufHVSDenoiseParam[27] & 0x1fff0000) >> 16;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaV[2] %d", veboxChromaParams.dwPixRangeThresholdChromaV[2]);
+    veboxChromaParams.dwPixRangeThresholdChromaV[1] = (bufHVSDenoiseParam[27] & 0x00001fff);
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaV[1] %d", veboxChromaParams.dwPixRangeThresholdChromaV[1]);
+    //DW28
+    veboxChromaParams.dwPixRangeThresholdChromaV[0] = (bufHVSDenoiseParam[28] & 0x1fff0000) >> 16;
+    VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaV[0] %d", veboxChromaParams.dwPixRangeThresholdChromaV[0]);
+
+    VP_PUBLIC_CHK_STATUS_RETURN(m_allocator->UnLock(&surfHVSTable->osSurface->OsResource));
+
+    //Set up the Vebox State in Clear Memory
+    VP_PUBLIC_CHK_STATUS_RETURN(VpVeboxCmdPacket::AddVeboxDndiState());
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacket::UpdateVeboxStates()
+{
+    VP_FUNC_CALL();
+    MOS_STATUS         eStatus;
+    uint8_t           *pStat = nullptr;
+    uint8_t           *pStatSlice0Base, *pStatSlice1Base;
+    uint32_t           dwQuery = 0;
+    MOS_LOCK_PARAMS    LockFlags;
+    VpVeboxRenderData *renderData = GetLastExecRenderData();
+
+    VP_PUBLIC_CHK_NULL_RETURN(renderData);
+    VP_PUBLIC_CHK_NULL_RETURN(m_veboxPacketSurface.pStatisticsOutput);
+    VP_PUBLIC_CHK_NULL_RETURN(m_veboxPacketSurface.pStatisticsOutput->osSurface);
+    VP_PUBLIC_CHK_NULL_RETURN(m_sfcRender);
+
+    eStatus = MOS_STATUS_SUCCESS;
+
+    if (!renderData->DN.bHvsDnEnabled)
+    {
+        // no need to update, direct return.
+        return MOS_STATUS_SUCCESS;
+    }
+
+    // Update DN State in CPU
+    MOS_ZeroMemory(&LockFlags, sizeof(MOS_LOCK_PARAMS));
+    LockFlags.ReadOnly = 1;
+
+    // Get Statistic surface
+    pStat = (uint8_t *)m_allocator->Lock(
+        &m_veboxPacketSurface.pStatisticsOutput->osSurface->OsResource,
+        &LockFlags);
+
+    VP_PUBLIC_CHK_NULL_RETURN(pStat);
+
+    VP_RENDER_CHK_STATUS_RETURN(GetStatisticsSurfaceBase(
+        pStat,
+        &pStatSlice0Base,
+        &pStatSlice1Base));
+
+    // Query platform dependent GNE offset
+    VP_RENDER_CHK_STATUS_RETURN(QueryStatLayoutGNE(
+        VEBOX_STAT_QUERY_GNE_OFFEST,
+        &dwQuery,
+        pStatSlice0Base,
+        pStatSlice1Base));
+
+#if VEBOX_AUTO_DENOISE_SUPPORTED
+    VP_RENDER_CHK_STATUS_RETURN(UpdateDnHVSParameters(
+        (uint32_t *)(pStatSlice0Base + dwQuery),
+        (uint32_t *)(pStatSlice1Base + dwQuery)));
+#endif
+
+    // unlock the statistic surface
+    VP_RENDER_CHK_STATUS_RETURN(m_allocator->UnLock(
+        &m_veboxPacketSurface.pStatisticsOutput->osSurface->OsResource));
     return MOS_STATUS_SUCCESS;
 }
 

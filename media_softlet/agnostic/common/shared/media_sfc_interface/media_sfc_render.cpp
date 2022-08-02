@@ -36,6 +36,7 @@
 #include "mos_os.h"
 #include "renderhal.h"
 #include "media_mem_compression.h"
+#include "media_interfaces_mhw_next.h"
 
 using namespace vp;
 
@@ -74,7 +75,6 @@ void MediaSfcRender::Destroy()
 
     Delete_MhwCpInterface(m_cpInterface);
     m_cpInterface = nullptr;
-    MOS_Delete(m_sfcInterface);
 
     if (m_veboxItf)
     {
@@ -83,16 +83,6 @@ void MediaSfcRender::Destroy()
         {
             VP_PUBLIC_ASSERTMESSAGE("Failed to destroy veboxItf heap, eStatus:%d.\n", status);
         }
-    }
-
-    if (m_veboxInterface)
-    {
-        status = m_veboxInterface->DestroyHeap();
-        if (MOS_FAILED(status))
-        {
-            VP_PUBLIC_ASSERTMESSAGE("Failed to destroy vebox heap, eStatus:%d.\n", status);
-        }
-        MOS_Delete(m_veboxInterface);
     }
 
     MOS_Delete(m_statusTable);
@@ -218,61 +208,26 @@ MOS_STATUS MediaSfcRender::Initialize()
     paramsNext.Flags.m_vebox                    = MEDIA_IS_SKU(skuTable, FtrVERing);
     MhwInterfacesNext *mhwInterfacesNext        = MhwInterfacesNext::CreateFactory(paramsNext, m_osInterface);
 
-    if (!mhwInterfacesNext)
-    {
-        MhwInterfaces::CreateParams params      = {};
-        params.Flags.m_sfc                      = MEDIA_IS_SKU(skuTable, FtrSFCPipe);
-        params.Flags.m_vebox                    = MEDIA_IS_SKU(skuTable, FtrVERing);
-        MhwInterfaces *mhwInterfaces            = MhwInterfaces::CreateFactory(params, m_osInterface);
+    VP_PUBLIC_CHK_NULL_RETURN(mhwInterfacesNext);
+    m_sfcItf         = mhwInterfacesNext->m_sfcItf;
+    m_veboxItf       = mhwInterfacesNext->m_veboxItf;
 
-        VP_PUBLIC_CHK_NULL_RETURN(mhwInterfaces);
+    // mi interface and cp interface will always be created during MhwInterfaces::CreateFactory.
+    // Delete them here since they will also be created by RenderHal_InitInterface.
+    MOS_Delete(mhwInterfacesNext->m_miInterface);
+    Delete_MhwCpInterface(mhwInterfacesNext->m_cpInterface);
+    MOS_Delete(mhwInterfacesNext);
 
-        m_sfcInterface                          = mhwInterfaces->m_sfcInterface;
-        m_veboxInterface                        = mhwInterfaces->m_veboxInterface;
-        m_sfcItf                                = nullptr;
-        m_veboxItf                              = nullptr;
+    VP_PUBLIC_CHK_NULL_RETURN(m_veboxItf);
+    const MHW_VEBOX_HEAP *veboxHeap = nullptr;
+    m_veboxItf->GetVeboxHeapInfo(&veboxHeap);
+    uint32_t uiNumInstances = m_veboxItf->GetVeboxNumInstances();
 
-        // mi interface and cp interface will always be created during MhwInterfaces::CreateFactory.
-        // Delete them here since they will also be created by RenderHal_InitInterface.
-        MOS_Delete(mhwInterfaces->m_miInterface);
-        Delete_MhwCpInterface(mhwInterfaces->m_cpInterface);
-        MOS_Delete(mhwInterfaces);
-    }
-    else
-    {
-        VP_PUBLIC_CHK_NULL_RETURN(mhwInterfacesNext);
-
-        m_sfcInterface                          = mhwInterfacesNext->m_sfcInterface;
-        m_veboxInterface                        = mhwInterfacesNext->m_veboxInterface;
-        m_sfcItf                                = mhwInterfacesNext->m_sfcItf;
-        m_veboxItf                              = mhwInterfacesNext->m_veboxItf;
-
-        // mi interface and cp interface will always be created during MhwInterfaces::CreateFactory.
-        // Delete them here since they will also be created by RenderHal_InitInterface.
-        MOS_Delete(mhwInterfacesNext->m_miInterface);
-        Delete_MhwCpInterface(mhwInterfacesNext->m_cpInterface);
-        MOS_Delete(mhwInterfacesNext);
-    }
-
-    if (m_veboxItf)
-    {
-        const MHW_VEBOX_HEAP* veboxHeap = nullptr;
-        m_veboxItf->GetVeboxHeapInfo(&veboxHeap);
-        uint32_t uiNumInstances = m_veboxItf->GetVeboxNumInstances();
-
-        if (uiNumInstances > 0 &&
-            veboxHeap == nullptr)
-        {
-            // Allocate VEBOX Heap
-            VP_PUBLIC_CHK_STATUS_RETURN(m_veboxItf->CreateHeap());
-        }
-    }
-    else if (m_veboxInterface &&
-        m_veboxInterface->m_veboxSettings.uiNumInstances > 0 &&
-        m_veboxInterface->m_veboxHeap == nullptr)
+    if (uiNumInstances > 0 &&
+        veboxHeap == nullptr)
     {
         // Allocate VEBOX Heap
-        VP_PUBLIC_CHK_STATUS_RETURN(m_veboxInterface->CreateHeap());
+        VP_PUBLIC_CHK_STATUS_RETURN(m_veboxItf->CreateHeap());
     }
 
     // Initialize render hal.
@@ -296,8 +251,6 @@ MOS_STATUS MediaSfcRender::Initialize()
     m_vpMhwinterface->m_skuTable               = skuTable;
     m_vpMhwinterface->m_osInterface            = m_osInterface;
     m_vpMhwinterface->m_renderHal              = m_renderHal;
-    m_vpMhwinterface->m_veboxInterface         = m_veboxInterface;
-    m_vpMhwinterface->m_sfcInterface           = m_sfcInterface;
     m_vpMhwinterface->m_cpInterface            = m_cpInterface;
     m_vpMhwinterface->m_mhwMiInterface         = m_renderHal->pMhwMiInterface;
     m_vpMhwinterface->m_statusTable            = m_statusTable;
@@ -423,8 +376,8 @@ MOS_STATUS MediaSfcRender::IsParameterSupported(
     }
 
     VP_PUBLIC_CHK_NULL_RETURN(sfcParam.output.surface);
-    VP_PUBLIC_CHK_NULL_RETURN(m_sfcInterface);
     VP_PUBLIC_CHK_NULL_RETURN(m_vdboxSfcRender);
+    VP_PUBLIC_CHK_NULL_RETURN(m_sfcItf);
 
     VpScalingFilter scalingFilter(m_vpMhwinterface);
     FeatureParamScaling scalingParams = {};
@@ -445,22 +398,25 @@ MOS_STATUS MediaSfcRender::IsParameterSupported(
     VP_PUBLIC_CHK_NULL_RETURN(params);
 
     // Check original input size (for JPEG)
-    if (!MOS_WITHIN_RANGE(sfcParam.input.width, m_sfcInterface->m_minWidth, m_sfcInterface->m_maxWidth) ||
-        !MOS_WITHIN_RANGE(sfcParam.input.height, m_sfcInterface->m_minHeight, m_sfcInterface->m_maxHeight))
+    uint32_t minWidth, minHeight, maxWidth, maxHeight;
+    VP_PUBLIC_CHK_STATUS_RETURN(m_sfcItf->GetMinWidthHeightInfo(minWidth, minHeight));
+    VP_PUBLIC_CHK_STATUS_RETURN(m_sfcItf->GetMaxWidthHeightInfo(maxWidth, maxHeight));
+    if (!MOS_WITHIN_RANGE(sfcParam.input.width, minWidth, maxWidth) ||
+        !MOS_WITHIN_RANGE(sfcParam.input.height, minHeight, maxHeight))
     {
         return MOS_STATUS_PLATFORM_NOT_SUPPORTED;
     }
 
     // Check input size
-    if (!MOS_WITHIN_RANGE(params->dwInputFrameWidth, m_sfcInterface->m_minWidth, m_sfcInterface->m_maxWidth) ||
-        !MOS_WITHIN_RANGE(params->dwInputFrameHeight, m_sfcInterface->m_minHeight, m_sfcInterface->m_maxHeight))
+    if (!MOS_WITHIN_RANGE(params->dwInputFrameWidth, minWidth, maxWidth) ||
+        !MOS_WITHIN_RANGE(params->dwInputFrameHeight, minHeight, maxHeight))
     {
         return MOS_STATUS_PLATFORM_NOT_SUPPORTED;
     }
 
     // Check output size
-    if (!MOS_WITHIN_RANGE(params->dwOutputFrameWidth, m_sfcInterface->m_minWidth, m_sfcInterface->m_maxWidth) ||
-        !MOS_WITHIN_RANGE(params->dwOutputFrameHeight, m_sfcInterface->m_minHeight, m_sfcInterface->m_maxHeight))
+    if (!MOS_WITHIN_RANGE(params->dwOutputFrameWidth, minWidth, maxWidth) ||
+        !MOS_WITHIN_RANGE(params->dwOutputFrameHeight, minHeight, maxHeight))
     {
         return MOS_STATUS_PLATFORM_NOT_SUPPORTED;
     }
@@ -472,9 +428,12 @@ MOS_STATUS MediaSfcRender::IsParameterSupported(
         return MOS_STATUS_PLATFORM_NOT_SUPPORTED;
     }
 
+    float minScalingRatio = 0, maxScalingRatio = 0;
+    VP_PUBLIC_CHK_STATUS_RETURN(m_sfcItf->GetScalingRatioLimit(minScalingRatio, maxScalingRatio));
+
     // Check scaling ratio
-    if (!MOS_WITHIN_RANGE(params->fAVSXScalingRatio, m_sfcInterface->m_minScalingRatio, m_sfcInterface->m_maxScalingRatio) ||
-        !MOS_WITHIN_RANGE(params->fAVSYScalingRatio, m_sfcInterface->m_minScalingRatio, m_sfcInterface->m_maxScalingRatio))
+    if (!MOS_WITHIN_RANGE(params->fAVSXScalingRatio, minScalingRatio, maxScalingRatio) ||
+        !MOS_WITHIN_RANGE(params->fAVSYScalingRatio, minScalingRatio, maxScalingRatio))
     {
         return MOS_STATUS_PLATFORM_NOT_SUPPORTED;
     }
@@ -498,7 +457,7 @@ MOS_STATUS MediaSfcRender::IsParameterSupported(
 
     VP_PUBLIC_CHK_NULL_RETURN(sfcParam.input.surface);
     VP_PUBLIC_CHK_NULL_RETURN(sfcParam.output.surface);
-    VP_PUBLIC_CHK_NULL_RETURN(m_sfcInterface);
+    VP_PUBLIC_CHK_NULL_RETURN(m_sfcItf);
 
     VpScalingFilter scalingFilter(m_vpMhwinterface);
     FeatureParamScaling scalingParams = {};
@@ -518,16 +477,21 @@ MOS_STATUS MediaSfcRender::IsParameterSupported(
     SFC_SCALING_PARAMS *params = scalingFilter.GetSfcParams();
     VP_PUBLIC_CHK_NULL_RETURN(params);
 
+    // Check original input size
+    uint32_t minWidth, minHeight, maxWidth, maxHeight;
+    VP_PUBLIC_CHK_STATUS_RETURN(m_sfcItf->GetMinWidthHeightInfo(minWidth, minHeight));
+    VP_PUBLIC_CHK_STATUS_RETURN(m_sfcItf->GetMaxWidthHeightInfo(maxWidth, maxHeight));
+
     // Check input size
-    if (!MOS_WITHIN_RANGE(params->dwInputFrameWidth, m_sfcInterface->m_minWidth, m_sfcInterface->m_maxWidth) ||
-        !MOS_WITHIN_RANGE(params->dwInputFrameHeight, m_sfcInterface->m_minHeight, m_sfcInterface->m_maxHeight))
+    if (!MOS_WITHIN_RANGE(params->dwInputFrameWidth, minWidth, maxWidth) ||
+        !MOS_WITHIN_RANGE(params->dwInputFrameHeight, minHeight, maxHeight))
     {
         return MOS_STATUS_PLATFORM_NOT_SUPPORTED;
     }
 
     // Check output size
-    if (!MOS_WITHIN_RANGE(params->dwOutputFrameWidth, m_sfcInterface->m_minWidth, m_sfcInterface->m_maxWidth) ||
-        !MOS_WITHIN_RANGE(params->dwOutputFrameHeight, m_sfcInterface->m_minHeight, m_sfcInterface->m_maxHeight))
+    if (!MOS_WITHIN_RANGE(params->dwOutputFrameWidth, minWidth, maxWidth) ||
+        !MOS_WITHIN_RANGE(params->dwOutputFrameHeight, minHeight, maxHeight))
     {
         return MOS_STATUS_PLATFORM_NOT_SUPPORTED;
     }
@@ -546,9 +510,11 @@ MOS_STATUS MediaSfcRender::IsParameterSupported(
         return MOS_STATUS_PLATFORM_NOT_SUPPORTED;
     }
 
+    float minScalingRatio = 0, maxScalingRatio = 0;
+    VP_PUBLIC_CHK_STATUS_RETURN(m_sfcItf->GetScalingRatioLimit(minScalingRatio, maxScalingRatio));
     // Check scaling ratio
-    if (!MOS_WITHIN_RANGE(params->fAVSXScalingRatio, m_sfcInterface->m_minScalingRatio, m_sfcInterface->m_maxScalingRatio) ||
-        !MOS_WITHIN_RANGE(params->fAVSYScalingRatio, m_sfcInterface->m_minScalingRatio, m_sfcInterface->m_maxScalingRatio))
+    if (!MOS_WITHIN_RANGE(params->fAVSXScalingRatio, minScalingRatio, maxScalingRatio) ||
+        !MOS_WITHIN_RANGE(params->fAVSYScalingRatio, minScalingRatio, maxScalingRatio))
     {
         return MOS_STATUS_PLATFORM_NOT_SUPPORTED;
     }

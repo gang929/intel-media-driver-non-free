@@ -108,6 +108,10 @@ public:
         CodechalHwInterface *hwInterface,
         CODECHAL_FUNCTION    codecFunction);
 
+    virtual MOS_STATUS Initialize(
+        CodechalHwInterfaceNext *hwInterface,
+        CODECHAL_FUNCTION        codecFunction);
+
     MOS_STATUS DumpHucDmem(
         PMOS_RESOURCE             dmemResource,
         uint32_t                  dmemSize,
@@ -134,9 +138,30 @@ public:
 
     void CheckGoldenReferenceExist();
 
-    CodechalHwInterface *m_hwInterface   = nullptr;
-    CODECHAL_FUNCTION    m_codecFunction = CODECHAL_FUNCTION_INVALID;
-    PCODECHAL_DBG_CFG    m_dbgCfgHead    = nullptr;
+    MOS_STATUS DumpYUVSurface(
+        PMOS_SURFACE           surface,
+        const char            *attrName,
+        const char            *surfName,
+        MEDIA_DEBUG_STATE_TYPE mediaState = CODECHAL_NUM_MEDIA_STATES,
+        uint32_t               width_in   = 0,
+        uint32_t               height_in  = 0) override;
+
+    MOS_STATUS DumpRgbDataOnYUVSurface(
+        PMOS_SURFACE           surface,
+        const char             *attrName,
+        const char             *surfName,
+        MEDIA_DEBUG_STATE_TYPE mediaState = CODECHAL_NUM_MEDIA_STATES,
+        uint32_t               width_in   = 0,
+        uint32_t               height_in  = 0) override;
+
+    MOS_STATUS DumpBltOutput(
+        PMOS_SURFACE surface,
+        const char  *attrName) override;
+
+    CodechalHwInterface     *m_hwInterface      = nullptr;
+    CodechalHwInterfaceNext *m_hwInterfaceNext  = nullptr;
+    CODECHAL_FUNCTION        m_codecFunction    = CODECHAL_FUNCTION_INVALID;
+    PCODECHAL_DBG_CFG        m_dbgCfgHead       = nullptr;
 
 protected:
     MOS_USER_FEATURE_VALUE_ID SetOutputPathKey() override;
@@ -144,23 +169,6 @@ protected:
     uint8_t *m_decodeOutputBuf = nullptr;
 
 MEDIA_CLASS_DEFINE_END(CodechalDebugInterface)
-};
-
-class CodechalDebugInterfaceG12 :public CodechalDebugInterface
-{
-public:
-    CodechalDebugInterfaceG12();
-    virtual ~CodechalDebugInterfaceG12();
-
-    MOS_STATUS DumpYUVSurface(
-        PMOS_SURFACE              surface,
-        const char *              attrName,
-        const char *              surfName,
-        MEDIA_DEBUG_STATE_TYPE    mediaState = CODECHAL_NUM_MEDIA_STATES,
-        uint32_t                  width_in   = 0,
-        uint32_t                  height_in  = 0) override;
-
-MEDIA_CLASS_DEFINE_END(CodechalDebugInterfaceG12)
 };
 #else
 #define USE_CODECHAL_DEBUG_TOOL 0

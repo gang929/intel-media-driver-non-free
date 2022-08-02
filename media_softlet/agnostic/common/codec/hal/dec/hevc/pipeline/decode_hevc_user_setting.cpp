@@ -45,12 +45,6 @@ MOS_STATUS HevcPipeline::InitUserSetting(MediaUserSettingSharedPtr userSettingPt
         true);
     DeclareUserSettingKey(
         userSettingPtr,
-        "Enable HCP Scalability Decode",
-        MediaUserSetting::Group::Sequence,
-        int32_t(0),
-        false);
-    DeclareUserSettingKey(
-        userSettingPtr,
         "RT Decoded Count",
         MediaUserSetting::Group::Sequence,
         int32_t(0),
@@ -137,12 +131,6 @@ MOS_STATUS HevcPipeline::InitUserSetting(MediaUserSettingSharedPtr userSettingPt
     DeclareUserSettingKeyForDebug(
         userSettingPtr,
         "Scalability Split Width In MinCb",
-        MediaUserSetting::Group::Sequence,
-        int32_t(0),
-        false);
-    DeclareUserSettingKeyForDebug(
-        userSettingPtr,
-        "Enable Decode VE CtxBasedScheduling",
         MediaUserSetting::Group::Sequence,
         int32_t(0),
         false);

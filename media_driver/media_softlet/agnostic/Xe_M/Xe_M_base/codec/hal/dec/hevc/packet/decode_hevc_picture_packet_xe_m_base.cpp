@@ -390,9 +390,17 @@ MOS_STATUS HevcDecodePicPktXe_M_Base::SetHcpRefSurfaceParams(
     DECODE_CHK_NULL(hevcDecodeMemComp);
     // Set refSurfaceParams mmcState as MOS_MEMCOMP_MC to satisfy MmcEnable in AddHcpSurfaceCmd
     // The actual mmcstate is recorded by refSurfaceParams.mmcSkipMask
-    refSurfaceParams.mmcState = MOS_MEMCOMP_MC;
-    DECODE_CHK_STATUS(hevcDecodeMemComp->SetRefSurfaceMask(*m_hevcBasicFeature, pipeBufAddrParams.presReferences, refSurfaceParams.mmcSkipMask));
-    DECODE_CHK_STATUS(hevcDecodeMemComp->SetRefSurfaceCompressionFormat(*m_hevcBasicFeature, pipeBufAddrParams.presReferences, refSurfaceParams.dwCompressionFormat));
+    if (m_mmcState->IsMmcEnabled())
+    {
+        refSurfaceParams.mmcState = MOS_MEMCOMP_MC;
+        DECODE_CHK_STATUS(hevcDecodeMemComp->SetRefSurfaceMask(*m_hevcBasicFeature, pipeBufAddrParams.presReferences, refSurfaceParams.mmcSkipMask));
+        DECODE_CHK_STATUS(hevcDecodeMemComp->SetRefSurfaceCompressionFormat(*m_hevcBasicFeature, pipeBufAddrParams.presReferences, refSurfaceParams.dwCompressionFormat));
+    }
+    else
+    {
+        refSurfaceParams.mmcState            = MOS_MEMCOMP_DISABLED;
+        refSurfaceParams.dwCompressionFormat = 0;
+    }
 #endif
 
     return MOS_STATUS_SUCCESS;
@@ -707,7 +715,7 @@ MOS_STATUS HevcDecodePicPktXe_M_Base::TraceDataDumpReferences(MHW_VDBOX_PIPE_BUF
                         m_tempRefSurf->UPlaneOffset.iSurfaceOffset,
                         m_tempRefSurf->VPlaneOffset.iSurfaceOffset,
                     };
-                    MOS_TraceEvent(EVENT_DECODE_REF_DUMPINFO, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0);
+                    MOS_TraceEvent(EVENT_DECODE_DUMPINFO_REF, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0);
 
                     bReport = true;
                 }

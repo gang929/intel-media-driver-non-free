@@ -143,10 +143,13 @@ protected:
         //! \param    [in] tileParams
         //!           Pointer to CodecAv1TileParams
         //!
+        //! \param    [in] tileNum
+        //!           Number of tiles
+        //!
         //! \return   MOS_STATUS
         //!           MOS_STATUS_SUCCESS if success, else fail reason
         //!
-        MOS_STATUS DumpBitstreamControlParams(CodecAv1TileParams *tileParams);
+        MOS_STATUS DumpBitstreamControlParams(CodecAv1TileParams *tileParams, uint32_t tileNum);
 #endif
 
 protected:
@@ -155,7 +158,7 @@ protected:
     uint16_t       m_passNum          = 1;                //!< Decode pass number
     bool           m_isFirstTileInFrm = true;             //!< First tile in the first frame
     bool           m_forceTileBasedDecoding = false;      //!< Force tile based decoding
-MEDIA_CLASS_DEFINE_END(Av1PipelineG12_Base)
+MEDIA_CLASS_DEFINE_END(decode__Av1PipelineG12_Base)
 };
 
 }

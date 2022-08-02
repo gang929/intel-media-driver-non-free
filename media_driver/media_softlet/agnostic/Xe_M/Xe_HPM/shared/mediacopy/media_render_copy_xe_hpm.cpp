@@ -28,10 +28,27 @@
 //!
 
 #include "media_render_copy_xe_hpm.h"
+#include "hal_kerneldll.h"
+#include "hal_kerneldll_next.h"
+#include "media_common_defs.h"
+#include "media_copy.h"
+#include "mhw_render.h"
+#include "mhw_state_heap.h"
+#include "mos_defs_specific.h"
+#include "mos_os.h"
+#include "mos_resource_defs.h"
+#include "mos_utilities.h"
+#include "renderhal.h"
+#include "umKmInc/UmKmDmaPerfTimer.h"
+#include "vp_common.h"
+#include "vphal.h"
+#include "vphal_render_common.h"
+#include "vpkrnheader.h"
 #if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 #include "igvpkrn_xe_hpg.h"
 #endif
 
+class MhwInterfaces;
 RenderCopy_Xe_Hpm::RenderCopy_Xe_Hpm(PMOS_INTERFACE  osInterface, MhwInterfaces *mhwInterfaces):
     RenderCopyState(osInterface, mhwInterfaces)
 {
@@ -353,6 +370,108 @@ MOS_STATUS RenderCopy_Xe_Hpm::SetupKernel(
     pRenderData->KernelEntry.iKCID = -1;
     pRenderData->KernelEntry.iSize = pCacheEntryTable[iKUID].iSize;
     pRenderData->KernelEntry.pBinary = pCacheEntryTable[iKUID].pBinary;
+
+    return eStatus;
+}
+
+//!
+ //! \brief    Render copy omputer walker setup
+ //! \details  Computer walker setup for render copy
+ //! \param    PMHW_WALKER_PARAMS pWalkerParams
+ //!           [in/out] Pointer to Walker params
+ //! \return   MOS_STATUS
+ //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+ //!
+ MOS_STATUS RenderCopy_Xe_Hpm::RenderCopyComputerWalker(
+ PMHW_GPGPU_WALKER_PARAMS    pWalkerParams)
+{
+    MOS_STATUS                              eStatus = MOS_STATUS_SUCCESS;
+    PMEDIACOPY_RENDER_DATA                  pRenderData = &m_RenderData;
+    RECT                                    AlignedRect;
+    int32_t                                 iBytePerPixelPerPlane = GetBytesPerPixelPerPlane(m_Target.Format);
+
+    MCPY_CHK_NULL_RETURN(pRenderData);
+
+    if ((iBytePerPixelPerPlane < 1) || (iBytePerPixelPerPlane > 8))
+    {
+        MCPY_ASSERTMESSAGE("RenderCopyComputerWalker wrong pixel size.");
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
+
+    if ((m_Target.Format == Format_YUY2) || (m_Target.Format == Format_Y210) || (m_Target.Format == Format_Y216)
+        || (m_Target.Format == Format_AYUV) || (m_Target.Format == Format_Y410) || (m_Target.Format == Format_Y416)
+        || (m_Target.Format == Format_A8R8G8B8))
+    {
+        if ((m_currKernelId == KERNEL_CopyKernel_1D_to_2D_Packed) || (m_currKernelId == KERNEL_CopyKernel_2D_to_1D_Packed))
+        {
+            m_WalkerHeightBlockSize = 32;
+        }
+        else if (m_currKernelId == KERNEL_CopyKernel_2D_to_2D_Packed)
+        {
+            m_WalkerHeightBlockSize = 8;
+        }
+        else
+        {
+            MCPY_ASSERTMESSAGE("RenderCopyComputerWalker wrong kernel file.");
+            return MOS_STATUS_INVALID_PARAMETER;
+        }
+    }
+    else
+    {
+        m_WalkerHeightBlockSize = 8;
+    }
+
+    if ((m_currKernelId == KERNEL_CopyKernel_2D_to_1D_Packed) ||
+        (m_currKernelId == KERNEL_CopyKernel_2D_to_1D_NV12) ||
+        (m_currKernelId == KERNEL_CopyKernel_2D_to_1D_Planar))
+    {
+        m_WalkerWidthBlockSize = 16;
+    }
+    else
+    {
+        m_WalkerWidthBlockSize = 128;
+    }
+    // Set walker cmd params - Rasterscan
+    MOS_ZeroMemory(pWalkerParams, sizeof(*pWalkerParams));
+
+
+    AlignedRect.left   = 0;
+    AlignedRect.top    = 0;
+    AlignedRect.right  = (m_Source.dwPitch < m_Target.dwPitch) ? m_Source.dwPitch : m_Target.dwPitch;
+    AlignedRect.bottom = (m_Source.dwHeight < m_Target.dwHeight) ? m_Source.dwHeight : m_Target.dwHeight;
+    // Calculate aligned output area in order to determine the total # blocks
+   // to process in case of non-16x16 aligned target.
+    AlignedRect.right += m_WalkerWidthBlockSize - 1;
+    AlignedRect.bottom += m_WalkerHeightBlockSize - 1;
+    AlignedRect.left -= AlignedRect.left % m_WalkerWidthBlockSize;
+    AlignedRect.top -= AlignedRect.top % m_WalkerHeightBlockSize;
+    AlignedRect.right -= AlignedRect.right % m_WalkerWidthBlockSize;
+    AlignedRect.bottom -= AlignedRect.bottom % m_WalkerHeightBlockSize;
+
+    pWalkerParams->InterfaceDescriptorOffset = pRenderData->iMediaID;
+
+    pWalkerParams->GroupStartingX = (AlignedRect.left / m_WalkerWidthBlockSize);
+    pWalkerParams->GroupStartingY = (AlignedRect.top / m_WalkerHeightBlockSize);
+
+    // Set number of blocks
+    pRenderData->iBlocksX =
+        ((AlignedRect.right - AlignedRect.left) + m_WalkerWidthBlockSize - 1) / m_WalkerWidthBlockSize;
+    pRenderData->iBlocksY =
+        ((AlignedRect.bottom - AlignedRect.top) + m_WalkerHeightBlockSize -1)/ m_WalkerHeightBlockSize;
+
+    // Set number of blocks, block size is m_WalkerWidthBlockSize x m_WalkerHeightBlockSize.
+    pWalkerParams->GroupWidth = pRenderData->iBlocksX;
+    pWalkerParams->GroupHeight = pRenderData->iBlocksY; // hight/m_WalkerWidthBlockSize
+
+    pWalkerParams->ThreadWidth = 1;
+    pWalkerParams->ThreadHeight = 1;
+    pWalkerParams->ThreadDepth = 1;
+    pWalkerParams->IndirectDataStartAddress = pRenderData->iCurbeOffset;
+    // Indirect Data Length is a multiple of 64 bytes (size of L3 cacheline). Bits [5:0] are zero.
+    pWalkerParams->IndirectDataLength = MOS_ALIGN_CEIL(pRenderData->iCurbeLength, 1 << MHW_COMPUTE_INDIRECT_SHIFT);
+    pWalkerParams->BindingTableID = pRenderData->iBindingTable;
+    MCPY_NORMALMESSAGE("WidthBlockSize %d, HeightBlockSize %d, Widththreads %d, Heightthreads%d",
+        m_WalkerWidthBlockSize, m_WalkerHeightBlockSize, pWalkerParams->GroupWidth, pWalkerParams->GroupHeight);
 
     return eStatus;
 }

@@ -24,34 +24,27 @@
 //! \brief       This module implements the MOS wrapper functions for Linux/Android
 //!
 
-#include "mos_utilities_specific.h"
-#include "mos_utilities.h"
-#include "mos_util_debug.h"
 #include <fcntl.h>     // open
 #include <stdlib.h>    // atoi
 #include <string.h>    // strlen, strcat, etc.
 #include <errno.h>     // strerror(errno)
 #include <time.h>      // get_clocktime
-#include <sys/stat.h>  // fstat
 #include <dlfcn.h>     // dlopen, dlsym, dlclose
-#include <sys/types.h>
 #include <unistd.h>
-#if _MEDIA_RESERVED
-#include "codechal_user_settings_mgr_ext.h"
-#include "vphal_user_settings_mgr_ext.h"
-#endif // _MEDIA_RESERVED
-#ifdef WDDM_LINUX
-#include "media_user_settings_mgr_specific.h"
-#endif
-#include "mos_user_setting.h"
-
-#include <sys/ipc.h>  // System V IPC
-#include <sys/types.h>
-#include <sys/sem.h>
 #include <signal.h>
 #include <unistd.h>  // fork
 #include <algorithm>
 #include <execinfo.h> // backtrace
+#include <sys/types.h>
+#include <sys/stat.h>  // fstat
+#include <sys/ipc.h>  // System V IPC
+#include <sys/types.h>
+#include <sys/sem.h>
+#include "mos_user_setting.h"
+#include "mos_utilities_specific.h"
+#include "mos_utilities.h"
+#include "mos_util_debug.h"
+
 
 const char           *MosUtilitiesSpecificNext::m_szUserFeatureFile     = USER_FEATURE_FILE;
 MOS_PUF_KEYLIST      MosUtilitiesSpecificNext::m_ufKeyList              = nullptr;
@@ -112,11 +105,6 @@ MosMutex          MosUtilitiesSpecificNext::m_userSettingMutex;
 //!
 MosMutex MosUtilities::m_mutexLock;
 uint32_t MosUtilities::m_mosUtilInitCount = 0; // number count of mos utilities init
-
-#if _MEDIA_RESERVED
-MediaUserSettingsMgr *MosUtilities::m_codecUserFeatureExt = nullptr;
-MediaUserSettingsMgr *MosUtilities::m_vpUserFeatureExt    = nullptr;
-#endif
 
 MediaUserSettingsMgr *MosUtilities::m_mediaUserFeatureSpecific  = nullptr;
 
@@ -1028,9 +1016,12 @@ MOS_STATUS MosUtilitiesSpecificNext::UserFeatureDumpDataToFile(const char *szFil
                         (char *)(pKeyTmp->pElem->pValueArray[j].ulValueBuf));
                     break;
                 case UF_DWORD:
-                case UF_QWORD:
-                    fprintf(File, "\t\t\t%d\n",
+                    fprintf(File, "\t\t\t%u\n",
                         *(uint32_t*)(pKeyTmp->pElem->pValueArray[j].ulValueBuf));
+                    break;
+                case UF_QWORD:
+                    fprintf(File, "\t\t\t%lu\n",
+                        *(uint64_t*)(pKeyTmp->pElem->pValueArray[j].ulValueBuf));
                     break;
                 default:
                     fprintf(File, "\t\t\t%s\n",
@@ -1322,10 +1313,9 @@ MOS_STATUS MosUtilitiesSpecificNext::MosUserFeatureSetValueExFile(
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MosOsUtilitiesInit(MOS_CONTEXT_HANDLE mosCtx)
+MOS_STATUS MosUtilities::MosOsUtilitiesInit(MediaUserSettingSharedPtr userSettingPtr)
 {
     MOS_STATUS     eStatus = MOS_STATUS_SUCCESS;
-    MOS_UNUSED(mosCtx);
 
     // lock mutex to avoid multi init in multi-threading env
     m_mutexLock.Lock();
@@ -1355,20 +1345,19 @@ MOS_STATUS MosUtilities::MosOsUtilitiesInit(MOS_CONTEXT_HANDLE mosCtx)
     if (m_mosUtilInitCount == 0)
     {
         //Init MOS User Feature Key from mos desc table
-        eStatus = MosUserSetting::InitMosUserSetting(nullptr);
-        eStatus = MosDeclareUserFeatureKeysForAllDescFields();
+        //
+        //Destroy the user setting instance which created for mavd user setting reset.
+        //Will remove this destroy once it moves the usersetting instacne to mediacontext.
+        MosUserSetting::DestroyMediaUserSetting();
+
+        eStatus = MosUserSetting::InitMosUserSetting(userSettingPtr);
         MosUtilitiesSpecificNext::UserFeatureDumpFile(MosUtilitiesSpecificNext::m_szUserFeatureFile, &MosUtilitiesSpecificNext::m_ufKeyList);
-#if _MEDIA_RESERVED
-        m_codecUserFeatureExt = new CodechalUserSettingsMgr();
-        m_vpUserFeatureExt    = new VphalUserSettingsMgr();
-#endif
-#ifdef WDDM_LINUX
-        m_mediaUserFeatureSpecific = new MediaUserSettingsMgrSpecific();
-#endif
-        eStatus = MosGenerateUserFeatureKeyXML(mosCtx);
+
+        MosDeclareUserFeature();
+
 #if MOS_MESSAGES_ENABLED
         // Initialize MOS message params structure and HLT
-        MosUtilDebug::MosMessageInit(nullptr);
+        MosUtilDebug::MosMessageInit(userSettingPtr);
 #endif // MOS_MESSAGES_ENABLED
         m_mosMemAllocCounter     = 0;
         m_mosMemAllocFakeCounter = 0;
@@ -1381,7 +1370,7 @@ MOS_STATUS MosUtilities::MosOsUtilitiesInit(MOS_CONTEXT_HANDLE mosCtx)
     return eStatus;
 }
 
-MOS_STATUS MosUtilities::MosOsUtilitiesClose(MOS_CONTEXT_HANDLE mosCtx)
+MOS_STATUS MosUtilities::MosOsUtilitiesClose(MediaUserSettingSharedPtr userSettingPtr)
 {
     int32_t                             memoryCounter = 0;
     MOS_STATUS                          eStatus = MOS_STATUS_SUCCESS;
@@ -1399,31 +1388,12 @@ MOS_STATUS MosUtilities::MosOsUtilitiesClose(MOS_CONTEXT_HANDLE mosCtx)
         MOS_OS_VERBOSEMESSAGE("MemNinja leak detection end");
 
         ReportUserSetting(
-            nullptr,
+            userSettingPtr,
             __MEDIA_USER_FEATURE_VALUE_MEMNINJA_COUNTER,
             memoryCounter,
             MediaUserSetting::Group::Device);
 
-        eStatus = MosDestroyUserFeatureKeysForAllDescFields();
-#if _MEDIA_RESERVED
-        if (m_codecUserFeatureExt)
-        {
-            delete m_codecUserFeatureExt;
-            m_codecUserFeatureExt = nullptr;
-        }
-        if (m_vpUserFeatureExt)
-        {
-            delete m_vpUserFeatureExt;
-            m_vpUserFeatureExt = nullptr;
-        }
-#endif // _MEDIA_RESERVED
-#ifdef WDDM_LINUX
-        if (m_mediaUserFeatureSpecific)
-        {
-            delete m_mediaUserFeatureSpecific;
-            m_mediaUserFeatureSpecific = nullptr;
-        }
-#endif
+        MosDestroyUserFeature();
         MosUserSetting::DestroyMediaUserSetting();
 
 #if (_DEBUG || _RELEASE_INTERNAL)
@@ -1592,6 +1562,16 @@ MOS_STATUS MosUtilities::MosUninitializeReg(RegBufferMap &regBufferMap)
     {
         return MOS_STATUS_SUCCESS;
     }
+
+    auto iter = regBufferMap.find(USER_SETTING_REPORT_PATH);
+    // No need to write the user setting files if no session [report].
+    // The session [config] is read only.
+    if(iter == regBufferMap.end() || iter->second.size() == 0)
+    {
+        MOS_OS_NORMALMESSAGE("no report session");
+        return MOS_STATUS_SUCCESS;
+    }
+
     std::ofstream regStream;
     try
     {

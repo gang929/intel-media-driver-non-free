@@ -26,6 +26,8 @@
 //!
 #include "media_sfc_interface.h"
 #include "media_sfc_render.h"
+#include "media_sfc_render_legacy.h"
+#include "mos_utilities.h"
 #include "vp_utils.h"
 
 MediaSfcInterface::MediaSfcInterface(PMOS_INTERFACE osInterface, MediaMemComp *mmc) : m_osInterface(osInterface), m_mmc(mmc)
@@ -82,8 +84,10 @@ MOS_STATUS MediaSfcInterface::Initialize(MEDIA_SFC_INTERFACE_MODE mode)
     {
         Destroy();
     }
+
     m_sfcRender = MOS_New(MediaSfcRender, m_osInterface, mode, m_mmc);
     VP_PUBLIC_CHK_NULL_RETURN(m_sfcRender);
     VP_PUBLIC_CHK_STATUS_RETURN(m_sfcRender->Initialize());
+
     return MOS_STATUS_SUCCESS;
 }

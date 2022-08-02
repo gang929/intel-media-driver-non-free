@@ -74,7 +74,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if supported, otherwise failed
     //!
-    MOS_STATUS IsParameterSupported(VDBOX_SFC_PARAMS &param);
+    virtual MOS_STATUS IsParameterSupported(VDBOX_SFC_PARAMS &param);
 
     //!
     //! \brief    Check whether the Parameter for VEBOX-SFC supported
@@ -84,7 +84,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if supported, otherwise failed
     //!
-    MOS_STATUS IsParameterSupported(VEBOX_SFC_PARAMS &param);
+    virtual MOS_STATUS IsParameterSupported(VEBOX_SFC_PARAMS &param);
 
     //!
     //! \brief    Render Vdbox-SFC States
@@ -125,8 +125,6 @@ protected:
     vp::VpPipeline          *m_vpPipeline           = nullptr;
     _RENDERHAL_INTERFACE    *m_renderHal            = nullptr;
     MhwCpInterface          *m_cpInterface          = nullptr;
-    MhwSfcInterface         *m_sfcInterface         = nullptr;
-    MhwVeboxInterface       *m_veboxInterface       = nullptr;
     _VPHAL_STATUS_TABLE     *m_statusTable          = nullptr;
     PMOS_INTERFACE          m_osInterface           = nullptr;
     MediaVdboxSfcRender     *m_vdboxSfcRender       = nullptr;

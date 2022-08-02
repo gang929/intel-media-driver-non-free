@@ -79,20 +79,6 @@ MOS_STATUS EncodePipeline::InitUserSetting(MediaUserSettingSharedPtr userSetting
         int32_t(0),
         true);
 
-    DeclareUserSettingKey(
-        userSettingPtr,
-        "Encode MMC In Use",
-        MediaUserSetting::Group::Sequence,
-        int32_t(0),
-        true);
-
-    DeclareUserSettingKey(
-        userSettingPtr,
-        "Enable Encode MMC",
-        MediaUserSetting::Group::Sequence,
-        int32_t(0),
-        false);
-
 #if (_DEBUG || _RELEASE_INTERNAL)
     DeclareUserSettingKeyForDebug(
         userSettingPtr,
@@ -109,12 +95,6 @@ MOS_STATUS EncodePipeline::InitUserSetting(MediaUserSettingSharedPtr userSetting
     DeclareUserSettingKeyForDebug(
         userSettingPtr,
         "Encode RateControl Method",
-        MediaUserSetting::Group::Sequence,
-        (int32_t)0,
-        true);
-    DeclareUserSettingKeyForDebug(
-        userSettingPtr,
-        "Simulation In Use",
         MediaUserSetting::Group::Sequence,
         (int32_t)0,
         true);
@@ -165,6 +145,12 @@ MOS_STATUS EncodePipeline::InitUserSetting(MediaUserSettingSharedPtr userSetting
         "CodecHal Debug Output Directory",
         MediaUserSetting::Group::Sequence,
         "",
+        false);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "FAST PAK ENABLE",
+        MediaUserSetting::Group::Sequence,
+        int32_t(1),
         false);
 #endif
 

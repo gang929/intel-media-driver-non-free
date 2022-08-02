@@ -40,7 +40,7 @@ function(gen_kernel_from_asm)
     set(link_file ${krn_dir}/component_release/LinkFile.txt)
     set(krn ig${name}krn_${genx}_${kind})
     set(header ${CMAKE_CURRENT_LIST_DIR}/${name}krnheader.h)
-    set(common_header ${CMAKE_SOURCE_DIR}/media_driver/agnostic/common/vp/kernel/${name}krnheader.h)
+    set(common_header ${CMAKE_SOURCE_DIR}/media_common/agnostic/common/vp/kernel/${name}krnheader.h)
     set(cache_dir ${CMAKE_SOURCE_DIR}/media_driver/agnostic/${platform}/vp/kernel_free/cache_kernel)
     set(cache_hex_dir ${cache_dir}/hex)
 
@@ -128,4 +128,7 @@ source_group( "Kernel\\VpKernel" FILES ${TMP_SOURCES_} ${TMP_HEADERS_} )
 set(TMP_SOURCES_ "")
 set(TMP_HEADERS_ "")
 
-media_add_curr_to_include_path()
+set(VP_PRIVATE_INCLUDE_DIRS_
+    ${VP_PRIVATE_INCLUDE_DIRS_}
+    ${CMAKE_CURRENT_LIST_DIR}
+)

@@ -26,7 +26,10 @@
 //!
 
 #include "media_copy.h"
-#include "vphal_debug.h"
+#include "media_copy_common.h"
+#include "vp_dumper.h"
+#include "mhw_cp_interface.h"
+#include "mos_utilities.h"
 
 MediaCopyBaseState::MediaCopyBaseState():
     m_osInterface(nullptr)
@@ -37,21 +40,6 @@ MediaCopyBaseState::MediaCopyBaseState():
 MediaCopyBaseState::~MediaCopyBaseState()
 {
     MOS_STATUS              eStatus;
-
-    if (m_mhwInterfaces)
-    {
-        if (m_mhwInterfaces->m_cpInterface)
-        {
-            Delete_MhwCpInterface(m_mhwInterfaces->m_cpInterface);
-            m_mhwInterfaces->m_cpInterface = nullptr;
-        }
-        MOS_Delete(m_mhwInterfaces->m_miInterface);
-        MOS_Delete(m_mhwInterfaces->m_veboxInterface);
-        MOS_Delete(m_mhwInterfaces->m_bltInterface);
-        MOS_Delete(m_mhwInterfaces->m_renderInterface);
-        MOS_Delete(m_mhwInterfaces);
-        m_mhwInterfaces = nullptr;
-    }
 
     if (m_osInterface)
     {
@@ -82,7 +70,7 @@ MediaCopyBaseState::~MediaCopyBaseState()
 //! \return   MOS_STATUS
 //!           Return MOS_STATUS_SUCCESS if success, otherwise return failed.
 //!
-MOS_STATUS MediaCopyBaseState::Initialize(PMOS_INTERFACE osInterface, MhwInterfaces *mhwInterfaces)
+MOS_STATUS MediaCopyBaseState::Initialize(PMOS_INTERFACE osInterface)
 {
     if (m_inUseGPUMutex == nullptr)
     {
@@ -93,7 +81,7 @@ MOS_STATUS MediaCopyBaseState::Initialize(PMOS_INTERFACE osInterface, MhwInterfa
    #if (_DEBUG || _RELEASE_INTERNAL)
     if (m_surfaceDumper == nullptr)
     {
-       m_surfaceDumper = MOS_New(VphalSurfaceDumper, osInterface);
+       m_surfaceDumper = MOS_New(VpSurfaceDumper, osInterface);
        MOS_OS_CHK_NULL_RETURN(m_surfaceDumper);
     }
    #endif
@@ -214,6 +202,8 @@ MOS_STATUS MediaCopyBaseState::SurfaceCopy(PMOS_RESOURCE src, PMOS_RESOURCE dst,
     m_mcpySrc.CpMode          = src->pGmmResInfo->GetSetCpSurfTag(false, 0)?MCPY_CPMODE_CP:MCPY_CPMODE_CLEAR;
     m_mcpySrc.TileMode        = ResDetails.TileType;
     m_mcpySrc.OsRes           = src;
+    MCPY_NORMALMESSAGE("input surface's format %d, width %d; hight %d, pitch %d, tiledmode %d, mmc mode %d",
+        ResDetails.Format, ResDetails.dwWidth, ResDetails.dwHeight, ResDetails.dwPitch, m_mcpySrc.TileMode, m_mcpySrc.CompressionMode);
 
     MOS_ZeroMemory(&ResDetails, sizeof(MOS_SURFACE));
     MCPY_CHK_STATUS_RETURN(m_osInterface->pfnGetResourceInfo(m_osInterface, dst, &ResDetails));
@@ -221,6 +211,8 @@ MOS_STATUS MediaCopyBaseState::SurfaceCopy(PMOS_RESOURCE src, PMOS_RESOURCE dst,
     m_mcpyDst.CpMode          = dst->pGmmResInfo->GetSetCpSurfTag(false, 0)?MCPY_CPMODE_CP:MCPY_CPMODE_CLEAR;
     m_mcpyDst.TileMode        = ResDetails.TileType;
     m_mcpyDst.OsRes           = dst;
+    MCPY_NORMALMESSAGE("Output surface's format %d, width %d; hight %d, pitch %d, tiledmode %d, mmc mode %d",
+        ResDetails.Format, ResDetails.dwWidth, ResDetails.dwHeight, ResDetails.dwPitch, m_mcpyDst.TileMode, m_mcpyDst.CompressionMode);
 
     MCPY_CHK_STATUS_RETURN(PreProcess(preferMethod));
 

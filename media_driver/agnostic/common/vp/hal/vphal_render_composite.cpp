@@ -5241,7 +5241,7 @@ bool CompositeState::RenderBuffer(
     PMHW_BATCH_BUFFER               pBatchBuffer,
     PVPHAL_RENDERING_DATA_COMPOSITE pRenderingData)
 {
-    PRENDERHAL_INTERFACE                pRenderHal;
+    PRENDERHAL_INTERFACE_LEGACY         pRenderHal;
     PMHW_MI_INTERFACE                   pMhwMiInterface;
     MOS_STATUS                          eStatus;
     PVPHAL_BB_COMP_ARGS                 pBbArgs;
@@ -6330,7 +6330,7 @@ MOS_STATUS CompositeState::RenderPhase(
         Kdll_SearchState *pSearchState = &m_KernelSearch;
 
         // Remove kernel entry from kernel caches
-        if (bKernelEntryUpdate)
+        if (bKernelEntryUpdate && pKernelEntry)
         {
             KernelDll_ReleaseHashEntry(&(pKernelDllState->KernelHashTable), pKernelEntry->wHashEntry);
             KernelDll_ReleaseCacheEntry(&(pKernelDllState->KernelCache), pKernelEntry);
@@ -6628,15 +6628,10 @@ bool CompositeState::BuildFilter(
         }
 
         //--------------------------------
-        // Composition path does not support conversion from BT2020 RGB to BT2020 YUV, BT2020->BT601/BT709, BT601/BT709 -> BT2020
+        // Composition path does not support conversion from BT2020->BT601/BT709, BT601/BT709 -> BT2020
         //--------------------------------
-        if (IS_COLOR_SPACE_BT2020_RGB(pSrc->ColorSpace)   &&
-            IS_COLOR_SPACE_BT2020_YUV(pCompParams->Target[0].ColorSpace))  //BT2020 RGB->BT2020 YUV
-        {
-            eStatus = MOS_STATUS_UNIMPLEMENTED;
-        }
-        else if (IS_COLOR_SPACE_BT2020(pSrc->ColorSpace) &&
-                 !IS_COLOR_SPACE_BT2020(pCompParams->Target[0].ColorSpace)) //BT2020->BT601/BT709
+        if (IS_COLOR_SPACE_BT2020(pSrc->ColorSpace) &&
+            !IS_COLOR_SPACE_BT2020(pCompParams->Target[0].ColorSpace)) //BT2020->BT601/BT709
         {
             eStatus = MOS_STATUS_UNIMPLEMENTED;
         }
@@ -7179,7 +7174,7 @@ bool CompositeState::IsSamplerLumakeySupported(PVPHAL_SURFACE pSrc)
     // 5 Enable sampler lumakey only on YUY2 and NV12 surfaces due to hw limitation.
     // 6 Enable sampler lumakey feature only if this lumakey layer is not the bottom layer.
     // 7 Enable sampler lumakey only when sample unorm being used.
-    // 8 Disable sampler lumakey for mirror case, since mirror is done after sampler scaling, which cause the lumakey mask
+    // 8 Disable sampler lumakey for mirror/rotation case
     //   not matching the layer any more.
     return m_bEnableSamplerLumakey                                                              &&
             pSrc->pLumaKeyParams != NULL                                                        &&
@@ -7188,7 +7183,7 @@ bool CompositeState::IsSamplerLumakeySupported(PVPHAL_SURFACE pSrc)
             (pSrc->Format == Format_YUY2 || pSrc->Format == Format_NV12)                        &&
             pSrc->iLayerID                                                                      &&
             pSrc->bUseSampleUnorm                                                               &&
-            pSrc->Rotation < VPHAL_MIRROR_HORIZONTAL;
+            pSrc->Rotation == VPHAL_ROTATION_IDENTITY;
 }
 
 //!

@@ -29,11 +29,13 @@ set(TMP_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/mos_util_user_interface.h
 )
 
-set(HEADERS_
-    ${HEADERS_}
+set(SOFTLET_MOS_COMMON_HEADERS_
+    ${SOFTLET_MOS_COMMON_HEADERS_}
     ${TMP_HEADERS_}
 )
+set(SOFTLET_MOS_PUBLIC_INCLUDE_DIRS_
+    ${SOFTLET_MOS_PUBLIC_INCLUDE_DIRS_}
+    ${CMAKE_CURRENT_LIST_DIR}
+)
 
-source_group( "MOS" FILES ${TMP_HEADERS_} )
-
-media_add_curr_to_include_path()
+source_group( "mos_softlet" FILES ${TMP_HEADERS_} )

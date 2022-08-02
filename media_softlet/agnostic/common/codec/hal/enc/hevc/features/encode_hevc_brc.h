@@ -47,14 +47,6 @@ namespace encode
         uint32_t  FrameByteCount;
         uint8_t   PAKPassNum;
     };
-    //!
-    //! \struct VdencBrcPakMmio
-    //! \brief  MMIO of BRC and PAK
-    //!
-    struct VdencBrcPakMmio
-    {
-        uint32_t dwReEncode[4];
-    };
 
     //!
     //! \struct    HevcVdencBrcBuffers
@@ -280,17 +272,6 @@ namespace encode
         MOS_STATUS GetBrcDataBuffer(MOS_RESOURCE *&buffer);
 
         //!
-        //! \brief  Set regions for brc update
-        //! \param  [in] params
-        //!         Pointer to parameters
-        //! \param  [in] currRecycledIndex
-        //!         current recycled index
-        //! \return MOS_STATUS
-        //!         MOS_STATUS_SUCCESS if success, else fail reason
-        //!
-        MOS_STATUS SetRegionsForUpdate(MHW_VDBOX_HUC_VIRTUAL_ADDR_PARAMS& params, uint32_t currRecycledBufIdx);
-
-        //!
         //! \brief  Set Dmem buffer for brc update
         //! \param  [in] params
         //!         Pointer to parameters
@@ -435,6 +416,7 @@ namespace encode
         bool m_hevcVDEncAcqpEnabled = false;  //!< ACQP enable flag
         bool m_vdencBrcEnabled      = false;  //!< Vdenc bitrate control enabled flag
         bool m_vdencHucUsed         = false;  //!< HUC usage flag
+        bool m_fastPakEnable        = true;
 
         //Resources
         MHW_BATCH_BUFFER m_vdenc2ndLevelBatchBuffer[CODECHAL_ENCODE_RECYCLED_BUFFER_NUM] = {};  //!< VDEnc 2nd level batch buffer
@@ -448,7 +430,7 @@ namespace encode
         MHW_VDBOX_NODE_IND m_vdboxIndex = MHW_VDBOX_NODE_1;
         uint32_t           m_currRecycledBufIdx = 0;
 
-    MEDIA_CLASS_DEFINE_END(HEVCEncodeBRC)
+    MEDIA_CLASS_DEFINE_END(encode__HEVCEncodeBRC)
     };
 
 }  // namespace encode

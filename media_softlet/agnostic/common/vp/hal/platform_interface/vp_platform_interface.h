@@ -27,7 +27,7 @@
 #ifndef __VP_PLATFORM_INTERFACE_H__
 #define __VP_PLATFORM_INTERFACE_H__
 
-#include "hal_kerneldll.h"
+#include "hal_kerneldll_next.h"
 #include "vp_feature_manager.h"
 #include "vp_render_common.h"
 #include "vp_kernel_config.h"
@@ -132,7 +132,7 @@ protected:
 public:
     const static std::string          s_kernelNameNonAdvKernels;
 
-MEDIA_CLASS_DEFINE_END(VpRenderKernel)
+MEDIA_CLASS_DEFINE_END(vp__VpRenderKernel)
 };
 
 using KERNEL_POOL = std::map<std::string, VpRenderKernel>;
@@ -229,7 +229,7 @@ public:
         CODECHAL_STANDARD         codecStandard,
         CodecDecodeJpegChromaType jpegChromaType);
 
-    virtual bool IsVeboxScalabilitywith4K(
+    virtual bool VeboxScalabilitywith4K(
         VP_MHWINTERFACE           vpMhwInterface);
 
     virtual MOS_STATUS GetVeboxHeapInfo(
@@ -301,6 +301,8 @@ public:
 
     virtual MOS_STATUS ConfigVirtualEngine() = 0;
 
+    virtual MOS_STATUS ConfigureVpScalability(VP_MHWINTERFACE &vpMhwInterface) = 0;
+
     virtual bool IsEufusionBypassWaEnabled()
     {
         return false;
@@ -320,7 +322,7 @@ protected:
     std::shared_ptr<mhw::render::Itf>       m_renderItf = nullptr;
     std::shared_ptr<mhw::mi::Itf>           m_miItf     = nullptr;
 
-    MEDIA_CLASS_DEFINE_END(VpPlatformInterface)
+    MEDIA_CLASS_DEFINE_END(vp__VpPlatformInterface)
 };
 
 }

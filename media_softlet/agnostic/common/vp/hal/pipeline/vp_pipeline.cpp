@@ -73,8 +73,9 @@ VpPipeline::~VpPipeline()
         MOS_Delete(m_reporting);
         m_vpMhwInterface.m_reporting = nullptr;
     }
+#if ((_DEBUG || _RELEASE_INTERNAL) && !EMUL)
     VP_DEBUG_INTERFACE_DESTROY(m_debugInterface);
-
+#endif
     if (m_mediaContext)
     {
         MOS_Delete(m_mediaContext);
@@ -190,6 +191,17 @@ MOS_STATUS VpPipeline::CreateUserFeatureControl()
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS VpPipeline::CreateVPDebugInterface()
+{
+    VP_FUNC_CALL();
+
+#if ((_DEBUG || _RELEASE_INTERNAL) && !EMUL)
+    VP_DEBUG_INTERFACE_CREATE(m_debugInterface);
+    SkuWaTable_DUMP_XML(m_skuTable, m_waTable);
+#endif
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS VpPipeline::Init(void *mhwInterface)
 {
     VP_FUNC_CALL();
@@ -198,7 +210,19 @@ MOS_STATUS VpPipeline::Init(void *mhwInterface)
 
     m_vpMhwInterface = *(PVP_MHWINTERFACE)mhwInterface;
 
+    if (m_vpMhwInterface.m_userFeatureControl)
+    {
+        m_userFeatureControl = m_vpMhwInterface.m_userFeatureControl;
+    }
+    else
+    {
+        VP_PUBLIC_CHK_STATUS_RETURN(CreateUserFeatureControl());
+        m_vpMhwInterface.m_userFeatureControl = m_userFeatureControl;
+    }
+
     VP_PUBLIC_CHK_STATUS_RETURN(m_vpMhwInterface.m_vpPlatformInterface->ConfigVirtualEngine());
+
+    VP_PUBLIC_CHK_STATUS_RETURN(m_vpMhwInterface.m_vpPlatformInterface->ConfigureVpScalability(m_vpMhwInterface));
 
     VP_PUBLIC_CHK_STATUS_RETURN(MediaPipeline::InitPlatform());
     VP_PUBLIC_CHK_STATUS_RETURN(MediaPipeline::CreateMediaCopy());
@@ -220,10 +244,7 @@ MOS_STATUS VpPipeline::Init(void *mhwInterface)
     VP_PUBLIC_CHK_STATUS_RETURN(CreateFeatureManager());
     VP_PUBLIC_CHK_NULL_RETURN(m_featureManager);
     VP_PUBLIC_CHK_STATUS_RETURN(InitUserFeatureSetting());
-#if (_DEBUG || _RELEASE_INTERNAL)
-    VP_DEBUG_INTERFACE_CREATE(m_debugInterface)
-    SkuWaTable_DUMP_XML(m_skuTable, m_waTable)
-#endif
+    VP_PUBLIC_CHK_STATUS_RETURN(CreateVPDebugInterface());
 
     m_vpMhwInterface.m_debugInterface = (void*)m_debugInterface;
 
@@ -245,16 +266,6 @@ MOS_STATUS VpPipeline::Init(void *mhwInterface)
     VP_PUBLIC_CHK_STATUS_RETURN(SetVideoProcessingSettings(m_vpMhwInterface.m_settings));
 
     m_vpMhwInterface.m_settings = m_vpSettings;
-
-    if (m_vpMhwInterface.m_userFeatureControl)
-    {
-        m_userFeatureControl = m_vpMhwInterface.m_userFeatureControl;
-    }
-    else
-    {
-        VP_PUBLIC_CHK_STATUS_RETURN(CreateUserFeatureControl());
-        m_vpMhwInterface.m_userFeatureControl = m_userFeatureControl;
-    }
 
     if (m_vpMhwInterface.m_vpPlatformInterface->IsGpuContextCreatedInPipelineInit())
     {
@@ -308,6 +319,7 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
         // Set Pipeline status Table
         m_statusReport->SetPipeStatusReportParams(params, m_vpMhwInterface.m_statusTable);
 
+#if ((_DEBUG || _RELEASE_INTERNAL) && !EMUL)
         VP_PARAMETERS_DUMPPER_DUMP_XML(m_debugInterface,
             params,
             m_frameCounter);
@@ -320,6 +332,7 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
                 uiLayer,
                 VPHAL_DUMP_TYPE_PRE_ALL);
         }
+#endif
         // Predication
         SetPredicationParams(params);
 
@@ -380,6 +393,7 @@ MOS_STATUS VpPipeline::UpdateExecuteStatus()
     VP_FUNC_CALL();
 
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+#if ((_DEBUG || _RELEASE_INTERNAL) && !EMUL)
     if (PIPELINE_PARAM_TYPE_LEGACY == m_pvpParams.type)
     {
         PVP_PIPELINE_PARAMS params = m_pvpParams.renderParams;
@@ -391,34 +405,18 @@ MOS_STATUS VpPipeline::UpdateExecuteStatus()
             m_frameCounter,
             VPHAL_DUMP_TYPE_POST_ALL);
 
-#if ((_DEBUG || _RELEASE_INTERNAL) && !EMUL)
         // Decompre output surface for debug
         bool uiForceDecompressedOutput = false;
-        bool forceDecompressedOutput   = false;
-
-        MOS_STATUS eStatus1 = ReadUserSettingForDebug(
-            m_userSettingPtr,
-            forceDecompressedOutput,
-            __VPHAL_RNDR_FORCE_VP_DECOMPRESSED_OUTPUT,
-            MediaUserSetting::Group::Sequence);
-
-        if (eStatus1 == MOS_STATUS_SUCCESS)
-        {
-            uiForceDecompressedOutput = forceDecompressedOutput;
-        }
-        else
-        {
-            uiForceDecompressedOutput = false;
-        }
+        uiForceDecompressedOutput = m_userFeatureControl->IsForceDecompressedOutput();
 
         if (uiForceDecompressedOutput)
         {
             VP_PUBLIC_NORMALMESSAGE("uiForceDecompressedOutput: %d", uiForceDecompressedOutput);
             m_mmc->DecompressVPResource(params->pTarget[0]);
         }
-#endif
     }
 finish:
+#endif
     return eStatus;
 }
 
@@ -448,19 +446,27 @@ MOS_STATUS VpPipeline::CreateSwFilterPipe(VP_PARAMS &params, std::vector<SwFilte
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS VpPipeline::GetSystemVeboxNumber()
+MOS_STATUS VpPipeline::UpdateVeboxNumberforScalability()
 {
     VP_FUNC_CALL();
 
+    VP_PUBLIC_CHK_NULL_RETURN(m_vpMhwInterface.m_vpPlatformInterface);
+
     // Check whether scalability being disabled.
     int32_t enableVeboxScalability = 0;
+
+    if (m_numVebox <= 0)
+    {
+        VP_PUBLIC_NORMALMESSAGE("Vebox Number of Enabled %d", m_numVebox);
+        return MOS_STATUS_SUCCESS;
+    }
 
     MOS_STATUS statusKey = MOS_STATUS_SUCCESS;
     statusKey = ReadUserSetting(
         m_userSettingPtr,
         enableVeboxScalability,
         __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE,
-        MediaUserSetting::Group::Sequence);
+        MediaUserSetting::Group::Device);
 
     bool disableScalability = false;
     if (statusKey == MOS_STATUS_SUCCESS)
@@ -483,16 +489,25 @@ MOS_STATUS VpPipeline::GetSystemVeboxNumber()
     if (disableScalability == true)
     {
         m_numVebox = 1;
+        VP_PUBLIC_NORMALMESSAGE("DisableScalability Vebox Number of Enabled %d", m_numVebox);
         return MOS_STATUS_SUCCESS;
     }
     else if (m_forceMultiplePipe == MOS_SCALABILITY_ENABLE_MODE_DEFAULT)
     {
-        if (!(m_vpMhwInterface.m_vpPlatformInterface->IsVeboxScalabilitywith4K(m_vpMhwInterface)))
+        if (m_vpMhwInterface.m_vpPlatformInterface->VeboxScalabilitywith4K(m_vpMhwInterface) == true)
         {
             m_numVebox = 1;
+            VP_PUBLIC_NORMALMESSAGE("ForceMultiplePipe Vebox Number of Enabled %d", m_numVebox);
             return MOS_STATUS_SUCCESS;
         }
     }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpPipeline::GetSystemVeboxNumber()
+{
+    VP_FUNC_CALL();
 
     // Get vebox number from meida sys info.
     MEDIA_ENGINE_INFO mediaSysInfo = {};
@@ -516,6 +531,8 @@ MOS_STATUS VpPipeline::GetSystemVeboxNumber()
     {
         m_numVebox = 1;
     }
+
+    VP_PUBLIC_CHK_STATUS_RETURN(UpdateVeboxNumberforScalability());
 
     return MOS_STATUS_SUCCESS;
 }
@@ -629,18 +646,12 @@ MOS_STATUS VpPipeline::InitUserFeatureSetting()
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     //SFC NV12/P010 Linear Output.
-    ReadUserSettingForDebug(
-        m_userSettingPtr,
-        m_userFeatureSetting.enableSFCNv12P010LinearOutput,
-        __VPHAL_ENABLE_SFC_NV12_P010_LINEAR_OUTPUT,
-        MediaUserSetting::Group::Sequence);
+    uint32_t enableSFCNv12P010LinearOutput             = m_userFeatureControl->IsEnableSFCNv12P010LinearOutput();
+    m_userFeatureSetting.enableSFCNv12P010LinearOutput = enableSFCNv12P010LinearOutput;
 
     //SFC RGBP Linear/Tile RGB24 Linear Output.
-    ReadUserSettingForDebug(
-        m_userSettingPtr,
-        m_userFeatureSetting.enableSFCRGBPRGB24Output,
-        __VPHAL_ENABLE_SFC_RGBP_RGB24_OUTPUT,
-        MediaUserSetting::Group::Sequence);
+    uint32_t enableSFCRGBPRGB24Output             = m_userFeatureControl->IsEnableSFCRGBPRGB24Output();
+    m_userFeatureSetting.enableSFCRGBPRGB24Output = enableSFCRGBPRGB24Output;
 #endif
     return eStatus;
 }

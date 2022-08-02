@@ -301,24 +301,6 @@ public:
     virtual PMOS_RESOURCE GetStreamInBuf() const { return nullptr; }
 
     //!
-    //! \brief    Setup Virtual Address Regions for HuC BRC update
-    //!
-    //! \param    [in] streamIn
-    //!           Stream in buffer
-    //! \param    [out] virtualAddrParams
-    //!           Huc Virtual Address parameters
-    //!
-    //! \return   MOS_STATUS
-    //!           MOS_STATUS_SUCCESS if success, else fail reason
-    //!
-    virtual MOS_STATUS SetRegionsHuCBrcUpdate(
-        PMOS_RESOURCE streamin,
-        MHW_VDBOX_HUC_REGION_PARAMS* virtualAddrParams)
-    {
-        return MOS_STATUS_SUCCESS;
-    }
-
-    //!
     //! \brief    Setup HuC BRC init/reset parameters
     //!
     //! \param    [out] hucVdencBrcInitDmem
@@ -531,7 +513,7 @@ protected:
     HevcVdencFeatureSettings *m_FeatureSettings = nullptr;
     PMOS_INTERFACE m_osInterface = nullptr;
 
-MEDIA_CLASS_DEFINE_END(RoiStrategy)
+MEDIA_CLASS_DEFINE_END(encode__RoiStrategy)
 };
 
 //!
@@ -620,7 +602,7 @@ private:
     RoiStrategy *m_QPMapROI  = nullptr;
     RoiStrategy *m_deltaQpRoi = nullptr;
 
-MEDIA_CLASS_DEFINE_END(RoiStrategyFactory)
+MEDIA_CLASS_DEFINE_END(encode__RoiStrategyFactory)
 };
 
 }  // namespace encode

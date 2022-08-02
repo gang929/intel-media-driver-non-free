@@ -28,12 +28,9 @@
 #define __CODECHAL_HEVC_VDENC_PACKET_H__
 
 #include "media_cmd_packet.h"
-#include "mhw_vdbox_vdenc_g12_X.h"
-#include "mhw_mi_g12_X.h"
 #include "encode_utils.h"
 #include "encode_hevc_vdenc_pipeline.h"
 #include "encode_hevc_basic_feature.h"
-#include "codechal_encode_tracked_buffer_hevc.h"
 #include "encode_status_report.h"
 #include "mhw_vdbox_vdenc_itf.h"
 #include "mhw_vdbox_hcp_itf.h"
@@ -461,7 +458,7 @@ namespace encode
 
         MOS_STATUS SetBatchBufferForPakSlices();
 
-        MOS_STATUS ReadSseStatistics(MOS_COMMAND_BUFFER &cmdBuffer);
+        virtual MOS_STATUS ReadExtStatistics(MOS_COMMAND_BUFFER &cmdBuffer);
 
         //!
         //! \brief    Retreive BRC Pak statistics
@@ -480,19 +477,19 @@ namespace encode
 
         virtual MOS_STATUS AddForceWakeup(MOS_COMMAND_BUFFER &cmdBuffer);
 
-        //! \brief    Calculates the PSNR values for luma/ chroma
+        //! \brief    Report extended statistics
         //!
         //! \param    [in] encodeStatusMfx
-        //!           Pointer to encoder status for vdbox
+        //!           Reference to encoder status for vdbox
         //! \param    [in, out] statusReportData
-        //!           Pointer to encoder status report data
+        //!           Reference to encoder status report data
         //!
         //! \return   MOS_STATUS
         //!           MOS_STATUS_SUCCESS if success, else fail reason
         //!
-        MOS_STATUS CalculatePSNR(
-            EncodeStatusMfx *       encodeStatusMfx,
-            EncodeStatusReportData *statusReportData);
+       virtual MOS_STATUS ReportExtStatistics(
+            EncodeStatusMfx        &encodeStatusMfx,
+            EncodeStatusReportData &statusReportData);
 
         //! \brief    Set Rowstore Cache offset
         //!
@@ -586,9 +583,8 @@ namespace encode
         const CODECHAL_HEVC_IQ_MATRIX_PARAMS *   m_hevcIqMatrixParams = nullptr;  //!< Pointer to IQ matrix parameter
         const PCODECHAL_NAL_UNIT_PARAMS *        m_nalUnitParams      = nullptr;  //!< Pointer to NAL unit parameters
 
-        bool m_pakOnlyPass                    = false;
-        bool m_vdencPakObjCmdStreamOutEnabled = false;  //!< Pakobj stream out enable flag
-        bool m_streamInEnabled                = false;  //!< Vdenc stream in enabled flag
+        bool m_pakOnlyPass     = false;
+        bool m_streamInEnabled = false;  //!< Vdenc stream in enabled flag
 
         uint8_t m_currRecycledBufIdx = 0;  //!< Current recycled buffer index
 
@@ -627,6 +623,8 @@ namespace encode
         uint32_t m_defaultSlicePatchListSize   = 0;  //!< Slice state patch list size
         uint32_t m_slicePatchListSize          = 0;  //!< Slice patch list size
 
+        bool m_vdencPakObjCmdStreamOutForceEnabled = false;
+
         bool m_lastSliceInTile = false;
 
         FlushCmd m_flushCmd = waitHevc;
@@ -635,7 +633,9 @@ namespace encode
         std::shared_ptr<HevcVdencParDump> m_hevcParDump = nullptr;
 #endif  // _ENCODE_RESERVED
 
-    MEDIA_CLASS_DEFINE_END(HevcVdencPkt)
+        bool m_enableVdencStatusReport = false;
+
+    MEDIA_CLASS_DEFINE_END(encode__HevcVdencPkt)
     };
 
 }

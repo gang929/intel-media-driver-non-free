@@ -27,7 +27,6 @@
 #include "mos_interface.h"
 #include "mos_context_specific_next.h"
 #include "mos_gpucontext_specific_next.h"
-#include "mos_os_specific_next.h"
 #include "media_libva_common.h"
 #include "mos_auxtable_mgr.h"
 #include "mos_os_virtualengine_singlepipe_specific_next.h"
@@ -35,6 +34,7 @@
 #include "mos_graphicsresource_specific_next.h"
 #include "mos_bufmgr_priv.h"
 #include "drm_device.h"
+#include "media_fourcc.h"
 
 #if (_DEBUG || _RELEASE_INTERNAL)
 #include <stdlib.h>   //for simulate random OS API failure
@@ -49,43 +49,40 @@
 
 MOS_STATUS MosInterface::InitOsUtilities(DDI_DEVICE_CONTEXT ddiDeviceContext)
 {
-    MOS_UNUSED(ddiDeviceContext);
-    MosUtilities::MosUtilitiesInit(nullptr);
+    MediaUserSettingSharedPtr   userSettingPtr = MosGetUserSettingInstance((PMOS_CONTEXT)ddiDeviceContext);
+
+    MosUtilities::MosUtilitiesInit(userSettingPtr);
 
     // MOS_OS_FUNCTION_ENTER need mos utilities init
     MOS_OS_FUNCTION_ENTER;
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     //Init MOS OS API fail simulate flags
-    MosInitOsApiFailSimulateFlag(ddiDeviceContext);
+    MosInitOsApiFailSimulateFlag(userSettingPtr);
 #endif
 
     //Read user feature key here for Per Utility Tool Enabling
     if (!g_perfutility->bPerfUtilityKey)
     {
-        MOS_USER_FEATURE_VALUE_DATA UserFeatureData;
-        MosUtilities::MosZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
-        MosUtilities::MosUserFeatureReadValueID(
-            NULL,
-            __MEDIA_USER_FEATURE_VALUE_PERF_UTILITY_TOOL_ENABLE_ID,
-            &UserFeatureData,
-            (MOS_CONTEXT_HANDLE) nullptr);
-        g_perfutility->dwPerfUtilityIsEnabled = UserFeatureData.i32Data;
+        g_perfutility->dwPerfUtilityIsEnabled = 0;
+        ReadUserSetting(
+            userSettingPtr,
+            g_perfutility->dwPerfUtilityIsEnabled,
+            __MEDIA_USER_FEATURE_VALUE_PERF_UTILITY_TOOL_ENABLE,
+            MediaUserSetting::Group::Device);
 
-        char                        sFilePath[MOS_MAX_PERF_FILENAME_LEN + 1] = "";
-        MOS_USER_FEATURE_VALUE_DATA perfFilePath;
+
         MOS_STATUS                  eStatus_Perf = MOS_STATUS_SUCCESS;
+        std::string                 perfOutputDir = "";
 
-        MosUtilities::MosZeroMemory(&perfFilePath, sizeof(perfFilePath));
-        perfFilePath.StringData.pStringData = sFilePath;
-        eStatus_Perf                        = MosUtilities::MosUserFeatureReadValueID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_PERF_OUTPUT_DIRECTORY_ID,
-            &perfFilePath,
-            (MOS_CONTEXT_HANDLE) nullptr);
+        eStatus_Perf = ReadUserSetting(
+            userSettingPtr,
+            perfOutputDir,
+            __MEDIA_USER_FEATURE_VALUE_PERF_OUTPUT_DIRECTORY,
+            MediaUserSetting::Group::Device);
         if (eStatus_Perf == MOS_STATUS_SUCCESS)
         {
-            g_perfutility->setupFilePath(sFilePath);
+            g_perfutility->setupFilePath(perfOutputDir.c_str());
         }
         else
         {
@@ -101,8 +98,11 @@ MOS_STATUS MosInterface::InitOsUtilities(DDI_DEVICE_CONTEXT ddiDeviceContext)
 MOS_STATUS MosInterface::CloseOsUtilities(PMOS_CONTEXT mosCtx)
 {
     MOS_OS_FUNCTION_ENTER;
+
+    MediaUserSettingSharedPtr userSettingPtr = MosInterface::MosGetUserSettingInstance(mosCtx);
+
     // Close MOS utlities
-    MosUtilities::MosUtilitiesClose(nullptr);
+    MosUtilities::MosUtilitiesClose(userSettingPtr);
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     //reset MOS init OS API simulate flags
@@ -149,8 +149,9 @@ MOS_STATUS MosInterface::CreateOsStreamState(
     MOS_COMPONENT        component,
     EXTRA_PARAMS         extraParams)
 {
-    MOS_USER_FEATURE_VALUE_DATA userFeatureData     = {};
-    MOS_STATUS                  eStatusUserFeature  = MOS_STATUS_SUCCESS;
+    MOS_STATUS                  eStatusUserFeature = MOS_STATUS_SUCCESS;
+    uint32_t                    regValue = 0;
+    MediaUserSettingSharedPtr   userSettingPtr = nullptr;
 
     MOS_OS_FUNCTION_ENTER;
     MOS_OS_CHK_NULL_RETURN(streamState);
@@ -169,24 +170,23 @@ MOS_STATUS MosInterface::CreateOsStreamState(
     (*streamState)->usesPatchList           = true;
     (*streamState)->usesGfxAddress          = !(*streamState)->usesPatchList;
 
-    MosUtilities::MosZeroMemory(&userFeatureData, sizeof(userFeatureData));
+    userSettingPtr = MosInterface::MosGetUserSettingInstance(*streamState);
+
 #if (_DEBUG || _RELEASE_INTERNAL)
-    MosUtilities::MosUserFeatureReadValueID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_SIM_ENABLE_ID,
-        &userFeatureData,
-        (MOS_CONTEXT_HANDLE) nullptr);
-    (*streamState)->simIsActive = (int32_t)userFeatureData.i32Data;
+    ReadUserSettingForDebug(
+        userSettingPtr,
+        (*streamState)->simIsActive,
+        __MEDIA_USER_FEATURE_VALUE_SIM_ENABLE,
+        MediaUserSetting::Group::Device);
 
     // Null HW Driver
     // 0: Disabled
-    MosUtilities::MosZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    MosUtilities::MosUserFeatureReadValueID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_NULL_HW_ACCELERATION_ENABLE_ID,
-        &userFeatureData,
-        (MOS_CONTEXT_HANDLE) nullptr);
-    (*streamState)->nullHwAccelerationEnable.Value = userFeatureData.u32Data;
+    ReadUserSettingForDebug(
+        userSettingPtr,
+        (*streamState)->nullHwAccelerationEnable.Value,
+        __MEDIA_USER_FEATURE_VALUE_NULL_HW_ACCELERATION_ENABLE,
+        MediaUserSetting::Group::Device);
+
 #endif
 
     // SupportVirtualEngine flag is set by Hals
@@ -206,24 +206,23 @@ MOS_STATUS MosInterface::CreateOsStreamState(
 #if (_DEBUG || _RELEASE_INTERNAL)
     // read the "Force VDBOX" user feature key
     // 0: not force
-    MosUtilities::MosZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    MosUtilities::MosUserFeatureReadValueID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_FORCE_VDBOX_ID,
-        &userFeatureData,
-        (MOS_CONTEXT_HANDLE) nullptr);
-    (*streamState)->eForceVdbox = userFeatureData.u32Data;
+    ReadUserSettingForDebug(
+        userSettingPtr,
+        (*streamState)->eForceVdbox,
+        __MEDIA_USER_FEATURE_VALUE_FORCE_VDBOX,
+        MediaUserSetting::Group::Device);
 
     //Read Scalable/Legacy Decode mode on Gen11+
     //1:by default for scalable decode mode
     //0:for legacy decode mode
-    MosUtilities::MosZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    eStatusUserFeature = MosUtilities::MosUserFeatureReadValueID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_ENABLE_HCP_SCALABILITY_DECODE_ID,
-        &userFeatureData,
-        (MOS_CONTEXT_HANDLE) nullptr);
-    (*streamState)->hcpDecScalabilityMode = userFeatureData.u32Data ? MOS_SCALABILITY_ENABLE_MODE_DEFAULT : MOS_SCALABILITY_ENABLE_MODE_FALSE;
+    regValue = 0;
+    eStatusUserFeature = ReadUserSetting(
+        userSettingPtr,
+        regValue,
+        __MEDIA_USER_FEATURE_VALUE_ENABLE_HCP_SCALABILITY_DECODE,
+        MediaUserSetting::Group::Device);
+
+    (*streamState)->hcpDecScalabilityMode = regValue ? MOS_SCALABILITY_ENABLE_MODE_DEFAULT : MOS_SCALABILITY_ENABLE_MODE_FALSE;
     if((*streamState)->hcpDecScalabilityMode
         && (eStatusUserFeature == MOS_STATUS_SUCCESS))
     {
@@ -232,31 +231,27 @@ MOS_STATUS MosInterface::CreateOsStreamState(
     }
 
     (*streamState)->frameSplit = false;
-    MosUtilities::MosZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    MosUtilities::MosUserFeatureReadValueID(
-        NULL,
-        __MEDIA_USER_FEATURE_VALUE_ENABLE_LINUX_FRAME_SPLIT_ID,
-        &userFeatureData,
-        (MOS_CONTEXT_HANDLE) nullptr);
-    (*streamState)->frameSplit = (uint32_t)userFeatureData.i32Data;
+    ReadUserSettingForDebug(
+        userSettingPtr,
+        (*streamState)->frameSplit,
+        __MEDIA_USER_FEATURE_VALUE_ENABLE_LINUX_FRAME_SPLIT,
+        MediaUserSetting::Group::Device);
 
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    MOS_UserFeature_ReadValue_ID(
-        NULL,
-        __MEDIA_USER_FEATURE_VALUE_ENABLE_GUC_SUBMISSION_ID,
-        &userFeatureData,
-        (MOS_CONTEXT_HANDLE) nullptr);
-    (*streamState)->bGucSubmission = (*streamState)->bGucSubmission && ((uint32_t)userFeatureData.i32Data);
+    regValue = 0;
+    ReadUserSettingForDebug(
+        userSettingPtr,
+        regValue,
+        __MEDIA_USER_FEATURE_VALUE_ENABLE_GUC_SUBMISSION,
+        MediaUserSetting::Group::Device);
+    (*streamState)->bGucSubmission = (*streamState)->bGucSubmission && regValue;
 
     //KMD Virtual Engine DebugOverride
     // 0: not Override
-    MosUtilities::MosZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    MosUtilities::MosUserFeatureReadValueID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_ENABLE_VE_DEBUG_OVERRIDE_ID,
-        &userFeatureData,
-        (MOS_CONTEXT_HANDLE) nullptr);
-    (*streamState)->enableDbgOvrdInVirtualEngine = userFeatureData.u32Data ? true : false;
+    ReadUserSettingForDebug(
+        userSettingPtr,
+        (*streamState)->enableDbgOvrdInVirtualEngine,
+        __MEDIA_USER_FEATURE_VALUE_ENABLE_VE_DEBUG_OVERRIDE,
+        MediaUserSetting::Group::Device);
 #endif
 
     if (component == COMPONENT_VPCommon ||
@@ -265,13 +260,13 @@ MOS_STATUS MosInterface::CreateOsStreamState(
     {
         // UMD Vebox Virtual Engine Scalability Mode
         // 0: disable. can set to 1 only when KMD VE is enabled.
-        MosUtilities::MosZeroMemory(&userFeatureData, sizeof(userFeatureData));
-        eStatusUserFeature = MosUtilities::MosUserFeatureReadValueID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE_ID,
-            &userFeatureData,
-            (MOS_CONTEXT_HANDLE) nullptr);
-        (*streamState)->veboxScalabilityMode = userFeatureData.u32Data ? MOS_SCALABILITY_ENABLE_MODE_DEFAULT : MOS_SCALABILITY_ENABLE_MODE_FALSE;
+        regValue = 0;
+        eStatusUserFeature = ReadUserSetting(
+            userSettingPtr,
+            regValue,
+            __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_SCALABILITY_MODE,
+            MediaUserSetting::Group::Device);
+        (*streamState)->veboxScalabilityMode = regValue ? MOS_SCALABILITY_ENABLE_MODE_DEFAULT : MOS_SCALABILITY_ENABLE_MODE_FALSE;
 
 #if (_DEBUG || _RELEASE_INTERNAL)
         if((*streamState)->veboxScalabilityMode
@@ -295,26 +290,22 @@ MOS_STATUS MosInterface::CreateOsStreamState(
 
         // read the "Force VEBOX" user feature key
         // 0: not force
-        MosUtilities::MosZeroMemory(&userFeatureData, sizeof(userFeatureData));
-        MosUtilities::MosUserFeatureReadValueID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_FORCE_VEBOX_ID,
-            &userFeatureData,
-            (MOS_CONTEXT_HANDLE) nullptr);
-        (*streamState)->eForceVebox = (MOS_FORCE_VEBOX)userFeatureData.u32Data;
+        regValue = 0;
+        ReadUserSettingForDebug(
+            userSettingPtr,
+            regValue,
+            __MEDIA_USER_FEATURE_VALUE_FORCE_VEBOX,
+            MediaUserSetting::Group::Device);
+        (*streamState)->eForceVebox = (MOS_FORCE_VEBOX)regValue;
 #endif
     }
-
-    MOS_USER_FEATURE_VALUE_WRITE_DATA userFeatureWriteData = __NULL_USER_FEATURE_VALUE_WRITE_DATA__;
-    // Report if pre-si environment is in use
-    userFeatureWriteData.Value.i32Data = (*streamState)->simIsActive;
-    userFeatureWriteData.ValueID       = __MEDIA_USER_FEATURE_VALUE_SIM_IN_USE_ID;
-    MosUtilities::MosUserFeatureWriteValuesID(
-        nullptr,
-        &userFeatureWriteData,
-        1,
-        (MOS_CONTEXT_HANDLE)nullptr);
-
+#if (_DEBUG || _RELEASE_INTERNAL)
+    ReportUserSettingForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_SIM_IN_USE,
+        (*streamState)->simIsActive,
+        MediaUserSetting::Group::Device);
+#endif
 #if MOS_COMMAND_BUFFER_DUMP_SUPPORTED
     DumpCommandBufferInit(*streamState);
 #endif  // MOS_COMMAND_BUFFER_DUMP_SUPPORTED
@@ -667,32 +658,6 @@ MOS_STATUS MosInterface::SetGpuContext(
     streamState->currentGpuContextHandle = gpuContext;
 
     return MOS_STATUS_SUCCESS;
-}
-
-void *MosInterface::GetGpuContextbyHandle(
-    MOS_STREAM_HANDLE  streamState,
-    GPU_CONTEXT_HANDLE gpuContextHandle)
-{
-    if (!streamState || !streamState->osDeviceContext)
-    {
-        MOS_OS_ASSERTMESSAGE("Invalid nullptr");
-        return nullptr;
-    }
-
-    auto gpuContextMgr = streamState->osDeviceContext->GetGpuContextMgr();
-    if (!gpuContextMgr)
-    {
-        MOS_OS_ASSERTMESSAGE("Invalid nullptr");
-        return nullptr;
-    }
-
-    GpuContextNext *gpuContext = gpuContextMgr->GetGpuContext(gpuContextHandle);
-
-    if (!gpuContext)
-    {
-        MOS_OS_ASSERTMESSAGE("Invalid nullptr");
-    }
-    return (void *)gpuContext;
 }
 
 MOS_STATUS MosInterface:: SetObjectCapture(
@@ -2994,6 +2959,43 @@ PMOS_RESOURCE MosInterface::GetMarkerResource(
     return nullptr;
 }
 
+void MosInterface::MosResetResource(PMOS_RESOURCE   resource)
+{
+    int32_t i = 0;
+
+    MOS_OS_FUNCTION_ENTER;
+
+    MOS_OS_CHK_NULL_NO_STATUS_RETURN(resource);
+
+    MOS_ZeroMemory(resource, sizeof(MOS_RESOURCE));
+    resource->Format  = Format_None;
+    for (i = 0; i < MOS_GPU_CONTEXT_MAX; i++)
+    {
+        resource->iAllocationIndex[i] = MOS_INVALID_ALLOC_INDEX;
+    }
+    return;
+}
+
+bool MosInterface::MosResourceIsNull(PMOS_RESOURCE   resource)
+{
+    if( nullptr == resource )
+    {
+        MOS_OS_NORMALMESSAGE("found pOsResource nullptr\n");
+        return true;
+    }
+
+    return ((resource->bo == nullptr)
+#if (_DEBUG || _RELEASE_INTERNAL)
+         && ((resource->pData == nullptr) )
+#endif // (_DEBUG || _RELEASE_INTERNAL)
+    );
+}
+
+MOS_STATUS MosInterface::GetGmmResourceInfo(PMOS_RESOURCE resource)
+{
+    return MOS_STATUS_SUCCESS;
+}
+
 int MosInterface::GetPlaneSurfaceOffset(const MOS_PLANE_OFFSET &planeOffset)
 {
     return planeOffset.iSurfaceOffset;
@@ -3006,9 +3008,14 @@ uint32_t MosInterface::GetResourceArrayIndex(
 }
 
 MediaUserSettingSharedPtr MosInterface::MosGetUserSettingInstance(
+    PMOS_CONTEXT osContext)
+{
+    return nullptr;
+}
+
+MediaUserSettingSharedPtr MosInterface::MosGetUserSettingInstance(
     MOS_STREAM_HANDLE streamState)
 {
-
     return nullptr;
 }
 
@@ -3016,24 +3023,24 @@ MediaUserSettingSharedPtr MosInterface::MosGetUserSettingInstance(
 MOS_STATUS MosInterface::DumpCommandBufferInit(
     MOS_STREAM_HANDLE streamState)
 {
-    char sFileName[MOS_MAX_HLT_FILENAME_LEN] = {0};
-    MOS_STATUS eStatus = MOS_STATUS_UNKNOWN;
-    MOS_USER_FEATURE_VALUE_DATA UserFeatureData = {0};
-    char *psFileNameAfterPrefix = nullptr;
-    size_t nSizeFileNamePrefix = 0;
-    MediaUserSettingSharedPtr   userSettingPtr  = MosInterface::MosGetUserSettingInstance(streamState);
+    char                        sFileName[MOS_MAX_HLT_FILENAME_LEN] = {0};
+    MOS_STATUS                  eStatus                             = MOS_STATUS_UNKNOWN;
+    uint32_t                    value                               = 0;
+    size_t                      nSizeFileNamePrefix                 = 0;
+    MediaUserSettingSharedPtr   userSettingPtr                      = MosInterface::MosGetUserSettingInstance(streamState);
 
     MOS_OS_CHK_NULL_RETURN(streamState);
 
     // Check if command buffer dump was enabled in user feature.
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_DUMP_COMMAND_BUFFER_ENABLE_ID,
-        &UserFeatureData,
-        (MOS_CONTEXT_HANDLE)streamState->perStreamParameters);
-    streamState->dumpCommandBuffer            = (UserFeatureData.i32Data != 0);
-    streamState->dumpCommandBufferToFile      = ((UserFeatureData.i32Data & 1) != 0);
-    streamState->dumpCommandBufferAsMessages  = ((UserFeatureData.i32Data & 2) != 0);
+    ReadUserSetting(
+        userSettingPtr,
+        value,
+        __MEDIA_USER_FEATURE_VALUE_DUMP_COMMAND_BUFFER_ENABLE,
+        MediaUserSetting::Group::Device);
+
+    streamState->dumpCommandBuffer            = (value != 0);
+    streamState->dumpCommandBufferToFile      = ((value & 1) != 0);
+    streamState->dumpCommandBufferAsMessages  = ((value & 2) != 0);
 
     if (streamState->dumpCommandBufferToFile)
     {
@@ -3063,9 +3070,7 @@ MOS_STATUS MosInterface::DumpCommandBufferInit(
         }
     }
 
-    eStatus = MOS_STATUS_SUCCESS;
-
-    return eStatus;
+    return MOS_STATUS_SUCCESS;
 }
 #endif  // MOS_COMMAND_BUFFER_DUMP_SUPPORTED
 
@@ -3077,10 +3082,10 @@ uint32_t MosInterface::m_mosOsApiFailSimulateFreq         = 0;
 uint32_t MosInterface::m_mosOsApiFailSimulateHint         = 0;
 uint32_t MosInterface::m_mosOsApiFailSimulateCounter      = 0;
 
-void MosInterface::MosInitOsApiFailSimulateFlag(MOS_CONTEXT_HANDLE mosCtx)
+void MosInterface::MosInitOsApiFailSimulateFlag(MediaUserSettingSharedPtr userSettingPtr)
 {
-    MOS_USER_FEATURE_VALUE_DATA userFeatureValueData;
-    MOS_STATUS                  eStatus = MOS_STATUS_SUCCESS;
+    MOS_STATUS                  eStatus         = MOS_STATUS_SUCCESS;
+    uint32_t                    value           = 0;
 
     //default off for simulate random fail
     m_mosOsApiFailSimulateType         = OS_API_FAIL_TYPE_NONE;
@@ -3090,57 +3095,54 @@ void MosInterface::MosInitOsApiFailSimulateFlag(MOS_CONTEXT_HANDLE mosCtx)
     m_mosOsApiFailSimulateCounter      = 0;
 
     // Read Config : memory allocation failure simulate mode
-    MosUtilities::MosZeroMemory(&userFeatureValueData, sizeof(userFeatureValueData));
-    MosUtilities::MosUserFeatureReadValueID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_OS_API_FAIL_SIMULATE_TYPE_ID,
-        &userFeatureValueData,
-        mosCtx);
+    ReadUserSetting(
+        userSettingPtr,
+        value,
+        __MEDIA_USER_FEATURE_VALUE_OS_API_FAIL_SIMULATE_TYPE,
+        MediaUserSetting::Group::Device);
 
-    if (userFeatureValueData.u32Data & OS_API_FAIL_TYPE_MAX)
+    if (value & OS_API_FAIL_TYPE_MAX)
     {
-        m_mosOsApiFailSimulateType = userFeatureValueData.u32Data;
+        m_mosOsApiFailSimulateType = value;
         MOS_OS_NORMALMESSAGE("Init MosSimulateOsApiFailSimulateType as %d \n ", m_mosOsApiFailSimulateType);
     }
     else
     {
         m_mosOsApiFailSimulateType = OS_API_FAIL_TYPE_NONE;
-        MOS_OS_NORMALMESSAGE("Invalid OS API Fail Simulate Type from config: %d \n ", userFeatureValueData.u32Data);
+        MOS_OS_NORMALMESSAGE("Invalid OS API Fail Simulate Type from config: %d \n ", value);
     }
 
     // Read Config : memory allocation failure simulate mode
-    MosUtilities::MosZeroMemory(&userFeatureValueData, sizeof(userFeatureValueData));
-    MosUtilities::MosUserFeatureReadValueID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_OS_API_FAIL_SIMULATE_MODE_ID,
-        &userFeatureValueData,
-        mosCtx);
-
-    if ((userFeatureValueData.u32Data == OS_API_FAIL_SIMULATE_MODE_DEFAULT) ||
-        (userFeatureValueData.u32Data == OS_API_FAIL_SIMULATE_MODE_RANDOM) ||
-        (userFeatureValueData.u32Data == OS_API_FAIL_SIMULATE_MODE_TRAVERSE))
+    value = 0;
+    ReadUserSetting(
+        userSettingPtr,
+        value,
+        __MEDIA_USER_FEATURE_VALUE_OS_API_FAIL_SIMULATE_MODE,
+        MediaUserSetting::Group::Device);
+    if ((value == OS_API_FAIL_SIMULATE_MODE_DEFAULT) ||
+        (value == OS_API_FAIL_SIMULATE_MODE_RANDOM) ||
+        (value == OS_API_FAIL_SIMULATE_MODE_TRAVERSE))
     {
-        m_mosOsApiFailSimulateMode = userFeatureValueData.u32Data;
+        m_mosOsApiFailSimulateMode = value;
         MOS_OS_NORMALMESSAGE("Init MosSimulateOsApiFailSimulateMode as %d \n ", m_mosOsApiFailSimulateMode);
     }
     else
     {
         m_mosOsApiFailSimulateMode = OS_API_FAIL_SIMULATE_MODE_DEFAULT;
-        MOS_OS_NORMALMESSAGE("Invalid OS API Fail Simulate Mode from config: %d \n ", userFeatureValueData.u32Data);
+        MOS_OS_NORMALMESSAGE("Invalid OS API Fail Simulate Mode from config: %d \n ", value);
     }
 
     // Read Config : memory allocation failure simulate frequence
-    MosUtilities::MosZeroMemory(&userFeatureValueData, sizeof(userFeatureValueData));
-    MosUtilities::MosUserFeatureReadValueID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_OS_API_FAIL_SIMULATE_FREQ_ID,
-        &userFeatureValueData,
-        mosCtx);
-
-    if ((userFeatureValueData.u32Data >= MIN_OS_API_FAIL_FREQ) &&
-        (userFeatureValueData.u32Data <= MAX_OS_API_FAIL_FREQ))
+    value = 0;
+    ReadUserSetting(
+        userSettingPtr,
+        value,
+        __MEDIA_USER_FEATURE_VALUE_OS_API_FAIL_SIMULATE_FREQ,
+        MediaUserSetting::Group::Device);
+    if ((value >= MIN_OS_API_FAIL_FREQ) &&
+        (value <= MAX_OS_API_FAIL_FREQ))
     {
-        m_mosOsApiFailSimulateFreq = userFeatureValueData.u32Data;
+        m_mosOsApiFailSimulateFreq = value;
         MOS_OS_NORMALMESSAGE("Init m_MosSimulateRandomOsApiFailFreq as %d \n ", m_mosOsApiFailSimulateFreq);
 
         if (m_mosOsApiFailSimulateMode == OS_API_FAIL_SIMULATE_MODE_RANDOM)
@@ -3151,26 +3153,25 @@ void MosInterface::MosInitOsApiFailSimulateFlag(MOS_CONTEXT_HANDLE mosCtx)
     else
     {
         m_mosOsApiFailSimulateFreq = 0;
-        MOS_OS_NORMALMESSAGE("Invalid OS API Fail Simulate Freq from config: %d \n ", userFeatureValueData.u32Data);
+        MOS_OS_NORMALMESSAGE("Invalid OS API Fail Simulate Freq from config: %d \n ", value);
     }
 
     // Read Config : memory allocation failure simulate counter
-    MosUtilities::MosZeroMemory(&userFeatureValueData, sizeof(userFeatureValueData));
-    MosUtilities::MosUserFeatureReadValueID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_OS_API_FAIL_SIMULATE_HINT_ID,
-        &userFeatureValueData,
-        mosCtx);
-
-    if (userFeatureValueData.u32Data <= m_mosOsApiFailSimulateFreq)
+    value = 0;
+    ReadUserSetting(
+        userSettingPtr,
+        value,
+        __MEDIA_USER_FEATURE_VALUE_OS_API_FAIL_SIMULATE_HINT,
+        MediaUserSetting::Group::Device);
+    if (value <= m_mosOsApiFailSimulateFreq)
     {
-        m_mosOsApiFailSimulateHint = userFeatureValueData.u32Data;
+        m_mosOsApiFailSimulateHint = value;
         MOS_OS_NORMALMESSAGE("Init m_MosOsApiFailSimulateHint as %d \n ", m_mosOsApiFailSimulateHint);
     }
     else
     {
         m_mosOsApiFailSimulateHint = m_mosOsApiFailSimulateFreq;
-        MOS_OS_NORMALMESSAGE("Set m_mosOsApiFailSimulateHint as %d since INVALID CONFIG %d \n ", m_mosOsApiFailSimulateHint, userFeatureValueData.u32Data);
+        MOS_OS_NORMALMESSAGE("Set m_mosOsApiFailSimulateHint as %d since INVALID CONFIG %d \n ", m_mosOsApiFailSimulateHint, value);
     }
 }
 
@@ -3242,57 +3243,141 @@ bool MosInterface::IsAsyncDevice(MOS_STREAM_HANDLE streamState)
     return false;
 }
 
+MOS_FORMAT MosInterface::GmmFmtToMosFmt(
+    GMM_RESOURCE_FORMAT format)
+{
+    static const std::map<GMM_RESOURCE_FORMAT, MOS_FORMAT> gmm2MosFmtMap = {
+        {GMM_FORMAT_B8G8R8X8_UNORM_TYPE, Format_X8R8G8B8},
+        {GMM_FORMAT_R8G8B8A8_UNORM_TYPE, Format_A8B8G8R8},
+        {GMM_FORMAT_B8G8R8A8_UNORM_TYPE, Format_A8R8G8B8},
+        {GMM_FORMAT_B5G6R5_UNORM_TYPE, Format_R5G6B5},
+        {GMM_FORMAT_R8G8B8_UNORM, Format_R8G8B8},
+        {GMM_FORMAT_R8G8B8_UINT_TYPE, Format_R8G8B8},
+        {GMM_FORMAT_R32_UINT_TYPE, Format_R32U},
+        {GMM_FORMAT_R32_FLOAT_TYPE, Format_R32F},
+        {GMM_FORMAT_MEDIA_Y8_UNORM, Format_Y8},
+        {GMM_FORMAT_MEDIA_Y1_UNORM, Format_Y8},
+        {GMM_FORMAT_MEDIA_Y16_UNORM, Format_Y16U},
+        {GMM_FORMAT_MEDIA_Y16_SNORM, Format_Y16S},
+        {GMM_FORMAT_YUY2_2x1, Format_YUY2},
+        {GMM_FORMAT_YUY2, Format_YUY2},
+        {GMM_FORMAT_P8, Format_P8},
+        {GMM_FORMAT_R16_UNORM_TYPE, Format_R16UN},
+        {GMM_FORMAT_A8_UNORM_TYPE, Format_A8},
+        {GMM_FORMAT_GENERIC_8BIT, Format_L8},
+        {GMM_FORMAT_L16_UNORM_TYPE, Format_L16},
+        {GMM_FORMAT_GENERIC_16BIT_TYPE, Format_D16},
+        {GMM_FORMAT_YVYU, Format_YVYU},
+        {GMM_FORMAT_UYVY, Format_UYVY},
+        {GMM_FORMAT_VYUY_2x1, Format_VYUY},
+        {GMM_FORMAT_VYUY, Format_VYUY},
+        {GMM_FORMAT_P016_TYPE, Format_P016},
+        {GMM_FORMAT_P010_TYPE, Format_P010},
+        {GMM_FORMAT_NV12_TYPE, Format_NV12},
+        {GMM_FORMAT_NV11_TYPE, Format_NV11},
+        {GMM_FORMAT_P208_TYPE, Format_P208},
+        {GMM_FORMAT_IMC1_TYPE, Format_IMC1},
+        {GMM_FORMAT_IMC2_TYPE, Format_IMC2},
+        {GMM_FORMAT_IMC3_TYPE, Format_IMC3},
+        {GMM_FORMAT_IMC4_TYPE, Format_IMC4},
+        {GMM_FORMAT_I420_TYPE, Format_I420},
+        {GMM_FORMAT_IYUV_TYPE, Format_IYUV},
+        {GMM_FORMAT_YV12_TYPE, Format_YV12},
+        {GMM_FORMAT_YVU9_TYPE, Format_YVU9},
+        {GMM_FORMAT_R8_UNORM_TYPE, Format_R8UN},
+        {GMM_FORMAT_R16_UINT_TYPE, Format_R16U},
+        {GMM_FORMAT_R8G8_SNORM, Format_V8U8},
+        {GMM_FORMAT_R8_UINT_TYPE, Format_R8U},
+        {GMM_FORMAT_R32_SINT, Format_R32S},
+        {GMM_FORMAT_R8G8_UNORM_TYPE, Format_R8G8UN},
+        {GMM_FORMAT_R16_SINT_TYPE, Format_R16S},
+        {GMM_FORMAT_R16G16B16A16_UNORM_TYPE, Format_A16B16G16R16},
+        {GMM_FORMAT_R16G16B16A16_FLOAT_TYPE, Format_A16B16G16R16F},
+        {GMM_FORMAT_R10G10B10A2_UNORM_TYPE, Format_R10G10B10A2},
+        {GMM_FORMAT_MFX_JPEG_YUV422H_TYPE, Format_422H},
+        {GMM_FORMAT_MFX_JPEG_YUV411_TYPE, Format_411P},
+        {GMM_FORMAT_MFX_JPEG_YUV422V_TYPE, Format_422V},
+        {GMM_FORMAT_MFX_JPEG_YUV444_TYPE, Format_444P},
+        {GMM_FORMAT_BAYER_BGGR16, Format_IRW0},
+        {GMM_FORMAT_BAYER_RGGB16, Format_IRW1},
+        {GMM_FORMAT_BAYER_GRBG16, Format_IRW2},
+        {GMM_FORMAT_BAYER_GBRG16, Format_IRW3},
+        {GMM_FORMAT_R8G8B8A8_UINT_TYPE, Format_AYUV},
+        {GMM_FORMAT_AYUV, Format_AYUV},
+        {GMM_FORMAT_R16G16_UNORM_TYPE, Format_R16G16UN},
+        {GMM_FORMAT_R16_FLOAT, Format_R16F},
+        {GMM_FORMAT_Y416_TYPE, Format_Y416},
+        {GMM_FORMAT_Y410_TYPE, Format_Y410},
+        {GMM_FORMAT_Y210_TYPE, Format_Y210},
+        {GMM_FORMAT_Y216_TYPE, Format_Y216},
+        {GMM_FORMAT_MFX_JPEG_YUV411R_TYPE, Format_411R},
+        {GMM_FORMAT_RGBP_TYPE, Format_RGBP},
+        {GMM_FORMAT_BGRP_TYPE, Format_RGBP},
+        {GMM_FORMAT_R24_UNORM_X8_TYPELESS, Format_D24S8UN},
+        {GMM_FORMAT_R32_FLOAT_X8X24_TYPELESS, Format_D32S8X24_FLOAT},
+        {GMM_FORMAT_R16G16_SINT_TYPE, Format_R16G16S},
+        {GMM_FORMAT_R32G32B32A32_FLOAT, Format_R32G32B32A32F}};
+
+    auto iter = gmm2MosFmtMap.find(format);
+    if (iter != gmm2MosFmtMap.end())
+    {
+        return iter->second;
+    }
+    return Format_Invalid;
+}
+
 GMM_RESOURCE_FORMAT MosInterface::MosFmtToGmmFmt(MOS_FORMAT format)
 {
     static const std::map<MOS_FORMAT, GMM_RESOURCE_FORMAT> mos2GmmFmtMap = {
-        {Format_Buffer, GMM_FORMAT_GENERIC_8BIT},
-        {Format_Buffer_2D, GMM_FORMAT_GENERIC_8BIT},
-        {Format_L8, GMM_FORMAT_GENERIC_8BIT},
-        {Format_L16, GMM_FORMAT_L16_UNORM_TYPE},
-        {Format_STMM, GMM_FORMAT_R8_UNORM_TYPE},
-        {Format_AI44, GMM_FORMAT_GENERIC_8BIT},
-        {Format_IA44, GMM_FORMAT_GENERIC_8BIT},
-        {Format_R5G6B5, GMM_FORMAT_B5G6R5_UNORM_TYPE},
-        {Format_X8R8G8B8, GMM_FORMAT_B8G8R8X8_UNORM_TYPE},
-        {Format_A8R8G8B8, GMM_FORMAT_B8G8R8A8_UNORM_TYPE},
-        {Format_X8B8G8R8, GMM_FORMAT_R8G8B8X8_UNORM_TYPE},
-        {Format_A8B8G8R8, GMM_FORMAT_R8G8B8A8_UNORM_TYPE},
-        {Format_R32F, GMM_FORMAT_R32_FLOAT_TYPE},
-        {Format_V8U8, GMM_FORMAT_GENERIC_16BIT},  // matching size as format
-        {Format_YUY2, GMM_FORMAT_YUY2},
-        {Format_UYVY, GMM_FORMAT_UYVY},
-        {Format_P8, GMM_FORMAT_RENDER_8BIT_TYPE},  // matching size as format
-        {Format_A8, GMM_FORMAT_A8_UNORM_TYPE},
-        {Format_AYUV, GMM_FORMAT_R8G8B8A8_UINT_TYPE},
-        {Format_NV12, GMM_FORMAT_NV12_TYPE},
-        {Format_NV21, GMM_FORMAT_NV21_TYPE},
-        {Format_YV12, GMM_FORMAT_YV12_TYPE},
-        {Format_R32U, GMM_FORMAT_R32_UINT_TYPE},
-        {Format_R32S, GMM_FORMAT_R32_SINT_TYPE},
-        {Format_RAW, GMM_FORMAT_GENERIC_8BIT},
-        {Format_444P, GMM_FORMAT_MFX_JPEG_YUV444_TYPE},
-        {Format_422H, GMM_FORMAT_MFX_JPEG_YUV422H_TYPE},
-        {Format_422V, GMM_FORMAT_MFX_JPEG_YUV422V_TYPE},
-        {Format_IMC3, GMM_FORMAT_IMC3_TYPE},
-        {Format_411P, GMM_FORMAT_MFX_JPEG_YUV411_TYPE},
-        {Format_411R, GMM_FORMAT_MFX_JPEG_YUV411R_TYPE},
-        {Format_RGBP, GMM_FORMAT_RGBP_TYPE},
-        {Format_BGRP, GMM_FORMAT_BGRP_TYPE},
-        {Format_R8U, GMM_FORMAT_R8_UINT_TYPE},
-        {Format_R8UN, GMM_FORMAT_R8_UNORM},
-        {Format_R16U, GMM_FORMAT_R16_UINT_TYPE},
-        {Format_R16F, GMM_FORMAT_R16_FLOAT_TYPE},
-        {Format_P010, GMM_FORMAT_P010_TYPE},
-        {Format_P016, GMM_FORMAT_P016_TYPE},
-        {Format_Y216, GMM_FORMAT_Y216_TYPE},
-        {Format_Y416, GMM_FORMAT_Y416_TYPE},
-        {Format_P208, GMM_FORMAT_P208_TYPE},
-        {Format_A16B16G16R16, GMM_FORMAT_R16G16B16A16_UNORM_TYPE},
-        {Format_Y210, GMM_FORMAT_Y210_TYPE},
-        {Format_Y410, GMM_FORMAT_Y410_TYPE},
-        {Format_R10G10B10A2, GMM_FORMAT_R10G10B10A2_UNORM_TYPE},
-        {Format_A16B16G16R16F, GMM_FORMAT_R16G16B16A16_FLOAT},
-        {Format_R32G32B32A32F, GMM_FORMAT_R32G32B32A32_FLOAT}
+        {Format_Buffer,         GMM_FORMAT_GENERIC_8BIT},
+        {Format_Buffer_2D,      GMM_FORMAT_GENERIC_8BIT},
+        {Format_L8,             GMM_FORMAT_GENERIC_8BIT},
+        {Format_L16,            GMM_FORMAT_L16_UNORM_TYPE},
+        {Format_STMM,           GMM_FORMAT_MEDIA_Y8_UNORM},
+        {Format_AI44,           GMM_FORMAT_GENERIC_8BIT},
+        {Format_IA44,           GMM_FORMAT_GENERIC_8BIT},
+        {Format_R5G6B5,         GMM_FORMAT_B5G6R5_UNORM_TYPE},
+        {Format_R8G8B8,         GMM_FORMAT_R8G8B8_UNORM},
+        {Format_X8R8G8B8,       GMM_FORMAT_B8G8R8X8_UNORM_TYPE},
+        {Format_A8R8G8B8,       GMM_FORMAT_B8G8R8A8_UNORM_TYPE},
+        {Format_X8B8G8R8,       GMM_FORMAT_R8G8B8X8_UNORM_TYPE},
+        {Format_A8B8G8R8,       GMM_FORMAT_R8G8B8A8_UNORM_TYPE},
+        {Format_R32F,           GMM_FORMAT_R32_FLOAT_TYPE},
+        {Format_V8U8,           GMM_FORMAT_GENERIC_16BIT},  // matching size as format
+        {Format_YUY2,           GMM_FORMAT_YUY2},
+        {Format_UYVY,           GMM_FORMAT_UYVY},
+        {Format_P8,             GMM_FORMAT_RENDER_8BIT_TYPE},  // matching size as format
+        {Format_A8,             GMM_FORMAT_A8_UNORM_TYPE},
+        {Format_AYUV,           GMM_FORMAT_R8G8B8A8_UINT_TYPE},
+        {Format_NV12,           GMM_FORMAT_NV12_TYPE},
+        {Format_NV21,           GMM_FORMAT_NV21_TYPE},
+        {Format_YV12,           GMM_FORMAT_YV12_TYPE},
+        {Format_R32U,           GMM_FORMAT_R32_UINT_TYPE},
+        {Format_R32S,           GMM_FORMAT_R32_SINT_TYPE},
+        {Format_RAW,            GMM_FORMAT_GENERIC_8BIT},
+        {Format_444P,           GMM_FORMAT_MFX_JPEG_YUV444_TYPE},
+        {Format_422H,           GMM_FORMAT_MFX_JPEG_YUV422H_TYPE},
+        {Format_422V,           GMM_FORMAT_MFX_JPEG_YUV422V_TYPE},
+        {Format_IMC3,           GMM_FORMAT_IMC3_TYPE},
+        {Format_411P,           GMM_FORMAT_MFX_JPEG_YUV411_TYPE},
+        {Format_411R,           GMM_FORMAT_MFX_JPEG_YUV411R_TYPE},
+        {Format_RGBP,           GMM_FORMAT_RGBP_TYPE},
+        {Format_BGRP,           GMM_FORMAT_BGRP_TYPE},
+        {Format_R8U,            GMM_FORMAT_R8_UINT_TYPE},
+        {Format_R8UN,           GMM_FORMAT_R8_UNORM},
+        {Format_R16U,           GMM_FORMAT_R16_UINT_TYPE},
+        {Format_R16F,           GMM_FORMAT_R16_FLOAT_TYPE},
+        {Format_P010,           GMM_FORMAT_P010_TYPE},
+        {Format_P016,           GMM_FORMAT_P016_TYPE},
+        {Format_Y216,           GMM_FORMAT_Y216_TYPE},
+        {Format_Y416,           GMM_FORMAT_Y416_TYPE},
+        {Format_P208,           GMM_FORMAT_P208_TYPE},
+        {Format_A16B16G16R16,   GMM_FORMAT_R16G16B16A16_UNORM_TYPE},
+        {Format_Y210,           GMM_FORMAT_Y210_TYPE},
+        {Format_Y410,           GMM_FORMAT_Y410_TYPE},
+        {Format_R10G10B10A2,    GMM_FORMAT_R10G10B10A2_UNORM_TYPE},
+        {Format_A16B16G16R16F,  GMM_FORMAT_R16G16B16A16_FLOAT},
+        {Format_R32G32B32A32F,  GMM_FORMAT_R32G32B32A32_FLOAT}
     };
     
     auto iter = mos2GmmFmtMap.find(format);
@@ -3302,6 +3387,130 @@ GMM_RESOURCE_FORMAT MosInterface::MosFmtToGmmFmt(MOS_FORMAT format)
     }
     return GMM_FORMAT_INVALID;
 
+}
+
+uint32_t MosInterface::MosFmtToOsFmt(MOS_FORMAT format)
+{
+    static const std::map<MOS_FORMAT, MOS_OS_FORMAT> mos2OsFmtMap = {
+        {Format_A8R8G8B8,   (MOS_OS_FORMAT)DDI_FORMAT_A8R8G8B8},
+        {Format_X8R8G8B8,   (MOS_OS_FORMAT)DDI_FORMAT_X8R8G8B8},
+        {Format_A8B8G8R8,   (MOS_OS_FORMAT)DDI_FORMAT_A8B8G8R8},
+        {Format_R32U,       (MOS_OS_FORMAT)DDI_FORMAT_R32F},
+        {Format_R32F,       (MOS_OS_FORMAT)DDI_FORMAT_R32F},
+        {Format_R5G6B5,     (MOS_OS_FORMAT)DDI_FORMAT_R5G6B5},
+        {Format_YUY2,       (MOS_OS_FORMAT)DDI_FORMAT_YUY2},
+        {Format_P8,         (MOS_OS_FORMAT)DDI_FORMAT_P8},
+        {Format_A8P8,       (MOS_OS_FORMAT)DDI_FORMAT_A8P8},
+        {Format_A8,         (MOS_OS_FORMAT)DDI_FORMAT_A8},
+        {Format_L8,         (MOS_OS_FORMAT)DDI_FORMAT_L8},
+        {Format_L16,        (MOS_OS_FORMAT)DDI_FORMAT_L16},
+        {Format_A4L4,       (MOS_OS_FORMAT)DDI_FORMAT_A4L4},
+        {Format_A8L8,       (MOS_OS_FORMAT)DDI_FORMAT_A8L8},
+        {Format_V8U8,       (MOS_OS_FORMAT)DDI_FORMAT_V8U8},
+        {Format_YVYU,       (MOS_OS_FORMAT)FOURCC_YVYU},
+        {Format_UYVY,       (MOS_OS_FORMAT)FOURCC_UYVY},
+        {Format_VYUY,       (MOS_OS_FORMAT)FOURCC_VYUY},
+        {Format_AYUV,       (MOS_OS_FORMAT)FOURCC_AYUV},
+        {Format_NV12,       (MOS_OS_FORMAT)FOURCC_NV12},
+        {Format_NV21,       (MOS_OS_FORMAT)FOURCC_NV21},
+        {Format_NV11,       (MOS_OS_FORMAT)FOURCC_NV11},
+        {Format_P208,       (MOS_OS_FORMAT)FOURCC_P208},
+        {Format_IMC1,       (MOS_OS_FORMAT)FOURCC_IMC1},
+        {Format_IMC2,       (MOS_OS_FORMAT)FOURCC_IMC2},
+        {Format_IMC3,       (MOS_OS_FORMAT)FOURCC_IMC3},
+        {Format_IMC4,       (MOS_OS_FORMAT)FOURCC_IMC4},
+        {Format_I420,       (MOS_OS_FORMAT)FOURCC_I420},
+        {Format_IYUV,       (MOS_OS_FORMAT)FOURCC_IYUV},
+        {Format_YV12,       (MOS_OS_FORMAT)FOURCC_YV12},
+        {Format_YVU9,       (MOS_OS_FORMAT)FOURCC_YVU9},
+        {Format_AI44,       (MOS_OS_FORMAT)FOURCC_AI44},
+        {Format_IA44,       (MOS_OS_FORMAT)FOURCC_IA44},
+        {Format_400P,       (MOS_OS_FORMAT)FOURCC_400P},
+        {Format_411P,       (MOS_OS_FORMAT)FOURCC_411P},
+        {Format_411R,       (MOS_OS_FORMAT)FOURCC_411R},
+        {Format_422H,       (MOS_OS_FORMAT)FOURCC_422H},
+        {Format_422V,       (MOS_OS_FORMAT)FOURCC_422V},
+        {Format_444P,       (MOS_OS_FORMAT)FOURCC_444P},
+        {Format_RGBP,       (MOS_OS_FORMAT)FOURCC_RGBP},
+        {Format_BGRP,       (MOS_OS_FORMAT)FOURCC_BGRP},
+        {Format_STMM,       (MOS_OS_FORMAT)DDI_FORMAT_P8},
+        {Format_P010,       (MOS_OS_FORMAT)FOURCC_P010},
+        {Format_P016,       (MOS_OS_FORMAT)FOURCC_P016},
+        {Format_Y216,       (MOS_OS_FORMAT)FOURCC_Y216},
+        {Format_Y416,       (MOS_OS_FORMAT)FOURCC_Y416},
+        {Format_A16B16G16R16, (MOS_OS_FORMAT)DDI_FORMAT_A16B16G16R16},
+        {Format_Y210,       (MOS_OS_FORMAT)FOURCC_Y210},
+        {Format_Y410,       (MOS_OS_FORMAT)FOURCC_Y410},
+        {Format_R32G32B32A32F, (MOS_OS_FORMAT)DDI_FORMAT_R32G32B32A32F}};
+
+    auto iter = mos2OsFmtMap.find(format);
+    if (iter != mos2OsFmtMap.end())
+    {
+        return iter->second;
+    }
+    return (MOS_OS_FORMAT)DDI_FORMAT_UNKNOWN;
+}
+
+MOS_FORMAT MosInterface::OsFmtToMosFmt(uint32_t format)
+{
+    static const std::map<MOS_OS_FORMAT, MOS_FORMAT> os2MosFmtMap = {
+        {DDI_FORMAT_A8B8G8R8,       Format_A8R8G8B8},
+        {DDI_FORMAT_X8B8G8R8,       Format_X8R8G8B8},
+        {DDI_FORMAT_R32F,           Format_R32F},
+        {DDI_FORMAT_A8R8G8B8,       Format_A8R8G8B8},
+        {DDI_FORMAT_X8R8G8B8,       Format_X8R8G8B8},
+        {DDI_FORMAT_R5G6B5,         Format_R5G6B5},
+        {DDI_FORMAT_YUY2,           Format_YUY2},
+        {DDI_FORMAT_P8,             Format_P8},
+        {DDI_FORMAT_A8P8,           Format_A8P8},
+        {DDI_FORMAT_A8,             Format_A8},
+        {DDI_FORMAT_L8,             Format_L8},
+        {DDI_FORMAT_L16,            Format_L16},
+        {DDI_FORMAT_A4L4,           Format_A4L4},
+        {DDI_FORMAT_A8L8,           Format_A8L8},
+        {DDI_FORMAT_V8U8,           Format_V8U8},
+        {DDI_FORMAT_A16B16G16R16,   Format_A16B16G16R16},
+        {DDI_FORMAT_R32G32B32A32F,  Format_R32G32B32A32F},
+        {FOURCC_YVYU,               Format_YVYU},
+        {FOURCC_UYVY,               Format_UYVY},
+        {FOURCC_VYUY,               Format_VYUY},
+        {FOURCC_AYUV,               Format_AYUV},
+        {FOURCC_NV12,               Format_NV12},
+        {FOURCC_NV21,               Format_NV21},
+        {FOURCC_NV11,               Format_NV11},
+        {FOURCC_P208,               Format_P208},
+        {FOURCC_IMC1,               Format_IMC1},
+        {FOURCC_IMC2,               Format_IMC2},
+        {FOURCC_IMC3,               Format_IMC3},
+        {FOURCC_IMC4,               Format_IMC4},
+        {FOURCC_I420,               Format_I420},
+        {FOURCC_IYUV,               Format_IYUV},
+        {FOURCC_YV12,               Format_YV12},
+        {FOURCC_YVU9,               Format_YVU9},
+        {FOURCC_AI44,               Format_AI44},
+        {FOURCC_IA44,               Format_IA44},
+        {FOURCC_400P,               Format_400P},
+        {FOURCC_411P,               Format_411P},
+        {FOURCC_411R,               Format_411R},
+        {FOURCC_422H,               Format_422H},
+        {FOURCC_422V,               Format_422V},
+        {FOURCC_444P,               Format_444P},
+        {FOURCC_RGBP,               Format_RGBP},
+        {FOURCC_BGRP,               Format_BGRP},
+        {FOURCC_P010,               Format_P010},
+        {FOURCC_P016,               Format_P016},
+        {FOURCC_Y216,               Format_Y216},
+        {FOURCC_Y416,               Format_Y416},
+        {FOURCC_Y210,               Format_Y210},
+        {FOURCC_Y410,               Format_Y410}
+    };
+
+    auto iter = os2MosFmtMap.find(format);
+    if (iter != os2MosFmtMap.end())
+    {
+        return iter->second;
+    }
+    return Format_Invalid;
 }
 
 bool MosInterface::IsCompressibelSurfaceSupported(MEDIA_FEATURE_TABLE *skuTable)

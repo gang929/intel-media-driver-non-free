@@ -34,6 +34,8 @@ using namespace vp;
 
 VpVeboxCmdPacketXe_Hpm::VpVeboxCmdPacketXe_Hpm(MediaTask * task, PVP_MHWINTERFACE hwInterface, PVpAllocator &allocator, VPMediaMemComp *mmc, bool disbaleSfcDithering) :
     CmdPacket(task),
+    VpCmdPacket(task, hwInterface, allocator, mmc, VP_PIPELINE_PACKET_VEBOX),
+    VpVeboxCmdPacketBase(task, hwInterface, allocator, mmc),
     VpVeboxCmdPacketLegacy(task, hwInterface, allocator, mmc),
     VpVeboxCmdPacketG12(task, hwInterface, allocator, mmc),
     VpVeboxCmdPacketXe_Xpm_Base(task, hwInterface, allocator, mmc, disbaleSfcDithering)
@@ -161,13 +163,13 @@ MOS_STATUS VpVeboxCmdPacketXe_Hpm::GNELumaConsistentCheck(
     if (dwGNEChromaU == 0xFFFFFFFF || dwGNECountChromaU == 0xFFFFFFFF ||
         dwGNEChromaV == 0xFFFFFFFF || dwGNECountChromaV == 0xFFFFFFFF)
     {
-        VPHAL_RENDER_ASSERTMESSAGE("Incorrect GNE / GNE count.");
+        VP_RENDER_ASSERTMESSAGE("Incorrect GNE / GNE count.");
         return MOS_STATUS_UNKNOWN;
     }
 
     dwGNEChromaU = dwGNEChromaU * 100 / (dwGNECountChromaU + 1);
     dwGNEChromaV = dwGNEChromaV * 100 / (dwGNECountChromaV + 1);
-    VPHAL_RENDER_NORMALMESSAGE("Consistent Check: dwGNEChromaU %d  dwGNEChromaV %d", dwGNEChromaU, dwGNEChromaV);
+    VP_RENDER_NORMALMESSAGE("Consistent Check: dwGNEChromaU %d  dwGNEChromaV %d", dwGNEChromaU, dwGNEChromaV);
     if ((dwGNEChromaU < NOSIE_GNE_CHROMA_THRESHOLD) &&
         (dwGNEChromaV < NOSIE_GNE_CHROMA_THRESHOLD) &&
         (dwGNEChromaU != 0) &&
@@ -205,7 +207,7 @@ MOS_STATUS VpVeboxCmdPacketXe_Hpm::UpdateDnHVSParameters(
     auto &tgneParams = sharedContext->tgneParams;
     auto &hvsParams  = sharedContext->hvsParams;
     veboxInterface   = static_cast<MhwVeboxInterfaceXe_Hpm *>(m_hwInterface->m_veboxInterface);
-    resltn           = m_currentSurface->osSurface->dwWidth * m_currentSurface->osSurface->dwHeight;
+    resltn           = m_currentSurface->rcSrc.right * m_currentSurface->rcSrc.bottom;
 
     // Set HVS kernel params
     hvsParams.Format            = 0;
@@ -215,8 +217,8 @@ MOS_STATUS VpVeboxCmdPacketXe_Hpm::UpdateDnHVSParameters(
     hvsParams.FirstFrame        = sharedContext->bFirstFrame;
     hvsParams.TgneFirstFrame    = !sharedContext->bFirstFrame && tgneParams.bTgneFirstFrame;
     hvsParams.EnableTemporalGNE = m_bTgneEnable;
-    hvsParams.Width             = (uint16_t)m_currentSurface->osSurface->dwWidth;
-    hvsParams.Height            = (uint16_t)m_currentSurface->osSurface->dwHeight;
+    hvsParams.Width             = (uint16_t)m_currentSurface->rcSrc.right;
+    hvsParams.Height            = (uint16_t)m_currentSurface->rcSrc.bottom;
 
     // Set QP
     if (renderData->GetHVSParams().Mode == HVSDENOISE_MANUAL)
@@ -264,7 +266,7 @@ MOS_STATUS VpVeboxCmdPacketXe_Hpm::UpdateDnHVSParameters(
         dwGNEChromaU == 0xFFFFFFFF || dwGNECountChromaU == 0xFFFFFFFF ||
         dwGNEChromaV == 0xFFFFFFFF || dwGNECountChromaV == 0xFFFFFFF)
     {
-        VPHAL_RENDER_ASSERTMESSAGE("Incorrect GNE / GNE count.");
+        VP_RENDER_ASSERTMESSAGE("Incorrect GNE / GNE count.");
         return MOS_STATUS_UNKNOWN;
     }
 
@@ -356,7 +358,7 @@ MOS_STATUS VpVeboxCmdPacketXe_Hpm::UpdateDnHVSParameters(
             dwSGNEChromaU == 0xFFFFFFFF || dwSGNECountChromaU == 0xFFFFFFFF ||
             dwSGNEChromaV == 0xFFFFFFFF || dwSGNECountChromaV == 0xFFFFFFF)
         {
-            VPHAL_RENDER_ASSERTMESSAGE("Incorrect GNE count.");
+            VP_RENDER_ASSERTMESSAGE("Incorrect GNE count.");
             return MOS_STATUS_UNKNOWN;
         }
 
@@ -466,7 +468,7 @@ MOS_STATUS VpVeboxCmdPacketXe_Hpm::UpdateDnHVSParameters(
         hvsParams.dwGlobalNoiseLevelV = renderData->GetHVSParams().Strength;
     }
 
-    VP_PUBLIC_NORMALMESSAGE("HVS Kernel params: hvsParams.QP %d, hvsParams.Mode %d, hvsParams.Width %d, hvsParams.Height %d, hvsParams.Format %d", hvsParams.QP, hvsParams.Strength, hvsParams.Mode, hvsParams.Width, hvsParams.Height, hvsParams.Format);
+    VP_PUBLIC_NORMALMESSAGE("HVS Kernel params: hvsParams.QP %d, hvsParams.Strength %d, hvsParams.Mode %d, hvsParams.Width %d, hvsParams.Height %d, hvsParams.Format %d", hvsParams.QP, hvsParams.Strength, hvsParams.Mode, hvsParams.Width, hvsParams.Height, hvsParams.Format);
     VP_PUBLIC_NORMALMESSAGE("HVS Kernel params: hvsParams.FirstFrame %d, hvsParams.TgneFirstFrame %d, hvsParams.EnableTemporalGNE %d, hvsParams.Fallback %d, hvsParams.EnableChroma %d", hvsParams.FirstFrame, hvsParams.TgneFirstFrame, hvsParams.EnableTemporalGNE, hvsParams.Fallback, hvsParams.EnableChroma);
     VP_PUBLIC_NORMALMESSAGE("HVS Kernel params: hvsParams.dwGlobalNoiseLevel %d, hvsParams.dwGlobalNoiseLevelU %d, hvsParams.dwGlobalNoiseLevelV %d", hvsParams.dwGlobalNoiseLevel, hvsParams.dwGlobalNoiseLevelU, hvsParams.dwGlobalNoiseLevelV);
     VP_PUBLIC_NORMALMESSAGE("HVS Kernel params: hvsParams.PrevNslvTemporal %d, hvsParams.PrevNslvTemporalU %d, hvsParams.PrevNslvTemporalV %d", hvsParams.PrevNslvTemporal, hvsParams.PrevNslvTemporalU, hvsParams.PrevNslvTemporalV);
@@ -618,6 +620,7 @@ MOS_STATUS VpVeboxCmdPacketXe_Hpm::SetupDNTableForHVS(
     //DW28
     veboxChromaParams.dwPixRangeThresholdChromaV[0] = (bufHVSDenoiseParam[28] & 0x1fff0000) >> 16;
     VP_RENDER_NORMALMESSAGE("veboxChromaParams.dwPixRangeThresholdChromaV[0] %d", veboxChromaParams.dwPixRangeThresholdChromaV[0]);
+    VP_RENDER_NORMALMESSAGE("amdedNosieLevelSpatial %d", bufHVSDenoiseParam[32]);
 
     VP_PUBLIC_CHK_STATUS_RETURN(m_allocator->UnLock(&surfHVSTable->osSurface->OsResource));
   

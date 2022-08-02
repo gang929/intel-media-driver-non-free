@@ -63,6 +63,13 @@ namespace encode
 
 #if (_DEBUG || _RELEASE_INTERNAL)
         MediaUserSetting::Value outValue;
+        ReadUserSettingForDebug(
+            m_userSettingPtr,
+            outValue,
+            "FAST PAK ENABLE",
+            MediaUserSetting::Group::Sequence);
+        m_fastPakEnable = outValue.Get<bool>();
+
         ReadUserSetting(
             m_userSettingPtr,
             outValue,
@@ -126,22 +133,10 @@ namespace encode
         HevcBasicFeature *hevcBasicFeature = dynamic_cast<HevcBasicFeature *>(m_basicFeature);
         ENCODE_CHK_NULL_RETURN(hevcBasicFeature);
 
-        //Each tile has 9 cache size bytes of data, Align to page is HuC requirement
-        uint32_t size = MOS_ALIGN_CEIL(HevcBasicFeature::m_sizeOfHcpPakFrameStats * hevcBasicFeature->m_maxTileNumber, CODECHAL_PAGE_SIZE);
-
-        allocParamsForBufferLinear.dwBytes = size;
-        allocParamsForBufferLinear.pBufName = "FrameStatStreamOutBuffer";
-        m_basicFeature->m_recycleBuf->RegisterResource(FrameStatStreamOutBuffer, allocParamsForBufferLinear, 1);
-
         // BRC history buffer
         allocParamsForBufferLinear.dwBytes = MOS_ALIGN_CEIL(m_brcHistoryBufSize, CODECHAL_PAGE_SIZE);
         allocParamsForBufferLinear.pBufName = "VDENC BRC History Buffer";
         m_basicFeature->m_recycleBuf->RegisterResource(VdencBRCHistoryBuffer, allocParamsForBufferLinear, 1);
-
-        // PAK stream-out buffer
-        allocParamsForBufferLinear.dwBytes = MOS_ALIGN_CEIL(m_vdencBRCStatsBufferSize * hevcBasicFeature->m_maxTileNumber, CODECHAL_PAGE_SIZE);
-        allocParamsForBufferLinear.pBufName = "vdencStats";
-        m_basicFeature->m_recycleBuf->RegisterResource(VdencStatsBuffer, allocParamsForBufferLinear, 1);
 
         for (auto j = 0; j < CODECHAL_ENCODE_RECYCLED_BUFFER_NUM; j++)
         {
@@ -240,27 +235,6 @@ namespace encode
         return MOS_STATUS_SUCCESS;
     }
 
-    MOS_STATUS HEVCEncodeBRC::SetRegionsForUpdate(MHW_VDBOX_HUC_VIRTUAL_ADDR_PARAMS& params, uint32_t currRecycledBufIdx)
-    {
-        ENCODE_FUNC_CALL();
-        ENCODE_CHK_NULL_RETURN(m_basicFeature);
-
-        MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
-
-        // Add Virtual addr
-        MOS_ZeroMemory(&params, sizeof(MHW_VDBOX_HUC_VIRTUAL_ADDR_PARAMS));
-        params.regionParams[0].presRegion = m_basicFeature->m_recycleBuf->GetBuffer(VdencBRCHistoryBuffer, 0);  // Region 0 - History Buffer (Input/Output)
-        params.regionParams[0].isWritable = true;
-        
-        params.regionParams[5].presRegion = &m_vdenc2ndLevelBatchBuffer[currRecycledBufIdx].OsResource;         // Region 5 - Output SLB Buffer (Output)
-        params.regionParams[5].isWritable = true;
-
-        // region 15 always in clear
-        params.regionParams[15].presRegion = m_basicFeature->m_recycleBuf->GetBuffer(VdencBrcDebugBuffer, 0);   // Region 15 - Debug Buffer (Output)
-        params.regionParams[15].isWritable = true;
-        return MOS_STATUS_SUCCESS;
-    }
-
     MOS_STATUS HEVCEncodeBRC::SetDmemForUpdate(void* params)
     {
         ENCODE_FUNC_CALL();
@@ -291,8 +265,16 @@ namespace encode
             hucVdencBrcUpdateDmem->DeltaQPForMvZone2_S8 = brcSettings.deltaQPForMvZone2_S8;
         }
 
-        hucVdencBrcUpdateDmem->ReEncodePositiveQPDeltaThr_S8 = brcSettings.reEncodePositiveQPDeltaThr_S8;
-        hucVdencBrcUpdateDmem->ReEncodeNegativeQPDeltaThr_S8 = brcSettings.reEncodeNegativeQPDeltaThr_S8;
+        if (m_fastPakEnable)
+        {
+            hucVdencBrcUpdateDmem->ReEncodePositiveQPDeltaThr_S8 = brcSettings.reEncodePositiveQPDeltaThr_S8;
+            hucVdencBrcUpdateDmem->ReEncodeNegativeQPDeltaThr_S8 = brcSettings.reEncodeNegativeQPDeltaThr_S8;
+        }
+        else
+        {
+            hucVdencBrcUpdateDmem->ReEncodePositiveQPDeltaThr_S8 = 0;
+            hucVdencBrcUpdateDmem->ReEncodeNegativeQPDeltaThr_S8 = 0;
+        }
         hucVdencBrcUpdateDmem->SceneChgPrevIntraPctThreshold_U8 = brcSettings.sceneChgPrevIntraPctThreshold_U8;
         hucVdencBrcUpdateDmem->SceneChgCurIntraPctThreshold_U8 = brcSettings.sceneChgCurIntraPctThreshold_U8;
 
@@ -525,7 +507,7 @@ namespace encode
             int8_t DevThreshI0_S8[8] = {};
 
             uint64_t inputbitsperframe = uint64_t(hucVdencBrcInitDmem->MaxRate_U32*100. / (hucVdencBrcInitDmem->FrameRateM_U32 * 100.0 / hucVdencBrcInitDmem->FrameRateD_U32));
-            if (m_brcEnabled && !hucVdencBrcInitDmem->BufSize_U32)
+            if (m_brcEnabled && (m_rcMode != RATECONTROL_ICQ) && !hucVdencBrcInitDmem->BufSize_U32)
             {
                 ENCODE_ASSERTMESSAGE("VBV BufSize should not be 0 for BRC case\n");
                 return MOS_STATUS_INVALID_PARAMETER;
@@ -888,7 +870,7 @@ namespace encode
 
     MHW_SETPAR_DECL_SRC(VDENC_PIPE_MODE_SELECT, HEVCEncodeBRC)
     {
-        params.frameStatisticsStreamOut = m_hevcVDEncAcqpEnabled || m_vdencBrcEnabled;
+        params.frameStatisticsStreamOut |= m_hevcVDEncAcqpEnabled || m_vdencBrcEnabled;
 
         return MOS_STATUS_SUCCESS;
     }

@@ -98,6 +98,7 @@ MOS_STATUS HevcDecodeLongPktM12::Submit(
         DECODE_CHK_STATUS(PackSliceLevelCmds(*cmdBuffer));
     }
 
+    HalOcaInterface::DumpCodechalParam(*cmdBuffer, *m_osInterface->pOsContext, m_hevcPipeline->GetCodechalOcaDumper(), CODECHAL_HEVC);
     HalOcaInterface::On1stLevelBBEnd(*cmdBuffer, *m_osInterface);
 
     DECODE_CHK_STATUS(m_allocator->SyncOnResource(&m_hevcBasicFeature->m_resDataBuffer, false));
@@ -156,7 +157,10 @@ MOS_STATUS HevcDecodeLongPktM12::PackPictureLevelCmds(MOS_COMMAND_BUFFER &cmdBuf
     DECODE_CHK_STATUS(UpdateStatusReport(statusReportGlobalCount, &cmdBuffer));
     DECODE_CHK_STATUS(MiFlush(cmdBuffer));
 
-    DECODE_CHK_STATUS(m_miInterface->AddMiBatchBufferEnd(&cmdBuffer, nullptr));
+    if (!m_osInterface->pfnIsMismatchOrderProgrammingSupported())
+    {
+        DECODE_CHK_STATUS(m_miInterface->AddMiBatchBufferEnd(&cmdBuffer, nullptr));
+    }
 
     return MOS_STATUS_SUCCESS;
 }

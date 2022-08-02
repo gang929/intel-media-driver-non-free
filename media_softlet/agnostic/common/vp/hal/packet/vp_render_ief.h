@@ -27,7 +27,27 @@
 #ifndef __VP_RENDER_IEF_H__
 #define __VP_RENDER_IEF_H__
 
-#include "vp_sfc_common.h"
+#include <stdint.h>
+#include "mos_defs.h"
+#include "media_class_trace.h"
+#include "mhw_sfc.h"
+#include "mhw_state_heap.h"
+#include "mos_resource_defs.h"
+#include "vp_common.h"
+namespace mhw
+{
+namespace sfc
+{
+struct SFC_IEF_STATE_PAR;
+}
+}  // namespace mhw
+namespace mhw
+{
+namespace sfc
+{
+struct SFC_STATE_PAR;
+}
+}  // namespace mhw
 
 //!
 //! Class VpIef
@@ -126,7 +146,7 @@ protected:
     //brief  Const IEF R3C coefficient array
     static const uint32_t           s_r3c[s_iefMaxItem];
 
-MEDIA_CLASS_DEFINE_END(VpIef)
+MEDIA_CLASS_DEFINE_END(vp__VpIef)
 };
 
 }

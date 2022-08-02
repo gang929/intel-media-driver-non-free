@@ -104,6 +104,11 @@ private:
         return m_hucStatus2ImemLoadedMask;
     }
 
+    uint32_t GetHucErrorFlagsMask()
+    {
+        return m_hucErrorFlagsMask;
+    }
+
     uint32_t GetHucProductFamily()
     {
         return m_hucFamily;
@@ -115,6 +120,7 @@ protected:
     MhwCpInterface        *m_cpItf = nullptr;
     static const uint32_t m_hucStatusHevcS2lFailureMask       = 0x8000;
     static const uint32_t m_hucStatus2ImemLoadedMask          = 0x40;
+    static const uint32_t m_hucErrorFlagsMask                 = 0xFFFE;          //!< HuC error 2 flags mask
     static const uint32_t m_hucFamily = 8;
 
     MHW_MEMORY_OBJECT_CONTROL_PARAMS m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_END_CODEC] = {};
@@ -124,6 +130,11 @@ protected:
         m_cpItf = cpItf;
 
         InitMmioRegisters();
+    }
+
+    virtual uint32_t GetMocsValue(MOS_HW_RESOURCE_DEF hwResType)
+    {
+        return this->m_cacheabilitySettings[hwResType].Gen12_7.Index;
     }
 
     _MHW_SETCMD_OVERRIDE_DECL(HUC_PIPE_MODE_SELECT)
@@ -168,8 +179,8 @@ protected:
                 this->m_currentCmdBuf,
                 &resourceParams));
 
-            cmd.HucIndirectStreamInObjectbaseAttributes.DW0.Value &= MEMORY_ADDRESS_ATTRIBUTES_MOCS_CLEAN_MASK;
-            cmd.HucIndirectStreamInObjectbaseAttributes.DW0.Value |= m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_SURFACE_UNCACHED].Value;
+            cmd.HucIndirectStreamInObjectbaseAttributes.DW0.BaseAddressIndexToMemoryObjectControlStateMocsTables =
+                GetMocsValue(MOS_CODEC_RESOURCE_USAGE_SURFACE_UNCACHED);
         }
 
         if (!Mos_ResourceIsNull(params.StreamOutObjectBuffer))
@@ -189,8 +200,8 @@ protected:
                 &resourceParams));
 
             // base address of the stream out buffer
-            cmd.HucIndirectStreamOutObjectbaseAttributes.DW0.Value &= MEMORY_ADDRESS_ATTRIBUTES_MOCS_CLEAN_MASK;
-            cmd.HucIndirectStreamOutObjectbaseAttributes.DW0.Value |= m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_SURFACE_UNCACHED].Value;
+            cmd.HucIndirectStreamOutObjectbaseAttributes.DW0.BaseAddressIndexToMemoryObjectControlStateMocsTables =
+                GetMocsValue(MOS_CODEC_RESOURCE_USAGE_SURFACE_UNCACHED);
         }
 
         return MOS_STATUS_SUCCESS;
@@ -256,8 +267,8 @@ protected:
             // set data length
             cmd.DW5.HucDataLength = params.dataLength >> MHW_VDBOX_HUC_GENERAL_STATE_SHIFT;
 
-            cmd.HucDataSourceAttributes.DW0.Value &= MEMORY_ADDRESS_ATTRIBUTES_MOCS_CLEAN_MASK;
-            cmd.HucDataSourceAttributes.DW0.Value |= m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_SURFACE_UNCACHED].Value;
+            cmd.HucDataSourceAttributes.DW0.BaseAddressIndexToMemoryObjectControlStateMocsTables =
+                GetMocsValue(MOS_CODEC_RESOURCE_USAGE_SURFACE_UNCACHED);
         }
         return MOS_STATUS_SUCCESS;
     }
@@ -290,9 +301,8 @@ protected:
                     this->m_currentCmdBuf,
                     &resourceParams));
 
-                cmd.HucVirtualAddressRegion[i].HucSurfaceVirtualaddrregion015.DW0.Value &= MEMORY_ADDRESS_ATTRIBUTES_MOCS_CLEAN_MASK;
-                cmd.HucVirtualAddressRegion[i].HucSurfaceVirtualaddrregion015.DW0.Value |=
-                    m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_HUC_VIRTUAL_ADDR_REGION_BUFFER_CODEC].Value;
+                cmd.HucVirtualAddressRegion[i].HucSurfaceVirtualaddrregion015.DW0.BaseAddressIndexToMemoryObjectControlStateMocsTables =
+                    GetMocsValue(MOS_CODEC_RESOURCE_USAGE_HUC_VIRTUAL_ADDR_REGION_BUFFER_CODEC);
             }
         }
         return MOS_STATUS_SUCCESS;

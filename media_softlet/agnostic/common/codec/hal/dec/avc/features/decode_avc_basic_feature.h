@@ -87,6 +87,13 @@ public:
         return m_osInterface;
     }
 
+    //!
+    //! \brief  Detect conformance conflict and do error concealment
+    //! \return MOS_STATUS
+    //!         MOS_STATUS_SUCCESS if success, else show assert message
+    //!
+    MOS_STATUS ErrorDetectAndConceal();
+
     struct SliceRecord
     {
         uint32_t   skip;
@@ -173,7 +180,7 @@ protected:
     MhwVdboxMfxInterface *m_mfxInterface = nullptr;
     PMOS_INTERFACE        m_osInterface  = nullptr;
 
-MEDIA_CLASS_DEFINE_END(AvcBasicFeature)
+MEDIA_CLASS_DEFINE_END(decode__AvcBasicFeature)
 };
 
 }//decode

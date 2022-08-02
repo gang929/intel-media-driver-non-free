@@ -258,6 +258,49 @@ void MosUtilDebug::MosMessageInitComponent(MOS_COMPONENT_ID compID, MediaUserSet
             MediaUserSetting::Group::Device);
     }
 
+    // Read user settings from trace config.
+    switch (compID)
+    {
+    case MOS_COMPONENT_OS:
+        if (MOS_TraceKeyEnabled(TR_KEY_MOSMSG_MOS))
+        {
+            uiCompUserFeatureSetting = 0x7;
+        }
+        break;
+    case MOS_COMPONENT_HW:
+        if (MOS_TraceKeyEnabled(TR_KEY_MOSMSG_MHW))
+        {
+            uiCompUserFeatureSetting = 0x7;
+        }
+        break;
+    case MOS_COMPONENT_CODEC:
+        if (MOS_TraceKeyEnabled(TR_KEY_MOSMSG_CODEC))
+        {
+            uiCompUserFeatureSetting = 0x7;
+        }
+        break;
+    case MOS_COMPONENT_VP:
+        if (MOS_TraceKeyEnabled(TR_KEY_MOSMSG_VP))
+        {
+            uiCompUserFeatureSetting = 0x7;
+        }
+        break;
+    case MOS_COMPONENT_CP:
+        if (MOS_TraceKeyEnabled(TR_KEY_MOSMSG_CP))
+        {
+            uiCompUserFeatureSetting = 0x7;
+        }
+        break;
+    case MOS_COMPONENT_DDI:
+        if (MOS_TraceKeyEnabled(TR_KEY_MOSMSG_DDI))
+        {
+            uiCompUserFeatureSetting = 0x7;
+        }
+        break;
+    default:
+        break;
+    }
+
     // Extract the 3-bit message level and 1-bit assert flag setting for this component.
     MosSetCompMessageLevel(compID, (MOS_MESSAGE_LEVEL) (uiCompUserFeatureSetting & 0x7));
     MosCompAssertEnableDisable(compID, (uiCompUserFeatureSetting >> 3) & 0x1);
@@ -315,11 +358,8 @@ MOS_STATUS MosUtilDebug::MosHLTInit(MediaUserSettingSharedPtr userSettingPtr)
 {
     uint32_t                                    nPID = 0;
     char                                        hltFileName[MOS_MAX_HLT_FILENAME_LEN] = {0};
-    MOS_USER_FEATURE_VALUE                      UserFeatureValue = __NULL_USER_FEATURE_VALUE__;
     char                                        fileNamePrefix[MOS_MAX_HLT_FILENAME_LEN];
     int32_t                                     bUseHybridLogTrace = false;
-    MOS_USER_FEATURE_VALUE_DATA                 UserFeatureData;
-    MOS_USER_FEATURE_VALUE_WRITE_DATA           UserFeatureWriteData;
     MOS_STATUS                                  eStatus = MOS_STATUS_SUCCESS;
 
     if (m_mosMsgParams.uiCounter != 0 )

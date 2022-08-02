@@ -264,26 +264,31 @@ int32_t CmQueueRT::Initialize()
                 }
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-                MOS_USER_FEATURE_VALUE_DATA UserFeatureData = {0};
-                MOS_UserFeature_ReadValue_ID(
-                    nullptr,
-                    __MEDIA_USER_FEATURE_VALUE_SSEU_SETTING_OVERRIDE_ID,
-                    &UserFeatureData, cmHalState->osInterface->pOsContext);
-
-                // +---------------+----------------+----------------+----------------+
-                // |   EUCountMax  |   EUCountMin   |     SSCount    |   SliceCount   |
-                // +-------------24+--------------16+---------------8+---------------0+
-                if (UserFeatureData.u32Data != 0xDEADC0DE)
                 {
-                    ctxCreateOption.packed.SliceCount            = UserFeatureData.u32Data         & 0xFF;       // Bits 0-7
-                    ctxCreateOption.packed.SubSliceCount         = (UserFeatureData.u32Data >>  8) & 0xFF;       // Bits 8-15
-                    ctxCreateOption.packed.MaxEUcountPerSubSlice = (UserFeatureData.u32Data >> 16) & 0xFF;       // Bits 16-23
-                    ctxCreateOption.packed.MinEUcountPerSubSlice = (UserFeatureData.u32Data >> 24) & 0xFF;       // Bits 24-31
+                    MediaUserSettingSharedPtr   userSettingPtr = cmHalState->osInterface->pfnGetUserSettingInstance(cmHalState->osInterface);
+                    uint32_t                    value          = 0;
+                    ReadUserSettingForDebug(
+                        userSettingPtr,
+                        value,
+                        __MEDIA_USER_FEATURE_VALUE_SSEU_SETTING_OVERRIDE,
+                        MediaUserSetting::Group::Device);
+
+                    // +---------------+----------------+----------------+----------------+
+                    // |   EUCountMax  |   EUCountMin   |     SSCount    |   SliceCount   |
+                    // +-------------24+--------------16+---------------8+---------------0+
+                    if (value != 0xDEADC0DE)
+                    {
+                        ctxCreateOption.packed.SliceCount            = value         & 0xFF;       // Bits 0-7
+                        ctxCreateOption.packed.SubSliceCount         = (value >>  8) & 0xFF;       // Bits 8-15
+                        ctxCreateOption.packed.MaxEUcountPerSubSlice = (value >> 16) & 0xFF;       // Bits 16-23
+                        ctxCreateOption.packed.MinEUcountPerSubSlice = (value >> 24) & 0xFF;       // Bits 24-31
+                    }
                 }
 #endif
             }
 
             ctxCreateOption.RAMode = m_queueOption.RAMode;
+            ctxCreateOption.isRealTimePriority = m_queueOption.IsRealTimePrioriy;
 
             // Create render GPU context.
             CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(
@@ -320,6 +325,8 @@ int32_t CmQueueRT::Initialize()
 
                 m_usingVirtualEngine = true;
             }
+
+            ctxCreateOption.isRealTimePriority = m_queueOption.IsRealTimePrioriy;
 
             CM_CHK_MOSSTATUS_GOTOFINISH_CMERROR(
                 CreateGpuContext(cmHalState, MOS_GPU_CONTEXT_CM_COMPUTE,
@@ -897,6 +904,11 @@ CM_RT_API int32_t CmQueueRT::EnqueueWithGroup( CmTask* task, CmEvent* & event, c
     }
 
     CmTaskRT *taskRT = static_cast<CmTaskRT *>(task);
+    if(taskRT == nullptr)
+    {
+        CM_ASSERTMESSAGE("Error: Kernel array is NULL.");
+        return CM_NULL_POINTER;
+    }
     uint32_t count = 0;
     count = taskRT->GetKernelCount();
 
@@ -2586,8 +2598,8 @@ int32_t CmQueueRT::QueryFlushedTasks()
                 PCM_CONTEXT_DATA cmData = (PCM_CONTEXT_DATA)m_device->GetAccelData();
 
                 // Clear task status table in Cm Hal State
-                int32_t taskId;
-                CmEventRT*pTopTaskEvent;
+                int32_t taskId = 0;
+                CmEventRT*pTopTaskEvent = nullptr;
                 task->GetTaskEvent(pTopTaskEvent);
                 CM_CHK_NULL_GOTOFINISH_CMERROR(pTopTaskEvent);
 

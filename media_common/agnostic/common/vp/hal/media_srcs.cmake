@@ -21,14 +21,18 @@
 set(TMP_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/vp_common.h
     ${CMAKE_CURRENT_LIST_DIR}/vp_common_hdr.h
+    ${CMAKE_CURRENT_LIST_DIR}/vp_common_tools.h
 )
 
-set(VP_HEADERS_
-    ${VP_HEADERS_}
+set(SOFTLET_VP_HEADERS_
+    ${SOFTLET_VP_HEADERS_}
     ${TMP_HEADERS_}
 )
 
 source_group( "VpHalNext" FILES ${TMP_HEADERS_} )
 set(TMP_HEADERS_ "")
 
-media_add_curr_to_include_path()
+set (SOFTLET_VP_PRIVATE_INCLUDE_DIRS_
+    ${SOFTLET_VP_PRIVATE_INCLUDE_DIRS_}
+    ${CMAKE_CURRENT_LIST_DIR}
+)

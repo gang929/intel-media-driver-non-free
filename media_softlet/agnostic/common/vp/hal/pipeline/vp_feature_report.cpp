@@ -62,8 +62,7 @@ void VpFeatureReport::InitReportValue()
 }
 
 void VpFeatureReport::SetConfigValues(
-    PVP_CONFIG configValues,
-    uint32_t   &laceInUse)
+    PVP_CONFIG configValues)
 {
     VP_FUNC_CALL();
 
@@ -139,6 +138,8 @@ void VpFeatureReport::SetConfigValues(
         m_features.primaryCompressible,
         m_features.primaryCompressMode,
         m_features.compositionMode);
+    MT_LOG5(MT_VP_FTR_REPORT, MT_NORMAL, MT_VP_RENDERDATA_OUTPUT_PIPE, m_features.outputPipeMode, MT_VP_RENDER_VE_HDRMODE, m_features.hdrMode, 
+        MT_VP_RENDER_VE_FTRINUSE, m_features.veFeatureInUse, MT_VP_HAL_SCALING_MODE, m_features.scalingMode, MT_VP_HAL_MMCINUSE, m_features.vpMMCInUse);
 
     return;
 }

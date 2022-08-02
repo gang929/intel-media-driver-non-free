@@ -104,14 +104,14 @@ public:
 protected:
     virtual MOS_STATUS InitSfcParams(VDBOX_SFC_PARAMS &sfcParams);
 
-    MediaSfcInterface         *m_sfcInterface = nullptr;
+    std::shared_ptr<MediaSfcInterface>  m_sfcInterface = nullptr;
     DecodeBasicFeature        *m_basicFeature = nullptr;
     DecodeDownSamplingFeature *m_downSampling = nullptr;
     bool                       m_isSupported  = false;
 
     VDBOX_SFC_PARAMS           m_sfcParams;
 
-MEDIA_CLASS_DEFINE_END(DecodeDownSamplingPkt)
+MEDIA_CLASS_DEFINE_END(decode__DecodeDownSamplingPkt)
 };
 
 }

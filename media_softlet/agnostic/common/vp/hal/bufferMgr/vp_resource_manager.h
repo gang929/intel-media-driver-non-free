@@ -422,7 +422,6 @@ protected:
     virtual uint32_t GetHistogramSurfaceSize(VP_EXECUTE_CAPS& caps, uint32_t inputWidth, uint32_t inputHeight);
     virtual uint32_t Get3DLutSize(uint32_t &lutWidth, uint32_t &lutHeight);
     virtual uint32_t Get1DLutSize();
-    virtual MOS_STATUS  Init3DLutSurface2D(VP_SURFACE *surf);
     virtual Mos_MemPool GetHistStatMemType(VP_EXECUTE_CAPS &caps);
     MOS_STATUS ReAllocateVeboxOutputSurface(VP_EXECUTE_CAPS& caps, VP_SURFACE *inputSurface, VP_SURFACE *outputSurface, bool &allocated);
     MOS_STATUS ReAllocateVeboxDenoiseOutputSurface(VP_EXECUTE_CAPS& caps, VP_SURFACE *inputSurface, bool &allocated);
@@ -564,13 +563,14 @@ protected:
     VP_SURFACE *m_veboxPwlfSurface[VP_NUM_LACE_PWLF_SURFACES] = {};            //!< VEBOX 1D LUT surface for Vebox Gen12
     VP_SURFACE *m_veboxWeitCoefSurface                        = nullptr;       //!< VEBOX 1D LUT surface for Vebox Gen12
     VP_SURFACE *m_veboxGlobalToneMappingCurveLUTSurface       = nullptr;       //!< VEBOX 1D LUT surface for Vebox Gen12
+    VP_SURFACE *m_temperalInput                               = nullptr;
 
     // Fc Resource
     VP_SURFACE *m_cmfcCoeff                                   = nullptr;
 
     MediaUserSettingSharedPtr m_userSettingPtr = nullptr;   //!< usersettingInstance
 
-MEDIA_CLASS_DEFINE_END(VpResourceManager)
+MEDIA_CLASS_DEFINE_END(vp__VpResourceManager)
 };
 }
 #endif // _VP_RESOURCE_MANAGER_H__

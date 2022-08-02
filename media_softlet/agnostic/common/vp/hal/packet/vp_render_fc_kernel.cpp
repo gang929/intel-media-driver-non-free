@@ -79,8 +79,6 @@ const int32_t VpRenderFcKernel::s_bindingTableIndexField[] =
 VpRenderFcKernel::VpRenderFcKernel(PVP_MHWINTERFACE hwInterface, PVpAllocator allocator) :
     VpRenderKernelObj(hwInterface, allocator)
 {
-    bool cscCoeffPatchModeEnabled = false;
-
     m_kernelBinaryID = IDR_VP_EOT;
     m_kernelId       = kernelCombinedFc;
 
@@ -121,13 +119,11 @@ VpRenderFcKernel::VpRenderFcKernel(PVP_MHWINTERFACE hwInterface, PVpAllocator al
         {
             m_userSettingPtr = m_hwInterface->m_osInterface->pfnGetUserSettingInstance(m_hwInterface->m_osInterface);
         }
-
-        ReadUserSetting(
-            m_userSettingPtr,
-            cscCoeffPatchModeEnabled,
-            __MEDIA_USER_FEATURE_VALUE_CSC_COEFF_PATCH_MODE_DISABLE,
-            MediaUserSetting::Group::Sequence);
-        m_cscCoeffPatchModeEnabled = cscCoeffPatchModeEnabled ? false : true;
+        auto userFeatureControl = m_hwInterface->m_userFeatureControl;
+        if (userFeatureControl != nullptr)
+        {
+            m_cscCoeffPatchModeEnabled = !userFeatureControl->IsCscCosffPatchModeDisabled();
+        }
 
         m_computeWalkerEnabled = true;
     }
@@ -391,7 +387,7 @@ MOS_STATUS VpRenderFcKernel::PrintSearchFilter(Kdll_FilterEntry *filter, int32_t
     // Log for debug
     for (int32_t i = 0; i < filterSize; i++)
     {
-        VPHAL_RENDER_NORMALMESSAGE("Kernel Search Filter %d: layer %d, format %d, cspace %d, \
+        VP_RENDER_NORMALMESSAGE("Kernel Search Filter %d: layer %d, format %d, cspace %d, \
                                    bEnableDscale %d, bIsDitherNeeded %d, chromasiting %d, colorfill %d, dualout %d, \
                                    lumakey %d, procamp %d, RenderMethod %d, sampler %d, samplerlumakey %d ",
                                    i, filter[i].layer, filter[i].format, filter[i].cspace,
@@ -454,7 +450,7 @@ static inline RENDERHAL_SCALING_MODE ConvertVpScalingModeToRenderScalingMode(VPH
             return RENDERHAL_SCALING_AVS;
 
         default:
-            VPHAL_RENDER_ASSERTMESSAGE("Invalid VPHAL_SCALING_MODE %d, force to nearest mode.", vpScalingMode);
+            VP_RENDER_ASSERTMESSAGE("Invalid VPHAL_SCALING_MODE %d, force to nearest mode.", vpScalingMode);
             return RENDERHAL_SCALING_NEAREST;
     }
 }
@@ -486,7 +482,7 @@ static inline RENDERHAL_SAMPLE_TYPE ConvertVpSampleTypeToRenderSampleType(VPHAL_
 
         case SAMPLE_INVALID:
         default:
-            VPHAL_RENDER_ASSERTMESSAGE("Invalid VPHAL_SAMPLE_TYPE %d.\n", SampleType);
+            VP_RENDER_ASSERTMESSAGE("Invalid VPHAL_SAMPLE_TYPE %d.\n", SampleType);
             return RENDERHAL_SAMPLE_INVALID;
     }
 }
@@ -530,7 +526,7 @@ static inline MHW_ROTATION VpRotationModeToRenderRotationMode(VPHAL_ROTATION Rot
             break;
 
         default:
-            VPHAL_RENDER_ASSERTMESSAGE("Invalid Rotation Angle.");
+            VP_RENDER_ASSERTMESSAGE("Invalid Rotation Angle.");
             break;
     }
 
@@ -551,9 +547,9 @@ MOS_STATUS VpRenderFcKernel::InitRenderHalSurface(
 
     auto osInterface = m_hwInterface->m_osInterface;
 
-    VPHAL_RENDER_CHK_NULL_RETURN(osInterface);
-    VPHAL_RENDER_CHK_NULL_RETURN(osInterface->pfnGetMemoryCompressionMode);
-    VPHAL_RENDER_CHK_NULL_RETURN(osInterface->pfnGetMemoryCompressionFormat);
+    VP_RENDER_CHK_NULL_RETURN(osInterface);
+    VP_RENDER_CHK_NULL_RETURN(osInterface->pfnGetMemoryCompressionMode);
+    VP_RENDER_CHK_NULL_RETURN(osInterface->pfnGetMemoryCompressionFormat);
 
     MOS_ZeroMemory(renderHalSurface, sizeof(*renderHalSurface));
 
@@ -608,8 +604,8 @@ MOS_STATUS VpRenderFcKernel::InitRenderHalSurface(
 {
     MOS_STATUS              eStatus = MOS_STATUS_SUCCESS;
 
-    VPHAL_RENDER_CHK_NULL_RETURN(surf);
-    VPHAL_RENDER_CHK_NULL_RETURN(m_fcParams);
+    VP_RENDER_CHK_NULL_RETURN(surf);
+    VP_RENDER_CHK_NULL_RETURN(m_fcParams);
 
     auto &compParams = m_fcParams->compParams;
 
@@ -1215,7 +1211,7 @@ MOS_STATUS VpRenderFcKernel::GetKernelEntry(Kdll_CacheEntry &entry)
         }
         else
         {
-            VPHAL_RENDER_NORMALMESSAGE("Array Index Out of Bounds.");
+            VP_RENDER_NORMALMESSAGE("Array Index Out of Bounds.");
         }
     }
 
@@ -1241,14 +1237,14 @@ MOS_STATUS VpRenderFcKernel::GetKernelEntry(Kdll_CacheEntry &entry)
         // Search kernel
         if (!kernelDllState->pfnSearchKernel(kernelDllState, pSearchState))
         {
-            VPHAL_RENDER_ASSERTMESSAGE("Failed to find a kernel.");
+            VP_RENDER_ASSERTMESSAGE("Failed to find a kernel.");
             return MOS_STATUS_UNKNOWN;
         }
 
         // Build kernel
         if (!kernelDllState->pfnBuildKernel(kernelDllState, pSearchState))
         {
-            VPHAL_RENDER_ASSERTMESSAGE("Failed to build kernel.");
+            VP_RENDER_ASSERTMESSAGE("Failed to build kernel.");
             return MOS_STATUS_UNKNOWN;
         }
 
@@ -1262,13 +1258,13 @@ MOS_STATUS VpRenderFcKernel::GetKernelEntry(Kdll_CacheEntry &entry)
 
         if (!kernelEntry)
         {
-            VPHAL_RENDER_ASSERTMESSAGE("Failed to store kernel in local cache.");
+            VP_RENDER_ASSERTMESSAGE("Failed to store kernel in local cache.");
             return MOS_STATUS_UNKNOWN;
         }
     }
     else
     {
-        VPHAL_RENDER_NORMALMESSAGE("Use previous kernel list.");
+        VP_RENDER_NORMALMESSAGE("Use previous kernel list.");
     }
     m_kernelEntry = kernelEntry;
     entry = *kernelEntry;
@@ -1422,7 +1418,7 @@ MOS_STATUS Set3DSamplerStatus(
 {
     if (layer.layerID > 7)
     {
-        VPHAL_RENDER_ASSERTMESSAGE("Invalid parameter.");
+        VP_RENDER_ASSERTMESSAGE("Invalid parameter.");
         return MOS_STATUS_INVALID_PARAMETER;
     }
 
@@ -1488,7 +1484,7 @@ MOS_STATUS VpRenderFcKernel::InitCscInCurbeData()
         }
         else
         {
-            VPHAL_RENDER_ASSERTMESSAGE("CSC matrix coefficient id is non-zero.");
+            VP_RENDER_ASSERTMESSAGE("CSC matrix coefficient id is non-zero.");
             return MOS_STATUS_INVALID_PARAMETER;
         }
     }
@@ -1536,6 +1532,8 @@ MOS_STATUS VpRenderFcKernel::InitLayerInCurbeData(VP_FC_LAYER *layer)
 
     VP_RENDER_NORMALMESSAGE("Scaling Info: layer %d, chromaSitingEnabled %d, isChromaUpSamplingNeeded %d, isChromaDownSamplingNeeded %d",
         layer->layerID, layer->calculatedParams.chromaSitingEnabled, layer->calculatedParams.isChromaUpSamplingNeeded, layer->calculatedParams.isChromaDownSamplingNeeded);
+
+    MT_LOG6(MT_VP_HAL_FC_SCALINGINFO, MT_NORMAL, MT_VP_HAL_FC_LAYER, layer->layerID, MT_RECT_LEFT, clipedDstRect.left, MT_RECT_TOP, clipedDstRect.top, MT_RECT_RIGHT, clipedDstRect.right - 1, MT_RECT_BOTTOM, clipedDstRect.bottom - 1, MT_VP_BLT_CHROMASITING, layer->calculatedParams.chromaSitingEnabled);
 
     switch (layer->layerID)
     {
@@ -1694,7 +1692,7 @@ MOS_STATUS VpRenderFcKernel::InitLayerInCurbeData(VP_FC_LAYER *layer)
         m_curbeData.DW63.DestYBottomRightLayer7             = clipedDstRect.bottom - 1;
         break;
     default:
-        VPHAL_RENDER_ASSERTMESSAGE("Invalid layer.");
+        VP_RENDER_ASSERTMESSAGE("Invalid layer.");
         break;
     }
 
@@ -1834,7 +1832,7 @@ MOS_STATUS VpRenderFcKernel::InitColorFillInCurbeData()
 
             if (dstCspace == CSpace_None) // if color space is invlaid return false
             {
-                VPHAL_RENDER_ASSERTMESSAGE("Failed to assign dst color spcae for iScale case.");
+                VP_RENDER_ASSERTMESSAGE("Failed to assign dst color spcae for iScale case.");
                 return MOS_STATUS_INVALID_PARAMETER;
             }
         }
@@ -1930,7 +1928,7 @@ MOS_STATUS VpSetYUVComponents(
             break;
 
         default:
-            VPHAL_RENDER_ASSERTMESSAGE("Unknown Packed YUV Format.");
+            VP_RENDER_ASSERTMESSAGE("Unknown Packed YUV Format.");
             eStatus = MOS_STATUS_UNKNOWN;
     }
 
@@ -2102,7 +2100,7 @@ MOS_STATUS VpRenderFcKernel::InitCscInDpCurbeData()
         }
         else
         {
-            VPHAL_RENDER_ASSERTMESSAGE("CSC matrix coefficient id is non-zero.");
+            VP_RENDER_ASSERTMESSAGE("CSC matrix coefficient id is non-zero.");
             return MOS_STATUS_INVALID_PARAMETER;
         }
     }
@@ -2171,6 +2169,7 @@ MOS_STATUS VpRenderFcKernel::InitFcDpBasedCurbeData()
 MOS_STATUS VpRenderFcKernel::GetCurbeState(void*& curbe, uint32_t& curbeLength)
 {
     VP_FUNC_CALL();
+    MT_LOG1(MT_VP_HAL_FC_GET_CURBE_STATE, MT_NORMAL, MT_FUNC_START, 1);
 
     if (m_hwInterface->m_vpPlatformInterface->GetKernelConfig().IsDpFcKernelEnabled())
     {
@@ -2185,6 +2184,7 @@ MOS_STATUS VpRenderFcKernel::GetCurbeState(void*& curbe, uint32_t& curbeLength)
         curbe       = &m_curbeData;
         curbeLength = sizeof(VP_FC_CURBE_DATA);
     }
+    MT_LOG2(MT_VP_HAL_FC_GET_CURBE_STATE, MT_NORMAL, MT_FUNC_END, 1, MT_MOS_STATUS, MOS_STATUS_SUCCESS);
 
     return MOS_STATUS_SUCCESS;
 }
@@ -2599,7 +2599,7 @@ MOS_STATUS VpRenderFcKernel::UpdateCompParams()
     m_renderHal->eufusionBypass = IsEufusionBypassed();
 
     VP_RENDER_NORMALMESSAGE("eufusionBypass = %d", m_renderHal->eufusionBypass ? 1 : 0);
-
+    MT_LOG1(MT_VP_HAL_FC_UPDATE_COMP_PARAM, MT_NORMAL, MT_VP_HAL_EUFUSION_BYPASS, m_renderHal->eufusionBypass);
     for (uint32_t i = 0; i < compParams.sourceCount; ++i)
     {
         VP_FC_LAYER &layer = compParams.source[i];

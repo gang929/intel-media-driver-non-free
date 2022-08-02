@@ -30,7 +30,7 @@
 #include "mos_utilities.h"
 #include "vp_common.h"
 #include "renderhal.h"
-#include "vphal.h"
+#include "vp_base.h"
 
 namespace vp
 {
@@ -143,6 +143,7 @@ struct _VP_EXECUTE_CAPS
             uint64_t bForceCscToRender : 1; // If true, force to use render for csc.
             uint64_t bForceProcampToRender : 1;   // If true, force to use render for procamp.
             uint64_t lastSubmission : 1;    // If true, it's the last submission of current DDI.
+            uint64_t bTemperalInputInuse : 1; // If true, will use temperal input instead of input
 
             // Vebox Features
             uint64_t bDN            : 1;   // Vebox DN needed
@@ -182,6 +183,7 @@ struct _VP_EXECUTE_CAPS
             uint64_t bSR            : 1;
             uint64_t b3DLutCalc     : 1;
             uint64_t bHVSCalc       : 1;
+            uint64_t bSegmentation  : 1;
         };
         uint64_t value;
     };
@@ -204,7 +206,7 @@ typedef struct _VP_EngineEntry
             uint32_t bypassIfVeboxSfcInUse : 1; // Bypass the feature if vebox or sfc in use. In such case, VeboxNeeded and
                                                 // SfcNeeded are 0 but it should not block vebox or sfc being selected. 
             uint32_t forceEnableForSfc : 1;     // Force enabled when sfc being selected.
-            uint32_t forceEnableForRender : 1;  // Force enabled when render being selected.
+            uint32_t forceEnableForFc  : 1;     // Force enabled when fc being selected.
             uint32_t nonFcFeatureExists : 1;    // The feature exists, which do not support fc
             uint32_t nonVeboxFeatureExists : 1; // The feature exists, which do not support vebox
             uint32_t fcOnlyFeatureExists : 1;   // The feature exists, which only support render fc, and not support vebox/sfc.
@@ -219,8 +221,9 @@ typedef struct _VP_EngineEntry
             uint32_t usedForNextPass : 1;       // true if current feature should be bypassed for current pass and be processed during next pass.
             uint32_t sfcNotSupported : 1;       // true if sfc cannot be selected.
             uint32_t veboxNotSupported : 1;     // true if vebox cannot be selected.
-            uint32_t onlyParamCalculation : 1;  // true if the feature is used for parameter calculation.
+            uint32_t isOutputPipeNeeded : 1;    // true if the feature is used for parameter calculation.
             uint32_t sfcOnlyFeatureExists : 1;  // The feature exists, which only support sfc.
+            uint32_t bTemperalInputInuse : 1;   // true if replace input
         };
         uint32_t value;
     };

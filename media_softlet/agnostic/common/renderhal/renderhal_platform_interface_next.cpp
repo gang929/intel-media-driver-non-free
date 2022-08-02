@@ -28,9 +28,24 @@
 //! \details  Platform Independent Hardware Interfaces
 //!
 
+#include <stdint.h>
 #include "renderhal_platform_interface_next.h"
 #include "media_packet.h"
 #include "mhw_utilities_next.h"
+#include "hal_oca_interface_next.h"
+// After removing MhwRenderInterface from Mhw Next, need to remove this mhw_render_legacy header file
+#include "mhw_render_legacy.h"
+#include "media_feature.h"
+#include "media_interfaces_mhw_next.h"
+#include "media_skuwa_specific.h"
+#include "mhw_itf.h"
+#include "mhw_mi_cmdpar.h"
+#include "mhw_mi_itf.h"
+#include "mhw_render_cmdpar.h"
+#include "mos_os.h"
+#include "mos_utilities.h"
+#include "renderhal.h"
+#include "vp_utils.h"
 
 MOS_STATUS XRenderHal_Platform_Interface_Next::AddPipelineSelectCmd(
     PRENDERHAL_INTERFACE        pRenderHal,
@@ -110,77 +125,57 @@ MOS_STATUS XRenderHal_Platform_Interface_Next::AddCfeStateCmd(
 
 MOS_STATUS XRenderHal_Platform_Interface_Next::SendChromaKey(
     PRENDERHAL_INTERFACE        pRenderHal,
-    PMOS_COMMAND_BUFFER         pCmdBuffer)
+    PMOS_COMMAND_BUFFER         pCmdBuffer,
+    PMHW_CHROMAKEY_PARAMS       pChromaKeyParams)
 {
     VP_FUNC_CALL();
     MOS_STATUS eStatus                        = MOS_STATUS_SUCCESS;
-    PMHW_CHROMAKEY_PARAMS pChromaKeyParams    = nullptr;
     MEDIA_WA_TABLE               *pWaTable    = nullptr;
     MOS_GPU_CONTEXT       renderGpuContext    = {};
-    MHW_PIPE_CONTROL_PARAMS PipeControlParams = {};
 
     MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
     MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pOsInterface);
     MHW_RENDERHAL_CHK_NULL_RETURN(pCmdBuffer);
     m_renderHal = pRenderHal;
 
-    pChromaKeyParams = pRenderHal->ChromaKey;
-    for (int32_t i = pRenderHal->iChromaKeyCount; i > 0; i--, pChromaKeyParams++)
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pOsInterface);
+    pWaTable = pRenderHal->pOsInterface->pfnGetWaTable(pRenderHal->pOsInterface);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pWaTable);
+    renderGpuContext = pRenderHal->pOsInterface->pfnGetGpuContext(pRenderHal->pOsInterface);
+
+    // Program stalling pipecontrol with HDC pipeline flush enabled before programming 3DSTATE_CHROMA_KEY for CCS W/L.
+    if ((renderGpuContext == MOS_GPU_CONTEXT_COMPUTE)    ||
+        (renderGpuContext == MOS_GPU_CONTEXT_CM_COMPUTE) ||
+        (renderGpuContext == MOS_GPU_CONTEXT_COMPUTE_RA))
     {
-        MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pOsInterface);
-        pWaTable = pRenderHal->pOsInterface->pfnGetWaTable(pRenderHal->pOsInterface);
-        MHW_RENDERHAL_CHK_NULL_RETURN(pWaTable);
-        renderGpuContext = pRenderHal->pOsInterface->pfnGetGpuContext(pRenderHal->pOsInterface);
-
-        // Program stalling pipecontrol with HDC pipeline flush enabled before programming 3DSTATE_CHROMA_KEY for CCS W/L.
-        if ((renderGpuContext == MOS_GPU_CONTEXT_COMPUTE)    ||
-            (renderGpuContext == MOS_GPU_CONTEXT_CM_COMPUTE) ||
-            (renderGpuContext == MOS_GPU_CONTEXT_COMPUTE_RA))
+        if (MEDIA_IS_WA(pWaTable, Wa_16011481064))
         {
-            if (MEDIA_IS_WA(pWaTable, Wa_16011481064))
-            {
-                MHW_RENDERHAL_CHK_NULL_RETURN(m_miItf);
-                auto &par                         = m_miItf->MHW_GETPAR_F(PIPE_CONTROL)();
-                par                               = {};
-                par.dwFlushMode                   = MHW_FLUSH_WRITE_CACHE;
-                par.bDisableCSStall               = false;
-                par.bGenericMediaStateClear       = true;
-                par.bIndirectStatePointersDisable = true;
-                par.bHdcPipelineFlush             = true;
-                m_miItf->MHW_ADDCMD_F(PIPE_CONTROL)(pCmdBuffer);
-            }
+            MHW_RENDERHAL_CHK_NULL_RETURN(m_miItf);
+            auto &par                         = m_miItf->MHW_GETPAR_F(PIPE_CONTROL)();
+            par                               = {};
+            par.dwFlushMode                   = MHW_FLUSH_WRITE_CACHE;
+            par.bDisableCSStall               = false;
+            par.bGenericMediaStateClear       = true;
+            par.bIndirectStatePointersDisable = true;
+            par.bHdcPipelineFlush             = true;
+            m_miItf->MHW_ADDCMD_F(PIPE_CONTROL)(pCmdBuffer);
         }
-
-        MHW_RENDERHAL_CHK_NULL_RETURN(m_renderItf);
-        SETPAR_AND_ADDCMD(_3DSTATE_CHROMA_KEY, m_renderItf, pCmdBuffer);
     }
+
+    MHW_RENDERHAL_CHK_NULL_RETURN(m_renderItf);
+    SETPAR_AND_ADDCMD(_3DSTATE_CHROMA_KEY, m_renderItf, pCmdBuffer);
 
     return eStatus;
 }
 
 MOS_STATUS XRenderHal_Platform_Interface_Next::SendPalette(
     PRENDERHAL_INTERFACE        pRenderHal,
-    PMOS_COMMAND_BUFFER         pCmdBuffer)
+    PMOS_COMMAND_BUFFER         pCmdBuffer,
+    PMHW_PALETTE_PARAMS         pPaletteLoadParams)
 {
     VP_FUNC_CALL();
-    MOS_STATUS eStatus                     = MOS_STATUS_SUCCESS;
-    PMHW_PALETTE_PARAMS pPaletteLoadParams = nullptr;
 
-    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
-    MHW_RENDERHAL_CHK_NULL_RETURN(pCmdBuffer);
-    MHW_RENDERHAL_CHK_NULL_RETURN(m_renderItf);
-    m_renderHal = pRenderHal;
-
-    pPaletteLoadParams = pRenderHal->Palette;
-    for (int32_t i = pRenderHal->iMaxPalettes; i > 0; i--, pPaletteLoadParams++)
-    {
-        if (pPaletteLoadParams->iNumEntries > 0)
-        {
-            SETPAR_AND_ADDCMD(PALETTE_ENTRY, m_renderItf, pCmdBuffer);
-        }
-    }
-
-    return eStatus;
+    return MOS_STATUS_SUCCESS;
 }
 
 MOS_STATUS XRenderHal_Platform_Interface_Next::SetL3Cache(
@@ -195,6 +190,26 @@ MOS_STATUS XRenderHal_Platform_Interface_Next::SetL3Cache(
     MHW_RENDERHAL_CHK_STATUS_RETURN(m_renderItf->SetL3Cache(pCmdBuffer, m_miItf));
 
     return eStatus;
+}
+
+//!
+//! \brief    Get the size of render hal media state
+//! \return   size_t
+//!           The size of render hal media state
+//!
+size_t XRenderHal_Platform_Interface_Next::GetRenderHalMediaStateSize()
+{
+    return sizeof(RENDERHAL_MEDIA_STATE);
+}
+
+//!
+//! \brief    Get the size of render hal state heap
+//! \return   size_t
+//!           The size of render hal state heap
+//!
+size_t XRenderHal_Platform_Interface_Next::GetRenderHalStateHeapSize()
+{
+    return sizeof(RENDERHAL_STATE_HEAP);
 }
 
 PMHW_MI_MMIOREGISTERS XRenderHal_Platform_Interface_Next::GetMmioRegisters(
@@ -291,8 +306,8 @@ MOS_STATUS XRenderHal_Platform_Interface_Next::SendPredicationCommand(
         m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(pCmdBuffer);
 
         //perform the add operation
-        MHW_MI_ALU_PARAMS   miAluParams[4];
-        MOS_ZeroMemory(&miAluParams, sizeof(miAluParams));
+        mhw::mi::MHW_MI_ALU_PARAMS miAluParams[4] = {};
+
         // load     srcA, reg0
         miAluParams[0].AluOpcode    = MHW_MI_ALU_LOAD;
         miAluParams[0].Operand1     = MHW_MI_ALU_SRCA;
@@ -312,7 +327,7 @@ MOS_STATUS XRenderHal_Platform_Interface_Next::SendPredicationCommand(
 
         auto& par = m_miItf->MHW_GETPAR_F(MI_MATH)();
         par = {};
-        par.pAluPayload    = (mhw::mi::MHW_MI_ALU_PARAMS*) miAluParams;
+        par.pAluPayload    = miAluParams;
         par.dwNumAluParams = 4; // four ALU commands needed for this substract opertaion. see following ALU commands.
         m_miItf->MHW_ADDCMD_F(MI_MATH)(pCmdBuffer);
 
@@ -582,16 +597,324 @@ MOS_STATUS XRenderHal_Platform_Interface_Next::CreateMhwInterfaces(
     MHW_RENDERHAL_CHK_NULL_RETURN(mhwInterfaces);
     MHW_RENDERHAL_CHK_NULL_RETURN(mhwInterfaces->m_cpInterface);
     MHW_RENDERHAL_CHK_NULL_RETURN(mhwInterfaces->m_miInterface);
-    MHW_RENDERHAL_CHK_NULL_RETURN(mhwInterfaces->m_renderInterface);
     pRenderHal->pCpInterface = mhwInterfaces->m_cpInterface;
     pRenderHal->pMhwMiInterface = mhwInterfaces->m_miInterface;
-    pRenderHal->pMhwRenderInterface = mhwInterfaces->m_renderInterface;
     m_renderItf = mhwInterfaces->m_renderItf;
     m_miItf     = mhwInterfaces->m_miItf;
+
+    // After removing MhwRenderInterface from Mhw Next, need to clean this WA delete m_renderInterface code
+    if (mhwInterfaces->m_renderInterface)
+    {
+        MOS_Delete(mhwInterfaces->m_renderInterface);
+    }
 
     MOS_Delete(mhwInterfaces);
 
     return eStatus;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::On1stLevelBBStart(
+    PRENDERHAL_INTERFACE pRenderHal,
+    PMOS_COMMAND_BUFFER  pCmdBuffer,
+    PMOS_CONTEXT         pOsContext,
+    uint32_t             gpuContextHandle,
+    MHW_MI_MMIOREGISTERS *pMmioReg)
+{
+    MOS_STATUS  eStatus = MOS_STATUS_SUCCESS;
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pOsInterface);
+    MHW_RENDERHAL_CHK_NULL_RETURN(m_miItf);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pCmdBuffer);
+
+    HalOcaInterfaceNext::On1stLevelBBStart(*pCmdBuffer, *pOsContext, pRenderHal->pOsInterface->CurrentGpuContextHandle,
+        m_miItf, *pMmioReg);
+
+    return eStatus;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::OnDispatch(
+    PRENDERHAL_INTERFACE pRenderHal,
+    PMOS_COMMAND_BUFFER  pCmdBuffer,
+    PMOS_CONTEXT         pOsContext,
+    MHW_MI_MMIOREGISTERS *pMmioReg)
+{
+    MOS_STATUS  eStatus = MOS_STATUS_SUCCESS;
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL_RETURN(m_miItf);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pCmdBuffer);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pOsContext);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pMmioReg);
+
+    HalOcaInterfaceNext::OnDispatch(*pCmdBuffer, *pOsContext, m_miItf, *pMmioReg);
+
+    return eStatus;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::CreatePerfProfiler(
+    PRENDERHAL_INTERFACE pRenderHal)
+{
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pOsInterface);
+
+    if (!pRenderHal->pPerfProfilerNext)
+    {
+        pRenderHal->pPerfProfilerNext = MediaPerfProfilerNext::Instance();
+        MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pPerfProfilerNext);
+
+        MHW_RENDERHAL_CHK_STATUS_RETURN(pRenderHal->pPerfProfilerNext->Initialize((void*)pRenderHal, pRenderHal->pOsInterface));
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::DestroyPerfProfiler(
+    PRENDERHAL_INTERFACE pRenderHal)
+{
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pOsInterface);
+
+    if (pRenderHal->pPerfProfilerNext)
+    {
+       MediaPerfProfilerNext::Destroy(pRenderHal->pPerfProfilerNext, (void*)pRenderHal, pRenderHal->pOsInterface);
+       pRenderHal->pPerfProfilerNext = nullptr;
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::AddPerfCollectStartCmd(
+    PRENDERHAL_INTERFACE pRenderHal,
+    MOS_INTERFACE        *osInterface,
+    MOS_COMMAND_BUFFER   *cmdBuffer)
+{
+    MOS_STATUS  eStatus = MOS_STATUS_SUCCESS;
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pPerfProfilerNext);
+    MHW_RENDERHAL_CHK_NULL_RETURN(osInterface);
+    MHW_RENDERHAL_CHK_NULL_RETURN(m_miItf);
+    MHW_RENDERHAL_CHK_NULL_RETURN(cmdBuffer);
+    
+    MHW_CHK_STATUS_RETURN(pRenderHal->pPerfProfilerNext->AddPerfCollectStartCmd((void *)pRenderHal, osInterface, m_miItf, cmdBuffer));
+
+    return eStatus;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::StartPredicate(
+        PRENDERHAL_INTERFACE pRenderHal,
+        PMOS_COMMAND_BUFFER  cmdBuffer)
+{
+    MOS_STATUS  eStatus = MOS_STATUS_SUCCESS;
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL_RETURN(m_miItf);
+    MHW_RENDERHAL_CHK_NULL_RETURN(cmdBuffer);
+
+    MHW_CHK_STATUS_RETURN(NullHW::StartPredicateNext(m_miItf, cmdBuffer));
+
+    return eStatus;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::StopPredicate(
+        PRENDERHAL_INTERFACE pRenderHal,
+        PMOS_COMMAND_BUFFER  cmdBuffer)
+{
+    MOS_STATUS  eStatus = MOS_STATUS_SUCCESS;
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL_RETURN(m_miItf);
+    MHW_RENDERHAL_CHK_NULL_RETURN(cmdBuffer);
+
+    MHW_CHK_STATUS_RETURN(NullHW::StopPredicateNext(m_miItf, cmdBuffer));
+
+    return eStatus;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::AddPerfCollectEndCmd(
+    PRENDERHAL_INTERFACE pRenderHal,
+    PMOS_INTERFACE       pOsInterface,
+    MOS_COMMAND_BUFFER   *cmdBuffer)
+{
+    MOS_STATUS  eStatus = MOS_STATUS_SUCCESS;
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pPerfProfilerNext);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pOsInterface);
+    MHW_RENDERHAL_CHK_NULL_RETURN(m_miItf);
+    MHW_RENDERHAL_CHK_NULL_RETURN(cmdBuffer);
+
+    MHW_CHK_STATUS_RETURN(pRenderHal->pPerfProfilerNext->AddPerfCollectEndCmd((void *)pRenderHal, pOsInterface, m_miItf, cmdBuffer));
+
+    return eStatus;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::AddMediaVfeCmd(
+    PRENDERHAL_INTERFACE    pRenderHal,
+    PMOS_COMMAND_BUFFER     pCmdBuffer,
+    MHW_VFE_PARAMS          *params)
+{
+    MOS_STATUS  eStatus = MOS_STATUS_SUCCESS;
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL_RETURN(params);
+    MHW_RENDERHAL_CHK_NULL_RETURN(m_renderItf);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pCmdBuffer);
+
+    return eStatus;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::AddMediaStateFlush(
+    PRENDERHAL_INTERFACE         pRenderHal,
+    PMOS_COMMAND_BUFFER          pCmdBuffer,
+    MHW_MEDIA_STATE_FLUSH_PARAM  *flushParam)
+{
+    MOS_STATUS  eStatus = MOS_STATUS_SUCCESS;
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL_RETURN(flushParam);
+    MHW_RENDERHAL_CHK_NULL_RETURN(m_miItf);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pCmdBuffer);
+
+    auto& params = m_miItf->MHW_GETPAR_F(MEDIA_STATE_FLUSH)();
+    params                              = {};
+    params.ui8InterfaceDescriptorOffset = flushParam->ui8InterfaceDescriptorOffset;
+    params.bFlushToGo                   = flushParam->bFlushToGo;
+    m_miItf->MHW_ADDCMD_F(MEDIA_STATE_FLUSH)(pCmdBuffer);
+
+    return eStatus;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::AddMiBatchBufferEnd(
+    PRENDERHAL_INTERFACE         pRenderHal,
+    PMOS_COMMAND_BUFFER          pCmdBuffer,
+    PMHW_BATCH_BUFFER            batchBuffer)
+{
+    MOS_STATUS  eStatus = MOS_STATUS_SUCCESS;
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL_RETURN(m_miItf);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pCmdBuffer);
+
+    m_miItf->AddMiBatchBufferEnd(pCmdBuffer, nullptr);
+
+    return eStatus;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::AddMediaObjectWalkerCmd(
+    PRENDERHAL_INTERFACE         pRenderHal,
+    PMOS_COMMAND_BUFFER          pCmdBuffer,
+    PMHW_WALKER_PARAMS           params)
+{
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::AddGpGpuWalkerStateCmd(
+    PRENDERHAL_INTERFACE     pRenderHal,
+    PMOS_COMMAND_BUFFER      pCmdBuffer,
+    PMHW_GPGPU_WALKER_PARAMS params)
+{
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::AllocateHeaps(
+    PRENDERHAL_INTERFACE     pRenderHal,
+    MHW_STATE_HEAP_SETTINGS  MhwStateHeapSettings)
+{
+    MOS_STATUS  eStatus = MOS_STATUS_SUCCESS;
+    MHW_RENDERHAL_CHK_NULL_RETURN(m_renderItf);
+
+    MHW_CHK_STATUS_RETURN(m_renderItf->AllocateHeaps(MhwStateHeapSettings));
+
+    return MOS_STATUS_SUCCESS;
+}
+
+PMHW_STATE_HEAP_INTERFACE XRenderHal_Platform_Interface_Next::GetStateHeapInterface(
+    PRENDERHAL_INTERFACE     pRenderHal)
+{
+    if (m_renderItf)
+    {
+        return m_renderItf->GetStateHeapInterface();
+    }
+    else
+    {
+        return nullptr;
+    }
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::DestoryMhwInterface(
+    PRENDERHAL_INTERFACE     pRenderHal)
+{
+    MOS_STATUS  eStatus = MOS_STATUS_SUCCESS;
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    // Destroy MHW MI Interface
+    if (pRenderHal->pMhwMiInterface)
+    {
+        MOS_Delete(pRenderHal->pMhwMiInterface);
+        pRenderHal->pMhwMiInterface = nullptr;
+    }
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::AddMediaCurbeLoadCmd(
+    PRENDERHAL_INTERFACE         pRenderHal,
+    PMOS_COMMAND_BUFFER          pCmdBuffer,
+    PMHW_CURBE_LOAD_PARAMS       params)
+{
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS XRenderHal_Platform_Interface_Next::AddMediaIDLoadCmd(
+    PRENDERHAL_INTERFACE         pRenderHal,
+    PMOS_COMMAND_BUFFER          pCmdBuffer,
+    PMHW_ID_LOAD_PARAMS          params)
+{
+    return MOS_STATUS_SUCCESS;
+}
+
+bool XRenderHal_Platform_Interface_Next::IsPreemptionEnabled(
+    PRENDERHAL_INTERFACE     pRenderHal)
+{
+    if (m_renderItf)
+    {
+        return m_renderItf->IsPreemptionEnabled();
+    }
+    else
+    {
+        return false;
+    }
+}
+
+void XRenderHal_Platform_Interface_Next::GetSamplerResolutionAlignUnit(
+    PRENDERHAL_INTERFACE         pRenderHal,
+    bool                         isAVSSampler,
+    uint32_t                     &widthAlignUnit,
+    uint32_t                     &heightAlignUnit)
+{
+    uint32_t wAlignUnit  = 0;
+    uint32_t hAlignUnit = 0;
+
+    if (m_renderItf)
+    {
+        m_renderItf->GetSamplerResolutionAlignUnit(
+            isAVSSampler,
+            wAlignUnit,
+            hAlignUnit);
+    }
+
+    widthAlignUnit = wAlignUnit;
+    heightAlignUnit = hAlignUnit;
+
+}
+
+MHW_RENDER_ENGINE_CAPS* XRenderHal_Platform_Interface_Next::GetHwCaps(
+    PRENDERHAL_INTERFACE         pRenderHal)
+{
+    if (m_renderItf)
+    {
+        return (MHW_RENDER_ENGINE_CAPS * )m_renderItf->GetHwCaps();
+    }
+    else
+    {
+        return nullptr;
+    }
+}
+
+bool XRenderHal_Platform_Interface_Next::IsComputeContextInUse(PRENDERHAL_INTERFACE pRenderHal)
+{
+    return true;
 }
 
 std::shared_ptr<mhw::mi::Itf> XRenderHal_Platform_Interface_Next::GetMhwMiItf()

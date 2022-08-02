@@ -97,16 +97,16 @@ MOS_STATUS VpPipelineAdapterBase::GetVpMhwInterface(
         {
             SetMhwVeboxItf(mhwInterfaces->m_veboxItf);
             SetMhwSfcItf(mhwInterfaces->m_sfcItf);
+#if EMUL
+            SetMhwMiItf(mhwInterfaces->m_miItf);
+#else
             SetMhwMiItf(m_vprenderHal->pRenderHalPltInterface->GetMhwMiItf());
+#endif
 
             // MhwInterfaces always create CP and MI interfaces, so we have to delete those we don't need.
             MOS_Delete(mhwInterfaces->m_miInterface);
             Delete_MhwCpInterface(mhwInterfaces->m_cpInterface);
             mhwInterfaces->m_cpInterface = nullptr;
-            MOS_Delete(mhwInterfaces->m_sfcInterface);
-            mhwInterfaces->m_sfcInterface = nullptr;
-            MOS_Delete(mhwInterfaces->m_veboxInterface);
-            mhwInterfaces->m_veboxInterface = nullptr;
             MOS_Delete(mhwInterfaces);
         }
         else
@@ -182,7 +182,7 @@ VpPipelineAdapterBase::~VpPipelineAdapterBase()
         m_veboxInterface = nullptr;
         if (eStatus != MOS_STATUS_SUCCESS)
         {
-            VPHAL_PUBLIC_ASSERTMESSAGE("Failed to destroy Vebox Interface, eStatus:%d.\n", eStatus);
+            VP_PUBLIC_ASSERTMESSAGE("Failed to destroy Vebox Interface, eStatus:%d.\n", eStatus);
         }
     }
 
@@ -335,7 +335,7 @@ MOS_STATUS VpPipelineAdapterBase::GetStatusReportEntryLength(
 #if(!EMUL)        // this function is dummy for emul
     PVPHAL_STATUS_TABLE            pStatusTable;
 
-    VPHAL_PUBLIC_CHK_NULL(puiLength);
+    VP_PUBLIC_CHK_NULL(puiLength);
 
     pStatusTable = &m_statusTable;
 

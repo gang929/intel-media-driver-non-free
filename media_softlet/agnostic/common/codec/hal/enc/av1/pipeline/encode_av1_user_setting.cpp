@@ -85,6 +85,12 @@ MOS_STATUS Av1Pipeline::InitUserSetting(MediaUserSettingSharedPtr userSettingPtr
 #endif
     DeclareUserSettingKey(
         userSettingPtr,
+        "AV1 Encode Mode",
+        MediaUserSetting::Group::Sequence,
+        int32_t(0),
+        true);
+    DeclareUserSettingKey(
+        userSettingPtr,
         "AV1 Post CDEF Recon Compressible",
         MediaUserSetting::Group::Sequence,
         (int32_t)0,

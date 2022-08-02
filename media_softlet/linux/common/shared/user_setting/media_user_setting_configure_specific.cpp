@@ -23,13 +23,15 @@
 //! \file     media_user_setting_configure_specific.cpp
 //! \brief    The interface of media user setting configure.
 
+#include <stdint.h>
+#include <map>
 #include "media_user_setting_configure.h"
 
 namespace MediaUserSetting
 {
 namespace Internal
 {
-const std::map<uint32_t, const char *> Configure::m_pathOption = {};
+const std::map<uint32_t, ExtPathCFG> Configure::m_pathOption = {};
 
 }  // namespace Internal
 }  // namespace MediaUserSetting

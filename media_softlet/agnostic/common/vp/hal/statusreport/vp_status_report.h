@@ -29,8 +29,12 @@
 #ifndef __VP_STATUS_REPORT_H__
 #define __VP_STATUS_REPORT_H__
 
+#include "mos_defs.h"
 #include "vp_pipeline_common.h"
-#include "media_context.h"
+#include "media_class_trace.h"
+#include "mos_os.h"
+#include "mos_os_specific.h"
+#include "vp_common_tools.h"
 
 namespace vp
 {
@@ -69,7 +73,7 @@ protected:
     STATUS_TABLE_UPDATE_PARAMS m_StatusTableUpdateParams = {};
     MOS_INTERFACE             *m_osInterface             = nullptr;
 
-MEDIA_CLASS_DEFINE_END(VPStatusReport)
+MEDIA_CLASS_DEFINE_END(vp__VPStatusReport)
 };
 }  // namespace vp
 

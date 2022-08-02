@@ -62,9 +62,9 @@ OsContextSpecificNext::~OsContextSpecificNext()
 MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
 {
     uint32_t      iDeviceId = 0;
-    MOS_STATUS    eStatus;
-    uint32_t      i = 0;
-    MOS_USER_FEATURE_VALUE_DATA UserFeatureData;
+    MOS_STATUS    eStatus   = MOS_STATUS_SUCCESS;
+    uint32_t      value     = 0;
+    MediaUserSettingSharedPtr   userSettingPtr = nullptr;
 
     MOS_OS_FUNCTION_ENTER;
 
@@ -86,6 +86,8 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
             return MOS_STATUS_INVALID_HANDLE;
         }
         m_fd = osDriverContext->fd;
+
+        userSettingPtr = MosInterface::MosGetUserSettingInstance(osDriverContext);
 
         m_bufmgr = mos_bufmgr_gem_init(m_fd, BATCH_BUFFER_SIZE);
         if (nullptr == m_bufmgr)
@@ -121,13 +123,13 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
             return eStatus;
         }
 
-        MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
-        MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_ENABLE_SOFTPIN_ID,
-            &UserFeatureData,
-            osDriverContext);
-        if (UserFeatureData.i32Data)
+        ReadUserSetting(
+            userSettingPtr,
+            value,
+            __MEDIA_USER_FEATURE_VALUE_ENABLE_SOFTPIN,
+            MediaUserSetting::Group::Device);
+
+        if (value)
         {
             bool softpin_va1Malign = false;
             if (MEDIA_IS_SKU(&m_skuTable, Ftr1MGranularAuxTable))
@@ -142,8 +144,6 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
         {
             MEDIA_WR_WA(&m_waTable, WaHucStreamoutOnlyDisable, 0);
         }
-
-        MediaUserSettingsMgr::MediaUserSettingsInit(m_platformInfo.eProductFamily);
 
         MosUtilities::MosTraceSetupInfo(
             (VA_MAJOR_VERSION << 16) | VA_MINOR_VERSION,
@@ -189,15 +189,13 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
 
         m_auxTableMgr = AuxTableMgr::CreateAuxTableMgr(m_bufmgr, &m_skuTable, m_gmmClientContext);
 
-        MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
 #if (_DEBUG || _RELEASE_INTERNAL)
-        MOS_UserFeature_ReadValue_ID(
+        ReadUserSettingForDebug(
             nullptr,
-            __MEDIA_USER_FEATURE_VALUE_SIM_ENABLE_ID,
-            &UserFeatureData,
-            osDriverContext);
+            osDriverContext->bSimIsActive,
+            __MEDIA_USER_FEATURE_VALUE_SIM_ENABLE,
+            MediaUserSetting::Group::Device);
 #endif
-        osDriverContext->bSimIsActive = (int32_t)UserFeatureData.i32Data;
 
         m_useSwSwizzling = osDriverContext->bSimIsActive || MEDIA_IS_SKU(&m_skuTable, FtrUseSwSwizzling);
 

@@ -276,6 +276,15 @@ MOS_STATUS PacketPipe::Execute(MediaStatusReport *statusReport, MediaScalability
         prop.immediateSubmit = true;
         prop.stateProperty.statusReport = statusReport;
 
+        bool isSkip = false;
+        // Checking if extra processing is needed.
+        isSkip      = pPacket->ExtraProcessing();
+        if (isSkip)
+        {
+            VP_PUBLIC_NORMALMESSAGE("Skip this packet.");
+            continue;
+        }
+
         MediaTask *pTask = pPacket->GetActiveTask();
         VP_PUBLIC_CHK_NULL_RETURN(pTask);
 
@@ -289,7 +298,7 @@ MOS_STATUS PacketPipe::Execute(MediaStatusReport *statusReport, MediaScalability
             VP_PUBLIC_CHK_STATUS_RETURN(pTask->Submit(true, scalability, nullptr));
         }
 
-#if (_DEBUG || _RELEASE_INTERNAL)
+#if USE_MEDIA_DEBUG_TOOL
         for (auto& handle : pPacket->GetSurfSetting().surfGroup)
         {
             if(handle.first && handle.second)
@@ -304,7 +313,7 @@ MOS_STATUS PacketPipe::Execute(MediaStatusReport *statusReport, MediaScalability
 #endif
     }
 
-#if (_DEBUG || _RELEASE_INTERNAL)
+#if USE_MEDIA_DEBUG_TOOL
 finish:
 #endif
     return eStatus;

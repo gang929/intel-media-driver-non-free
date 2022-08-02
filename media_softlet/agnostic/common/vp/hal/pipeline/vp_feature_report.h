@@ -29,9 +29,11 @@
 #ifndef __VP_FEATURE_REPORT_H__
 #define __VP_FEATURE_REPORT_H__
 
+#include <stdint.h>
 #include "vp_common.h"
-#include "vphal_common_tools.h"
+#include "vp_common_tools.h"
 #include "media_class_trace.h"
+#include "vp_common_hdr.h"
 
 //!
 //! Class VphalFeatureReport
@@ -90,8 +92,7 @@ public:
     //! \details  set VphalFeatureReport value
     //!
     virtual void SetConfigValues(
-        PVP_CONFIG configValues,
-        uint32_t   &laceInUse);
+        PVP_CONFIG configValues);
 
     VP_FEATURES &GetFeatures()
     {

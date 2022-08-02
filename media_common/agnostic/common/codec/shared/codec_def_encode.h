@@ -28,6 +28,9 @@
 #ifndef __CODEC_DEF_ENCODE_H__
 #define __CODEC_DEF_ENCODE_H__
 #include "mos_os.h"
+#include "codec_def_common.h"
+
+#define CODECHAL_VDENC_BRC_NUM_OF_PASSES        2
 
 //!
 //! \struct CodechalEncodeSeiData
@@ -204,6 +207,77 @@ struct EncoderParams
 
     bool                            m_setMarkerEnabled          = false;        //! \brief [SetMarker] Indicates whether or not SetMarker is enabled
     PMOS_RESOURCE                   m_presSetMarker             = nullptr;      //! \brief [SetMarker] Resource for SetMarker
+};
+
+//!
+//! \struct PerfTagSetting
+//! \brief  Setting of performance tags
+//!
+struct PerfTagSetting
+{
+    union
+    {
+        struct
+        {
+            uint16_t    PictureCodingType   : 2;
+            uint16_t    CallType            : 6;
+            uint16_t    Mode                : 4;
+            uint16_t                        : 4;
+        };
+        uint16_t        Value;
+    };
+};
+
+//!
+//! \enum   MbBrcSetting
+//! \brief  Indicate the MBBRC settings
+//!
+enum MbBrcSetting
+{
+    mbBrcInternal = 0,
+    mbBrcEnabled  = 1,
+    mbBrcDisabled = 2,
+};
+
+//!
+//! \struct VdencBrcPakMmio
+//! \brief  MMIO of BRC and PAK
+//!
+struct VdencBrcPakMmio
+{
+    uint32_t                dwReEncode[4];
+};
+
+//!
+//! \struct    EncodeStatusReadParams
+//! \brief     Read encode states parameters
+//!
+struct EncodeStatusReadParams
+{
+    bool          vdencBrcEnabled;
+    bool          waReadVDEncOverflowStatus;
+    uint32_t      mode ;
+
+    uint32_t      vdencBrcNumOfSliceOffset;
+    PMOS_RESOURCE *resVdencBrcUpdateDmemBufferPtr;
+
+    PMOS_RESOURCE resBitstreamByteCountPerFrame;
+    uint32_t      bitstreamByteCountPerFrameOffset;
+
+    PMOS_RESOURCE resBitstreamSyntaxElementOnlyBitCount;
+    uint32_t      bitstreamSyntaxElementOnlyBitCountOffset;
+
+    PMOS_RESOURCE resQpStatusCount;
+    uint32_t      qpStatusCountOffset;
+
+    PMOS_RESOURCE resNumSlices;
+    uint32_t      numSlicesOffset;
+
+    PMOS_RESOURCE resImageStatusMask;
+    uint32_t      imageStatusMaskOffset;
+
+    PMOS_RESOURCE resImageStatusCtrl;
+    uint32_t      imageStatusCtrlOffset;
 };
 
 #endif // !__CODEC_DEF_ENCODE_H__

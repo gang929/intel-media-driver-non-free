@@ -36,6 +36,7 @@
 #include "mhw_vdbox_vdenc_interface.h"
 #include "mhw_vdbox_huc_interface.h"
 #include "mhw_mi_itf.h"
+#include "media_sfc_interface.h"
 //------------------------------------------------------------------------------
 // Macros specific to MOS_CODEC_SUBCOMP_HW sub-comp
 //------------------------------------------------------------------------------
@@ -94,7 +95,12 @@ public:
     //!
     //! \brief    Destructor
     //!
-    virtual ~CodechalHwInterfaceNext() {}
+    virtual ~CodechalHwInterfaceNext() {
+        CODEC_HW_FUNCTION_ENTER;
+        m_osInterface->pfnFreeResource(m_osInterface, &m_hucDmemDummy);
+        m_osInterface->pfnFreeResource(m_osInterface, &m_dummyStreamIn);
+        m_osInterface->pfnFreeResource(m_osInterface, &m_dummyStreamOut);
+    }
 
     //!
     //! \brief    Get mfx interface
@@ -159,6 +165,47 @@ public:
     inline std::shared_ptr<mhw::vdbox::hcp::Itf> GetHcpInterfaceNext()
     {
         return m_hcpItf;
+    }
+
+    //!
+    //! \brief    Get Os interface
+    //! \details  Get Os interface in codechal hw interface
+    //!
+    //! \return   [out] PMOS_INTERFACE
+    //!           Interface got.
+    //!
+    inline PMOS_INTERFACE GetOsInterface()
+    {
+        return m_osInterface;
+    }
+
+    //!
+    //! \brief    Get Sku table
+    //! \details  Get Sku table in codechal hw interface
+    //!
+    //! \return   [out] MEDIA_FEATURE_TABLE *
+    //!           Sku table got.
+    //!
+    inline MEDIA_FEATURE_TABLE *GetSkuTable()
+    {
+        return m_skuTable;
+    }
+
+    //!
+    //! \brief    Get cp interface
+    //! \details  Get cp interface in codechal hw interface
+    //!
+    //! \return   [out] MhwCpInterface*
+    //!           Interface got.
+    //!
+    inline MhwCpInterface *GetCpInterface()
+    {
+        return m_cpInterface;
+    }
+
+    inline std::shared_ptr<MediaSfcInterface> GetMediaSfcInterface()
+    {
+        return m_mediaSfcItf;
     }
 
     //!
@@ -230,6 +277,75 @@ public:
             uint32_t* commandsSize,
             uint32_t* patchListSize,
             PMHW_VDBOX_STATE_CMDSIZE_PARAMS params);
+    //!
+    //! \brief    Calculates maximum size for all slice/MB level commands
+    //! \details  Client facing function to calculate maximum size for all slice/MB level commands in mfx pipeline
+    //!
+    //! \param    [in] mode
+    //!           Codec mode
+    //! \param    [out] commandsSize
+    //!           The maximum command buffer size
+    //! \param    [out] patchListSize
+    //!           The maximum command patch list size
+    //! \param    [in] modeSpecific
+    //!           Indicate the long or short format for decoder or single take phase for encoder
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS GetMfxPrimitiveCommandsDataSize(
+        uint32_t  mode,
+        uint32_t *commandsSize,
+        uint32_t *patchListSize,
+        bool      modeSpecific);
+    //!
+    //! \brief    Calculates maximum size for HCP slice/MB level commands
+    //! \details  Client facing function to calculate maximum size for HCP slice/MB level commands
+    //! \param    [in] mode
+    //!           Indicate the codec mode
+    //! \param    [out] commandsSize
+    //!            The maximum command buffer size
+    //! \param    [out] patchListSize
+    //!           The maximum command patch list size
+    //! \param    [in] modeSpecific
+    //!           Indicate the long or short format
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS GetHcpPrimitiveCommandSize(
+        uint32_t  mode,
+        uint32_t *commandsSize,
+        uint32_t *patchListSize,
+        bool      modeSpecific);
+
+    //!
+    //! \brief    Add Huc stream out copy cmds
+    //! \details  Prepare and add Huc stream out copy cmds
+    //!
+    //! \param    [in,out] cmdBuffer
+    //!           Command buffer
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS AddHucDummyStreamOut(
+        PMOS_COMMAND_BUFFER cmdBuffer);
+
+    //!
+    //! \brief    Perform Huc stream out copy
+    //! \details  Implement the copy using huc stream out
+    //!
+    //! \param    [in] hucStreamOutParams
+    //!           Huc stream out parameters
+    //! \param    [in,out] cmdBuffer
+    //!           Command buffer
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS PerformHucStreamOut(
+        CodechalHucStreamoutParams  *hucStreamOutParams,
+        PMOS_COMMAND_BUFFER         cmdBuffer);
 
 protected:
     std::shared_ptr<mhw::vdbox::avp::Itf>    m_avpItf   = nullptr;      //!< Pointer to Mhw avp interface
@@ -238,6 +354,20 @@ protected:
     std::shared_ptr<mhw::mi::Itf>            m_miItf    = nullptr;      //!< Pointer to Mhw mi interface
     std::shared_ptr<mhw::vdbox::hcp::Itf>    m_hcpItf   = nullptr;      //!< Pointer to Mhw hcp interface
     std::shared_ptr<mhw::vdbox::mfx::Itf>    m_mfxItf   = nullptr;      //!< Pointer to Mhw mfx interface
+    std::shared_ptr<MediaSfcInterface>       m_mediaSfcItf = nullptr;   //!< Pointer to Media sfc interface
+
+    // States
+    PMOS_INTERFACE       m_osInterface;  //!< Pointer to OS interface
+
+    // Auxiliary
+    MEDIA_FEATURE_TABLE *m_skuTable = nullptr;  //!< Pointer to SKU table
+    MEDIA_WA_TABLE      *m_waTable  = nullptr;  //!< Pointer to WA table
+
+    // HuC WA implementation
+    MOS_RESOURCE                m_dummyStreamIn;          //!> Resource of dummy stream in
+    MOS_RESOURCE                m_dummyStreamOut;         //!> Resource of dummy stream out
+    MOS_RESOURCE                m_hucDmemDummy;           //!> Resource of Huc DMEM for dummy streamout WA
+    uint32_t                    m_dmemBufSize = 0;        //!>
 
     // Next: remove legacy Interfaces
     MhwCpInterface                  *m_cpInterface = nullptr;         //!< Pointer to Mhw cp interface

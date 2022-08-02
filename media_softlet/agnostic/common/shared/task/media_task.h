@@ -30,9 +30,10 @@
 #ifndef __MEDIA_TASK_H__
 #define __MEDIA_TASK_H__
 #include <vector>
+#include <stdint.h>
 #include "mos_defs.h"
+#include "media_scalability_defs.h"
 #include "media_scalability.h"
-#include "codechal_debug.h"
 
 class CodechalDebugInterface;
 class MediaPacket;

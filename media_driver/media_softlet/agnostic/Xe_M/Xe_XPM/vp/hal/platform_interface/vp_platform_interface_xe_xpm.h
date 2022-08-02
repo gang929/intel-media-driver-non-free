@@ -80,12 +80,14 @@ public:
         PVP_MHWINTERFACE          pvpMhwInterface,
         const MHW_VEBOX_HEAP    **ppVeboxHeap);
 
-    virtual bool IsVeboxScalabilitywith4K(
+    virtual bool VeboxScalabilitywith4K(
         VP_MHWINTERFACE           vpMhwInterface);
+
+    virtual MOS_STATUS ConfigureVpScalability(VP_MHWINTERFACE &vpMhwInterface);
 
 protected:
     bool m_disableSfcDithering = false;
-MEDIA_CLASS_DEFINE_END(VpPlatformInterfaceXe_Xpm)
+MEDIA_CLASS_DEFINE_END(vp__VpPlatformInterfaceXe_Xpm)
 };
 
 }

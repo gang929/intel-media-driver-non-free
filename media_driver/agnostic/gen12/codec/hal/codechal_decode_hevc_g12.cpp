@@ -583,9 +583,15 @@ MOS_STATUS CodechalDecodeHevcG12::SetHucDmemParams (
     CODECHAL_DECODE_CHK_NULL_RETURN(dmemBuffer);
 
     CodechalResLock DmemLock(m_osInterface, dmemBuffer);
-    auto hucHevcS2LBss = (PHUC_HEVC_S2L_BSS_G12)DmemLock.Lock(CodechalResLock::writeOnly);
+
+    PHUC_HEVC_S2L_BSS_G12 hucHevcS2LBss = (PHUC_HEVC_S2L_BSS_G12)DmemLock.Lock(CodechalResLock::writeOnly);
 
     CODECHAL_DECODE_CHK_NULL_RETURN(hucHevcS2LBss);
+    hucHevcS2LBss->PictureBss.reserve.reserve_0 = 0;
+    hucHevcS2LBss->PictureBss.reserve.reserve_1 = 0;
+    hucHevcS2LBss->PictureBss.reserve.reserve_2 = 0;
+    hucHevcS2LBss->PictureBss.reserve.reserve_3 = 0;
+
     hucHevcS2LBss->ProductFamily = m_hucInterface->GetHucProductFamily();
     hucHevcS2LBss->RevId = m_hwInterface->GetPlatform().usRevId;
     hucHevcS2LBss->DummyRefIdxState = 
@@ -978,14 +984,17 @@ MOS_STATUS CodechalDecodeHevcG12::SetFrameStates ()
     m_secondField =
         CodecHal_PictureIsBottomField(m_hevcPicParams->CurrPic);
 
-    m_pCodechalOcaDumper->SetHevcDecodeParam(
-        m_hevcPicParams,
-        m_hevcExtPicParams,
-        m_hevcSccPicParams,
-        m_hevcSliceParams,
-        m_hevcExtSliceParams,
-        m_numSlices,
-        m_shortFormatInUse);
+    if (m_pCodechalOcaDumper)
+    {
+        m_pCodechalOcaDumper->SetHevcDecodeParam(
+            m_hevcPicParams,
+            m_hevcExtPicParams,
+            m_hevcSccPicParams,
+            m_hevcSliceParams,
+            m_hevcExtSliceParams,
+            m_numSlices,
+            m_shortFormatInUse);
+    }
 
     CODECHAL_DEBUG_TOOL(
         m_debugInterface->m_currPic     = m_crrPic;
@@ -1072,6 +1081,7 @@ MOS_STATUS CodechalDecodeHevcG12::SetFrameStates ()
     {
         CodechalResLock bbLock(m_osInterface, &m_secondLevelBatchBuffer[m_secondLevelBatchBufferIndex].OsResource);
         uint8_t *bbBase = (uint8_t*)bbLock.Lock(CodechalResLock::writeOnly);
+        CODECHAL_DECODE_CHK_NULL_RETURN(bbBase);
 
         HevcDecodeSliceLongG12 hevcLong(this, m_hcpInterface, m_miInterface);
 
@@ -1865,9 +1875,12 @@ MOS_STATUS CodechalDecodeHevcG12::AddPipeEpilog(
         cmdBufferInUse,
         &flushDwParams));
 
-    CODECHAL_DECODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferEnd(
-        cmdBufferInUse,
-        nullptr));
+    if (!m_osInterface->pfnIsMismatchOrderProgrammingSupported())
+    {
+        CODECHAL_DECODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferEnd(
+            cmdBufferInUse,
+            nullptr));
+    }
 
     return eStatus;
 }
@@ -2279,6 +2292,11 @@ MOS_STATUS CodechalDecodeHevcG12::InitMmcState()
     m_mmc = MOS_New(CodechalMmcDecodeHevcG12, m_hwInterface, this);
     CODECHAL_DECODE_CHK_NULL_RETURN(m_mmc);
 #endif
+    if (m_osInterface->pfnIsMismatchOrderProgrammingSupported())
+    {
+        m_mmc->SetMmcDisabled();
+    }
+
     return MOS_STATUS_SUCCESS;
 }
 

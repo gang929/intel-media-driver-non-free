@@ -29,13 +29,12 @@
 #ifndef __MEDIA_RENDER_COPY_XE_HPM_H__
 #define __MEDIA_RENDER_COPY_XE_HPM_H__
 
+#include <stdint.h>
+#include "mos_defs.h"
+#include "mos_os_specific.h"
 #include "media_render_copy.h"
-#include "media_interfaces_mhw.h"
-#include "mhw_render.h"
-#include "mhw_mi.h"
-#include "mhw_cp_interface.h"
-#include "mos_os.h"
-#include "mhw_render_xe_hp.h"
+#include "mhw_render_legacy.h"
+class MhwInterfaces;
 
 typedef class  RenderCopy_Xe_Hpm  *PRenderCopy_Xe_Hpm;
 class RenderCopy_Xe_Hpm: public RenderCopyState
@@ -59,6 +58,17 @@ public:
     virtual MOS_STATUS CopySurface(
         PMOS_RESOURCE src,
         PMOS_RESOURCE dst);
+
+    //!
+    //! \brief    Render copy omputer walker setup
+    //! \details  Computer walker setup for render copy
+    //! \param    PMHW_WALKER_PARAMS pWalkerParams
+    //!           [in/out] Pointer to Walker params
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+   virtual MOS_STATUS RenderCopyComputerWalker(
+     PMHW_GPGPU_WALKER_PARAMS    pWalkerParams);
 
 protected:
 

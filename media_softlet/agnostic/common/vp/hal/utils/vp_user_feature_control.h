@@ -47,7 +47,40 @@ public:
         bool disableSfc                     = false;
         bool computeContextEnabled          = true;
         bool eufusionBypassWaEnabled        = false;
+        bool disableAutoDn                  = false;
+        bool cscCosffPatchModeDisabled      = false;
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+        bool forceDecompressedOutput           = false;
+        uint32_t enableSFCNv12P010LinearOutput = 0;
+        uint32_t enableSFCRGBPRGB24Output      = 0;
+        bool     cpOutputSurfaceInitEnabled    = false;
+#endif
     };
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+    bool IsForceDecompressedOutput()
+    {
+        return m_ctrlVal.forceDecompressedOutput;
+    }
+
+    uint32_t IsEnableSFCNv12P010LinearOutput()
+    {
+        return m_ctrlVal.enableSFCNv12P010LinearOutput;
+    }
+
+    uint32_t IsEnableSFCRGBPRGB24Output()
+    {
+        return m_ctrlVal.enableSFCRGBPRGB24Output;
+    }
+
+    bool IsCpOutputSurfaceInitEnabled()
+    {
+        return m_ctrlVal.cpOutputSurfaceInitEnabled;
+    }
+#endif
+
+    virtual MOS_STATUS CreateUserSettingForDebug();
 
     virtual MOS_STATUS Update(PVP_PIPELINE_PARAMS params);
 
@@ -71,6 +104,16 @@ public:
         return m_ctrlVal.eufusionBypassWaEnabled;
     }
 
+    bool IsAutoDnDisabled()
+    {
+        return m_ctrlVal.disableAutoDn;
+    }
+
+    bool IsCscCosffPatchModeDisabled()
+    {
+        return m_ctrlVal.cscCosffPatchModeDisabled;
+    }
+
     const void *m_owner = nullptr; // The object who create current instance.
 
 protected:
@@ -81,7 +124,7 @@ protected:
     CONTROL_VALUES m_ctrlVal        = {};
     MediaUserSettingSharedPtr m_userSettingPtr = nullptr;  //!< usersettingInstance
 
-    MEDIA_CLASS_DEFINE_END(VpUserFeatureControl)
+    MEDIA_CLASS_DEFINE_END(vp__VpUserFeatureControl)
 };
 
 

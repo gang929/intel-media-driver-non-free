@@ -127,14 +127,7 @@ MOS_STATUS VPFeatureManagerXe_Xpm_Base::CheckFeatures(void * params, bool &bApgF
     // WA: Force NV12 16K to render
     if (pvpParams->pTarget[0]->Format == Format_NV12 && pvpParams->pTarget[0]->dwHeight > VPHAL_RNDR_16K_HEIGHT_LIMIT)
     {
-        VPHAL_RENDER_NORMALMESSAGE("Disable VEBOX/SFC for NV12 16k resolution");
-        return MOS_STATUS_SUCCESS;
-    }
-
-    bool isHdrNeeded = IsHdrNeeded(pvpParams->pSrc[0], pvpParams->pTarget[0]);
-    if (isHdrNeeded && IsCroppingNeeded(pvpParams->pSrc[0]))
-    {
-        VP_PUBLIC_NORMALMESSAGE("Disable APO Path for HDR Cropping");
+        VP_RENDER_NORMALMESSAGE("Disable VEBOX/SFC for NV12 16k resolution");
         return MOS_STATUS_SUCCESS;
     }
 
@@ -178,6 +171,8 @@ MOS_STATUS VPFeatureManagerXe_Xpm_Base::CheckFeatures(void * params, bool &bApgF
     if (!IsVeboxOutFeasible(pvpParams) &&
         !IsSfcOutputFeasible(pvpParams))
     {
+        bool isHdrNeeded = IsHdrNeeded(pvpParams->pSrc[0], pvpParams->pTarget[0]);
+
         if (!isHdrNeeded)
         {
             return MOS_STATUS_SUCCESS;
@@ -261,7 +256,7 @@ bool VPFeatureManagerXe_Xpm_Base::IsOutputFormatSupported(
     }
     else
     {
-        VPHAL_RENDER_NORMALMESSAGE("Unsupported Render Target Format '0x%08x' for SFC Pipe.", outSurface->Format);
+        VP_RENDER_NORMALMESSAGE("Unsupported Render Target Format '0x%08x' for SFC Pipe.", outSurface->Format);
         ret = false;
     }
 

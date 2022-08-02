@@ -24,6 +24,7 @@
 
 #include "media_cmd_packet.h"
 #include "mhw_sfc.h"
+#include "mhw_vebox_itf.h"
 #include "vp_pipeline_common.h"
 #include "vp_allocator.h"
 #include "vp_packet_shared_context.h"
@@ -94,6 +95,11 @@ public:
         return m_surfSetting;
     }
 
+    virtual bool ExtraProcessing()
+    {
+        return false;
+    }
+
 protected:
     virtual MOS_STATUS VpCmdPacketInit();
     bool IsOutputPipeVebox()
@@ -120,7 +126,7 @@ protected:
 private:
     MediaScalability *          m_scalability = nullptr;
 
-MEDIA_CLASS_DEFINE_END(VpCmdPacket)
+MEDIA_CLASS_DEFINE_END(vp__VpCmdPacket)
 };
 }
 #endif // !__VP_CMD_PACKET_H__

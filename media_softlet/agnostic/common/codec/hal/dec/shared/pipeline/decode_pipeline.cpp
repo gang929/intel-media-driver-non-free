@@ -55,6 +55,13 @@ DecodePipeline::DecodePipeline(
 
     m_singleTaskPhaseSupported =
         ReadUserFeature(m_userSettingPtr, "Decode Single Task Phase Enable", MediaUserSetting::Group::Sequence).Get<bool>();
+
+    m_pCodechalOcaDumper = MOS_New(CodechalOcaDumper);
+    if (!m_pCodechalOcaDumper)
+    {
+        MOS_OS_ASSERTMESSAGE("Initialize CodechalOcaDumper failed!");
+    }
+
     CODECHAL_DEBUG_TOOL(
         DECODE_ASSERT(debugInterface != nullptr);
         m_debugInterface = debugInterface;
@@ -419,11 +426,8 @@ MOS_STATUS DecodePipeline::DumpOutput(const DecodeStatusReportData& reportData)
 
             if (!Mos_ResourceIsNull(&sfcDstSurface.OsResource))
             {
-                DECODE_CHK_STATUS(m_allocator->GetSurfaceInfo(&sfcDstSurface));
-                DECODE_CHK_STATUS(m_debugInterface->DumpYUVSurface(
-                    &sfcDstSurface, CodechalDbgAttr::attrSfcOutputSurface, "SfcDstSurf"));
-
 #if (_DEBUG || _RELEASE_INTERNAL)
+                DECODE_CHK_STATUS(m_allocator->GetSurfaceInfo(&sfcDstSurface));
                 //rgb format read from reg key
                 uint32_t sfcOutputRgbFormatFlag =
                     ReadUserFeature(m_userSettingPtr, "Decode SFC RGB Format Output", MediaUserSetting::Group::Sequence).Get<uint32_t>();
@@ -431,6 +435,11 @@ MOS_STATUS DecodePipeline::DumpOutput(const DecodeStatusReportData& reportData)
                 {
                     DECODE_CHK_STATUS(m_debugInterface->DumpRgbDataOnYUVSurface(
                         &sfcDstSurface, CodechalDbgAttr::attrSfcOutputSurface, "SfcDstRgbSurf"));
+                }
+                else
+                {
+                    DECODE_CHK_STATUS(m_debugInterface->DumpYUVSurface(
+                        &sfcDstSurface, CodechalDbgAttr::attrSfcOutputSurface, "SfcDstSurf"));
                 }
 #endif
             }
@@ -516,7 +525,7 @@ MOS_STATUS DecodePipeline::TraceDataDumpOutput(const DecodeStatusReportData &rep
             m_tempOutputSurf->UPlaneOffset.iSurfaceOffset,
             m_tempOutputSurf->VPlaneOffset.iSurfaceOffset,
         };
-        MOS_TraceEvent(EVENT_DECODE_DST_DUMPINFO, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0); 
+        MOS_TraceEvent(EVENT_DECODE_DUMPINFO_DST, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0); 
 
         ResourceAutoLock resLock(m_allocator, &m_tempOutputSurf->OsResource);
         auto             pData = (uint8_t *)resLock.LockResourceForRead();
