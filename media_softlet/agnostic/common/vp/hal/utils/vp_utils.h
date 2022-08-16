@@ -280,11 +280,11 @@ protected:
 
 #define __VPHAL_RNDR_SSD_CONTROL                                        "SSD Control"
 #define __MEDIA_USER_FEATURE_VALUE_CSC_COEFF_PATCH_MODE_DISABLE         "CSC Patch Mode Disable"
-#define __MEDIA_USER_FEATURE_VALUE_DISABLE_AUTODN                       "Disable AutoDn"
+#define __MEDIA_USER_FEATURE_VALUE_DISABLE_DN                           "Disable Dn"
+#define __MEDIA_USER_FEATURE_VALUE_DISABLE_PACKET_REUSE                 "Disable PacketReuse"
 
 #if (_DEBUG || _RELEASE_INTERNAL)
 #define __VPHAL_ENABLE_COMPUTE_CONTEXT                                  "VP Enable Compute Context"
-#define __MEDIA_USER_FEATURE_VALUE_INIT_CP_OUTPUT_SURFACE               "Init CP Output Surface"
 #define __VPHAL_RNDR_SCOREBOARD_CONTROL                                 "SCOREBOARD Control"
 #define __VPHAL_RNDR_CMFC_CONTROL                                       "CMFC Control"
 #define __VPHAL_ENABLE_1K_1DLUT                                         "Enable 1K 1DLUT"
@@ -296,15 +296,6 @@ protected:
 #define __VPHAL_ENABLE_SFC_NV12_P010_LINEAR_OUTPUT                      "Enable SFC NV12 P010 Linear Output"
 #define __VPHAL_ENABLE_SFC_RGBP_RGB24_OUTPUT                            "Enable SFC RGBP RGB24 Output"
 
-#define __VPHAL_DBG_SURF_DUMP_OUTFILE_KEY_NAME                          "outfileLocation"
-#define __VPHAL_DBG_SURF_DUMP_LOCATION_KEY_NAME                         "dumpLocations"
-#define __VPHAL_DBG_SURF_DUMP_MANUAL_TRIGGER_KEY_NAME                   "VphalSurfaceDumpManualTrigger"
-#define __VPHAL_DBG_SURF_DUMP_START_FRAME_KEY_NAME                      "startFrame"
-#define __VPHAL_DBG_SURF_DUMP_END_FRAME_KEY_NAME                        "endFrame"
-#define __VPHAL_DBG_SURF_DUMPER_ENABLE_PLANE_DUMP                       "enablePlaneDump"
-#define __VPHAL_DBG_SURF_DUMP_ENABLE_AUX_DUMP                           "enableAuxDump"
-#define __VPHAL_DBG_SURF_DUMPER_RESOURCE_LOCK                           "SurfaceDumperResourceLockError"
-#define __VPHAL_DBG_STATE_DUMP_ENABLE                                   "enableStateDump"
 #define __VPHAL_DBG_PARAM_DUMP_OUTFILE_KEY_NAME                         "outxmlLocation"
 #define __VPHAL_DBG_PARAM_DUMP_START_FRAME_KEY_NAME                     "startxmlFrame"
 #define __VPHAL_DBG_PARAM_DUMP_END_FRAME_KEY_NAME                       "endxmlFrame"

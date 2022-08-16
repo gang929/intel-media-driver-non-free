@@ -323,6 +323,10 @@ MOS_STATUS SfcRenderBase::SetIefStateCscParams(
                 m_cscInputSwapNeeded = false;
             }
 
+            VP_RENDER_NORMALMESSAGE("sfc csc coeff calculated. (sfcInputCspace, cscRTCspace) current (%d, %d), previous (%d, %d), swap flag %d",
+                m_renderData.SfcInputCspace, m_renderData.pSfcPipeOutSurface->ColorSpace,
+                m_cscInputCspace, m_cscRTCspace, m_cscInputSwapNeeded ? 1 :0);
+
             m_cscInputCspace = m_renderData.SfcInputCspace;
             m_cscRTCspace    = m_renderData.pSfcPipeOutSurface->ColorSpace;
         }
@@ -342,10 +346,15 @@ MOS_STATUS SfcRenderBase::SetIefStateCscParams(
             m_cscCoeff[8]   = fTemp[2];
 
             m_cscInputSwapNeeded = IsInputChannelSwapNeeded(m_renderData.SfcInputFormat);
+
+            VP_RENDER_NORMALMESSAGE("sfc csc coeff swap flag need be updated to %d. sfcInputFormat %d, sfcInputCspace %d, cscRTCspace %d",
+                (m_cscInputSwapNeeded ? 1 : 0),
+                m_renderData.SfcInputFormat, m_cscInputCspace, m_cscRTCspace);
         }
         else
         {
-            VP_PUBLIC_NORMALMESSAGE("Keep the value of m_cscInputSwapNeeded.");
+            VP_RENDER_NORMALMESSAGE("sfc csc coeff reused. sfcInputFormat %d, sfcInputCspace %d, cscRTCspace %d, swap flag %d",
+                m_renderData.SfcInputFormat, m_cscInputCspace, m_cscRTCspace, (m_cscInputSwapNeeded ? 1 : 0));
         }
 
         pIEFStateParams->pfCscCoeff     = m_cscCoeff;
@@ -399,6 +408,10 @@ MOS_STATUS SfcRenderBase::SetAvsStateParams()
     pMhwAvsState         = &avsStateParams;
     MOS_ZeroMemory(pMhwAvsState, sizeof(MHW_SFC_AVS_STATE));
     pMhwAvsState->sfcPipeMode = m_pipeMode;
+
+    VP_RENDER_NORMALMESSAGE("bScaling %d, bForcePolyPhaseCoefs %d",
+        (m_renderData.bScaling ? 1 :0),
+        (m_renderData.bForcePolyPhaseCoefs ? 1 : 0));
 
     if (m_renderData.bScaling ||
         m_renderData.bForcePolyPhaseCoefs)
@@ -661,6 +674,13 @@ MOS_STATUS SfcRenderBase::SetScalingParams(PSFC_SCALING_PARAMS scalingParams)
         VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
     }
 
+    VP_RENDER_NORMALMESSAGE("fScaleX %f, fScaleY %f, bScaling %d, SfcScalingMode %d, SfcInputFormat %d, bRectangleEnabled",
+        m_renderData.fScaleX, m_renderData.fScaleY,
+        (m_renderData.bScaling ? 1 : 0),
+        m_renderData.SfcScalingMode,
+        m_renderData.SfcInputFormat,
+        (scalingParams->bRectangleEnabled ? 1: 0));
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -781,6 +801,22 @@ bool SfcRenderBase::IsInputChannelSwapNeeded(MOS_FORMAT inputFormat)
     }
 }
 
+MOS_STATUS SfcRenderBase::UpdateIefParams(PVPHAL_IEF_PARAMS iefParams)
+{
+    VP_FUNC_CALL();
+    m_renderData.bIEF           = (iefParams &&
+        iefParams->bEnabled &&
+        iefParams->fIEFFactor > 0.0F);
+    m_renderData.pIefParams     = iefParams;
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS SfcRenderBase::UpdateCscParams(FeatureParamCsc &cscParams)
+{
+    VP_RENDER_CHK_STATUS_RETURN(UpdateIefParams(cscParams.pIEFParams));
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS SfcRenderBase::SetCSCParams(PSFC_CSC_PARAMS cscParams)
 {
     VP_FUNC_CALL();
@@ -817,9 +853,6 @@ MOS_STATUS SfcRenderBase::SetCSCParams(PSFC_CSC_PARAMS cscParams)
     {
         m_renderData.sfcStateParams->ditheringEn = false;
     }
-    VP_PUBLIC_NORMALMESSAGE("cscParams.isDitheringNeeded = %d, m_disableSfcDithering = %d, ditheringEn = %d", 
-        cscParams->isDitheringNeeded, m_disableSfcDithering, m_renderData.sfcStateParams->ditheringEn);
-
 
     // Chromasitting config
     // VEBOX use polyphase coefficients for 1x scaling for better quality,
@@ -840,6 +873,10 @@ MOS_STATUS SfcRenderBase::SetCSCParams(PSFC_CSC_PARAMS cscParams)
     // config SFC chroma down sampling
     m_renderData.sfcStateParams->dwChromaDownSamplingHorizontalCoef = cscParams->chromaDownSamplingHorizontalCoef;
     m_renderData.sfcStateParams->dwChromaDownSamplingVerticalCoef   = cscParams->chromaDownSamplingVerticalCoef;
+
+    VP_RENDER_NORMALMESSAGE("cscParams.isDitheringNeeded %d, m_disableSfcDithering %d, ditheringEn %d, bForcePolyPhaseCoefs %d", 
+        cscParams->isDitheringNeeded, m_disableSfcDithering, m_renderData.sfcStateParams->ditheringEn,
+        (m_renderData.bForcePolyPhaseCoefs ? 1 : 0));
 
     return MOS_STATUS_SUCCESS;
 }

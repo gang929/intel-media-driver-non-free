@@ -356,6 +356,30 @@ bool SwFilterDnHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInpu
 {
     VP_FUNC_CALL();
 
+    PVP_MHWINTERFACE hwInterface = m_vpInterface.GetHwInterface();
+    // secure mode
+    if (hwInterface->m_osInterface->osCpInterface &&
+        hwInterface->m_osInterface->osCpInterface->IsHMEnabled())
+    {
+        VP_PUBLIC_NORMALMESSAGE("Dn is disabled in secure mode.");
+        return false;
+    }
+    // clear mode
+    else
+    {
+        auto userFeatureControl = hwInterface->m_userFeatureControl;
+        if (userFeatureControl != nullptr)
+        {
+            bool disableDn = userFeatureControl->IsDisableDn();
+            if (disableDn)
+            {
+                VP_PUBLIC_NORMALMESSAGE("Dn is disabled in clear mode.");
+                return false;
+            }
+        }
+       
+    }
+
     if (!SwFilterFeatureHandler::IsFeatureEnabled(params, isInputSurf, surfIndex, pipeType))
     {
         return false;
@@ -436,7 +460,7 @@ bool SwFilterDiHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInpu
         vphalSurf->Format != Format_P010 &&
         vphalSurf->Format != Format_P016)
     {
-        VPHAL_PUBLIC_NORMALMESSAGE("Query Variance is enabled, but APG didn't support this feature yet");
+        VP_PUBLIC_NORMALMESSAGE("Query Variance is enabled, but APG didn't support this feature yet");
     }
 
     return false;

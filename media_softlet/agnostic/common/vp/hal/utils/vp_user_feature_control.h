@@ -47,15 +47,15 @@ public:
         bool disableSfc                     = false;
         bool computeContextEnabled          = true;
         bool eufusionBypassWaEnabled        = false;
-        bool disableAutoDn                  = false;
+        bool disableDn                      = false;
         bool cscCosffPatchModeDisabled      = false;
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-        bool forceDecompressedOutput           = false;
-        uint32_t enableSFCNv12P010LinearOutput = 0;
-        uint32_t enableSFCRGBPRGB24Output      = 0;
-        bool     cpOutputSurfaceInitEnabled    = false;
+        bool forceDecompressedOutput        = false;
+        uint32_t enabledSFCNv12P010LinearOutput = 0;
+        uint32_t enabledSFCRGBPRGB24Output  = 0;
 #endif
+        bool disablePacketReuse             = false;
     };
 
 #if (_DEBUG || _RELEASE_INTERNAL)
@@ -64,19 +64,14 @@ public:
         return m_ctrlVal.forceDecompressedOutput;
     }
 
-    uint32_t IsEnableSFCNv12P010LinearOutput()
+    uint32_t EnabledSFCNv12P010LinearOutput()
     {
-        return m_ctrlVal.enableSFCNv12P010LinearOutput;
+        return m_ctrlVal.enabledSFCNv12P010LinearOutput;
     }
 
-    uint32_t IsEnableSFCRGBPRGB24Output()
+    uint32_t EnabledSFCRGBPRGB24Output()
     {
-        return m_ctrlVal.enableSFCRGBPRGB24Output;
-    }
-
-    bool IsCpOutputSurfaceInitEnabled()
-    {
-        return m_ctrlVal.cpOutputSurfaceInitEnabled;
+        return m_ctrlVal.enabledSFCRGBPRGB24Output;
     }
 #endif
 
@@ -104,14 +99,19 @@ public:
         return m_ctrlVal.eufusionBypassWaEnabled;
     }
 
-    bool IsAutoDnDisabled()
+    bool IsDisableDn()
     {
-        return m_ctrlVal.disableAutoDn;
+        return m_ctrlVal.disableDn;
     }
 
     bool IsCscCosffPatchModeDisabled()
     {
         return m_ctrlVal.cscCosffPatchModeDisabled;
+    }
+
+    bool IsPacketReuseDisabled()
+    {
+        return m_ctrlVal.disablePacketReuse;
     }
 
     const void *m_owner = nullptr; // The object who create current instance.

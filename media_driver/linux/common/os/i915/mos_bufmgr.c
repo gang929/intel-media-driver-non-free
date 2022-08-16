@@ -75,9 +75,9 @@
 
 #define memclear(s) memset(&s, 0, sizeof(s))
 
-#define MOS_DBG(...) do {                    \
-    if (bufmgr_gem->bufmgr.debug)            \
-        fprintf(stderr, __VA_ARGS__);        \
+#define MOS_DBG(...) do {                                             \
+    if (bufmgr_gem != nullptr && bufmgr_gem->bufmgr.debug)            \
+        fprintf(stderr, __VA_ARGS__);                                 \
 } while (0)
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
@@ -1499,10 +1499,16 @@ mos_bo_gem_create_from_name(struct mos_bufmgr *bufmgr,
 drm_export void
 mos_gem_bo_free(struct mos_linux_bo *bo)
 {
-    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
+    struct mos_bufmgr_gem *bufmgr_gem = nullptr;
     struct mos_bo_gem *bo_gem = (struct mos_bo_gem *) bo;
     struct drm_gem_close close;
     int ret;
+
+    CHK_CONDITION(bo_gem == nullptr, "bo_gem == nullptr\n", );
+
+    bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
+
+    CHK_CONDITION(bufmgr_gem == nullptr, "bufmgr_gem == nullptr\n", );
 
     if (bo_gem->mem_virtual) {
         VG(VALGRIND_FREELIKE_BLOCK(bo_gem->mem_virtual, 0));
@@ -1514,6 +1520,11 @@ mos_gem_bo_free(struct mos_linux_bo *bo)
     if (bo_gem->mem_wc_virtual) {
         VG(VALGRIND_FREELIKE_BLOCK(bo_gem->mem_wc_virtual, 0));
         drm_munmap(bo_gem->mem_wc_virtual, bo_gem->bo.size);
+    }
+
+    if(bufmgr_gem->bufmgr.bo_wait_rendering)
+    {
+        bufmgr_gem->bufmgr.bo_wait_rendering(bo);
     }
 
     /* Close this object */

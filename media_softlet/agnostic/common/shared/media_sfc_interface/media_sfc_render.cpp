@@ -37,10 +37,11 @@
 #include "renderhal.h"
 #include "media_mem_compression.h"
 #include "media_interfaces_mhw_next.h"
+#include "renderhal_platform_interface.h"
 
 using namespace vp;
 
-typedef MediaInterfacesFactory<VphalDevice> VphalFactory;
+typedef MediaFactory<uint32_t, VphalDevice> VphalFactory;
 
 MediaSfcRender::MediaSfcRender(PMOS_INTERFACE osInterface, MEDIA_SFC_INTERFACE_MODE mode, MediaMemComp *mmc) :
     m_osInterface(osInterface), m_mode(mode), m_mmc(mmc)
@@ -164,7 +165,7 @@ MOS_STATUS MediaSfcRender::Initialize()
 
     // Create platform interface and vp pipeline by vphalDevice.
     m_osInterface->pfnGetPlatform(m_osInterface, &platform);
-    vphalDevice = VphalFactory::CreateHal(platform.eProductFamily);
+    vphalDevice = VphalFactory::Create(platform.eProductFamily);
     VP_PUBLIC_CHK_NULL_RETURN(vphalDevice);
 
     if (m_mode.veboxSfcEnabled)
@@ -252,7 +253,6 @@ MOS_STATUS MediaSfcRender::Initialize()
     m_vpMhwinterface->m_osInterface            = m_osInterface;
     m_vpMhwinterface->m_renderHal              = m_renderHal;
     m_vpMhwinterface->m_cpInterface            = m_cpInterface;
-    m_vpMhwinterface->m_mhwMiInterface         = m_renderHal->pMhwMiInterface;
     m_vpMhwinterface->m_statusTable            = m_statusTable;
     m_vpMhwinterface->m_vpPlatformInterface    = m_vpPlatformInterface;
     m_vpMhwinterface->m_settings               = nullptr;

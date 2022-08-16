@@ -241,18 +241,6 @@ protected:
         EncodeStatusMfx        *encodeStatusMfx,
         EncodeStatusReportData *statusReportData);
 
-    virtual MOS_STATUS PopulateParFileParams(
-        const CODEC_AV1_ENCODE_SEQUENCE_PARAMS *  seqParams,
-        const CODEC_AV1_ENCODE_PICTURE_PARAMS *   picParams,
-        const uint32_t                            numTileGroups,
-        const CODEC_AV1_ENCODE_TILE_GROUP_PARAMS *tileGroupParams,
-        const MHW_BATCH_BUFFER *                  batchBuffer);
-
-    virtual MOS_STATUS InitParParams();
-
-    MOS_STATUS PopulateParFileParams();
-
-    virtual MOS_STATUS DumpSeqParFile();
 #endif  // USE_CODECHAL_DEBUG_TOOL
 
     Av1VdencPipeline *m_pipeline = nullptr;
@@ -279,10 +267,6 @@ protected:
 
     AtomicScratchBufferAv1 m_atomicScratchBuf = {};  //!< Stores atomic operands and result
 
-#if USE_CODECHAL_DEBUG_TOOL
-    EncodeAv1Par *m_av1Par = nullptr;
-#endif  // USE_CODECHAL_DEBUG_TOOL
-
     bool m_vdencPakObjCmdStreamOutEnabled               = false;    //!< Pakobj stream out enable flag
     PMOS_RESOURCE m_resCumulativeCuCountStreamoutBuffer = nullptr;  //!< Cumulative CU count stream out buffer
     PMOS_RESOURCE m_vdencIntraRowStoreScratch           = nullptr;
@@ -305,7 +289,7 @@ protected:
     MOS_STATUS SetSurfaceState(
         PMHW_VDBOX_SURFACE_PARAMS surfaceStateParams);
 
-    void SetPerfTag(uint16_t type, uint16_t mode, uint16_t picCodingType);
+    void SetPerfTag();
     MOS_STATUS AddForceWakeup(MOS_COMMAND_BUFFER &cmdBuffer);
     MOS_STATUS SendPrologCmds(MOS_COMMAND_BUFFER &cmdBuffer);
     MOS_STATUS SetRowstoreCachingOffsets();

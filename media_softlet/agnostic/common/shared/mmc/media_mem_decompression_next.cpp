@@ -64,10 +64,6 @@ MediaMemDeCompNext::~MediaMemDeCompNext()
         MOS_Delete(m_miInterface);
     }
 
-    if (m_veboxInterface)
-    {
-        MOS_Delete(m_veboxInterface);
-    }
 }
 
 MOS_STATUS MediaMemDeCompNext::MemoryDecompress(PMOS_RESOURCE targetResource)
@@ -459,7 +455,6 @@ MOS_STATUS MediaMemDeCompNext::Initialize(PMOS_INTERFACE osInterface, MhwInterfa
     m_veboxItf    = mhwInterfaces->m_veboxItf;
 
     // track legacy vebox/mi interface after mhw created
-    m_veboxInterface =  mhwInterfaces->m_veboxInterface;
     m_miInterface    = mhwInterfaces->m_miInterface;
 
     m_userSettingPtr = m_osInterface->pfnGetUserSettingInstance(m_osInterface);
@@ -804,7 +799,9 @@ bool MediaMemDeCompNext::IsFormatSupported(PMOS_SURFACE surface)
         surface->dwHeight = surface->dwSize / surface->dwPitch;
     }
 
-    if (IS_RGB64_FLOAT_FORMAT(surface->Format) || IS_RGB64_FORMAT(surface->Format))
+    if (IS_RGB64_FLOAT_FORMAT(surface->Format) ||
+        IS_RGB64_FORMAT(surface->Format)       ||
+       (surface->Format == Format_G32R32F))
     {
         surface->Format = Format_Y416;
     }

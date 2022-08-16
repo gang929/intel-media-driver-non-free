@@ -26,8 +26,8 @@
 //!
 #include "vp_render_fc_kernel.h"
 #include "vp_render_kernel_obj.h"
-#include "hal_kerneldll.h"
-#include "hal_oca_interface.h"
+#include "hal_kerneldll_next.h"
+#include "hal_oca_interface_next.h"
 #include "vp_user_feature_control.h"
 
 using namespace vp;
@@ -165,8 +165,8 @@ MOS_STATUS VpRenderFcKernel::SetSurfaceParams(KERNEL_SURFACE_STATE_PARAM &surfPa
         layer.iefEnabled    = false;
 
         // Set flags for RT
-        surfParam.renderTarget              = true;
-        renderSurfParams.bRenderTarget      = true;
+        surfParam.isOutput                  = true;
+        renderSurfParams.isOutput           = true;
         renderSurfParams.bWidthInDword_Y    = true;
         renderSurfParams.bWidthInDword_UV   = true;
         renderSurfParams.Boundary           = RENDERHAL_SS_BOUNDARY_DSTRECT;
@@ -174,8 +174,8 @@ MOS_STATUS VpRenderFcKernel::SetSurfaceParams(KERNEL_SURFACE_STATE_PARAM &surfPa
     // other surfaces
     else
     {
-        surfParam.renderTarget              = false;
-        renderSurfParams.bRenderTarget      = false;
+        surfParam.isOutput                  = false;
+        renderSurfParams.isOutput           = false;
         renderSurfParams.bWidthInDword_Y    = false;
         renderSurfParams.bWidthInDword_UV   = false;
         renderSurfParams.Boundary           = RENDERHAL_SS_BOUNDARY_SRCRECT;
@@ -371,7 +371,7 @@ MOS_STATUS VpRenderFcKernel::SetupSurfaceState()
 
         surfParam.surfaceOverwriteParams.updatedRenderSurfaces             = true;
         surfParam.surfaceOverwriteParams.renderSurfaceParams.Type          = RENDERHAL_SURFACE_TYPE_G10;
-        surfParam.surfaceOverwriteParams.renderSurfaceParams.bRenderTarget = false;
+        surfParam.surfaceOverwriteParams.renderSurfaceParams.isOutput = false;
         surfParam.surfaceOverwriteParams.renderSurfaceParams.Boundary      = RENDERHAL_SS_BOUNDARY_ORIGINAL;
         surfParam.surfaceOverwriteParams.renderSurfaceParams.bWidth16Align = false;
         surfParam.surfaceOverwriteParams.renderSurfaceParams.MemObjCtl     = m_surfMemCacheCtl.InputSurfMemObjCtl;
@@ -633,7 +633,7 @@ MOS_STATUS VpRenderFcKernel::InitRenderHalSurface(
 
 void VpRenderFcKernel::OcaDumpKernelInfo(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTEXT &mosContext)
 {
-    HalOcaInterface::DumpVpKernelInfo(cmdBuffer, mosContext, m_kernelId, m_kernelSearch.KernelCount, m_kernelSearch.KernelID);
+    HalOcaInterfaceNext::DumpVpKernelInfo(cmdBuffer, mosContext, m_kernelId, m_kernelSearch.KernelCount, m_kernelSearch.KernelID);
 }
 
 bool IsRenderAlignmentWANeeded(VP_SURFACE *surface)
@@ -1574,7 +1574,7 @@ MOS_STATUS VpRenderFcKernel::InitLayerInCurbeData(VP_FC_LAYER *layer)
             m_curbeData.DW11.ChromasitingUOffset, m_curbeData.DW12.ChromasitingVOffset);
 
         // Set output depth.
-        bitDepth = VpHal_GetSurfaceBitDepth(layer->surf->osSurface->Format);
+        bitDepth                        = VpUtils::GetSurfaceBitDepth(layer->surf->osSurface->Format);
         m_curbeData.DW07.OutputDepth    = VP_COMP_P010_DEPTH;
         if (bitDepth && !(layer->surf->osSurface->Format == Format_P010 || layer->surf->osSurface->Format == Format_Y210))
         {
@@ -1846,7 +1846,7 @@ MOS_STATUS VpRenderFcKernel::InitColorFillInCurbeData()
             (m_srcCspace     != srcCspace)  ||
             (m_dstCspace     != dstCspace))
         {
-            VpHal_CSC_8(&m_dstColor, &srcColor, srcCspace, dstCspace);
+            VpUtils::GetCscMatrixForRender8Bit(&m_dstColor, &srcColor, srcCspace, dstCspace);
 
             // store the values for next iteration
             m_srcColor     = srcColor;

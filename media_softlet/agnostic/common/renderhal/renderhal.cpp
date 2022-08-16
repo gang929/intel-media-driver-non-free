@@ -799,6 +799,12 @@ extern const MHW_SURFACE_PLANES g_cRenderHal_SurfacePlanes[RENDERHAL_PLANES_DEFI
         {
             { MHW_GENERIC_PLANE, 1, 1, 1, 1, 4, 1, MHW_MEDIASTATE_SURFACEFORMAT_Y8_UNORM }
         }
+    },
+    //RENDERHAL_PLANES_G32R32F
+    {   1,
+        {
+            { MHW_GENERIC_PLANE, 1, 1, 1, 1, 0, 0, MHW_GFX3DSTATE_SURFACEFORMAT_R16G16B16A16_UNORM }
+    }
     }
 };
 
@@ -3656,6 +3662,10 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
                 PlaneDefinition = RENDERHAL_PLANES_R32F;
                 break;
 
+            case Format_G32R32F:
+                PlaneDefinition = RENDERHAL_PLANES_G32R32F;
+                break;
+
             case Format_Y8:
                 PlaneDefinition = RENDERHAL_PLANES_R8;
                 break;
@@ -3692,7 +3702,7 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
             case Format_X8R8G8B8:
                 // h/w doesn't support XRGB render target
                 PlaneDefinition =
-                    (pParams->bRenderTarget) ? RENDERHAL_PLANES_ARGB : RENDERHAL_PLANES_XRGB;
+                    (pParams->isOutput) ? RENDERHAL_PLANES_ARGB : RENDERHAL_PLANES_XRGB;
                 break;
 
             case Format_A8B8G8R8:
@@ -3702,7 +3712,7 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
             case Format_X8B8G8R8:
                 // h/w doesn't support XBGR render target
                 PlaneDefinition =
-                    (pParams->bRenderTarget) ? RENDERHAL_PLANES_ABGR : RENDERHAL_PLANES_XBGR;
+                    (pParams->isOutput) ? RENDERHAL_PLANES_ABGR : RENDERHAL_PLANES_XBGR;
                 break;
 
             case Format_R5G6B5:
@@ -3905,11 +3915,12 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
                 dwSurfaceWidth = dwSurfaceWidth << 2;
             }
             else if (PlaneDefinition == RENDERHAL_PLANES_A16B16G16R16     ||
-                PlaneDefinition == RENDERHAL_PLANES_A16B16G16R16_ADV ||
-                PlaneDefinition == RENDERHAL_PLANES_A16B16G16R16F    ||
-                PlaneDefinition == RENDERHAL_PLANES_A16R16G16B16F    ||
-                PlaneDefinition == RENDERHAL_PLANES_Y210_RT          ||
-                PlaneDefinition == RENDERHAL_PLANES_Y416_RT          ||
+                PlaneDefinition == RENDERHAL_PLANES_A16B16G16R16_ADV      ||
+                PlaneDefinition == RENDERHAL_PLANES_A16B16G16R16F         ||
+                PlaneDefinition == RENDERHAL_PLANES_A16R16G16B16F         ||
+                PlaneDefinition == RENDERHAL_PLANES_G32R32F               ||
+                PlaneDefinition == RENDERHAL_PLANES_Y210_RT               ||
+                PlaneDefinition == RENDERHAL_PLANES_Y416_RT               ||
                 PlaneDefinition == RENDERHAL_PLANES_R32_FLOAT_X8X24_TYPELESS)
             {
                 dwSurfaceWidth = dwSurfaceWidth << 1;
@@ -3959,7 +3970,7 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
 
         pSurfaceEntry->YUVPlane          = pPlane->ui8PlaneID;
         pSurfaceEntry->bAVS              = pPlane->bAdvanced;
-        pSurfaceEntry->bRenderTarget     = pParams->bRenderTarget;
+        pSurfaceEntry->isOutput     = pParams->isOutput;
         pSurfaceEntry->bVertStride       = pParams->bVertStride;
         pSurfaceEntry->bVertStrideOffs   = pParams->bVertStrideOffs;
         pSurfaceEntry->bTiledSurface     = (pSurface->TileType != MOS_TILE_LINEAR)
@@ -4766,7 +4777,6 @@ MOS_STATUS RenderHal_InitCommandBuffer(
     MHW_RENDERHAL_CHK_NULL(pRenderHal);
     MHW_RENDERHAL_CHK_NULL(pCmdBuffer);
     MHW_RENDERHAL_CHK_NULL(pRenderHal->pOsInterface);
-    MHW_RENDERHAL_CHK_NULL(pRenderHal->pMhwMiInterface);
     MHW_RENDERHAL_CHK_NULL(pRenderHal->pRenderHalPltInterface);
     //---------------------------------------------
 
@@ -5432,8 +5442,8 @@ MOS_STATUS RenderHal_SetupBufferSurfaceState(
     RcsSurfaceParams.psSurface             = &pRenderHalSurface->OsSurface;
     RcsSurfaceParams.dwOffsetInSSH         = pSurfaceEntry->dwSurfStateOffset;
     RcsSurfaceParams.dwCacheabilityControl = pRenderHal->pfnGetSurfaceMemoryObjectControl(pRenderHal, pParams);
-    RcsSurfaceParams.bIsWritable           = pParams->bRenderTarget;
-    RcsSurfaceParams.bRenderTarget         = pParams->bRenderTarget;
+    RcsSurfaceParams.bIsWritable           = pParams->isOutput;
+    RcsSurfaceParams.bRenderTarget         = pParams->isOutput;
 
     // Call MHW to setup the Surface State Heap entry for Buffer
     MHW_RENDERHAL_CHK_STATUS(pRenderHal->pfnSetSurfaceStateBuffer(pRenderHal, &RcsSurfaceParams, pSurfaceEntry->pSurfaceState));
@@ -5756,7 +5766,7 @@ MOS_STATUS RenderHal_SetupSurfaceStatesOs(
     }
 
     // Surface type
-    TokenParams.bRenderTarget   = pParams->bRenderTarget;
+    TokenParams.bRenderTarget   = pParams->isOutput;
     TokenParams.bSurfaceTypeAvs = pSurfaceEntry->bAVS;
 
     MHW_RENDERHAL_CHK_STATUS(pRenderHal->pfnSetSurfaceStateToken(

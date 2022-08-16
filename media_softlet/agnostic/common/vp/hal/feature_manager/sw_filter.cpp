@@ -167,6 +167,8 @@ MOS_STATUS SwFilterCsc::Configure(VP_PIPELINE_PARAMS &params, bool isInputSurf, 
     // Alpha should be handled in input pipe to avoid alpha data lost from image.
     m_Params.pAlphaParams           = params.pCompAlpha;
 
+    VP_PUBLIC_NORMALMESSAGE("formatInput %d, formatOutput %d", m_Params.formatInput, m_Params.formatOutput);
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -792,21 +794,11 @@ MOS_STATUS SwFilterDenoise::Configure(VP_PIPELINE_PARAMS& params, bool isInputSu
     bool inputProtected = pSrcGmmResInfo->GetSetCpSurfTag(0, 0);
     bool outputProtected = pTargetGmmResInfo->GetSetCpSurfTag(0, 0);
 
-    auto userFeatureControl = m_vpInterface.GetHwInterface()->m_userFeatureControl;
-    VP_PUBLIC_CHK_NULL_RETURN(userFeatureControl);
-    bool disableAutoDN      = userFeatureControl->IsAutoDnDisabled();
-
     if (inputProtected || outputProtected ||
        (m_vpInterface.GetHwInterface()->m_osInterface->osCpInterface &&
         m_vpInterface.GetHwInterface()->m_osInterface->osCpInterface->IsHMEnabled()))
     {
         m_Params.secureDnNeeded = true;
-    }
-    else if (disableAutoDN && m_Params.denoiseParams.bAutoDetect)
-    {
-        // disable AutoDN in clear mode
-        m_Params.denoiseParams.bAutoDetect = false;
-        VP_PUBLIC_NORMALMESSAGE("AutoDN is disabled in clear mode.");
     }
 #endif
 

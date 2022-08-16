@@ -27,7 +27,6 @@
 
 #include "renderhal.h"
 #include "renderhal_xe_hpg_base.h"
-#include "mhw_mi_g12_X.h"
 #include "vp_utils.h"
 #include "media_packet.h"
 #include "media_feature.h"
@@ -213,7 +212,7 @@ MOS_STATUS XRenderHal_Interface_Xe_Hpg_Base::SetupSurfaceState(
                 SurfStateParams.dwCompressionFormat = 0;
             }
 
-            if (!pParams->bRenderTarget &&
+            if (!pParams->isOutput &&
                 pSurface->MmcState != MOS_MEMCOMP_DISABLED &&
                 pSurfaceEntry->bVertStride)
             {
@@ -742,7 +741,7 @@ MOS_STATUS XRenderHal_Interface_Xe_Hpg_Base::IsOvrdNeeded(
     PMOS_INTERFACE                        pOsInterface;
     MOS_STATUS                            eStatus;
     PMOS_CMD_BUF_ATTRI_VE                 pAttriVe;
-    PRENDERHAL_GENERIC_PROLOG_PARAMS_HPG_BASE pGenericPrologParamsHPG_BASE;
+    PRENDERHAL_GENERIC_PROLOG_PARAMS_NEXT pGenericPrologParamsNext;
     uint8_t                               i;
 
     MHW_RENDERHAL_CHK_NULL(pRenderHal);
@@ -753,22 +752,22 @@ MOS_STATUS XRenderHal_Interface_Xe_Hpg_Base::IsOvrdNeeded(
     eStatus                 = MOS_STATUS_SUCCESS;
     pOsInterface            = pRenderHal->pOsInterface;
     pAttriVe               = (PMOS_CMD_BUF_ATTRI_VE)(pCmdBuffer->Attributes.pAttriVe);
-    pGenericPrologParamsHPG_BASE = dynamic_cast<PRENDERHAL_GENERIC_PROLOG_PARAMS_HPG_BASE>(pGenericPrologParams);
+    pGenericPrologParamsNext = dynamic_cast<PRENDERHAL_GENERIC_PROLOG_PARAMS_NEXT>(pGenericPrologParams);
 
     // Split Frame
     if (pOsInterface->VEEnable)
     {
 #if !EMUL
-        if (pGenericPrologParamsHPG_BASE)
+        if (pGenericPrologParamsNext)
 #else
-        if (pGenericPrologParamsHPG_BASE && pAttriVe != nullptr)
+        if (pGenericPrologParamsNext && pAttriVe != nullptr)
 #endif
         {
             // Split Frame
-            if (pGenericPrologParamsHPG_BASE->VEngineHintParams.BatchBufferCount > 1)
+            if (pGenericPrologParamsNext->VEngineHintParams.BatchBufferCount > 1)
             {
                 pAttriVe->bUseVirtualEngineHint = true;
-                pAttriVe->VEngineHintParams = pGenericPrologParamsHPG_BASE->VEngineHintParams;
+                pAttriVe->VEngineHintParams = pGenericPrologParamsNext->VEngineHintParams;
             }
         }
 
@@ -783,13 +782,13 @@ MOS_STATUS XRenderHal_Interface_Xe_Hpg_Base::IsOvrdNeeded(
             {
                 pAttriVe->VEngineHintParams.DebugOverride = true;
 #if !EMUL
-                if (pGenericPrologParamsHPG_BASE)
+                if (pGenericPrologParamsNext)
 #else
-                if (pGenericPrologParamsHPG_BASE && pAttriVe != nullptr)
+                if (pGenericPrologParamsNext && pAttriVe != nullptr)
 #endif
                 {
-                    pAttriVe->VEngineHintParams.BatchBufferCount = pGenericPrologParamsHPG_BASE->VEngineHintParams.BatchBufferCount;
-                    for (i = 0; i < pGenericPrologParamsHPG_BASE->VEngineHintParams.BatchBufferCount; i++)
+                    pAttriVe->VEngineHintParams.BatchBufferCount = pGenericPrologParamsNext->VEngineHintParams.BatchBufferCount;
+                    for (i = 0; i < pGenericPrologParamsNext->VEngineHintParams.BatchBufferCount; i++)
                     {
                         pAttriVe->VEngineHintParams.EngineInstance[i] = i;
                     }
@@ -844,8 +843,8 @@ finish:
 //!             the size of render surface state command
 size_t XRenderHal_Interface_Xe_Hpg_Base::GetSurfaceStateCmdSize()
 {
-    return MOS_ALIGN_CEIL( MOS_MAX(mhw_state_heap_g12_X::RENDER_SURFACE_STATE_CMD::byteSize,
-                   mhw_state_heap_g12_X::MEDIA_SURFACE_STATE_CMD::byteSize), MHW_SURFACE_STATE_ALIGN);
+    return MOS_ALIGN_CEIL( MOS_MAX(mhw_state_heap_xe_hpg::RENDER_SURFACE_STATE_CMD::byteSize,
+                   mhw_state_heap_xe_hpg::MEDIA_SURFACE_STATE_CMD::byteSize), MHW_SURFACE_STATE_ALIGN);
 }
 
 //! \brief      Get Surface Compression support caps
@@ -960,7 +959,7 @@ MOS_STATUS XRenderHal_Interface_Xe_Hpg_Base::SetScratchSpaceBufferState(
     RENDERHAL_SURFACE_STATE_PARAMS renderhal_surface_state_param;
     MOS_ZeroMemory(&renderhal_surface_state_param,
                    sizeof(renderhal_surface_state_param));
-    renderhal_surface_state_param.bRenderTarget = 1;
+    renderhal_surface_state_param.isOutput = 1;
     renderhal_surface_state_param.MemObjCtl = 2;
 
     RENDERHAL_SURFACE_STATE_ENTRY *renderhal_surface_state_entry = nullptr;
@@ -1013,7 +1012,6 @@ MOS_STATUS XRenderHal_Interface_Xe_Hpg_Base::SendTo3DStateBindingTablePoolAlloc(
     VP_FUNC_CALL();
 
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
-    mhw_render_xe_xpm_base::_3DSTATE_BINDING_TABLE_POOL_ALLOC_CMD cmd;
     MHW_RENDERHAL_CHK_NULL(pRenderHal);
     MHW_RENDERHAL_CHK_NULL(pCmdBuffer);
     MHW_RENDERHAL_CHK_NULL(m_renderItf);
@@ -1078,9 +1076,9 @@ MHW_SETPAR_DECL_SRC(STATE_SIP, XRenderHal_Interface_Xe_Hpg_Base)
 
 MHW_SETPAR_DECL_SRC(CFE_STATE, XRenderHal_Interface_Xe_Hpg_Base)
 {
-    MHW_VFE_PARAMS* pVfeStateParams = nullptr;
-    MHW_VFE_PARAMS_G12* paramsG12   = nullptr;
-    pVfeStateParams                 = nullptr;
+    MHW_VFE_PARAMS* pVfeStateParams     = nullptr;
+    MHW_VFE_PARAMS_XE_HPG* paramsNext   = nullptr;
+    pVfeStateParams                     = nullptr;
 
     MHW_RENDERHAL_CHK_NULL_RETURN(m_renderHal);
     MHW_RENDERHAL_CHK_NULL_RETURN(m_renderHal->pHwCaps);
@@ -1099,13 +1097,13 @@ MHW_SETPAR_DECL_SRC(CFE_STATE, XRenderHal_Interface_Xe_Hpg_Base)
         params.dwMaximumNumberofThreads = (pVfeStateParams->dwMaximumNumberofThreads) ? pVfeStateParams->dwMaximumNumberofThreads - 1 : m_renderHal->pHwCaps->dwMaxThreads - 1;
     }
 
-    paramsG12 = dynamic_cast<MHW_VFE_PARAMS_G12*>(pVfeStateParams);
-    if (paramsG12 != nullptr)
+    paramsNext = dynamic_cast<MHW_VFE_PARAMS_XE_HPG*>(pVfeStateParams);
+    if (paramsNext != nullptr)
     {
-        params.ScratchSpaceBuffer = paramsG12->scratchStateOffset >> 6;
-        params.FusedEuDispatch = paramsG12->bFusedEuDispatch ? false : true;  // disabled if DW3.FusedEuDispath = 1
-        params.NumberOfWalkers = paramsG12->numOfWalkers;
-        params.SingleSliceDispatchCcsMode = paramsG12->enableSingleSliceDispatchCcsMode;
+        params.ScratchSpaceBuffer = paramsNext->scratchStateOffset >> 6;
+        params.FusedEuDispatch = paramsNext->bFusedEuDispatch ? false : true;  // disabled if DW3.FusedEuDispath = 1
+        params.NumberOfWalkers = paramsNext->numOfWalkers;
+        params.SingleSliceDispatchCcsMode = paramsNext->enableSingleSliceDispatchCcsMode;
     }
 
     return MOS_STATUS_SUCCESS;
