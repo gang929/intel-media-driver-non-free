@@ -22,12 +22,9 @@
 set(TMP_2_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/codec_def_vp8_probs.h
     ${CMAKE_CURRENT_LIST_DIR}/codec_def_vp9_probs.h
-    ${CMAKE_CURRENT_LIST_DIR}/codec_def_decode_jpeg.h
-    ${CMAKE_CURRENT_LIST_DIR}/codec_def_decode_mpeg2.h
     ${CMAKE_CURRENT_LIST_DIR}/codec_def_decode_vp8.h
     ${CMAKE_CURRENT_LIST_DIR}/codec_def_encode_vp8.h
     ${CMAKE_CURRENT_LIST_DIR}/codec_def_cenc_decode.h
-    ${CMAKE_CURRENT_LIST_DIR}/codec_def_decode.h
 )
 
 set(HEADERS_

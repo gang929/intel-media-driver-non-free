@@ -957,7 +957,7 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled,
     if (!m_hwCaps.m_rules.isAvsSamplerSupported &&
         scalingParams->scalingPreference != VPHAL_SCALING_PREFER_SFC)
     {
-        VP_PUBLIC_NORMALMESSAGE("Force scalingPreference from %d to SFC");
+        VP_PUBLIC_NORMALMESSAGE("Force scalingPreference from %d to SFC", scalingParams->scalingPreference);
         scalingParams->scalingPreference = VPHAL_SCALING_PREFER_SFC;
     }
 
@@ -2017,8 +2017,12 @@ bool Policy::IsIsolateFeatureOutputPipeNeeded(SwFilterSubPipe *featureSubPipe, S
         for (auto featureType : m_featurePool)
         {
             SwFilter      *curSwFilter = featureSubPipe->GetSwFilter(featureType);
+            if (nullptr == curSwFilter)
+            {
+                continue;
+            }
             VP_EngineEntry caps        = curSwFilter->GetFilterEngineCaps();
-            if (nullptr == curSwFilter || caps.bEnabled == false || featureType == swFilter->GetFeatureType())
+            if (caps.bEnabled == false || featureType == swFilter->GetFeatureType())
             {
                 continue;
             }
@@ -2146,7 +2150,7 @@ MOS_STATUS Policy::GetInputPipeEngineCaps(SwFilterPipe& featurePipe, VP_EngineEn
                 singlePipeSelected = featureSubPipe;
                 engineCapsForVeboxSfc.value |= engineCaps.value;
                 engineCapsForVeboxSfc.nonFcFeatureExists = true;
-                engineCapsForVeboxSfc.nonVeboxFeatureExists |= !engineCaps.VeboxNeeded;
+                engineCapsForVeboxSfc.nonVeboxFeatureExists |= ~engineCaps.VeboxNeeded;
             }
             else
             {
@@ -2154,7 +2158,7 @@ MOS_STATUS Policy::GetInputPipeEngineCaps(SwFilterPipe& featurePipe, VP_EngineEn
                 if (engineCaps.SfcNeeded || engineCaps.VeboxNeeded)
                 {
                     engineCapsForVeboxSfc.value |= engineCaps.value;
-                    engineCapsForVeboxSfc.nonVeboxFeatureExists |= !engineCaps.VeboxNeeded;
+                    engineCapsForVeboxSfc.nonVeboxFeatureExists |= ~engineCaps.VeboxNeeded;
                 }
                 else
                 {
@@ -2819,7 +2823,7 @@ MOS_STATUS Policy::UpdateFeatureOutputPipe(std::vector<int> &layerIndexes, SwFil
 
     if (!featurePipe.IsAllInputPipeSurfaceFeatureEmpty(layerIndexes))
     {
-        VPHAL_PUBLIC_ASSERTMESSAGE("bOutputPipeFeatureInuse being set but input pipe is not empty.");
+        VP_PUBLIC_ASSERTMESSAGE("bOutputPipeFeatureInuse being set but input pipe is not empty.");
         VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
     }
 

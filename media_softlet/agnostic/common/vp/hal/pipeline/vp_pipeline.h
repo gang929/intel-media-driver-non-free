@@ -35,12 +35,12 @@
 #include "vp_utils.h"
 #include "vp_allocator.h"
 #include "vp_status_report.h"
-#include "vphal.h"
 #include "vp_dumper.h"
 #include "vp_debug_interface.h"
 #include "vp_feature_manager.h"
 #include "vp_packet_shared_context.h"
 #include "vp_kernelset.h"
+#include "vp_packet_reuse_manager.h"
 
 namespace vp
 {
@@ -165,6 +165,14 @@ public:
     }
 
     virtual MOS_STATUS CreateVPDebugInterface();
+
+    VpUserFeatureControl *GetUserFeatureControl()
+    {
+        return m_userFeatureControl;
+    }
+
+    // for debug purpose
+#if (_DEBUG || _RELEASE_INTERNAL)
     //!
     //! \brief  replace output surface from Tile-Y to Linear
     //! \param  [in] params
@@ -172,12 +180,7 @@ public:
     //! \return MOS_STATUS
     //!         MOS_STATUS_SUCCESS if success, else fail reason
     //!
-#if (_DEBUG || _RELEASE_INTERNAL)
     MOS_STATUS SurfaceReplace(PVP_PIPELINE_PARAMS params);
-#endif
-    MOS_STATUS InitUserFeatureSetting();
-    // for debug purpose
-#if (_DEBUG || _RELEASE_INTERNAL)
     virtual VPHAL_SURFACE *AllocateTempTargetSurface(VPHAL_SURFACE *m_tempTargetSurface);
 #endif
 
@@ -303,7 +306,7 @@ protected:
     {
         if (!settings)
         {
-            VPHAL_PUBLIC_NORMALMESSAGE("No VPP Settings needed, driver to handle features behavious by self");
+            VP_PUBLIC_NORMALMESSAGE("No VPP Settings needed, driver to handle features behavious by self");
             return MOS_STATUS_SUCCESS;
         }
 
@@ -345,6 +348,22 @@ protected:
         return (m_numVebox > 1) ? true : false;
     }
 
+    virtual VpPacketReuseManager *NewVpPacketReuseManagerObj(PacketPipeFactory *packetPipeFactory, VpUserFeatureControl *userFeatureControl)
+    {
+        return packetPipeFactory && userFeatureControl ? MOS_New(VpPacketReuseManager, *packetPipeFactory, *userFeatureControl) : nullptr;
+    }
+
+    MOS_STATUS CreatePacketReuseManager()
+    {
+        if (nullptr == m_packetReuseMgr)
+        {
+            m_packetReuseMgr = NewVpPacketReuseManagerObj(m_pPacketPipeFactory, m_userFeatureControl);
+            VP_PUBLIC_CHK_NULL_RETURN(m_packetReuseMgr);
+            VP_PUBLIC_CHK_STATUS_RETURN(m_packetReuseMgr->RegisterFeatures());
+        }
+        return MOS_STATUS_SUCCESS;
+    }
+
     MOS_STATUS UpdateVeboxNumberforScalability();
 
 protected:
@@ -360,6 +379,7 @@ protected:
     VphalFeatureReport    *m_reporting              = nullptr;  //!< vp Pipeline user feature report
     VPHAL_OUTPUT_PIPE_MODE m_vpOutputPipe           = VPHAL_OUTPUT_PIPE_MODE_INVALID;
     bool                   m_veboxFeatureInuse      = false;
+    bool                   m_packetReused           = false;    //!< true is packet reused.
 
     VPStatusReport        *m_statusReport           = nullptr;  //!< vp Pipeline status report
     // Surface dumper fields (counter and specification)
@@ -377,14 +397,11 @@ protected:
     VpInterface           *m_vpInterface            = nullptr;
 #if (_DEBUG || _RELEASE_INTERNAL)
     VPHAL_SURFACE         *m_tempTargetSurface      = nullptr;
-    struct
-    {
-        uint32_t enableSFCNv12P010LinearOutput      = 0;
-        uint32_t enableSFCRGBPRGB24Output           = 0;
-    } m_userFeatureSetting;
 #endif
     VP_SETTINGS           *m_vpSettings = nullptr;
     VpUserFeatureControl  *m_userFeatureControl = nullptr;
+
+    VpPacketReuseManager  *m_packetReuseMgr = nullptr;
 
     MEDIA_CLASS_DEFINE_END(vp__VpPipeline)
 };

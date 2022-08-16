@@ -141,6 +141,15 @@ VpCmdPacket *PacketFactory::CreateRenderPacket()
     VpCmdPacket *p = m_vpPlatformInterface ? m_vpPlatformInterface->CreateRenderPacket(m_pTask, m_pHwInterface, m_pAllocator, m_pMmc, m_kernelSet) : nullptr;
     if (p)
     {
+        MOS_STATUS status = MOS_STATUS_SUCCESS;
+        
+        status = p->Init();
+        
+        if (MOS_STATUS_SUCCESS != status)
+        {
+            VP_PUBLIC_ASSERTMESSAGE("Render CMD Packet Init Fail");
+        }
+
         p->SetPacketSharedContext(m_packetSharedContext);
     }
     return p;
@@ -259,6 +268,8 @@ MOS_STATUS PacketPipe::Execute(MediaStatusReport *statusReport, MediaScalability
 {
     VP_FUNC_CALL();
 
+    VP_PUBLIC_NORMALMESSAGE("PacketPipe %p in execute.", this);
+
     // PrePare Packet in case any packet resources shared
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
     for (std::vector<VpCmdPacket*>::reverse_iterator it = m_Pipe.rbegin(); it != m_Pipe.rend(); ++it)
@@ -295,6 +306,7 @@ MOS_STATUS PacketPipe::Execute(MediaStatusReport *statusReport, MediaScalability
         VP_PUBLIC_CHK_STATUS_RETURN(pTask->AddPacket(&prop));
         if (prop.immediateSubmit)
         {
+            VP_PUBLIC_NORMALMESSAGE("Execute Packet %p.", pPacket);
             VP_PUBLIC_CHK_STATUS_RETURN(pTask->Submit(true, scalability, nullptr));
         }
 
@@ -313,9 +325,6 @@ MOS_STATUS PacketPipe::Execute(MediaStatusReport *statusReport, MediaScalability
 #endif
     }
 
-#if USE_MEDIA_DEBUG_TOOL
-finish:
-#endif
     return eStatus;
 }
 

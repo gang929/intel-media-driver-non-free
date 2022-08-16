@@ -29,7 +29,6 @@
 #include "vp_utils.h"
 #include "mos_resource_defs.h"
 #include "hal_oca_interface_next.h"
-#include "vp_render_sfc_m12.h"
 #include "vp_render_ief.h"
 #include "vp_feature_caps.h"
 #include "vp_platform_interface.h"
@@ -37,8 +36,8 @@
 #include "mhw_mi_itf.h"
 #include "mhw_mi_cmdpar.h"
 #include "mhw_utilities.h"
-#include "hal_oca_interface.h"
 #include "media_scalability_defs.h"
+#include "renderhal_platform_interface_next.h"
 
 namespace vp {
 
@@ -208,23 +207,23 @@ MOS_STATUS VpVeboxCmdPacket::InitCmdBufferWithVeParams(
     VP_FUNC_CALL();
 
     MOS_STATUS                              eStatus = MOS_STATUS_SUCCESS;
-    RENDERHAL_GENERIC_PROLOG_PARAMS_G12     genericPrologParamsG12 = {};
+    RENDERHAL_GENERIC_PROLOG_PARAMS_NEXT    genericPrologParams = {};
 
-    genericPrologParamsG12.bEnableMediaFrameTracking      = pGenericPrologParams->bEnableMediaFrameTracking;
-    genericPrologParamsG12.bMmcEnabled                    = pGenericPrologParams->bMmcEnabled;
-    genericPrologParamsG12.dwMediaFrameTrackingAddrOffset = pGenericPrologParams->dwMediaFrameTrackingAddrOffset;
-    genericPrologParamsG12.dwMediaFrameTrackingTag        = pGenericPrologParams->dwMediaFrameTrackingTag;
-    genericPrologParamsG12.presMediaFrameTrackingSurface  = pGenericPrologParams->presMediaFrameTrackingSurface;
+    genericPrologParams.bEnableMediaFrameTracking      = pGenericPrologParams->bEnableMediaFrameTracking;
+    genericPrologParams.bMmcEnabled                    = pGenericPrologParams->bMmcEnabled;
+    genericPrologParams.dwMediaFrameTrackingAddrOffset = pGenericPrologParams->dwMediaFrameTrackingAddrOffset;
+    genericPrologParams.dwMediaFrameTrackingTag        = pGenericPrologParams->dwMediaFrameTrackingTag;
+    genericPrologParams.presMediaFrameTrackingSurface  = pGenericPrologParams->presMediaFrameTrackingSurface;
 
-    genericPrologParamsG12.VEngineHintParams.BatchBufferCount = 2;
-    //genericPrologParamsG12.VEngineHintParams.resScalableBatchBufs[0] = CmdBuffer[0].OsResource;
-    //genericPrologParamsG12.VEngineHintParams.resScalableBatchBufs[1] = CmdBuffer[1].OsResource;
-    genericPrologParamsG12.VEngineHintParams.UsingFrameSplit = true;
-    genericPrologParamsG12.VEngineHintParams.UsingSFC = false;
-    genericPrologParamsG12.VEngineHintParams.EngineInstance[0] = 0;
-    genericPrologParamsG12.VEngineHintParams.EngineInstance[1] = 1;
-    genericPrologParamsG12.VEngineHintParams.NeedSyncWithPrevious = true;
-    genericPrologParamsG12.VEngineHintParams.SameEngineAsLastSubmission = true;
+    genericPrologParams.VEngineHintParams.BatchBufferCount = 2;
+    //genericPrologParams.VEngineHintParams.resScalableBatchBufs[0] = CmdBuffer[0].OsResource;
+    //genericPrologParams.VEngineHintParams.resScalableBatchBufs[1] = CmdBuffer[1].OsResource;
+    genericPrologParams.VEngineHintParams.UsingFrameSplit = true;
+    genericPrologParams.VEngineHintParams.UsingSFC = false;
+    genericPrologParams.VEngineHintParams.EngineInstance[0] = 0;
+    genericPrologParams.VEngineHintParams.EngineInstance[1] = 1;
+    genericPrologParams.VEngineHintParams.NeedSyncWithPrevious = true;
+    genericPrologParams.VEngineHintParams.SameEngineAsLastSubmission = true;
 
     pRenderHal->pOsInterface->VEEnable = false;
 
@@ -232,7 +231,7 @@ MOS_STATUS VpVeboxCmdPacket::InitCmdBufferWithVeParams(
     VP_RENDER_CHK_STATUS_RETURN(pRenderHal->pfnInitCommandBuffer(
         pRenderHal,
         &CmdBuffer,
-        (PRENDERHAL_GENERIC_PROLOG_PARAMS)&genericPrologParamsG12));
+        (PRENDERHAL_GENERIC_PROLOG_PARAMS)&genericPrologParams));
 
     return eStatus;
 }
@@ -731,8 +730,8 @@ MOS_STATUS VpVeboxCmdPacket::SetSteParams(
     VpVeboxRenderData               *pRenderData = GetLastExecRenderData();
     MHW_VEBOX_IECP_PARAMS&           mhwVeboxIecpParams = pRenderData->GetIECPParams();
 
-    VP_RENDER_ASSERT(pSteParams);
-    VP_RENDER_ASSERT(pRenderData);
+    VP_RENDER_CHK_NULL_RETURN(pSteParams);
+    VP_RENDER_CHK_NULL_RETURN(pRenderData);
 
     if (pSteParams->bEnableSTE)
     {
@@ -758,6 +757,84 @@ MOS_STATUS VpVeboxCmdPacket::SetSteParams(
     else
     {
         pRenderData->IECP.STE.bSteEnabled = false;
+        mhwVeboxIecpParams.ColorPipeParams.bEnableSTE = false;
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacket::UpdateCscParams(FeatureParamCsc &params)
+{
+    VP_FUNC_CALL();
+    // Scaing only can be apply to SFC path
+    if (m_PacketCaps.bSfcCsc)
+    {
+        VP_PUBLIC_CHK_STATUS_RETURN(m_sfcRender->UpdateCscParams(params));
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacket::UpdateTccParams(FeatureParamTcc &params)
+{
+    VP_FUNC_CALL();
+    VpVeboxRenderData               *pRenderData = GetLastExecRenderData();
+    MHW_VEBOX_IECP_PARAMS&           mhwVeboxIecpParams = pRenderData->GetIECPParams();
+
+    VP_RENDER_CHK_NULL_RETURN(pRenderData);
+
+    if (params.bEnableTCC)
+    {
+        pRenderData->IECP.TCC.bTccEnabled = true;
+        mhwVeboxIecpParams.ColorPipeParams.bActive = true;
+        mhwVeboxIecpParams.ColorPipeParams.bEnableTCC = true;
+        mhwVeboxIecpParams.ColorPipeParams.TccParams.Magenta = params.Magenta;
+        mhwVeboxIecpParams.ColorPipeParams.TccParams.Red = params.Red;
+        mhwVeboxIecpParams.ColorPipeParams.TccParams.Yellow = params.Yellow;
+        mhwVeboxIecpParams.ColorPipeParams.TccParams.Green = params.Green;
+        mhwVeboxIecpParams.ColorPipeParams.TccParams.Cyan = params.Cyan;
+        mhwVeboxIecpParams.ColorPipeParams.TccParams.Blue = params.Blue;
+    }
+    else
+    {
+        pRenderData->IECP.TCC.bTccEnabled = false;
+        mhwVeboxIecpParams.ColorPipeParams.bEnableTCC = false;
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacket::UpdateSteParams(FeatureParamSte &params)
+{
+    VP_FUNC_CALL();
+    VpVeboxRenderData     *pRenderData        = GetLastExecRenderData();
+    MHW_VEBOX_IECP_PARAMS &mhwVeboxIecpParams = pRenderData->GetIECPParams();
+
+    VP_RENDER_CHK_NULL_RETURN(pRenderData);
+
+    if (params.bEnableSTE)
+    {
+        pRenderData->IECP.STE.bSteEnabled                        = true;
+        mhwVeboxIecpParams.ColorPipeParams.bActive               = true;
+        mhwVeboxIecpParams.ColorPipeParams.bEnableSTE            = true;
+        if (params.dwSTEFactor > MHW_STE_FACTOR_MAX)
+        {
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.dwSTEFactor = MHW_STE_FACTOR_MAX;
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.satP1       = m_satP1Table[MHW_STE_FACTOR_MAX];
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS0       = m_satS0Table[MHW_STE_FACTOR_MAX];
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS1       = m_satS1Table[MHW_STE_FACTOR_MAX];
+        }
+        else
+        {
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.dwSTEFactor = params.dwSTEFactor;
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.satP1       = m_satP1Table[params.dwSTEFactor];
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS0       = m_satS0Table[params.dwSTEFactor];
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS1       = m_satS1Table[params.dwSTEFactor];
+        }
+    }
+    else
+    {
+        pRenderData->IECP.STE.bSteEnabled             = false;
         mhwVeboxIecpParams.ColorPipeParams.bEnableSTE = false;
     }
 
@@ -1434,7 +1511,6 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
     MOS_STATUS            eStatus = MOS_STATUS_SUCCESS;
     PRENDERHAL_INTERFACE  pRenderHal;
     PMOS_INTERFACE        pOsInterface;
-    PMHW_MI_INTERFACE     pMhwMiInterface;
     bool                  bDiVarianceEnable;
     const MHW_VEBOX_HEAP *pVeboxHeap     = nullptr;
     VpVeboxRenderData *   pRenderData    = GetLastExecRenderData();
@@ -1448,7 +1524,6 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
     bool                  bMultipipe      = false;
 
     VP_RENDER_CHK_NULL_RETURN(m_hwInterface->m_renderHal);
-    VP_RENDER_CHK_NULL_RETURN(m_hwInterface->m_mhwMiInterface);
     VP_RENDER_CHK_NULL_RETURN(m_miItf);
     VP_RENDER_CHK_NULL_RETURN(m_hwInterface->m_osInterface);
     VP_RENDER_CHK_NULL_RETURN(m_hwInterface->m_osInterface->pOsContext);
@@ -1458,7 +1533,6 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
     VP_RENDER_CHK_NULL_RETURN(m_veboxItf);
 
     pRenderHal      = m_hwInterface->m_renderHal;
-    pMhwMiInterface = m_hwInterface->m_mhwMiInterface;
     pOsInterface    = m_hwInterface->m_osInterface;
     pOsContext      = m_hwInterface->m_osInterface->pOsContext;
     pMmioRegisters  = m_miItf->GetMmioRegisters();
@@ -1563,7 +1637,6 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
             MHW_GENERIC_PROLOG_PARAMS genericPrologParams;
             MOS_ZeroMemory(&genericPrologParams, sizeof(genericPrologParams));
             genericPrologParams.pOsInterface  = pRenderHal->pOsInterface;
-            genericPrologParams.pvMiInterface = pRenderHal->pMhwMiInterface;
             genericPrologParams.bMmcEnabled   = pGenericPrologParams ? pGenericPrologParams->bMmcEnabled : false;
             VP_RENDER_CHK_STATUS_RETURN(Mhw_SendGenericPrologCmdNext(pCmdBufferInUse, &genericPrologParams, m_miItf));
 
@@ -1913,7 +1986,6 @@ MOS_STATUS VpVeboxCmdPacket::DumpVeboxStateHeap()
         VPHAL_DUMP_TYPE_VEBOX_KERNELHEAP);
 
     counter++;
-finish:
 #endif
     return eStatus;
 }
@@ -1979,7 +2051,7 @@ MOS_STATUS VpVeboxCmdPacket::PrepareState()
 
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
-    if (m_packetResourcesdPrepared)
+    if (m_packetResourcesPrepared)
     {
         VP_RENDER_NORMALMESSAGE("Resource Prepared, skip this time");
         return MOS_STATUS_SUCCESS;
@@ -1989,7 +2061,7 @@ MOS_STATUS VpVeboxCmdPacket::PrepareState()
 
     VP_RENDER_CHK_STATUS_RETURN(UpdateVeboxStates());
 
-    m_packetResourcesdPrepared = true;
+    m_packetResourcesPrepared = true;
 
     return eStatus;
 }
@@ -2050,6 +2122,44 @@ MOS_STATUS VpVeboxCmdPacket::AdjustBlockStatistics()
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS VpVeboxCmdPacket::SetUpdatedExecuteResource(
+    VP_SURFACE                          *inputSurface,
+    VP_SURFACE                          *outputSurface,
+    VP_SURFACE                          *previousSurface,
+    VP_SURFACE_SETTING                  &surfSetting)
+{
+    VP_FUNC_CALL();
+
+    m_allocator->UpdateResourceUsageType(&inputSurface->osSurface->OsResource, MOS_HW_RESOURCE_USAGE_VP_INPUT_PICTURE_FF);
+    m_allocator->UpdateResourceUsageType(&outputSurface->osSurface->OsResource, MOS_HW_RESOURCE_USAGE_VP_OUTPUT_PICTURE_FF);
+
+    // Set current src = current primary input
+    VP_PUBLIC_CHK_STATUS_RETURN(m_allocator->CopyVpSurface(*m_renderTarget ,*outputSurface));
+
+    // Init packet surface params.
+    m_surfSetting                                   = surfSetting;
+    m_veboxPacketSurface.pCurrInput                 = GetSurface(SurfaceTypeVeboxInput);
+    m_veboxPacketSurface.pStatisticsOutput          = GetSurface(SurfaceTypeStatistics);
+    m_veboxPacketSurface.pCurrOutput                = GetSurface(SurfaceTypeVeboxCurrentOutput);
+    m_veboxPacketSurface.pPrevInput                 = GetSurface(SurfaceTypeVeboxPreviousInput);
+    m_veboxPacketSurface.pSTMMInput                 = GetSurface(SurfaceTypeSTMMIn);
+    m_veboxPacketSurface.pSTMMOutput                = GetSurface(SurfaceTypeSTMMOut);
+    m_veboxPacketSurface.pDenoisedCurrOutput        = GetSurface(SurfaceTypeDNOutput);
+    m_veboxPacketSurface.pPrevOutput                = GetSurface(SurfaceTypeVeboxPreviousOutput);
+    m_veboxPacketSurface.pAlphaOrVignette           = GetSurface(SurfaceTypeAlphaOrVignette);
+    m_veboxPacketSurface.pLaceOrAceOrRgbHistogram   = GetSurface(SurfaceTypeLaceAceRGBHistogram);
+    m_veboxPacketSurface.pSurfSkinScoreOutput       = GetSurface(SurfaceTypeSkinScore);
+
+    VP_RENDER_CHK_NULL_RETURN(m_veboxPacketSurface.pCurrInput);
+    VP_RENDER_CHK_NULL_RETURN(m_veboxPacketSurface.pStatisticsOutput);
+    VP_RENDER_CHK_NULL_RETURN(m_veboxPacketSurface.pLaceOrAceOrRgbHistogram);
+
+    // Adjust boundary for statistics surface block
+    VP_RENDER_CHK_STATUS_RETURN(AdjustBlockStatistics());
+
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS VpVeboxCmdPacket::PacketInit(
     VP_SURFACE                          *inputSurface,
     VP_SURFACE                          *outputSurface,
@@ -2060,7 +2170,7 @@ MOS_STATUS VpVeboxCmdPacket::PacketInit(
     VP_FUNC_CALL();
 
     VpVeboxRenderData       *pRenderData = GetLastExecRenderData();
-    m_packetResourcesdPrepared = false;
+    m_packetResourcesPrepared = false;
 
     VP_RENDER_CHK_NULL_RETURN(pRenderData);
     VP_RENDER_CHK_NULL_RETURN(inputSurface);
@@ -2068,6 +2178,7 @@ MOS_STATUS VpVeboxCmdPacket::PacketInit(
     VP_RENDER_CHK_STATUS_RETURN(pRenderData->Init());
 
     m_PacketCaps      = packetCaps;
+    VP_RENDER_NORMALMESSAGE("m_PacketCaps %x", m_PacketCaps.value);
 
     VP_RENDER_CHK_STATUS_RETURN(Init());
     VP_RENDER_CHK_NULL_RETURN(m_allocator);
@@ -3074,10 +3185,10 @@ MOS_STATUS VpVeboxCmdPacket::UpdateDnHVSParameters(
     // Set HVS kernel params
     hvsParams.Format            = 0;
     hvsParams.Mode              = renderData->GetHVSParams().Mode;
-    hvsParams.Fallback          = !m_bTgneValid && !sharedContext->bFirstFrame && !tgneParams.bTgneFirstFrame;
+    hvsParams.Fallback          = !m_bTgneValid && !sharedContext->isVeboxFirstFrame && !tgneParams.bTgneFirstFrame;
     hvsParams.EnableChroma      = renderData->DN.bChromaDnEnabled;
-    hvsParams.FirstFrame        = sharedContext->bFirstFrame;
-    hvsParams.TgneFirstFrame    = !sharedContext->bFirstFrame && tgneParams.bTgneFirstFrame;
+    hvsParams.FirstFrame        = sharedContext->isVeboxFirstFrame;
+    hvsParams.TgneFirstFrame    = !sharedContext->isVeboxFirstFrame && tgneParams.bTgneFirstFrame;
     hvsParams.EnableTemporalGNE = m_bTgneEnable;
     hvsParams.Width             = (uint16_t)m_currentSurface->rcSrc.right;
     hvsParams.Height            = (uint16_t)m_currentSurface->rcSrc.bottom;
@@ -3145,7 +3256,7 @@ MOS_STATUS VpVeboxCmdPacket::UpdateDnHVSParameters(
     }
     m_veboxItf->SetgnHVSMode(hvsParams.hVSAutoBdrateEnable, hvsParams.hVSAutoSubjectiveEnable, tgneParams.dwBSDThreshold);
 
-    if (m_bTgneEnable && !sharedContext->bFirstFrame && tgneParams.bTgneFirstFrame)  //Second frame
+    if (m_bTgneEnable && !sharedContext->isVeboxFirstFrame && tgneParams.bTgneFirstFrame)  //Second frame
     {
         tgneParams.bTgneFirstFrame = false;  // next frame bTgneFirstFrame should be false
 
@@ -3200,7 +3311,7 @@ MOS_STATUS VpVeboxCmdPacket::UpdateDnHVSParameters(
         hvsParams.dwGlobalNoiseLevelU = dwGlobalNoiseLevelU_Temporal;
         hvsParams.dwGlobalNoiseLevelV = dwGlobalNoiseLevelV_Temporal;
     }
-    else if (m_bTgneEnable && m_bTgneValid && !sharedContext->bFirstFrame)  //Middle frame
+    else if (m_bTgneEnable && m_bTgneValid && !sharedContext->isVeboxFirstFrame)  //Middle frame
     {
         dwGNECountLuma    = (pStatSlice0GNEPtr[3] & 0x7FFFFFFF) + (pStatSlice1GNEPtr[3] & 0x7FFFFFFF);
         dwGNECountChromaU = (pStatSlice0GNEPtr[4] & 0x7FFFFFFF) + (pStatSlice1GNEPtr[4] & 0x7FFFFFFF);

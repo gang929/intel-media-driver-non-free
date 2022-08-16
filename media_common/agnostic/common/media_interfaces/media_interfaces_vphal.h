@@ -27,7 +27,7 @@
 #ifndef __MEDIA_INTERFACES_VPHAL_H__
 #define __MEDIA_INTERFACES_VPHAL_H__
 
-#include "media_interfaces.h"
+#include "media_factory.h"
 #include "vp_base.h"
 #include "vp_utils.h"
 
@@ -46,7 +46,6 @@ class VphalDevice
 public:
     virtual ~VphalDevice() {}
 
-    VpBase                  *m_vphalState           = nullptr;  //!< VpHal State created for specific gen.
     VpBase                  *m_vpBase               = nullptr;
     bool                    m_isNextEnabled         = false;
     vp::VpPipeline          *m_vpPipeline           = nullptr;  //!< vp pipeline created for specific gen, which is used for sfc service.
@@ -92,7 +91,7 @@ public:
     //! \param    [in] osDriverContext
     //!           OS context used by to initialize the MOS_INTERFACE, includes information necessary for resource management and interfacing with KMD in general
     //! \param    [in] bInitVphalState
-    //!           true if initialize m_vphalState, otherwise, initialize m_vpPipeline and m_vpPlatformInterface.
+    //!           true if initialize m_vpBase, otherwise, initialize m_vpPipeline and m_vpPlatformInterface.
     //! \param    [out] eStatus
     //!           MOS status, return MOS_STATUS_SUCCESS if successful, otherwise failed.
     //! \return   MOS_STATUS_SUCCESS if succeeded, else error code.
@@ -117,6 +116,6 @@ public:
     void Destroy();
 };
 
-extern template class MediaInterfacesFactory<VphalDevice>;
+extern template class MediaFactory<uint32_t, VphalDevice>;
 
 #endif // __MEDIA_INTERFACES_VPHAL_H__

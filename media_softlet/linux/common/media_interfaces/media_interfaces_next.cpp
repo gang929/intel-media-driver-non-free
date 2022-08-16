@@ -27,7 +27,6 @@
 #include <stdint.h>
 #include "igfxfmid.h"
 #include "media_factory.h"
-#include "media_interfaces.h"
 #include "mhw_utilities_next.h"
 #include "mos_defs.h"
 #include "mos_os.h"
@@ -94,16 +93,10 @@ void MhwInterfacesNext::Destroy()
 
     Delete_MhwCpInterface(m_cpInterface);
     m_cpInterface = nullptr;
-    MOS_Delete(m_miInterface);
-    MOS_Delete(m_renderInterface);
-    MOS_Delete(m_sfcInterface);
     MOS_Delete(m_stateHeapInterface);
-    MOS_Delete(m_veboxInterface);
     MOS_Delete(m_mfxInterface);
     MOS_Delete(m_hcpInterface);
-    MOS_Delete(m_hucInterface);
     MOS_Delete(m_vdencInterface);
-    MOS_Delete(m_bltInterface);
 }
 
 void* McpyDeviceNext::CreateFactory(

@@ -34,23 +34,23 @@
 #include "igcodeckrn_g12.h"
 #endif
 
-extern template class MediaInterfacesFactory<MhwInterfaces>;
-extern template class MediaInterfacesFactory<MmdDevice>;
-extern template class MediaInterfacesFactory<McpyDevice>;
-extern template class MediaInterfacesFactory<MosUtilDevice>;
-extern template class MediaInterfacesFactory<CodechalDevice>;
-extern template class MediaInterfacesFactory<CMHalDevice>;
-extern template class MediaInterfacesFactory<VphalDevice>;
-extern template class MediaInterfacesFactory<RenderHalDevice>;
-extern template class MediaInterfacesFactory<Nv12ToP010Device>;
-extern template class MediaInterfacesFactory<DecodeHistogramDevice>;
+extern template class MediaFactory<uint32_t, MhwInterfaces>;
+extern template class MediaFactory<uint32_t, MmdDevice>;
+extern template class MediaFactory<uint32_t, McpyDevice>;
+extern template class MediaFactory<uint32_t, MosUtilDevice>;
+extern template class MediaFactory<uint32_t, CodechalDevice>;
+extern template class MediaFactory<uint32_t, CMHalDevice>;
+extern template class MediaFactory<uint32_t, VphalDevice>;
+extern template class MediaFactory<uint32_t, RenderHalDevice>;
+extern template class MediaFactory<uint32_t, Nv12ToP010Device>;
+extern template class MediaFactory<uint32_t, DecodeHistogramDevice>;
 
 // Swith to use new media factory template
 extern template class MediaFactory<uint32_t, MhwInterfacesNext>;
 
 static bool pvcRegisteredVphal =
-MediaInterfacesFactory<VphalDevice>::
-RegisterHal<VphalInterfacesXe_Xpm_Plus>((uint32_t)IGFX_PVC);
+MediaFactory<uint32_t, VphalDevice>::
+Register<VphalInterfacesXe_Xpm_Plus>((uint32_t)IGFX_PVC);
 
 MOS_STATUS VphalInterfacesXe_Xpm_Plus::Initialize(
     PMOS_INTERFACE  osInterface,
@@ -58,7 +58,7 @@ MOS_STATUS VphalInterfacesXe_Xpm_Plus::Initialize(
     bool            bInitVphalState,
     MOS_STATUS      *eStatus)
 {
-    m_vphalState = MOS_New(
+    m_vpBase = MOS_New(
         VphalState,
         osInterface,
         osDriverContext,
@@ -67,8 +67,8 @@ MOS_STATUS VphalInterfacesXe_Xpm_Plus::Initialize(
 }
 
 static bool pvcRegisteredMhw =
-    MediaInterfacesFactory<MhwInterfaces>::
-    RegisterHal<MhwInterfacesPvc>((uint32_t)IGFX_PVC);
+    MediaFactory<uint32_t, MhwInterfaces>::
+    Register<MhwInterfacesPvc>((uint32_t)IGFX_PVC);
 
 #define PLATFORM_INTEL_PVC    18
 #define GENX_XEHP              11
@@ -220,7 +220,6 @@ MOS_STATUS MhwInterfacesPvc_Next::Initialize(
     }
     if (params.Flags.m_vdboxAll || params.Flags.m_huc)
     {
-        m_hucInterface = MOS_New(Huc, osInterface, m_miInterface, m_cpInterface);
         m_hucItf = std::make_shared<mhw::vdbox::huc::xe_xpm_plus::Impl>(osInterface, m_cpInterface);
     }
     if (params.Flags.m_vdboxAll || params.Flags.m_vdenc)
@@ -245,13 +244,17 @@ MOS_STATUS MhwInterfacesPvc_Next::Initialize(
 void MhwInterfacesPvc_Next::Destroy()
 {
     MhwInterfacesNext::Destroy();
+    MOS_Delete(m_miInterface);
+    MOS_Delete(m_renderInterface);
+    MOS_Delete(m_sfcInterface);
+    MOS_Delete(m_veboxInterface);
     MOS_Delete(m_bltInterface);
 }
 
 #ifdef _MMC_SUPPORTED
 static bool pvcRegisteredMmd =
-    MediaInterfacesFactory<MmdDevice>::
-    RegisterHal<MmdDeviceXe_Xpm_Plus>((uint32_t)IGFX_PVC);
+    MediaFactory<uint32_t, MmdDevice>::
+    Register<MmdDeviceXe_Xpm_Plus>((uint32_t)IGFX_PVC);
 
 MOS_STATUS MmdDeviceXe_Xpm_Plus::Initialize(
     PMOS_INTERFACE osInterface,
@@ -316,8 +319,8 @@ MhwInterfaces* MmdDeviceXe_Xpm_Plus::CreateMhwInterface(
 #endif
 
 static bool pvcRegisteredMcpy =
-    MediaInterfacesFactory<McpyDevice>::
-    RegisterHal<McpyDeviceXe_Xpm_Plus>((uint32_t)IGFX_PVC);
+    MediaFactory<uint32_t, McpyDevice>::
+    Register<McpyDeviceXe_Xpm_Plus>((uint32_t)IGFX_PVC);
 
 MOS_STATUS McpyDeviceXe_Xpm_Plus::Initialize(
     PMOS_INTERFACE osInterface,
@@ -380,8 +383,8 @@ MhwInterfaces* McpyDeviceXe_Xpm_Plus::CreateMhwInterface(
 }
 
 static bool pvcRegisteredNv12ToP010 =
-    MediaInterfacesFactory<Nv12ToP010Device>::
-    RegisterHal<Nv12ToP010DeviceXe_Xpm_Plus>((uint32_t)IGFX_PVC);
+    MediaFactory<uint32_t, Nv12ToP010Device>::
+    Register<Nv12ToP010DeviceXe_Xpm_Plus>((uint32_t)IGFX_PVC);
 
 MOS_STATUS Nv12ToP010DeviceXe_Xpm_Plus::Initialize(
     PMOS_INTERFACE            osInterface)
@@ -392,8 +395,8 @@ MOS_STATUS Nv12ToP010DeviceXe_Xpm_Plus::Initialize(
 }
 
 static bool pvcRegisteredCodecHal =
-    MediaInterfacesFactory<CodechalDevice>::
-    RegisterHal<CodechalInterfacesXe_Xpm_Plus>((uint32_t)IGFX_PVC);
+    MediaFactory<uint32_t, CodechalDevice>::
+    Register<CodechalInterfacesXe_Xpm_Plus>((uint32_t)IGFX_PVC);
 
 MOS_STATUS CodechalInterfacesXe_Xpm_Plus::Initialize(
     void *standardInfo,
@@ -691,8 +694,8 @@ MOS_STATUS CodechalInterfacesXe_Xpm_Plus::Initialize(
 
 #ifdef IGFX_PVC_ENABLE_NON_UPSTREAM
 static bool pvcRegisteredCMHal =
-    MediaInterfacesFactory<CMHalDevice>::
-    RegisterHal<CMHalInterfacesXe_Xpm_Plus>((uint32_t)IGFX_PVC);
+    MediaFactory<uint32_t, CMHalDevice>::
+    Register<CMHalInterfacesXe_Xpm_Plus>((uint32_t)IGFX_PVC);
 MOS_STATUS CMHalInterfacesXe_Xpm_Plus::Initialize(CM_HAL_STATE *pCmState)
 {
     if (pCmState == nullptr)
@@ -718,8 +721,8 @@ MOS_STATUS CMHalInterfacesXe_Xpm_Plus::Initialize(CM_HAL_STATE *pCmState)
 #endif
 
 static bool pvcRegisteredMosUtil =
-    MediaInterfacesFactory<MosUtilDevice>::
-    RegisterHal<MosUtilDeviceXe_Xpm_Plus>((uint32_t)IGFX_PVC);
+    MediaFactory<uint32_t, MosUtilDevice>::
+    Register<MosUtilDeviceXe_Xpm_Plus>((uint32_t)IGFX_PVC);
 
 MOS_STATUS MosUtilDeviceXe_Xpm_Plus::Initialize()
 {
@@ -750,8 +753,8 @@ MOS_STATUS MosUtilDeviceXe_Xpm_Plus::Initialize()
     return MOS_STATUS_SUCCESS;
 }
 static bool pvcRegisteredRenderHal =
-    MediaInterfacesFactory<RenderHalDevice>::
-    RegisterHal<RenderHalInterfacesXe_Hpc>((uint32_t)IGFX_PVC);
+    MediaFactory<uint32_t, RenderHalDevice>::
+    Register<RenderHalInterfacesXe_Hpc>((uint32_t)IGFX_PVC);
 MOS_STATUS RenderHalInterfacesXe_Hpc::Initialize()
 {
     m_renderhalDevice = MOS_New(XRenderHal);
@@ -763,8 +766,8 @@ MOS_STATUS RenderHalInterfacesXe_Hpc::Initialize()
     return MOS_STATUS_SUCCESS;
 }
 static bool pvcRegisteredDecodeHistogram =
-MediaInterfacesFactory<DecodeHistogramDevice>::
-RegisterHal<DecodeHistogramDeviceXe_Xpm_Plus>((uint32_t)IGFX_PVC);
+MediaFactory<uint32_t, DecodeHistogramDevice>::
+Register<DecodeHistogramDeviceXe_Xpm_Plus>((uint32_t)IGFX_PVC);
 MOS_STATUS DecodeHistogramDeviceXe_Xpm_Plus::Initialize(
     CodechalHwInterface       *hwInterface,
     PMOS_INTERFACE            osInterface)

@@ -33,8 +33,6 @@
 #include "media_packet.h"
 #include "mhw_utilities_next.h"
 #include "hal_oca_interface_next.h"
-// After removing MhwRenderInterface from Mhw Next, need to remove this mhw_render_legacy header file
-#include "mhw_render_legacy.h"
 #include "media_feature.h"
 #include "media_interfaces_mhw_next.h"
 #include "media_skuwa_specific.h"
@@ -46,6 +44,9 @@
 #include "mos_utilities.h"
 #include "renderhal.h"
 #include "vp_utils.h"
+// Need to remove below header files, after legacy contents clean up
+#include "mhw_render_legacy.h"
+#include "media_perf_profiler.h"
 
 MOS_STATUS XRenderHal_Platform_Interface_Next::AddPipelineSelectCmd(
     PRENDERHAL_INTERFACE        pRenderHal,
@@ -658,6 +659,15 @@ MOS_STATUS XRenderHal_Platform_Interface_Next::CreatePerfProfiler(
 
     if (!pRenderHal->pPerfProfilerNext)
     {
+        // MediaPipeline still use legacy MediaPerfProfile. 
+        // After MediaPipeline switches to APO, we can use MediaPerfProfilerNext::Instance directly.
+        // Add WA legacy code here to fix mem leak.
+        MediaPerfProfiler *perfProfiler = MediaPerfProfiler::Instance();
+        if (perfProfiler != nullptr)
+        {
+            MHW_RENDERHAL_CHK_STATUS_RETURN(perfProfiler->Initialize((void*)pRenderHal, pRenderHal->pOsInterface));
+        }
+        
         pRenderHal->pPerfProfilerNext = MediaPerfProfilerNext::Instance();
         MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pPerfProfilerNext);
 
@@ -675,7 +685,19 @@ MOS_STATUS XRenderHal_Platform_Interface_Next::DestroyPerfProfiler(
 
     if (pRenderHal->pPerfProfilerNext)
     {
-       MediaPerfProfilerNext::Destroy(pRenderHal->pPerfProfilerNext, (void*)pRenderHal, pRenderHal->pOsInterface);
+       // MediaPipeline still use legacy MediaPerfProfile. 
+       // After MediaPipeline switches to APO, we can use MediaPerfProfilerNext::Destroy directly.
+       // Add WA legacy code here to fix mem leak.
+       MediaPerfProfiler *perfProfiler = MediaPerfProfiler::Instance(); 
+       if(perfProfiler != nullptr)
+       {
+          // Destruction of APO perfProfile will be done inside legacy one.
+          MediaPerfProfiler::Destroy(perfProfiler, (void*)pRenderHal, pRenderHal->pOsInterface); 
+       }
+       else
+       {
+          MediaPerfProfilerNext::Destroy(pRenderHal->pPerfProfilerNext, (void*)pRenderHal, pRenderHal->pOsInterface);
+       }
        pRenderHal->pPerfProfilerNext = nullptr;
     }
 

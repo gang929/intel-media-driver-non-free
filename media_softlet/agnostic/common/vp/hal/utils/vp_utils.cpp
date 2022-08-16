@@ -644,19 +644,19 @@ MOS_STATUS VpUtils::DeclareUserSettings(MediaUserSettingSharedPtr userSettingPtr
 
     DeclareUserSettingKey(  
         userSettingPtr,
-        __MEDIA_USER_FEATURE_VALUE_DISABLE_AUTODN,
+        __MEDIA_USER_FEATURE_VALUE_DISABLE_DN,
+        MediaUserSetting::Group::Sequence,
+        0,
+        true);
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_DISABLE_PACKET_REUSE,
         MediaUserSetting::Group::Sequence,
         0,
         true);
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-    DeclareUserSettingKeyForDebug( //Init CP output surface with protected 0.
-        userSettingPtr,
-        __MEDIA_USER_FEATURE_VALUE_INIT_CP_OUTPUT_SURFACE,
-        MediaUserSetting::Group::Sequence,
-        0,
-        true);
-
     DeclareUserSettingKeyForDebug(  // FORCE VP DECOMPRESSED OUTPUT
         userSettingPtr,
         __VPHAL_RNDR_FORCE_VP_DECOMPRESSED_OUTPUT,
@@ -723,69 +723,6 @@ MOS_STATUS VpUtils::DeclareUserSettings(MediaUserSettingSharedPtr userSettingPtr
     DeclareUserSettingKeyForDebug(  // Set SFC RGBP Linear/Tile RGB24 Linear Output
         userSettingPtr,
         __VPHAL_ENABLE_SFC_RGBP_RGB24_OUTPUT,
-        MediaUserSetting::Group::Sequence,
-        0,
-        true);
-
-    DeclareUserSettingKeyForDebug(  // Surface Dump Outfile
-        userSettingPtr,
-        __VPHAL_DBG_SURF_DUMP_OUTFILE_KEY_NAME,
-        MediaUserSetting::Group::Sequence,
-        "",
-        true);
-
-    DeclareUserSettingKeyForDebug(  // VP Surface Dump Location
-        userSettingPtr,
-        __VPHAL_DBG_SURF_DUMP_LOCATION_KEY_NAME,
-        MediaUserSetting::Group::Sequence,
-        "",
-        true);
-
-    DeclareUserSettingKeyForDebug(  // Manual trigger to start VP Surface Dump
-        userSettingPtr,
-        __VPHAL_DBG_SURF_DUMP_MANUAL_TRIGGER_KEY_NAME,
-        MediaUserSetting::Group::Sequence,
-        -1,
-        true);
-
-    DeclareUserSettingKeyForDebug(  // VP Surface Dump Start Frame
-        userSettingPtr,
-        __VPHAL_DBG_SURF_DUMP_START_FRAME_KEY_NAME,
-        MediaUserSetting::Group::Sequence,
-        0,
-        true);
-
-    DeclareUserSettingKeyForDebug(  // VP Surface Dump End Frame
-        userSettingPtr,
-        __VPHAL_DBG_SURF_DUMP_END_FRAME_KEY_NAME,
-        MediaUserSetting::Group::Sequence,
-        MOS_USER_FEATURE_MAX_UINT32_STR_VALUE,
-        true);
-
-    DeclareUserSettingKeyForDebug(  // VP Surface dump each plance seprately
-        userSettingPtr,
-        __VPHAL_DBG_SURF_DUMPER_ENABLE_PLANE_DUMP,
-        MediaUserSetting::Group::Sequence,
-        0,
-        true);
-
-    DeclareUserSettingKeyForDebug(  // VP Surface dump aux data enable
-        userSettingPtr,
-        __VPHAL_DBG_SURF_DUMP_ENABLE_AUX_DUMP,
-        MediaUserSetting::Group::Sequence,
-        0,
-        true);
-
-    DeclareUserSettingKeyForDebug(  // VP Surface Dump: Locking Resource
-        userSettingPtr,
-        __VPHAL_DBG_SURF_DUMPER_RESOURCE_LOCK,
-        MediaUserSetting::Group::Sequence,
-        0,
-        true);
-
-    DeclareUserSettingKeyForDebug(  // VP State Dump Enable
-        userSettingPtr,
-        __VPHAL_DBG_STATE_DUMP_ENABLE,
         MediaUserSetting::Group::Sequence,
         0,
         true);
