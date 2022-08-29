@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2022, Intel Corporation
+# Copyright (c) 2017-2022, Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -18,12 +18,23 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
-media_include_subdirectory(os)
-media_include_subdirectory(codec)
-media_include_subdirectory(vp)
-media_include_subdirectory(heap_manager)
-media_include_subdirectory(hw)
-media_include_subdirectory(shared)
-media_include_subdirectory(media_interfaces)
-media_include_subdirectory(renderhal)
-media_include_subdirectory(cp)
+set(TMP_HEADERS_
+    ${CMAKE_CURRENT_LIST_DIR}/cp_factory.h
+    ${CMAKE_CURRENT_LIST_DIR}/mhw_cp_interface.h
+)
+
+
+set(CP_COMMON_SHARED_HEADERS_
+    ${CP_COMMON_SHARED_HEADERS_}
+    ${TMP_HEADERS_}
+)
+
+set(COMMON_CP_DIRECTORIES_
+    ${COMMON_CP_DIRECTORIES_}
+    ${CMAKE_CURRENT_LIST_DIR}
+)
+
+set(CP_INTERFACE_DIRECTORIES_
+    ${CP_INTERFACE_DIRECTORIES_}
+    ${CMAKE_CURRENT_LIST_DIR}
+)
