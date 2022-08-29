@@ -1423,6 +1423,14 @@ typedef struct _MOS_INTERFACE
     MOS_STATUS (*pfnCheckVirtualEngineSupported)(
         PMOS_INTERFACE              pOsInterface);
 
+    bool (*pfnIsCpEnabled)(
+        PMOS_INTERFACE              pOsInterface);
+
+    MOS_STATUS (*pfnPrepareResources)(
+        PMOS_INTERFACE pOsInterface,
+        void *source[], uint32_t sourceCount,
+        void *target[], uint32_t targetCount);
+
 #if MOS_MEDIASOLO_SUPPORTED
     int32_t                         bSupportMediaSoloVirtualEngine;               //!< Flag to indicate if MediaSolo uses VE solution in cmdbuffer submission.
 #endif // MOS_MEDIASOLO_SUPPORTED
@@ -1592,6 +1600,20 @@ MOS_STATUS Mos_CheckVirtualEngineSupported(
     PMOS_INTERFACE osInterface,
     bool           isDecode,
     bool           veDefaultEnable);
+
+//!
+//! \brief    Retrieve the CachePolicyMemoryObject for a resource
+//! \details  Retrieve the CachePolicyMemoryObject for a resource
+//! \param    PMOS_INTERFACE osInterface
+//!           [in] OS Interface
+//! \param    PMOS_RESOURCE resource
+//!           [in] resource
+//! \return   MEMORY_OBJECT_CONTROL_STATE
+//!           return a value of MEMORY_OBJECT_CONTROL_STATE
+//!
+MEMORY_OBJECT_CONTROL_STATE Mos_GetResourceCachePolicyMemoryObject(
+    PMOS_INTERFACE      osInterface,
+    PMOS_RESOURCE       resource);
 
 struct ContextRequirement
 {
