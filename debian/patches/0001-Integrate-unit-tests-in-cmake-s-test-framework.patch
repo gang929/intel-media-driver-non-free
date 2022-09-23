@@ -9,7 +9,7 @@ Subject: Integrate unit tests in cmake's test framework
  3 files changed, 5 insertions(+), 15 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index c028295..f51c068 100755
+index 0550087..f39c50c 100755
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -78,6 +78,7 @@ if (BUILD_KERNELS)
@@ -21,7 +21,7 @@ index c028295..f51c068 100755
  
  if("${LIBVA_DRIVERS_PATH}" STREQUAL "")
 diff --git a/media_driver/linux/ult/CMakeLists.txt b/media_driver/linux/ult/CMakeLists.txt
-index a79b78a..7106dcd 100644
+index 9fb5b39..4f54575 100644
 --- a/media_driver/linux/ult/CMakeLists.txt
 +++ b/media_driver/linux/ult/CMakeLists.txt
 @@ -51,10 +51,3 @@ endif ()
@@ -36,10 +36,10 @@ index a79b78a..7106dcd 100644
 -set_tests_properties(test_devult
 -    PROPERTIES FAIL_REGULAR_EXPRESSION "FAIL")
 diff --git a/media_driver/linux/ult/ult_app/CMakeLists.txt b/media_driver/linux/ult/ult_app/CMakeLists.txt
-index 98c7ad9..c30e8ba 100644
+index 6ffb61d..825c1ac 100644
 --- a/media_driver/linux/ult/ult_app/CMakeLists.txt
 +++ b/media_driver/linux/ult/ult_app/CMakeLists.txt
-@@ -68,13 +68,9 @@ if (DEFINED BYPASS_MEDIA_ULT AND "${BYPASS_MEDIA_ULT}" STREQUAL "yes")
+@@ -74,13 +74,9 @@ if (DEFINED BYPASS_MEDIA_ULT AND "${BYPASS_MEDIA_ULT}" STREQUAL "yes")
      message("-- media -- BYPASS_MEDIA_ULT = ${BYPASS_MEDIA_ULT}")
  else ()
      if (ENABLE_NONFREE_KERNELS)
