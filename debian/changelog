@@ -1,3 +1,12 @@
+intel-media-driver-non-free (22.5.3+ds1-2) unstable; urgency=medium
+
+  * debian/patches: Apply upstream fix for i386 FTBFS (Closes: #1020521)
+  * debian/rules:
+    - Disable -Werror
+    - Set ARCH
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Fri, 23 Sep 2022 23:38:40 +0200
+
 intel-media-driver-non-free (22.5.3+ds1-1) unstable; urgency=medium
 
   * New upstream version 22.5.3+ds1
