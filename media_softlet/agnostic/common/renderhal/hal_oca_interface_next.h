@@ -153,7 +153,7 @@ public:
     //! \return void
     //!         No return value. Handle all exception inside the function.
     //!
-    static void OnDispatch(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTEXT &mosContext, std::shared_ptr<mhw::mi::Itf> miItf, MHW_MI_MMIOREGISTERS &mmioRegisters);
+    static void OnDispatch(MOS_COMMAND_BUFFER &cmdBuffer, MOS_INTERFACE &osInterface, std::shared_ptr<mhw::mi::Itf> miItf, MHW_MI_MMIOREGISTERS &mmioRegisters);
 
     //!
     //! \brief  Add string to oca log section
@@ -249,6 +249,7 @@ public:
     //!         Return true when support large reource dump
     //!
     static bool IsLargeResouceDumpSupported();
+
 protected:
     static MOS_STATUS MhwMiLoadRegisterImmCmd(
         std::shared_ptr<mhw::mi::Itf>    miItf,
@@ -305,6 +306,23 @@ protected:
     //!         No return value. Handle all exception inside the function.
     //!
     static void DumpCpParam(MosOcaInterface &ocaInterface, MOS_OCA_BUFFER_HANDLE &hOcaBuf, PMOS_CONTEXT mosCtx, void *pCpDumper);
+
+    //!
+    //! \brief  Oca operation which should be called at the beginning of 1st level batch buffer start.
+    //! \param  [in/out] cmdBuffer
+    //!         Command buffer for current BB. ocaBufHandle in cmdBuffer will be updated.
+    //! \param  [in] mosContext
+    //!         Reference to MOS_CONTEXT.
+    //! \param  [in] gpuContextHandle
+    //!         Gpu context handle 
+    //! \return void
+    //!         No return value. Handle all exception inside the function.
+    //!
+    static void On1stLevelBBStart(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTEXT &mosContext, uint32_t gpuContextHandle);
+
+    static void AddRTLogReource(MOS_COMMAND_BUFFER &cmdBuffer,
+                               MOS_CONTEXT &mosContext,
+                               MOS_INTERFACE &osInterface);
 
     // Private functions to ensure class singleton.
     HalOcaInterfaceNext();

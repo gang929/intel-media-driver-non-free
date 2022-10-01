@@ -60,10 +60,20 @@ public:
         VP_SURFACE_SETTING                  &surfSetting,
         VP_EXECUTE_CAPS                     packetCaps) = 0;
 
-    virtual MOS_STATUS PacketInitForReuse()
+    virtual MOS_STATUS PacketInitForReuse(
+        VP_SURFACE         *inputSurface,
+        VP_SURFACE         *outputSurface,
+        VP_SURFACE         *previousSurface,
+        VP_SURFACE_SETTING &surfSetting,
+        VP_EXECUTE_CAPS     packetCaps)
     {
         VP_FUNC_CALL();
         m_packetResourcesPrepared = false;
+        m_PacketCaps              = packetCaps;
+        VP_RENDER_CHK_STATUS_RETURN(SetUpdatedExecuteResource(inputSurface, outputSurface, previousSurface, surfSetting));
+
+        // need to update for DNDI case.
+        m_DNDIFirstFrame = (!m_PacketCaps.bRefValid && (m_PacketCaps.bDN || m_PacketCaps.bDI));
         return MOS_STATUS_SUCCESS;
     }
 
@@ -142,13 +152,14 @@ public:
     VP_EXECUTE_CAPS     m_PacketCaps = {};
     PVpAllocator        &m_allocator;
     VPMediaMemComp      *m_mmc = nullptr;
-    std::shared_ptr<mhw::vebox::Itf> m_vebox_Itf = nullptr;
+    uint32_t            m_DNDIFirstFrame = 0;
 
 protected:
     PacketType                  m_PacketId = VP_PIPELINE_PACKET_UNINITIALIZED;
-    VP_PACKET_SHARED_CONTEXT*   m_packetSharedContext = nullptr;
+    VP_PACKET_SHARED_CONTEXT    *m_packetSharedContext    = nullptr;
     VP_SURFACE_SETTING          m_surfSetting;
     bool                        m_packetResourcesPrepared = false;
+    VpFeatureReport             *m_report                 = nullptr;
 
 private:
     MediaScalability *          m_scalability = nullptr;

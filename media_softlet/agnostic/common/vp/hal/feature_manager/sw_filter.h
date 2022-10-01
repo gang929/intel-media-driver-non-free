@@ -60,6 +60,10 @@ class SwFilterSubPipe;
 #define SURFACETYPE_SIZE5                   4
 #define SURFACETYPE_SIZE10                  9
 
+#define GFSURFACE_COUNT 8
+#define MOTION_CHANNEL 3
+#define MAX_MODELSURFACE_COUNT 85
+
 enum FeatureType
 {
     FeatureTypeInvalid          = 0,
@@ -632,8 +636,8 @@ enum SurfaceType
     // HVS Kernel
     SurfaceTypeHVSTable,
     //Segmentation
-    SurfaceTypeRenderPreviousInput,
-    SurfaceTypeRenderTempOutput,  //Used for seg out only
+    SurfaceTypeSegRenderPreviousInput,
+    SurfaceTypeSegRenderTempOutput, //Used for seg out only
     SurfaceTypeSegBackground,
     SurfaceTypeSegGaussianCoeffBuffer,
     SurfaceTypeSegTFMask,
@@ -647,30 +651,31 @@ enum SurfaceType
     SurfaceTypeSegBlur2,
     SurfaceTypeSegBlur3,
     SurfaceTypeSegGFLayer,
-    SurfaceTypeSegGFLayerEnd = SurfaceTypeSegGFLayer + 8,
+    SurfaceTypeSegGFLayerEnd = SurfaceTypeSegGFLayer + GFSURFACE_COUNT,
     SurfaceTypeSegGFOut,
     SurfaceTypeSegGFOut2,
     SurfaceTypeSegGFOut3,
     SurfaceTypeSegGFOut4,
     SurfaceTypeSegInputMotion,
-    SurfaceTypeSegInputMotionEnd = SurfaceTypeSegInputMotion + 2,
+    SurfaceTypeSegInputMotionEnd = SurfaceTypeSegInputMotion + MOTION_CHANNEL - 1,
     SurfaceTypeSegPreInputMotion,
-    SurfaceTypeSegPreInputMotionEnd = SurfaceTypeSegPreInputMotion +2,
+    SurfaceTypeSegPreInputMotionEnd = SurfaceTypeSegPreInputMotion + MOTION_CHANNEL - 1,
     SurfaceTypeSegDiffMotion,
-    SurfaceTypeSegDiffMotionEnd = SurfaceTypeSegDiffMotion + 2,
+    SurfaceTypeSegDiffMotionEnd = SurfaceTypeSegDiffMotion + MOTION_CHANNEL - 1,
     SurfaceTypeSegErode1x2Motion,
-    SurfaceTypeSegErode1x2MotionEnd = SurfaceTypeSegErode1x2Motion + 2,
+    SurfaceTypeSegErode1x2MotionEnd = SurfaceTypeSegErode1x2Motion + MOTION_CHANNEL - 1,
     SurfaceTypeSegErode2x1Motion,
     SurfaceTypeSegErode2x1Motion2,
     SurfaceTypeSegErode2x1Motion3,
     SurfaceTypeSegSumMotion,
+    SurfaceTypeSegRemoveBlob,
     // Segmentation layers
     SurfaceTypeSegModelLayer,
-    SurfaceTypeSegModelLayerEnd = SurfaceTypeSegModelLayer + 85,
+    SurfaceTypeSegModelLayerEnd = SurfaceTypeSegModelLayer + MAX_MODELSURFACE_COUNT,
     SurfaceTypeSegWeights,
-    SurfaceTypeSegWeightsEnd = SurfaceTypeSegWeights + 85,
+    SurfaceTypeSegWeightsEnd = SurfaceTypeSegWeights + MAX_MODELSURFACE_COUNT,
     SurfaceTypeSegBias,
-    SurfaceTypeSegBiasEnd = SurfaceTypeSegBias + 85,
+    SurfaceTypeSegBiasEnd = SurfaceTypeSegBias + MAX_MODELSURFACE_COUNT,
 
     // SR
     SurfaceTypeSRLumaInputSurf,
@@ -704,7 +709,13 @@ struct REMOVE_BB_SETTING
 {
     bool     isRemoveBB    = false;
     bool     isKeepMaxBlob = false;
-    uint32_t index         = 0;
+    uint32_t index                          = 0;
+    uint32_t height                         = 0;
+    uint32_t width                          = 0;
+    uint32_t size                           = 0;
+    uint16_t inputActiveRegionWidth         = 0;
+    uint16_t inputActiveRegionHeight        = 0;
+    uint8_t *removeBlobLinearAddressAligned = 0;
 };
 
 struct MOTIONLESS_SETTING
@@ -719,11 +730,15 @@ struct MOTIONLESS_SETTING
     uint32_t height          = 0;
 };
 
+struct VP_POSTPROCESS_SURFACE
+{
+    REMOVE_BB_SETTING  removeBBSetting;
+    MOTIONLESS_SETTING motionlessSetting;
+};
+
 struct VP_SURFACE_SETTING
 {
     VP_SURFACE_GROUP    surfGroup;
-    REMOVE_BB_SETTING   removeBBSetting;
-    MOTIONLESS_SETTING  motionlessSetting;
     bool                isPastHistogramValid       = false;
     uint32_t            imageWidthOfPastHistogram  = 0;
     uint32_t            imageHeightOfPastHistogram = 0;
@@ -736,12 +751,11 @@ struct VP_SURFACE_SETTING
     bool                dumpLaceSurface                        = false;
     bool                dumpPreSurface                         = false;
     bool                dumpPostSurface                        = false;
+    VP_POSTPROCESS_SURFACE postProcessSurface                  = {};
 
     void Clean()
     {
         surfGroup.clear();
-        removeBBSetting             = {};
-        motionlessSetting           = {};
         isPastHistogramValid        = false;
         imageWidthOfPastHistogram   = 0;
         imageHeightOfPastHistogram  = 0;
@@ -754,6 +768,8 @@ struct VP_SURFACE_SETTING
         dumpLaceSurface                        = false;
         dumpPreSurface                         = false;
         dumpPostSurface                        = false;
+        postProcessSurface.removeBBSetting     = {};
+        postProcessSurface.motionlessSetting   = {};
     }
 };
 
@@ -911,7 +927,7 @@ struct FeatureParamCsc : public FeatureParam
     {
         VPHAL_CSPACE    colorSpace      = CSpace_None;
         uint32_t        chromaSiting    = 0;
-        bool operator == (struct CSC_PARAMS &b)
+        bool operator == (const struct CSC_PARAMS &b)
         {
             return colorSpace == b.colorSpace && chromaSiting == b.chromaSiting;
         }
@@ -1044,7 +1060,7 @@ struct FeatureParamRotMir : public FeatureParam
         MOS_TILE_TYPE tileOutput = MOS_TILE_X;
     } surfInfo;
 
-    bool operator == (struct FeatureParamRotMir &b)
+    bool operator == (const struct FeatureParamRotMir &b)
     {
         return rotation == b.rotation &&
             surfInfo.tileOutput == b.surfInfo.tileOutput;
@@ -1087,6 +1103,16 @@ struct FeatureParamDenoise : public FeatureParam
     uint32_t             heightInput          = 0;
     bool                 secureDnNeeded       = false;
     DN_STAGE             stage                = DN_STAGE_DEFAULT;
+    bool                 operator==(const struct FeatureParamDenoise &b)
+    {
+        return sampleTypeInput     == b.sampleTypeInput &&
+               denoiseParams       == b.denoiseParams   &&
+               widthAlignUnitInput == b.widthAlignUnitInput &&
+               heightAlignUnitInput == b.heightAlignUnitInput &&
+               heightInput         == b.heightInput &&
+               secureDnNeeded      == b.secureDnNeeded &&
+               stage               == b.stage;
+    }
 };
 
 class SwFilterDenoise : public SwFilter
@@ -1316,7 +1342,7 @@ MEDIA_CLASS_DEFINE_END(vp__SwFilterBlending)
 struct FeatureParamColorFill : public FeatureParam
 {
     PVPHAL_COLORFILL_PARAMS colorFillParams = nullptr;     //!< ColorFill - BG only
-    bool operator == (struct FeatureParamColorFill &b)
+    bool operator == (const struct FeatureParamColorFill &b)
     {
         return (nullptr == colorFillParams && nullptr == b.colorFillParams ||
             nullptr != colorFillParams && nullptr != b.colorFillParams &&
@@ -1347,7 +1373,7 @@ struct FeatureParamAlpha : public FeatureParam
 {
     PVPHAL_ALPHA_PARAMS     compAlpha         = nullptr;      //!< Alpha for composited surface
     bool                    calculatingAlpha  = false;        //!< Alpha calculation parameters
-    bool operator == (struct FeatureParamAlpha &b)
+    bool operator == (const struct FeatureParamAlpha &b)
     {
         return calculatingAlpha == b.calculatingAlpha &&
             (nullptr == compAlpha   && nullptr == b.compAlpha ||

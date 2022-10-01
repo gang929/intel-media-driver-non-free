@@ -166,6 +166,17 @@ public:
     {
         return m_hcpItf;
     }
+    
+    //!
+    //! \brief    Get render interface
+    //! \details  Get render interface in codechal hw interface next
+    //!
+    //! \return    pointer to new HCP interface
+    //!
+    inline std::shared_ptr<mhw::render::Itf> GetRenderInterfaceNext()
+    {
+        return m_renderItf;
+    }
 
     //!
     //! \brief    Get Os interface
@@ -346,6 +357,58 @@ public:
     MOS_STATUS PerformHucStreamOut(
         CodechalHucStreamoutParams  *hucStreamOutParams,
         PMOS_COMMAND_BUFFER         cmdBuffer);
+    
+    //! \brief    Read HCP status for status report
+    //! \param    vdboxIndex
+    //!           [in] the vdbox index
+    //! \param    params
+    //!           [in] the parameters for HCP status read
+    //! \param    cmdBuffer
+    //!           [in, out] the command buffer
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS ReadHcpStatus(
+        MHW_VDBOX_NODE_IND vdboxIndex,
+        const EncodeStatusReadParams &params,
+        PMOS_COMMAND_BUFFER cmdBuffer);
+
+    //!
+    //! \brief    Read HCP specific image status for status report
+    //! \param    vdboxIndex
+    //!           [in] the vdbox index
+   //! \param    params
+    //!           [in] the parameters for HCP IMG status read
+    //! \param    cmdBuffer
+    //!           [in, out] the command buffer
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS ReadImageStatusForHcp(
+        MHW_VDBOX_NODE_IND vdboxIndex,
+        const EncodeStatusReadParams &params,
+        PMOS_COMMAND_BUFFER cmdBuffer);
+
+    MHW_VDBOX_NODE_IND GetMaxVdboxIndex()
+    {
+        return MHW_VDBOX_NODE_1;
+    }
+
+    //!
+    //! \brief    Init L3 Cache Settings
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS InitL3CacheSettings();
+
+protected:
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+    MOS_STATUS InitL3ControlUserFeatureSettings(
+        mhw::render::MHW_RENDER_ENGINE_L3_CACHE_CONFIG   *l3CacheConfig,
+        mhw::render::MHW_RENDER_ENGINE_L3_CACHE_SETTINGS *l3Overrides);
+#endif
 
 protected:
     std::shared_ptr<mhw::vdbox::avp::Itf>    m_avpItf   = nullptr;      //!< Pointer to Mhw avp interface
@@ -354,7 +417,8 @@ protected:
     std::shared_ptr<mhw::mi::Itf>            m_miItf    = nullptr;      //!< Pointer to Mhw mi interface
     std::shared_ptr<mhw::vdbox::hcp::Itf>    m_hcpItf   = nullptr;      //!< Pointer to Mhw hcp interface
     std::shared_ptr<mhw::vdbox::mfx::Itf>    m_mfxItf   = nullptr;      //!< Pointer to Mhw mfx interface
-    std::shared_ptr<MediaSfcInterface>       m_mediaSfcItf = nullptr;   //!< Pointer to Media sfc interface
+    std::shared_ptr<mhw::render::Itf>        m_renderItf   = nullptr;      //!< Pointer to render interface
+    std::shared_ptr<MediaSfcInterface>       m_mediaSfcItf = nullptr;      //!< Pointer to Media sfc interface
 
     // States
     PMOS_INTERFACE       m_osInterface;  //!< Pointer to OS interface
@@ -372,7 +436,6 @@ protected:
     // Next: remove legacy Interfaces
     MhwCpInterface                  *m_cpInterface = nullptr;         //!< Pointer to Mhw cp interface
     MhwVdboxMfxInterface            *m_mfxInterface = nullptr;        //!< Pointer to Mhw mfx interface
-    MhwVdboxHcpInterface            *m_hcpInterface = nullptr;        //!< Pointer to Mhw hcp interface
     MhwVdboxVdencInterface          *m_vdencInterface = nullptr;      //!< Pointer to Mhw vdenc interface
 
 MEDIA_CLASS_DEFINE_END(CodechalHwInterfaceNext)

@@ -37,7 +37,7 @@ namespace encode {
         m_basicFeature = dynamic_cast<HevcBasicFeature *>(m_featureManager->GetFeature(HevcFeatureIDs::basicFeature));
         ENCODE_CHK_NULL_RETURN(m_basicFeature);
 
-        ENCODE_CHK_STATUS_RETURN(EncodeHucBasic::Init());
+        ENCODE_CHK_STATUS_RETURN(EncodeHucPkt::Init());
 
         ENCODE_CHK_NULL_RETURN(m_hwInterface);
         m_osInterface  = m_hwInterface->GetOsInterface();
@@ -57,7 +57,7 @@ namespace encode {
 
     MOS_STATUS HevcPakIntegratePkt::AllocateResources()
     {
-        ENCODE_CHK_STATUS_RETURN(EncodeHucBasic::AllocateResources());
+        ENCODE_CHK_STATUS_RETURN(EncodeHucPkt::AllocateResources());
 
         // Only needed when tile & BRC is enabled, but the size is not changing at frame level
         if (m_resHucPakStitchDmemBuffer[0][0] == nullptr)
@@ -244,7 +244,7 @@ namespace encode {
         }
         ENCODE_CHK_STATUS_RETURN(MediaPacket::EndStatusReportNext(srType, cmdBuffer));
 
-        MediaPerfProfilerNext *perfProfiler = MediaPerfProfilerNext::Instance();
+        MediaPerfProfiler *perfProfiler = MediaPerfProfiler::Instance();
         ENCODE_CHK_NULL_RETURN(perfProfiler);
         ENCODE_CHK_STATUS_RETURN(perfProfiler->AddPerfCollectEndCmd(
             (void *)m_pipeline, m_osInterface, m_miItf, cmdBuffer));
@@ -292,7 +292,8 @@ namespace encode {
         params.resImageStatusCtrl    = osResource;
         params.imageStatusCtrlOffset = offset;
 
-        ENCODE_CHK_STATUS_RETURN(m_hwInterface->ReadHcpStatus(vdboxIndex, params, &cmdBuffer));
+        ENCODE_CHK_NULL_RETURN(m_hwInterface->m_hwInterfaceNext);
+        ENCODE_CHK_STATUS_RETURN(m_hwInterface->m_hwInterfaceNext->ReadHcpStatus(vdboxIndex, params, &cmdBuffer));
 
         // Slice Size Conformance
         if (m_basicFeature->m_hevcSeqParams->SliceSizeControl)
@@ -315,7 +316,8 @@ namespace encode {
 
             ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_REGISTER_MEM)(&cmdBuffer));
         }
-        ENCODE_CHK_STATUS_RETURN(m_hwInterface->ReadImageStatusForHcp(vdboxIndex, params, &cmdBuffer));
+        ENCODE_CHK_NULL_RETURN(m_hwInterface->m_hwInterfaceNext);
+        ENCODE_CHK_STATUS_RETURN(m_hwInterface->m_hwInterfaceNext->ReadImageStatusForHcp(vdboxIndex, params, &cmdBuffer));
         return eStatus;
     }
 

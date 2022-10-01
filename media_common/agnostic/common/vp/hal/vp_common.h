@@ -42,6 +42,9 @@
 extern "C" {
 #endif
 
+#define ADDRESS_PAGE_ALIGNMENT_MASK_X64 0xFFFFFFFFFFFFF000ULL
+#define ADDRESS_PAGE_ALIGNMENT_MASK_X86 0xFFFFF000
+
 //!
 //! \def OUT_OF_BOUNDS(a, min, max)
 //! Calcualte if \a a out the range of  [\a min, \a max].
@@ -65,6 +68,10 @@ extern "C" {
         (((rect1).right + 1) >= (rect2).right) && (((rect1).bottom + 1) >= (rect2).bottom))
 
 #define VPHAL_MEMORY_OBJECT_CONTROL uint32_t
+
+// YUV input ranges
+#define YUV_RANGE_16_235           1
+#define YUV_RANGE_0_255            2
 
 // ProcAmp Default Values
 #define PROCAMP_BRIGHTNESS_MIN -100.0F
@@ -820,7 +827,7 @@ typedef struct _VPHAL_HVSDENOISE_PARAMS
 typedef struct _VPHAL_SLIMIPU_DENOISE_PARAM
 {
     uint32_t MemSizeInBytes;
-    void *   pSystemMem;
+    void     *pSystemMem;
 } VPHAL_SLIMIPU_DENOISE_PARAM, *PVPHAL_SLIMIPU_DENOISE_PARAM;
 
 //!
@@ -838,6 +845,16 @@ typedef struct _VPHAL_DENOISE_PARAMS
     VPHAL_HVSDENOISE_PARAMS     HVSDenoise            = {};
     bool                        bEnableSlimIPUDenoise = false;
     VPHAL_SLIMIPU_DENOISE_PARAM SlimIPUDenoise        = {};
+    bool                        operator==(const struct _VPHAL_DENOISE_PARAMS &b)
+    {
+        return bEnableChroma            == b.bEnableChroma  &&
+               bEnableLuma              == b.bEnableLuma    &&
+               bAutoDetect              == b.bAutoDetect    &&
+               bEnableHVSDenoise        == false            &&
+               b.bEnableHVSDenoise      == false            &&
+               bEnableSlimIPUDenoise    == false            &&
+               b.bEnableSlimIPUDenoise  == false;
+    }
 } VPHAL_DENOISE_PARAMS, *PVPHAL_DENOISE_PARAMS;
 
 //!
@@ -848,6 +865,17 @@ typedef struct _VPHAL_STE_PARAMS
 {
     uint32_t dwSTEFactor = 0;
 } VPHAL_STE_PARAMS, *PVPHAL_STE_PARAMS;
+
+//!
+//! Structure VPHAL_STE_PARAMS
+//! \brief STE parameters - Skin Tone Enhancement
+//!
+typedef struct _VPHAL_STD_PARAMS
+{
+    uint32_t           paraSizeInBytes = 0;
+    void               *param          = nullptr;           
+    unsigned long long sysMem          = 0;
+} VPHAL_STD_PARAMS, *PVPHAL_STD_PARAMS;
 
 //!
 //! Structure VPHAL_TCC_PARAMS
@@ -871,11 +899,13 @@ typedef struct _VPHAL_COLORPIPE_PARAMS
 {
     bool             bEnableACE       = false;
     bool             bEnableSTE       = false;
+    bool             bEnableSTD       = false;   // Is STD enabled via VPE
     bool             bEnableTCC       = false;
     bool             bAceLevelChanged = false;
     uint32_t         dwAceLevel       = 0;
     uint32_t         dwAceStrength    = 0;
     VPHAL_STE_PARAMS SteParams        = {};
+    VPHAL_STD_PARAMS StdParams        = {};
     VPHAL_TCC_PARAMS TccParams        = {};
 } VPHAL_COLORPIPE_PARAMS, *PVPHAL_COLORPIPE_PARAMS;
 

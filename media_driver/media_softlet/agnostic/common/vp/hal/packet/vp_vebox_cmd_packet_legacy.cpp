@@ -89,11 +89,13 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetupVebox3DLutForHDR(
     PMHW_VEBOX_MODE   pVeboxMode = nullptr;
     PMHW_VEBOX_3D_LUT pLUT3D     = nullptr;
     PVP_SURFACE       surf3DLut  = GetSurface(SurfaceType3DLut);
+    VpVeboxRenderData* pRenderData = GetLastExecRenderData();
 
     VP_RENDER_CHK_NULL_RETURN(m_surfMemCacheCtl);
     VP_RENDER_CHK_NULL_RETURN(pVeboxStateCmdParams);
     VP_RENDER_CHK_NULL_RETURN(surf3DLut);
     VP_RENDER_CHK_NULL_RETURN(surf3DLut->osSurface);
+    VP_RENDER_CHK_NULL_RETURN(pRenderData);
 
     VP_RENDER_CHK_STATUS_RETURN(Init3DLutTable(surf3DLut));
 
@@ -102,8 +104,12 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetupVebox3DLutForHDR(
 
     pLUT3D->ArbitrationPriorityControl      = 0;
     pLUT3D->Lut3dEnable                     = true;
-    // Config 3DLut size to 65 for HDR usage.
+    // Config 3DLut size to 65 for HDR10 usage.
     pLUT3D->Lut3dSize                       = 2;
+    if (pRenderData->HDR3DLUT.uiLutSize == 33)
+    {
+        pLUT3D->Lut3dSize = 0;  // 33x33x33
+    }
 
     pVeboxStateCmdParams->Vebox3DLookUpTablesSurfCtrl.Value =
         m_surfMemCacheCtl->DnDi.Vebox3DLookUpTablesSurfMemObjCtl;
@@ -433,31 +439,29 @@ MOS_STATUS VpVeboxCmdPacketLegacy::UpdateCscParams(FeatureParamCsc &params)
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS VpVeboxCmdPacketLegacy::UpdateDenoiseParams(FeatureParamDenoise &params)
+{
+    VP_FUNC_CALL();
+
+    VpVeboxRenderData         *pRenderData  = GetLastExecRenderData();
+    VP_RENDER_CHK_NULL_RETURN(pRenderData);
+
+    // ConfigureDenoiseParams() just includes logic that both used in SetDenoiseParams and UpdateDenoiseParams.
+    VP_PUBLIC_CHK_STATUS_RETURN(ConfigureDenoiseParams(pRenderData, params.denoiseParams.fDenoiseFactor));
+
+    // bDNDITopFirst in DNDI parameters need be configured during UpdateDIParams after DI parameter packet reusing being enabled.
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS VpVeboxCmdPacketLegacy::UpdateTccParams(FeatureParamTcc &params)
 {
     VP_FUNC_CALL();
     VpVeboxRenderData               *pRenderData = GetLastExecRenderData();
-    MHW_VEBOX_IECP_PARAMS&           mhwVeboxIecpParams = pRenderData->GetIECPParams();
-
-    VP_RENDER_ASSERT(pRenderData);
-
-    if (params.bEnableTCC)
-    {
-        pRenderData->IECP.TCC.bTccEnabled                       = true;
-        mhwVeboxIecpParams.ColorPipeParams.bActive              = true;
-        mhwVeboxIecpParams.ColorPipeParams.bEnableTCC           = true;
-        mhwVeboxIecpParams.ColorPipeParams.TccParams.Magenta    = params.Magenta;
-        mhwVeboxIecpParams.ColorPipeParams.TccParams.Red        = params.Red;
-        mhwVeboxIecpParams.ColorPipeParams.TccParams.Yellow     = params.Yellow;
-        mhwVeboxIecpParams.ColorPipeParams.TccParams.Green      = params.Green;
-        mhwVeboxIecpParams.ColorPipeParams.TccParams.Cyan       = params.Cyan;
-        mhwVeboxIecpParams.ColorPipeParams.TccParams.Blue       = params.Blue;
-    }
-    else
-    {
-        pRenderData->IECP.TCC.bTccEnabled                       = false;
-        mhwVeboxIecpParams.ColorPipeParams.bEnableTCC           = false;
-    }
+    VP_RENDER_CHK_NULL_RETURN(pRenderData);
+    
+    // ConfigureTccParams() just includes logic that both used in SetTccParams and UpdateTccParams.
+    VP_PUBLIC_CHK_STATUS_RETURN(ConfigureTccParams(pRenderData, params.bEnableTCC, params.Magenta, params.Red,
+        params.Yellow, params.Green, params.Cyan, params.Blue));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -466,37 +470,28 @@ MOS_STATUS VpVeboxCmdPacketLegacy::UpdateSteParams(FeatureParamSte &params)
 {
     VP_FUNC_CALL();
     VpVeboxRenderData     *pRenderData        = GetLastExecRenderData();
-    MHW_VEBOX_IECP_PARAMS &mhwVeboxIecpParams = pRenderData->GetIECPParams();
-
-    VP_RENDER_ASSERT(pRenderData);
-
-    if (params.bEnableSTE)
-    {
-        pRenderData->IECP.STE.bSteEnabled                    = true;
-        mhwVeboxIecpParams.ColorPipeParams.bActive           = true;
-        mhwVeboxIecpParams.ColorPipeParams.bEnableSTE        = true;
-        if (params.dwSTEFactor > MHW_STE_FACTOR_MAX)
-        {
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.dwSTEFactor = MHW_STE_FACTOR_MAX;
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.satP1       = m_satP1Table[MHW_STE_FACTOR_MAX];
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS0       = m_satS0Table[MHW_STE_FACTOR_MAX];
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS1       = m_satS1Table[MHW_STE_FACTOR_MAX];
-        }
-        else
-        {
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.dwSTEFactor = params.dwSTEFactor;
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.satP1       = m_satP1Table[params.dwSTEFactor];
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS0       = m_satS0Table[params.dwSTEFactor];
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS1       = m_satS1Table[params.dwSTEFactor];
-        }
-    }
-    else
-    {
-        pRenderData->IECP.STE.bSteEnabled             = false;
-        mhwVeboxIecpParams.ColorPipeParams.bEnableSTE = false;
-    }
+    VP_RENDER_CHK_NULL_RETURN(pRenderData);
+    
+    // ConfigureSteParams() just includes logic that both used in SetSteParams and UpdateSteParams.
+    VP_PUBLIC_CHK_STATUS_RETURN(ConfigureSteParams(pRenderData, params.bEnableSTE, params.dwSTEFactor));
 
     return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacketLegacy::UpdateProcampParams(FeatureParamProcamp &params)
+{
+    VP_FUNC_CALL();
+
+    VpVeboxRenderData     *pRenderData        = GetLastExecRenderData();
+    VP_RENDER_CHK_NULL_RETURN(pRenderData); 
+    PVPHAL_PROCAMP_PARAMS  pProcampParams     = params.procampParams;
+    VP_RENDER_CHK_NULL_RETURN(pProcampParams);
+
+    // ConfigureProcampParams() just includes logic that both used in SetProcampParams and UpdateProcampParams.
+    VP_PUBLIC_CHK_STATUS_RETURN(ConfigureProcampParams(pRenderData, pProcampParams->bEnabled, pProcampParams->fBrightness,
+        pProcampParams->fContrast, pProcampParams->fHue, pProcampParams->fSaturation));
+
+     return MOS_STATUS_SUCCESS;
 }
 
 MOS_STATUS VpVeboxCmdPacketLegacy::SetScalingParams(PSFC_SCALING_PARAMS scalingParams)
@@ -708,6 +703,115 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetSfcRotMirParams(PSFC_ROT_MIR_PARAMS rotMir
 
 }
 
+MOS_STATUS VpVeboxCmdPacketLegacy::ConfigureTccParams(VpVeboxRenderData *renderData, bool bEnableTcc, uint8_t magenta, uint8_t red, uint8_t yellow, uint8_t green, uint8_t cyan, uint8_t blue)
+{
+    // ConfigureTccParams() just includes logic that both used in SetTccParams and UpdateTccParams.
+    // If the logic won't be used in UpdateTccParams, please just add the logic into SetTccParams.
+    VP_FUNC_CALL();
+    MHW_VEBOX_IECP_PARAMS &mhwVeboxIecpParams = renderData->GetIECPParams();
+    if (bEnableTcc)
+    {
+        renderData->IECP.TCC.bTccEnabled                     = true;
+        mhwVeboxIecpParams.ColorPipeParams.bActive           = true;
+        mhwVeboxIecpParams.ColorPipeParams.bEnableTCC        = true;
+        mhwVeboxIecpParams.ColorPipeParams.TccParams.Magenta = magenta;
+        mhwVeboxIecpParams.ColorPipeParams.TccParams.Red     = red;
+        mhwVeboxIecpParams.ColorPipeParams.TccParams.Yellow  = yellow;
+        mhwVeboxIecpParams.ColorPipeParams.TccParams.Green   = green;
+        mhwVeboxIecpParams.ColorPipeParams.TccParams.Cyan    = cyan;
+        mhwVeboxIecpParams.ColorPipeParams.TccParams.Blue    = blue;
+    }
+    else
+    {
+        renderData->IECP.TCC.bTccEnabled              = false;
+        mhwVeboxIecpParams.ColorPipeParams.bEnableTCC = false;
+    }
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacketLegacy::ConfigureSteParams(VpVeboxRenderData *renderData, bool bEnableSte, uint32_t dwSTEFactor)
+{
+    VP_FUNC_CALL();
+    // ConfigureSteParams() just includes logic that both used in SetSteParams and UpdateSteParams.
+    // If the logic won't be used in UpdateSteParams, please just add the logic into SetSteParams.
+
+    MHW_VEBOX_IECP_PARAMS &mhwVeboxIecpParams = renderData->GetIECPParams();
+    if (bEnableSte)
+    {
+        renderData->IECP.STE.bSteEnabled              = true;
+        mhwVeboxIecpParams.ColorPipeParams.bActive    = true;
+        mhwVeboxIecpParams.ColorPipeParams.bEnableSTE = true;
+        if (dwSTEFactor > MHW_STE_FACTOR_MAX)
+        {
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.dwSTEFactor = MHW_STE_FACTOR_MAX;
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.satP1       = m_satP1Table[MHW_STE_FACTOR_MAX];
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS0       = m_satS0Table[MHW_STE_FACTOR_MAX];
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS1       = m_satS1Table[MHW_STE_FACTOR_MAX];
+        }
+        else
+        {
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.dwSTEFactor = dwSTEFactor;
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.satP1       = m_satP1Table[dwSTEFactor];
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS0       = m_satS0Table[dwSTEFactor];
+            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS1       = m_satS1Table[dwSTEFactor];
+        }
+    }
+    else
+    {
+        renderData->IECP.STE.bSteEnabled              = false;
+        mhwVeboxIecpParams.ColorPipeParams.bEnableSTE = false;
+    }
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacketLegacy::ConfigureProcampParams(VpVeboxRenderData *renderData, bool bEnableProcamp, 
+    float fBrightness, float fContrast, float fHue, float fSaturation)
+{
+    // ConfigureProcampParams() just includes logic that both used in SetProcampParams and UpdateProcampParams.
+    // If the logic won't be used in UpdateProcampParams, please just add the logic into SetProcampParams.
+    VP_FUNC_CALL();
+    VP_RENDER_CHK_NULL_RETURN(renderData);
+    MHW_VEBOX_IECP_PARAMS &mhwVeboxIecpParams = renderData->GetIECPParams();
+    if (bEnableProcamp)
+    {
+        renderData->IECP.PROCAMP.bProcampEnabled    = true;
+        mhwVeboxIecpParams.ProcAmpParams.bActive    = true;
+        mhwVeboxIecpParams.ProcAmpParams.bEnabled   = true;
+        mhwVeboxIecpParams.ProcAmpParams.brightness = (uint32_t)MOS_F_ROUND(fBrightness * 16.0F);  // S7.4
+        mhwVeboxIecpParams.ProcAmpParams.contrast   = (uint32_t)MOS_UF_ROUND(fContrast * 128.0F);  // U4.7
+        mhwVeboxIecpParams.ProcAmpParams.sinCS      = (uint32_t)MOS_F_ROUND(sin(MHW_DEGREE_TO_RADIAN(fHue)) *
+                                                                       fContrast *fSaturation * 256.0F);  // S7.8
+        mhwVeboxIecpParams.ProcAmpParams.cosCS      = (uint32_t)MOS_F_ROUND(cos(MHW_DEGREE_TO_RADIAN(fHue)) *fContrast *fSaturation * 256.0F);  // S7.8
+    }
+    else
+    {
+        renderData->IECP.PROCAMP.bProcampEnabled  = false;
+        mhwVeboxIecpParams.ProcAmpParams.bActive  = false;
+        mhwVeboxIecpParams.ProcAmpParams.bEnabled = false;
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacketLegacy::ConfigureDenoiseParams(VpVeboxRenderData *renderData, float fDenoiseFactor)
+{
+    // ConfigureDenoiseParams() just includes logic that both used in SetDenoiseParams and UpdateDenoiseParams.
+    // If the logic won't be used in UpdateDenoiseParams, please just add the logic into SetDenoiseParams.
+    VP_FUNC_CALL();
+    VP_RENDER_CHK_NULL_RETURN(renderData);
+    VP_SAMPLER_STATE_DN_PARAM lumaParams   = {};
+    VPHAL_DNUV_PARAMS         chromaParams = {};
+
+    GetDnLumaParams(renderData->DN.bDnEnabled, renderData->DN.bAutoDetect, fDenoiseFactor, m_PacketCaps.bRefValid, &lumaParams);
+    GetDnChromaParams(renderData->DN.bChromaDnEnabled, renderData->DN.bAutoDetect, fDenoiseFactor, &chromaParams);
+
+    // Setup Denoise Params
+    ConfigLumaPixRange(renderData->DN.bDnEnabled, renderData->DN.bAutoDetect, fDenoiseFactor);
+    ConfigChromaPixRange(renderData->DN.bChromaDnEnabled, renderData->DN.bAutoDetect, fDenoiseFactor);
+    ConfigDnLumaChromaParams(renderData->DN.bDnEnabled, renderData->DN.bChromaDnEnabled, &lumaParams, &chromaParams);
+    return MOS_STATUS_SUCCESS;
+}
+
 //!
 //! \brief    Vebox Populate VEBOX parameters
 //! \details  Populate the Vebox VEBOX state parameters to VEBOX RenderData
@@ -788,11 +892,10 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetDnParams(
 
     MOS_STATUS                      eStatus = MOS_STATUS_SUCCESS;
     VpVeboxRenderData               *pRenderData = GetLastExecRenderData();
-    VP_SAMPLER_STATE_DN_PARAM       lumaParams = {};
-    VPHAL_DNUV_PARAMS               chromaParams = {};
 
-    VP_RENDER_ASSERT(pDnParams);
-    VP_RENDER_ASSERT(pRenderData);
+    VP_PUBLIC_CHK_NULL_RETURN(pDnParams);
+    VP_PUBLIC_CHK_NULL_RETURN(pRenderData);
+    VP_PUBLIC_CHK_NULL_RETURN(m_report);
 
     pRenderData->DN.bDnEnabled = pDnParams->bDnEnabled;
     pRenderData->DN.bAutoDetect = pDnParams->bAutoDetect;
@@ -805,16 +908,12 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetDnParams(
     pRenderData->GetHVSParams().Mode             = pDnParams->HVSDenoise.Mode;
     pRenderData->GetHVSParams().Strength         = pDnParams->HVSDenoise.Strength;
 
-    GetDnLumaParams(pDnParams->bDnEnabled, pDnParams->bAutoDetect, pDnParams->fDenoiseFactor, m_PacketCaps.bRefValid, &lumaParams);
-    GetDnChromaParams(pDnParams->bChromaDenoise, pDnParams->bAutoDetect, pDnParams->fDenoiseFactor, &chromaParams);
-
-    // Setup Denoise Params
-    ConfigLumaPixRange(pDnParams->bDnEnabled, pDnParams->bAutoDetect, pDnParams->fDenoiseFactor);
-    ConfigChromaPixRange(pDnParams->bChromaDenoise, pDnParams->bAutoDetect, pDnParams->fDenoiseFactor);
-    ConfigDnLumaChromaParams(pDnParams->bDnEnabled, pDnParams->bChromaDenoise, &lumaParams, &chromaParams);
-
+    // ConfigureDenoiseParams() just includes logic that both used in SetDenoiseParams and UpdateDenoiseParams.
+    // If the logic won't be used in UpdateDenoiseParams, please just add the logic into SetDenoiseParams.
+    VP_PUBLIC_CHK_STATUS_RETURN(ConfigureDenoiseParams(pRenderData, pDnParams->fDenoiseFactor));
     // bDNDITopFirst in DNDI parameters need be configured during SetDIParams.
 
+    m_report->GetFeatures().denoise = pRenderData->DN.bDnEnabled;
     return eStatus;
 }
 
@@ -824,37 +923,12 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetSteParams(
     VP_FUNC_CALL();
 
     VpVeboxRenderData               *pRenderData = GetLastExecRenderData();
-    MHW_VEBOX_IECP_PARAMS&           mhwVeboxIecpParams = pRenderData->GetIECPParams();
+    VP_PUBLIC_CHK_NULL_RETURN(pSteParams);
+    VP_PUBLIC_CHK_NULL_RETURN(pRenderData);
 
-    VP_RENDER_ASSERT(pSteParams);
-    VP_RENDER_ASSERT(pRenderData);
-
-    if (pSteParams->bEnableSTE)
-    {
-        pRenderData->IECP.STE.bSteEnabled = true;
-        mhwVeboxIecpParams.ColorPipeParams.bActive = true;
-        mhwVeboxIecpParams.ColorPipeParams.bEnableSTE = true;
-
-        if (pSteParams->dwSTEFactor > MHW_STE_FACTOR_MAX)
-        {
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.dwSTEFactor = MHW_STE_FACTOR_MAX;
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.satP1 = m_satP1Table[MHW_STE_FACTOR_MAX];
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS0 = m_satS0Table[MHW_STE_FACTOR_MAX];
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS1 = m_satS1Table[MHW_STE_FACTOR_MAX];
-        }
-        else
-        {
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.dwSTEFactor = pSteParams->dwSTEFactor;
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.satP1 = m_satP1Table[pSteParams->dwSTEFactor];
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS0 = m_satS0Table[pSteParams->dwSTEFactor];
-            mhwVeboxIecpParams.ColorPipeParams.SteParams.satS1 = m_satS1Table[pSteParams->dwSTEFactor];
-        }
-    }
-    else
-    {
-        pRenderData->IECP.STE.bSteEnabled = false;
-        mhwVeboxIecpParams.ColorPipeParams.bEnableSTE = false;
-    }
+    // ConfigureSteParams() just includes logic that both used in SetSteParams and UpdateSteParams.
+    // If the logic won't be used in UpdateSteParams, please just add the logic into SetSteParams.
+    VP_PUBLIC_CHK_STATUS_RETURN(ConfigureSteParams(pRenderData, pSteParams->bEnableSTE, pSteParams->dwSTEFactor));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -865,29 +939,13 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetTccParams(
     VP_FUNC_CALL();
 
     VpVeboxRenderData               *pRenderData = GetLastExecRenderData();
-    MHW_VEBOX_IECP_PARAMS&           mhwVeboxIecpParams = pRenderData->GetIECPParams();
+    VP_PUBLIC_CHK_NULL_RETURN(pTccParams);
+    VP_PUBLIC_CHK_NULL_RETURN(pRenderData);
 
-    VP_RENDER_ASSERT(pTccParams);
-    VP_RENDER_ASSERT(pRenderData);
-
-    if (pTccParams->bEnableTCC)
-    {
-        pRenderData->IECP.TCC.bTccEnabled = true;
-        mhwVeboxIecpParams.ColorPipeParams.bActive = true;
-        mhwVeboxIecpParams.ColorPipeParams.bEnableTCC = true;
-        mhwVeboxIecpParams.ColorPipeParams.TccParams.Magenta = pTccParams->Magenta;
-        mhwVeboxIecpParams.ColorPipeParams.TccParams.Red = pTccParams->Red;
-        mhwVeboxIecpParams.ColorPipeParams.TccParams.Yellow = pTccParams->Yellow;
-        mhwVeboxIecpParams.ColorPipeParams.TccParams.Green = pTccParams->Green;
-        mhwVeboxIecpParams.ColorPipeParams.TccParams.Cyan = pTccParams->Cyan;
-        mhwVeboxIecpParams.ColorPipeParams.TccParams.Blue = pTccParams->Blue;
-    }
-    else
-    {
-        pRenderData->IECP.TCC.bTccEnabled = false;
-        mhwVeboxIecpParams.ColorPipeParams.bEnableTCC = false;
-    }
-
+    // ConfigureTccParams() just includes logic that both used in SetTccParams and UpdateTccParams.
+    // If the logic won't be used in UpdateTccParams, please just add the logic into SetTccParams.
+    VP_PUBLIC_CHK_STATUS_RETURN(ConfigureTccParams(pRenderData, pTccParams->bEnableTCC, pTccParams->Magenta, 
+        pTccParams->Red, pTccParams->Yellow, pTccParams->Green, pTccParams->Cyan, pTccParams->Blue));
     return MOS_STATUS_SUCCESS;
 }
 
@@ -897,31 +955,13 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetProcampParams(
     VP_FUNC_CALL();
 
     VpVeboxRenderData               *pRenderData = GetLastExecRenderData();
-    MHW_VEBOX_IECP_PARAMS&           mhwVeboxIecpParams = pRenderData->GetIECPParams();
+    VP_PUBLIC_CHK_NULL_RETURN(pProcampParams);
+    VP_PUBLIC_CHK_NULL_RETURN(pRenderData);
 
-    VP_RENDER_ASSERT(pProcampParams);
-    VP_RENDER_ASSERT(pRenderData);
-
-    if (pProcampParams->bEnableProcamp)
-    {
-        pRenderData->IECP.PROCAMP.bProcampEnabled = true;
-        mhwVeboxIecpParams.ProcAmpParams.bActive = true;
-        mhwVeboxIecpParams.ProcAmpParams.bEnabled = true;
-        mhwVeboxIecpParams.ProcAmpParams.brightness = (uint32_t)MOS_F_ROUND(pProcampParams->fBrightness * 16.0F);  // S7.4
-        mhwVeboxIecpParams.ProcAmpParams.contrast   = (uint32_t)MOS_UF_ROUND(pProcampParams->fContrast * 128.0F);  // U4.7
-        mhwVeboxIecpParams.ProcAmpParams.sinCS      = (uint32_t)MOS_F_ROUND(sin(MHW_DEGREE_TO_RADIAN(pProcampParams->fHue)) *
-                                                         pProcampParams->fContrast *
-                                                         pProcampParams->fSaturation * 256.0F);  // S7.8
-        mhwVeboxIecpParams.ProcAmpParams.cosCS      = (uint32_t)MOS_F_ROUND(cos(MHW_DEGREE_TO_RADIAN(pProcampParams->fHue)) *
-                                                         pProcampParams->fContrast *
-                                                         pProcampParams->fSaturation * 256.0F);  // S7.8
-    }
-    else
-    {
-        pRenderData->IECP.PROCAMP.bProcampEnabled = false;
-        mhwVeboxIecpParams.ProcAmpParams.bActive = false;
-        mhwVeboxIecpParams.ProcAmpParams.bEnabled = false;
-    }
+    // ConfigureProcampParams() just includes logic that both used in SetProcampParams and UpdateProcampParams.
+    // If the logic won't be used in UpdateProcampParams, please just add the logic into SetProcampParams.
+    VP_PUBLIC_CHK_STATUS_RETURN(ConfigureProcampParams(pRenderData, pProcampParams->bEnableProcamp, pProcampParams->fBrightness, 
+        pProcampParams->fContrast, pProcampParams->fHue, pProcampParams->fSaturation));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -1900,7 +1940,7 @@ MOS_STATUS VpVeboxCmdPacketLegacy::RenderVeboxCmd(
                 pCmdBufferInUse));
         }
 
-        HalOcaInterface::OnDispatch(*pCmdBufferInUse, *pOsContext, *pMhwMiInterface, *pMmioRegisters);
+        HalOcaInterface::OnDispatch(*pCmdBufferInUse, *pOsInterface, *pMhwMiInterface, *pMmioRegisters);
 
         //---------------------------------
         // Send CMD: Vebox_DI_IECP
@@ -2548,7 +2588,6 @@ VpVeboxCmdPacketLegacy::VpVeboxCmdPacketLegacy(
     VpCmdPacket(task, hwInterface, allocator, mmc, VP_PIPELINE_PACKET_VEBOX),
     VpVeboxCmdPacketBase(task, hwInterface, allocator, mmc)
 {
-
 }
 
 VpVeboxCmdPacketLegacy:: ~VpVeboxCmdPacketLegacy()

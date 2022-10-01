@@ -20,19 +20,23 @@
 
 set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/vp_dumper.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/vp_debug.cpp
     ${CMAKE_CURRENT_LIST_DIR}/vp_debug_interface.cpp
     ${CMAKE_CURRENT_LIST_DIR}/vp_debug_config_manager.cpp
     ${CMAKE_CURRENT_LIST_DIR}/vp_utils.cpp
     ${CMAKE_CURRENT_LIST_DIR}/vp_user_feature_control.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/vp_visa.cpp
 )
 
 set(TMP_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/vp_dumper.h
     ${CMAKE_CURRENT_LIST_DIR}/vp_utils.h
+    ${CMAKE_CURRENT_LIST_DIR}/vp_debug.h
     ${CMAKE_CURRENT_LIST_DIR}/vp_debug_interface.h
     ${CMAKE_CURRENT_LIST_DIR}/vp_debug_config_manager.h
     ${CMAKE_CURRENT_LIST_DIR}/vp_user_feature_control.h
     ${CMAKE_CURRENT_LIST_DIR}/vp_oca_defs.h
+    ${CMAKE_CURRENT_LIST_DIR}/vp_visa.h
 )
 
 set(SOFTLET_VP_SOURCES_

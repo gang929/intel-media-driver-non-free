@@ -644,38 +644,59 @@ void VpConfigValuesInit(
 }
 
 void VpFeatureReport(
-    PVP_CONFIG         pConfig)
+    PVP_CONFIG         pConfig,
+    PDDI_VP_CONTEXT    pVpCtx)
 {
+    MediaUserSettingSharedPtr userSettingPtr = pVpCtx ? pVpCtx->MosDrvCtx.m_userSettingPtr : nullptr;
     ReportUserSetting(
-        nullptr,
+        userSettingPtr,
         __VPHAL_VEBOX_OUTPUTPIPE_MODE,
         pConfig->dwCurrentOutputPipeMode,
         MediaUserSetting::Group::Sequence);
 
     ReportUserSetting(
-        nullptr,
+        userSettingPtr,
         __VPHAL_VEBOX_FEATURE_INUSE,
         pConfig->dwCurrentVEFeatureInUse,
         MediaUserSetting::Group::Sequence);
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     ReportUserSettingForDebug(
-        nullptr,
+        userSettingPtr,
         __VPHAL_VEBOX_HDR_MODE,
         pConfig->dwCurrentHdrMode,
         MediaUserSetting::Group::Sequence);
 
 #ifdef _MMC_SUPPORTED
-    //VP MMC In Use
-    WriteUserFeature(__VPHAL_ENABLE_MMC_IN_USE_ID,             pConfig->dwVPMMCInUse, (MOS_CONTEXT_HANDLE)nullptr);
+    ReportUserSettingForDebug(
+        userSettingPtr,
+        __VPHAL_MMC_ENABLE,
+        pConfig->dwVPMMCInUse,
+        MediaUserSetting::Group::Sequence);
     //VP Primary Surface Compress Mode Report
-    WriteUserFeature(__VPHAL_PRIMARY_SURFACE_COMPRESS_MODE_ID, pConfig->dwPrimaryCompressMode, (MOS_CONTEXT_HANDLE)nullptr);
+    ReportUserSettingForDebug(
+        userSettingPtr,
+        __VPHAL_PRIMARY_MMC_COMPRESSMODE,
+        pConfig->dwPrimaryCompressMode,
+        MediaUserSetting::Group::Sequence);
     //VP Primary Surface Compressible
-    WriteUserFeature(__VPHAL_PRIMARY_SURFACE_COMPRESSIBLE_ID,  pConfig->dwPrimaryCompressible, (MOS_CONTEXT_HANDLE)nullptr);
+    ReportUserSettingForDebug(
+        userSettingPtr,
+        __VPHAL_PRIMARY_MMC_COMPRESSIBLE,
+        pConfig->dwPrimaryCompressible,
+        MediaUserSetting::Group::Sequence);
     //VP RT Compress Mode
-    WriteUserFeature(__VPHAL_RT_COMPRESS_MODE_ID,              pConfig->dwRTCompressMode, (MOS_CONTEXT_HANDLE)nullptr);
+    ReportUserSettingForDebug(
+        userSettingPtr,
+        __VPHAL_RT_MMC_COMPRESSMODE,
+        pConfig->dwRTCompressMode,
+        MediaUserSetting::Group::Sequence);
     //VP RT Compressible
-    WriteUserFeature(__VPHAL_RT_COMPRESSIBLE_ID,               pConfig->dwRTCompressible, (MOS_CONTEXT_HANDLE)nullptr);
+    ReportUserSettingForDebug(
+        userSettingPtr,
+        __VPHAL_RT_MMC_COMPRESSIBLE,
+        pConfig->dwRTCompressible,
+        MediaUserSetting::Group::Sequence);
 #endif
 #endif //(_DEBUG || _RELEASE_INTERNAL)
 }
@@ -691,7 +712,7 @@ VAStatus    VpReportFeatureMode(PDDI_VP_CONTEXT pVpCtx)
 
     VpHal_DdiReportFeatureMode(pVpCtx->pVpHal, &ConfigValues);
 
-    VpFeatureReport(&ConfigValues);
+    VpFeatureReport(&ConfigValues, pVpCtx);
 
     return VA_STATUS_SUCCESS;
 }

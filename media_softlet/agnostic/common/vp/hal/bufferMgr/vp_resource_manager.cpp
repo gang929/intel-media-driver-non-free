@@ -1094,7 +1094,7 @@ MOS_STATUS VpResourceManager::AssignExecuteResource(std::vector<FeatureType> &fe
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS VpResourceManager::GetUpdatedExecuteResource(std::vector<FeatureType> &featurePool, VP_EXECUTE_CAPS caps, SwFilterPipe &swfilterPipe, VP_SURFACE_SETTING &surfSetting)
+MOS_STATUS VpResourceManager::GetUpdatedExecuteResource(std::vector<FeatureType> &featurePool, VP_EXECUTE_CAPS &caps, SwFilterPipe &swfilterPipe, VP_SURFACE_SETTING &surfSetting)
 {
     VP_FUNC_CALL();
 
@@ -1134,7 +1134,7 @@ MOS_STATUS VpResourceManager::AssignExecuteResource(VP_EXECUTE_CAPS& caps, std::
     if (caps.bVebox || caps.bDnKernelUpdate)
     {
         // Create Vebox Resources
-        VP_PUBLIC_CHK_STATUS_RETURN(AssignVeboxResource(caps, inputSurfaces[0], outputSurface, pastSurfaces[0], futureSurfaces[0], resHint, surfSetting));
+        VP_PUBLIC_CHK_STATUS_RETURN(AssignVeboxResource(caps, inputSurfaces[0], outputSurface, pastSurfaces[0], futureSurfaces[0], resHint, surfSetting, executedFilters));
     }
 
     if (caps.bRender)
@@ -1679,12 +1679,12 @@ MOS_STATUS VpResourceManager::AllocateVeboxResource(VP_EXECUTE_CAPS& caps, VP_SU
 
     if (IS_VP_VEBOX_DN_ONLY(caps))
     {
-        bSurfCompressible = inputSurface->osSurface->bCompressible;
+        bSurfCompressible   = inputSurface->osSurface->bCompressible;
         surfCompressionMode = inputSurface->osSurface->CompressionMode;
     }
     else
     {
-        bSurfCompressible = true;
+        bSurfCompressible   = true;
         surfCompressionMode = MOS_MMC_MC;
     }
 
@@ -1703,7 +1703,7 @@ MOS_STATUS VpResourceManager::AllocateVeboxResource(VP_EXECUTE_CAPS& caps, VP_SU
         VP_PUBLIC_CHK_STATUS_RETURN(ReAllocateVeboxDenoiseOutputSurface(caps, inputSurface, bAllocated));
         if (bAllocated)
         {
-            m_currentDnOutput = 0;
+            m_currentDnOutput   = 0;
             m_pastDnOutputValid = false;
         }
     }
@@ -1804,9 +1804,9 @@ MOS_STATUS VpResourceManager::AllocateVeboxResource(VP_EXECUTE_CAPS& caps, VP_SU
     // Surface to be a rectangle aligned with dwWidth to get proper dwSize
     // APG PAth need to make sure input surface width/height is what to processed width/Height
     uint32_t statistic_size = m_vpPlatformInterface.VeboxQueryStaticSurfaceSize();
-    dwWidth = MOS_ALIGN_CEIL(inputSurface->osSurface->dwWidth, 64);
-    dwHeight = MOS_ROUNDUP_DIVIDE(inputSurface->osSurface->dwHeight, 4) +
-               MOS_ROUNDUP_DIVIDE(statistic_size * sizeof(uint32_t), dwWidth);
+    dwWidth                 = MOS_ALIGN_CEIL(inputSurface->osSurface->dwWidth, 64);
+    dwHeight                = MOS_ROUNDUP_DIVIDE(inputSurface->osSurface->dwHeight, 4) +
+                MOS_ROUNDUP_DIVIDE(statistic_size * sizeof(uint32_t), dwWidth);
 
     if (caps.b1stPassOfSfc2PassScaling)
     {
@@ -2045,7 +2045,7 @@ MOS_STATUS VpResourceManager::AssignSurface(VP_EXECUTE_CAPS caps, VEBOX_SURFACE_
 }
 
 MOS_STATUS VpResourceManager::AssignVeboxResource(VP_EXECUTE_CAPS& caps, VP_SURFACE *inputSurface, VP_SURFACE *outputSurface,
-    VP_SURFACE *pastSurface, VP_SURFACE *futureSurface, RESOURCE_ASSIGNMENT_HINT resHint, VP_SURFACE_SETTING &surfSetting)
+    VP_SURFACE *pastSurface, VP_SURFACE *futureSurface, RESOURCE_ASSIGNMENT_HINT resHint, VP_SURFACE_SETTING &surfSetting, SwFilterPipe& executedFilters)
 {
     VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(inputSurface);

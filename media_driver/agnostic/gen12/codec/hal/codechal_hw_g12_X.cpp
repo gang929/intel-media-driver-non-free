@@ -30,7 +30,6 @@
 #include "mhw_render_g12_X.h"
 #include "mhw_mi_hwcmd_g12_X.h"
 #include "mhw_vdbox_hcp_hwcmd_g12_X.h"  // temporary include for calculating size of various hardware commands
-#include "mhw_vdbox_mfx_hwcmd_g11_X.h"
 #include "mhw_vdbox_vdenc_g12_X.h"
 #include "mhw_vdbox_hcp_g12_X.h"
 #include "media_interfaces_g12_tgllp.h"
@@ -204,7 +203,7 @@ CodechalHwInterfaceG12::CodechalHwInterfaceG12(
 
     InternalInit(codecFunction);
 }
-#ifdef IGFX_MHW_INTERFACES_NEXT_SUPPORT
+
 CodechalHwInterfaceG12::CodechalHwInterfaceG12(
     PMOS_INTERFACE    osInterface,
     CODECHAL_FUNCTION codecFunction,
@@ -216,7 +215,7 @@ CodechalHwInterfaceG12::CodechalHwInterfaceG12(
 
     InternalInit(codecFunction);
 }
-#endif
+
 MOS_STATUS CodechalHwInterfaceG12::InitL3CacheSettings()
 {
     // Get default L3 cache settings
@@ -449,7 +448,6 @@ MOS_STATUS CodechalHwInterfaceG12::Initialize(
     return eStatus;
 }
 
-#ifdef IGFX_MHW_INTERFACES_NEXT_SUPPORT
 MOS_STATUS CodechalHwInterfaceG12::ReadAvpStatus(MHW_VDBOX_NODE_IND vdboxIndex, const EncodeStatusReadParams &params, PMOS_COMMAND_BUFFER cmdBuffer)
 {
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
@@ -517,7 +515,6 @@ MOS_STATUS CodechalHwInterfaceG12::ReadImageStatusForAvp(MHW_VDBOX_NODE_IND vdbo
 
     return eStatus;
 }
-#endif
 
 CodechalHwInterfaceG12::~CodechalHwInterfaceG12()
 {
