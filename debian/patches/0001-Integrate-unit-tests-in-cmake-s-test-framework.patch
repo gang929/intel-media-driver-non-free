@@ -9,7 +9,7 @@ Subject: Integrate unit tests in cmake's test framework
  3 files changed, 5 insertions(+), 15 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 0550087..f39c50c 100755
+index 72b5120..ea1e6e9 100755
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -78,6 +78,7 @@ if (BUILD_KERNELS)
