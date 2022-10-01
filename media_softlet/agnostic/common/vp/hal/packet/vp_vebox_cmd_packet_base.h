@@ -52,8 +52,10 @@ public:
 
 
     virtual MOS_STATUS UpdateCscParams(FeatureParamCsc &params) = 0;
+    virtual MOS_STATUS UpdateDenoiseParams(FeatureParamDenoise &params) = 0;
     virtual MOS_STATUS UpdateTccParams(FeatureParamTcc &params) = 0;
     virtual MOS_STATUS UpdateSteParams(FeatureParamSte &params) = 0;
+    virtual MOS_STATUS UpdateProcampParams(FeatureParamProcamp &params) = 0;
 
 MEDIA_CLASS_DEFINE_END(vp__VpVeboxCmdPacketBase)
 };

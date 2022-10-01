@@ -105,8 +105,41 @@ typedef enum _MEDIA_EVENT_FILTER_KEYID
     TR_KEY_MOSMSG_DDI,
     TR_KEY_MOSMSG_MOS,
     TR_KEY_MOSMSG_MHW,
-    TR_KEY_DECODE_INFO
+    TR_KEY_DECODE_INFO,
+    TR_KEY_ENCODE_TRACE_EVENT_DDI = 24,
+    TR_KEY_ENCODE_TRACE_EVENT_API_STICKER,
+    TR_KEY_ENCODE_TRACE_EVENT_INTERNAL,
 } MEDIA_EVENT_FILTER_KEYID;
+
+enum class MT_EVENT_LEVEL
+{
+    ALWAYS,
+    CRITICAL,
+    ERR,
+    WARNING,
+    INFO,
+    VERBOSE,
+};
+
+enum class MT_DATA_LEVEL
+{
+    FIRST_64B,  // dump first min(DataSize, 64) bytes
+    QUARTER,    // dump first min(DataSize, max(DataSize/4, 64)) bytes
+    HALF,       // dump first min(DataSize, max(DataSize/2, 64)) bytes
+    FULL,       // dump all data
+};
+
+enum class MT_LOG_LEVEL
+{
+    ALWAYS,
+    CRITICAL,
+    NORMAL,
+    VERBOSE,
+    FUNCTION_ENTRY,
+    FUNCTION_EXIT,
+    FUNCTION_ENTRY_VERBOSE,
+    MEMNINJA,
+};
 
 typedef enum _MEDIA_EVENT
 {
@@ -287,6 +320,15 @@ typedef enum _MEDIA_EVENT
     EVENT_ENCODE_DDI_11_CHECKFORMAT,               //! event for Encode check format
     EVENT_ENCODE_DDI_11_GETCONFIGCOUNT,            //! event for Encode get config count
     EVENT_ENCODE_DDI_11_GETCONFIG,                 //! event for Encode get config
+    EVENT_ENCODE_DDI_STATUS_REPORT_HEVC,           //! event for HEVC encode status report
+    EVENT_ENCODE_DDI_SLICE_STATUS_REPORT_HEVC,     //! event for HEVC encode slice status report
+    EVENT_ENCODE_DDI_EXT_STATUS_REPORT_HEVC,       //! event for HEVC encode ext status report
+    EVENT_ENCODE_DDI_CAPS_HEVC,                    //! event for HEVC encode caps
+    EVENT_ENCODE_DDI_SEQ_PARAM_HEVC,               //! event for HEVC encode sequence param
+    EVENT_ENCODE_DDI_PIC_PARAM_HEVC,               //! event for HEVC encode picture param
+    EVENT_ENCODE_DDI_SLC_PARAM_HEVC,               //! event for HEVC encode slice param
+    EVENT_ENCODE_DDI_VERSION_HEVC,                 //! event for HEVC encode DDI version
+    EVENT_ENCODE_API_STICKER_HEVC,                 //! event for HEVC encode API sticker
 } MEDIA_EVENT;
 
 typedef enum _MEDIA_EVENT_TYPE
@@ -303,6 +345,17 @@ typedef enum _MT_LEVEL
     MT_NORMAL   = 1,  //! normal runtime log
     MT_CRITICAL = 2,  //! critical runtime log
 } MT_LEVEL;
+
+union MtLevel
+{
+    struct
+    {
+        uint8_t Event : 3;  // MT_EVENT_LEVEL
+        uint8_t Data  : 2;  // MT_DATA_LEVEL
+        uint8_t Log   : 3;  // MT_LOG_LEVEL
+    };
+    uint8_t Value;
+};
 
 #pragma pack(1)
 typedef struct _MT_PARAM

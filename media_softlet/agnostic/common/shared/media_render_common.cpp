@@ -162,10 +162,7 @@ MOS_STATUS MediaRenderCommon::Set2DSurfaceForHwAccess(
         &info,
         pSurface);
 
-    if (Mos_ResourceIsNull(&pRenderSurface->OsSurface.OsResource))
-    {
-        pRenderSurface->OsSurface = *pSurface;
-    }
+    pRenderSurface->OsSurface = *pSurface;
     pRenderSurface->rcSrc.bottom       = pSurface->dwHeight;
     pRenderSurface->rcSrc.right        = pSurface->dwWidth;
     pRenderSurface->rcDst.bottom       = pSurface->dwHeight;
@@ -260,7 +257,7 @@ MOS_STATUS MediaRenderCommon::Set1DSurfaceForHwAccess(
 
         //set mem object control for cache
         SurfaceParam.MemObjCtl = (pRenderHal->pOsInterface->pfnCachePolicyGetMemoryObject(
-            MOS_MP_RESOURCE_USAGE_DEFAULT,
+            MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_WRITE_RENDER,
             pRenderHal->pOsInterface->pfnGetGmmClientContext(pRenderHal->pOsInterface))).DwordValue;
 
         pSurfaceParams = &SurfaceParam;

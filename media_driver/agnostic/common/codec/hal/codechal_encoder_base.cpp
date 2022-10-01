@@ -1433,6 +1433,10 @@ MOS_STATUS CodechalEncoderState::AllocateResources()
     m_encodeStatusBuf.dwHuCStatusRegOffset    = CODECHAL_OFFSETOF(EncodeStatus, HuCStatusReg);
     m_encodeStatusBuf.dwHuCStatus2RegOffset   = CODECHAL_OFFSETOF(EncodeStatus, HuCStatus2Reg);
     m_encodeStatusBuf.dwLookaheadStatusOffset = CODECHAL_OFFSETOF(EncodeStatus, lookaheadStatus);
+    m_encodeStatusBuf.dwSADLumaOffset         = CODECHAL_OFFSETOF(EncodeStatus, dwSADLuma);
+    m_encodeStatusBuf.dwIntraBlockCountOffset = CODECHAL_OFFSETOF(EncodeStatus, dwIntraBlockCount);
+    m_encodeStatusBuf.dwInterBlockCountOffset = CODECHAL_OFFSETOF(EncodeStatus, dwInterBlockCount);
+    m_encodeStatusBuf.dwSkipBlockCountOffset  = CODECHAL_OFFSETOF(EncodeStatus, dwSkipBlockCount);
 
     m_encodeStatusBuf.wCurrIndex  = 0;
     m_encodeStatusBuf.wFirstIndex = 0;
@@ -2026,7 +2030,7 @@ MOS_STATUS CodechalEncoderState::ExecuteMeKernel(
         &walkerCodecParams));
 
     HalOcaInterface::TraceMessage(cmdBuffer, *m_osInterface->pOsContext, __FUNCTION__, sizeof(__FUNCTION__));
-    HalOcaInterface::OnDispatch(cmdBuffer, *m_osInterface->pOsContext, *m_miInterface, *m_renderEngineInterface->GetMmioRegisters());
+    HalOcaInterface::OnDispatch(cmdBuffer, *m_osInterface, *m_miInterface, *m_renderEngineInterface->GetMmioRegisters());
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_renderEngineInterface->AddMediaObjectWalkerCmd(
         &cmdBuffer,
@@ -4185,6 +4189,8 @@ MOS_STATUS CodechalEncoderState::GetStatusReport(
                 {
                     return eStatus;
                 }
+
+                CODECHAL_ENCODE_CHK_STATUS_RETURN(GetStatusReportExt(encodeStatus, encodeStatusReport, i == (numStatus - 1)));
 
                 if (m_osInterface->osCpInterface->IsCpEnabled() && m_skipFrameBasedHWCounterRead == false)
                 {

@@ -28,6 +28,7 @@
 #include "mos_gpucontext_specific_next.h"
 #include "mos_graphicsresource_specific_next.h"
 #include "mos_context_next.h"
+#include "mos_oca_rtlog_mgr.h"
 
 GpuContextMgrNext::GpuContextMgrNext(OsContextNext *osContext)
 {
@@ -253,6 +254,8 @@ void GpuContextMgrNext::DestroyGpuContext(GpuContextNext *gpuContext)
 
     MT_LOG3(MT_MOS_GPUCXT_DESTROY, MT_NORMAL, MT_MOS_GPUCXT_MGR_PTR, (int64_t)this, MT_MOS_GPUCXT_PTR, (int64_t)gpuContext, MT_MOS_GPUCXT_COUNT, m_gpuContextCount);
 
+    MosStreamState streamState = {};
+    streamState.osDeviceContext = m_osContext;
     MosUtilities::MosUnlockMutex(m_gpuContextArrayMutex);
 
     if (found)

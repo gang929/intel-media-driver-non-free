@@ -89,6 +89,28 @@ public:
     virtual MOS_STATUS UnlockOcaBuf(MOS_OCA_BUFFER_HANDLE ocaBufHandle);
 
     //!
+    //! \brief  Delayed to Unlock the oca buffer when edit complete.
+    //! \param  [in] ocaBufHandle
+    //!         Oca buffer handle.
+    //! \return MOS_STATUS
+    //!         Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual MOS_STATUS UnlockOcaBufferWithDelay(MOS_OCA_BUFFER_HANDLE ocaBufHandle);
+
+    //!
+    //! \brief  Unlock pending oca buffers.
+    //! \param  [in] mosCtx
+    //!         mosCtx.
+    //! \param  [in] str
+    //!         Info to add into the log setion; if str==nullptr, unlock oca buffer only, without log dump
+    //! \param  [in] maxCount
+    //!         Length of str; if str==nullptr, maxCount=0.
+    //! \return MOS_STATUS
+    //!         Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    virtual void UnlockPendingOcaBuffers(PMOS_CONTEXT mosCtx, struct MOS_OCA_EXEC_LIST_INFO *info, int count);
+
+    //!
     //! \brief  Oca operation which should be called at the beginning of 1st level batch buffer start.
     //! \param  [out] gpuVaOcaBuffer
     //!         The gfx virtual address of oca buffer, which should be set to GPR11 by LRI at the
@@ -287,6 +309,7 @@ private:
     MOS_STATUS DumpDataBlock(MOS_OCA_BUFFER_HANDLE ocaBufHandle, PMOS_OCA_LOG_HEADER pHeader, void *pData);
 
     void AddResourceInfoToLogSection(MOS_OCA_BUFFER_HANDLE ocaBufHandle, PMOS_CONTEXT mosCtx);
+    void AddExecListInfoToLogSection(MOS_OCA_BUFFER_HANDLE ocaBufHandle, PMOS_CONTEXT mosCtx, struct MOS_OCA_EXEC_LIST_INFO *info, int count);
 
     void InitLogSection(MOS_OCA_BUFFER_HANDLE ocaBufHandle, PMOS_RESOURCE resCmdBuf);
 
@@ -302,6 +325,7 @@ private:
     MosOcaInterfaceSpecific& operator= (MosOcaInterfaceSpecific &);
 
     PMOS_MUTEX                      m_ocaMutex                                      = nullptr;
+    PMOS_MUTEX                      m_mutexForOcaBufPool                            = nullptr;
 
     bool                            m_isOcaEnabled                                  = false;
     bool                            m_isInitialized                                 = false;
@@ -311,9 +335,12 @@ private:
     uint32_t                        m_indexOfNextOcaBufContext                      = 0;
     uint32_t                        m_ocaLogSectionSizeLimit                        = OCA_LOG_SECTION_SIZE_MAX;
 
+    std::vector<MOS_OCA_BUFFER_HANDLE> m_PendingOcaBuffersToUnlock;
+
     static MOS_STATUS               s_ocaStatus;                    //!< The status for first oca error encounterred.
     static uint32_t                 s_lineNumForOcaErr;             //!< The line number for first oca error encounterred.
     static bool                     s_bOcaStatusExistInReg;         //!< ture if "Oca Status" already being added to reg.
     static int32_t                  s_refCount;
+    static bool                     s_isDestroyed;
 };
 #endif  // __MOS_OCA_INTERFACE_SPECIFIC_H__

@@ -35,6 +35,7 @@
 #include "mos_bufmgr_priv.h"
 #include "drm_device.h"
 #include "media_fourcc.h"
+#include "mos_oca_rtlog_mgr.h"
 
 #if (_DEBUG || _RELEASE_INTERNAL)
 #include <stdlib.h>   //for simulate random OS API failure
@@ -170,7 +171,7 @@ MOS_STATUS MosInterface::CreateOsStreamState(
     (*streamState)->usesPatchList           = true;
     (*streamState)->usesGfxAddress          = !(*streamState)->usesPatchList;
 
-    userSettingPtr = MosInterface::MosGetUserSettingInstance(*streamState);
+    userSettingPtr = MosInterface::MosGetUserSettingInstance((PMOS_CONTEXT)extraParams);
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     ReadUserSettingForDebug(
@@ -306,11 +307,12 @@ MOS_STATUS MosInterface::CreateOsStreamState(
         (*streamState)->simIsActive,
         MediaUserSetting::Group::Device);
 #endif
+
+    MOS_OS_CHK_STATUS_RETURN(MosInterface::InitStreamParameters(*streamState, extraParams));
+
 #if MOS_COMMAND_BUFFER_DUMP_SUPPORTED
     DumpCommandBufferInit(*streamState);
 #endif  // MOS_COMMAND_BUFFER_DUMP_SUPPORTED
-
-    MOS_OS_CHK_STATUS_RETURN(MosInterface::InitStreamParameters(*streamState, extraParams));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -339,7 +341,6 @@ MOS_STATUS MosInterface::InitStreamParameters(
     MOS_BUFMGR                  *bufMgr             = nullptr;
     int32_t                     fd                  = -1;
     OsContextSpecificNext       *osDeviceContext    = nullptr;
-    MOS_USER_FEATURE_VALUE_DATA userFeatureData     = {};
 
     MOS_OS_FUNCTION_ENTER;
 
@@ -358,7 +359,7 @@ MOS_STATUS MosInterface::InitStreamParameters(
     bufMgr = osDeviceContext->GetBufMgr();
     MOS_OS_CHK_NULL_RETURN(bufMgr);
 
-    context = (PMOS_OS_CONTEXT)MOS_AllocAndZeroMemory(sizeof(MOS_OS_CONTEXT));
+    context = MOS_New(MOS_OS_CONTEXT);
     MOS_OS_CHK_NULL_RETURN(context);
 
     context->m_apoMosEnabled    = true;
@@ -375,6 +376,7 @@ MOS_STATUS MosInterface::InitStreamParameters(
     context->fd                 = fd;
     context->pPerfData          = ((PMOS_CONTEXT)extraParams)->pPerfData;
 
+    context->m_userSettingPtr   = ((PMOS_CONTEXT)extraParams)->m_userSettingPtr;
     context->m_auxTableMgr      = osDeviceContext->GetAuxTableMgr();
 
     mos_bufmgr_gem_enable_reuse(bufMgr);
@@ -404,7 +406,7 @@ MOS_STATUS MosInterface::InitStreamParameters(
     {
         MOS_OS_ASSERTMESSAGE("Do not support the legacy context creation.\n");
         MOS_FreeMemAndSetNull(context->pPerfData);
-        MOS_FreeMemAndSetNull(context);
+        MOS_Delete(context);
         streamState->perStreamParameters = nullptr;
         return MOS_STATUS_UNIMPLEMENTED;
     }
@@ -443,14 +445,17 @@ MOS_STATUS MosInterface::InitStreamParameters(
         }
     }
 #endif
-
+#if (_DEBUG || _RELEASE_INTERNAL)
     // read "Linux PerformanceTag Enable" user feature key
-    MosUtilities::MosUserFeatureReadValueID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_LINUX_PERFORMANCETAG_ENABLE_ID,
-        &userFeatureData,
-        (MOS_CONTEXT_HANDLE)nullptr);
-    context->uEnablePerfTag = userFeatureData.u32Data;
+    uint32_t regValue = 0;
+    ReadUserSettingForDebug(
+        context->m_userSettingPtr,
+        regValue,
+        __MEDIA_USER_FEATURE_VALUE_LINUX_PERFORMANCETAG_ENABLE,
+        MediaUserSetting::Group::Device);
+
+    context->uEnablePerfTag = regValue;
+#endif
 
     return MOS_STATUS_SUCCESS;
 }
@@ -3019,13 +3024,26 @@ uint32_t MosInterface::GetResourceArrayIndex(
 MediaUserSettingSharedPtr MosInterface::MosGetUserSettingInstance(
     PMOS_CONTEXT osContext)
 {
-    return nullptr;
+    if (osContext == nullptr)
+    {
+        MOS_OS_NORMALMESSAGE("Null usersetting PTR");
+        return nullptr;
+    }
+
+    return osContext->m_userSettingPtr;
 }
 
 MediaUserSettingSharedPtr MosInterface::MosGetUserSettingInstance(
     MOS_STREAM_HANDLE streamState)
 {
-    return nullptr;
+    PMOS_CONTEXT mosContext = nullptr;
+    if (streamState == nullptr)
+    {
+        MOS_OS_NORMALMESSAGE("Null usersetting PTR");
+        return nullptr;
+    }
+    mosContext = (PMOS_CONTEXT)streamState->perStreamParameters;
+    return MosGetUserSettingInstance(mosContext);
 }
 
 #if MOS_COMMAND_BUFFER_DUMP_SUPPORTED
@@ -3549,4 +3567,32 @@ MOS_STATUS MosInterface::RegisterBBCompleteNotifyEvent(
     GPU_CONTEXT_HANDLE  gpuContextHandle)
 {
     return MOS_STATUS_SUCCESS;
+}
+
+void MosInterface::InsertRTLog(
+    MOS_STREAM_HANDLE streamState,
+    MOS_OCA_RTLOG_COMPONENT_TPYE componentType,
+    bool isErr,
+    int32_t id,
+    uint8_t paramCount,
+    const void *param)
+{
+    if (streamState && streamState->osDeviceContext && streamState->osDeviceContext->GetOCARTLogMgr())
+    {
+        streamState->osDeviceContext->GetOCARTLogMgr()->InsertRTLog(componentType, isErr, id, paramCount, param);
+    }
+}
+
+void MosInterface::GetRtLogResourceInfo(
+    MOS_STREAM_HANDLE streamState,
+    PMOS_RESOURCE &osResource,
+    uint32_t &size)
+{
+    osResource = nullptr;
+    size = 0;
+    if (streamState && streamState->osDeviceContext && streamState->osDeviceContext->GetOCARTLogMgr())
+    {
+        osResource = streamState->osDeviceContext->GetOCARTLogMgr()->GetOcaRTlogResource();
+        size = streamState->osDeviceContext->GetOCARTLogMgr()->GetRtlogHeapInfo().size;
+    }
 }

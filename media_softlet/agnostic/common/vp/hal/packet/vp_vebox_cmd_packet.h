@@ -543,9 +543,16 @@ public:
     //!
     virtual MOS_STATUS SetDiParams(PVEBOX_DI_PARAMS diParams) override;
 
+    virtual MOS_STATUS ConfigureSteParams(VpVeboxRenderData *renderData, bool bEnableSte, uint32_t dwSTEFactor);
+    virtual MOS_STATUS ConfigureTccParams(VpVeboxRenderData *renderData, bool bEnableTcc, uint8_t magenta, uint8_t red, uint8_t yellow, uint8_t green, uint8_t cyan, uint8_t blue);
+    virtual MOS_STATUS ConfigureProcampParams(VpVeboxRenderData *renderData, bool bEnableProcamp, float fBrightness, float fContrast, float fHue, float fSaturation);
+    virtual MOS_STATUS ConfigureDenoiseParams(VpVeboxRenderData *renderData, float fDenoiseFactor);
+
     virtual MOS_STATUS UpdateCscParams(FeatureParamCsc &params) override;
+    virtual MOS_STATUS UpdateDenoiseParams(FeatureParamDenoise &params) override;
     virtual MOS_STATUS UpdateTccParams(FeatureParamTcc &params) override;
     virtual MOS_STATUS UpdateSteParams(FeatureParamSte &params) override;
+    virtual MOS_STATUS UpdateProcampParams(FeatureParamProcamp &params) override;
 
     //!
     //! \brief    Get DN luma parameters
@@ -1165,7 +1172,6 @@ protected:
     uint32_t                    m_dwGlobalNoiseLevelV = 0;                        //!< Global Noise Level for V
     uint32_t                    m_dwGlobalNoiseLevel = 0;                         //!< Global Noise Level
     PVP_VEBOX_CACHE_CNTL        m_surfMemCacheCtl = nullptr;                      //!< Surface memory cache control
-    uint32_t                    m_DNDIFirstFrame = 0;
     uint32_t                    m_DIOutputFrames = MEDIA_VEBOX_DI_OUTPUT_CURRENT; //!< default value is 2 for non-DI case.
 
     // Statistics

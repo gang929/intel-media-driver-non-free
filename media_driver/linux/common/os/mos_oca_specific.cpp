@@ -69,6 +69,7 @@ MOS_STATUS  MosOcaInterfaceSpecific::s_ocaStatus          = MOS_STATUS_SUCCESS;
 uint32_t MosOcaInterfaceSpecific::s_lineNumForOcaErr      = 0;
 bool MosOcaInterfaceSpecific::s_bOcaStatusExistInReg      = false;
 int32_t MosOcaInterfaceSpecific::s_refCount               = 0;
+bool MosOcaInterfaceSpecific::s_isDestroyed               = false;
 
 //!
 //! \brief  Get the idle oca buffer, which is neither used by hw nor locked, and lock it for edit.
@@ -121,10 +122,43 @@ MOS_STATUS MosOcaInterfaceSpecific::UnlockOcaBuf(MOS_OCA_BUFFER_HANDLE ocaBufHan
     {
         return MOS_STATUS_INVALID_PARAMETER;
     }
-    m_ocaBufContextList[ocaBufHandle].inUse               = false;
     m_ocaBufContextList[ocaBufHandle].logSection.offset   = 0;
     m_ocaBufContextList[ocaBufHandle].logSection.base     = nullptr;
+    m_ocaBufContextList[ocaBufHandle].inUse               = false;
+    m_ocaBufContextList[ocaBufHandle].is1stLevelBBStarted = false;
     return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS MosOcaInterfaceSpecific::UnlockOcaBufferWithDelay(MOS_OCA_BUFFER_HANDLE ocaBufHandle)
+{
+    if (ocaBufHandle >= MAX_NUM_OF_OCA_BUF_CONTEXT || ocaBufHandle < 0)
+    {
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
+
+    MosOcaAutoLock lock(m_mutexForOcaBufPool);
+    m_PendingOcaBuffersToUnlock.push_back(ocaBufHandle);
+    return MOS_STATUS_SUCCESS;
+}
+
+void MosOcaInterfaceSpecific::UnlockPendingOcaBuffers(PMOS_CONTEXT mosCtx, struct MOS_OCA_EXEC_LIST_INFO *info, int count)
+{
+    MosOcaAutoLock lock(m_mutexForOcaBufPool);
+    if(m_PendingOcaBuffersToUnlock.size() > 1)
+    {
+        MOS_OS_ASSERTMESSAGE("size of pending oca buffer > 1");
+    }
+    for (auto it = m_PendingOcaBuffersToUnlock.begin();
+        it != m_PendingOcaBuffersToUnlock.end(); ++it)
+    {
+        // Other information to log section, which is only captured after BB end, can be added here.
+        if(mosCtx != nullptr && info != nullptr && count > 0)
+        {
+            AddExecListInfoToLogSection(*it, mosCtx, info, count);
+        }
+        UnlockOcaBuf(*it);
+    }
+    m_PendingOcaBuffersToUnlock.clear();
 }
 
 //!
@@ -197,7 +231,6 @@ MOS_STATUS MosOcaInterfaceSpecific::On1stLevelBBEnd(MOS_OCA_BUFFER_HANDLE ocaBuf
     }
 
     AddResourceInfoToLogSection(ocaBufHandle, mosCtx);
-    m_ocaBufContextList[ocaBufHandle].is1stLevelBBStarted = false;
 
     return MOS_STATUS_SUCCESS;
 }
@@ -447,6 +480,35 @@ void MosOcaInterfaceSpecific::AddResourceInfoToLogSection(MOS_OCA_BUFFER_HANDLE 
     return;
 }
 
+void MosOcaInterfaceSpecific::AddExecListInfoToLogSection(MOS_OCA_BUFFER_HANDLE ocaBufHandle, PMOS_CONTEXT mosCtx, struct MOS_OCA_EXEC_LIST_INFO *info, int count)
+{
+    if (!m_ocaBufContextList[ocaBufHandle].is1stLevelBBStarted)
+    {
+        return;
+    }
+    if (info == nullptr || 0 == count)
+    {
+        return;
+    }
+    if (!IsLogSectionEnabled(ocaBufHandle))
+    {
+        return;
+    }
+
+    MOS_OCA_LOG_HEADER_EXEC_LIST_INFO header = {};
+    header.header.type                      = MOS_OCA_LOG_TYPE_EXEC_LIST_INFO;
+    header.header.headerSize                = sizeof(MOS_OCA_LOG_HEADER_EXEC_LIST_INFO);
+    header.header.dataSize                  = count * sizeof(struct MOS_OCA_EXEC_LIST_INFO);
+    header.count                            = count;
+
+    MOS_STATUS status = DumpDataBlock(ocaBufHandle, (PMOS_OCA_LOG_HEADER)&header, info);
+    if (MOS_FAILED(status))
+    {
+       MosOcaInterfaceSpecific::OnOcaError(mosCtx, status, __FUNCTION__, __LINE__);
+    }
+    return;
+}
+
 //!
 //! \brief  Add data block to oca log section.
 //! \param  [in] ocaBufHandle
@@ -528,8 +590,8 @@ void MosOcaInterfaceSpecific::InitOcaLogSection(MOS_LINUX_BO *bo)
     {
         return;
     }
-    uint64_t *ocaLogSectionBaseAddr = (uint64_t *)((uint64_t)bo->virt + bo->size - OCA_LOG_SECTION_SIZE_MAX);
-    *ocaLogSectionBaseAddr = OCA_LOG_SECTION_MAGIC_NUMBER;
+    OCA_LOG_SECTION_HEADER *header = (OCA_LOG_SECTION_HEADER *)((uint64_t)bo->virt + bo->size - OCA_LOG_SECTION_SIZE_MAX);
+    header->magicNum = OCA_LOG_SECTION_MAGIC_NUMBER;
 }
 
 void MosOcaInterfaceSpecific::InitLogSection(MOS_OCA_BUFFER_HANDLE ocaBufHandle, PMOS_RESOURCE resCmdBuf)
@@ -542,8 +604,9 @@ void MosOcaInterfaceSpecific::InitLogSection(MOS_OCA_BUFFER_HANDLE ocaBufHandle,
     }
 
     uint64_t *logSectionBase = (uint64_t*)((char *)boCmdBuf->virt + boCmdBuf->size - OCA_LOG_SECTION_SIZE_MAX);
-    uint64_t magicNum = *logSectionBase;
-    if (OCA_LOG_SECTION_MAGIC_NUMBER != magicNum)
+    OCA_LOG_SECTION_HEADER *header = (OCA_LOG_SECTION_HEADER *)logSectionBase;
+
+    if (OCA_LOG_SECTION_MAGIC_NUMBER != header->magicNum)
     {
         MOS_OS_NORMALMESSAGE("Log section not exists in current 1st level BB.");
         return;
@@ -551,7 +614,7 @@ void MosOcaInterfaceSpecific::InitLogSection(MOS_OCA_BUFFER_HANDLE ocaBufHandle,
 
     m_ocaBufContextList[ocaBufHandle].logSection.base                    = logSectionBase;
     // Reserve an uint64 for magic number;
-    m_ocaBufContextList[ocaBufHandle].logSection.offset                  = sizeof(uint64_t);
+    m_ocaBufContextList[ocaBufHandle].logSection.offset                  = sizeof(OCA_LOG_SECTION_HEADER);
     m_ocaBufContextList[ocaBufHandle].logSection.resInfo.resCount        = 0;
     m_ocaBufContextList[ocaBufHandle].logSection.resInfo.resCountSkipped = 0;
 }
@@ -659,7 +722,6 @@ void MosOcaInterfaceSpecific::Initialize(PMOS_CONTEXT mosContext)
         m_resInfoPool = MOS_NewArray(MOS_OCA_RESOURCE_INFO, m_config.maxResInfoCount * MAX_NUM_OF_OCA_BUF_CONTEXT);
         if (nullptr == m_resInfoPool)
         {
-            MOS_DeleteArray(m_resInfoPool);
             return;
         }
         MosUtilities::MosZeroMemory(m_resInfoPool, sizeof(MOS_OCA_RESOURCE_INFO)*m_config.maxResInfoCount * MAX_NUM_OF_OCA_BUF_CONTEXT);
@@ -675,6 +737,16 @@ void MosOcaInterfaceSpecific::Initialize(PMOS_CONTEXT mosContext)
         m_ocaMutex = MosUtilities::MosCreateMutex();
         if (nullptr == m_ocaMutex)
         {
+            MOS_DeleteArray(m_resInfoPool);
+            return;
+        }
+
+        m_mutexForOcaBufPool = MosUtilities::MosCreateMutex();
+        if (nullptr == m_mutexForOcaBufPool)
+        {
+            MOS_DeleteArray(m_resInfoPool);
+            MosUtilities::MosDestroyMutex(m_ocaMutex);
+            m_ocaMutex = nullptr;
             return;
         }
 
@@ -704,6 +776,7 @@ MosOcaInterfaceSpecific& MosOcaInterfaceSpecific::operator= (MosOcaInterfaceSpec
 MosOcaInterfaceSpecific::~MosOcaInterfaceSpecific()
 {
     Uninitialize();
+    s_isDestroyed = true;
 }
 
 //!
@@ -713,6 +786,16 @@ void MosOcaInterfaceSpecific::Uninitialize()
 {
     if (m_isInitialized == true)
     {
+        if (m_PendingOcaBuffersToUnlock.size() > 0)
+        {
+            MOS_OS_ASSERTMESSAGE("%d Oca Buffers in pending list!", m_PendingOcaBuffersToUnlock.size());
+            UnlockPendingOcaBuffers(nullptr, nullptr, 0);
+        }
+        if (nullptr != m_mutexForOcaBufPool)
+        {
+            MosUtilities::MosDestroyMutex(m_mutexForOcaBufPool);
+            m_mutexForOcaBufPool = nullptr;
+        }
         if (nullptr != m_ocaMutex)
         {
             MosUtilities::MosDestroyMutex(m_ocaMutex);
@@ -729,6 +812,7 @@ void MosOcaInterfaceSpecific::Uninitialize()
         }
         m_isInitialized = false;
         s_bOcaStatusExistInReg = false;
+        s_isDestroyed = false;
     }
 }
 
@@ -752,8 +836,11 @@ void MosOcaInterfaceSpecific::UninitInterface()
 {
     if (MosUtilities::MosAtomicDecrement(&s_refCount) == 0)
     {
-        MosOcaInterfaceSpecific &ins = (MosOcaInterfaceSpecific &)MosOcaInterfaceSpecific::GetInstance();
-        ins.Uninitialize();
+        if(!s_isDestroyed)
+        {
+            MosOcaInterfaceSpecific &ins = (MosOcaInterfaceSpecific &)MosOcaInterfaceSpecific::GetInstance();
+            ins.Uninitialize();
+        }
     }
     return;
 }
