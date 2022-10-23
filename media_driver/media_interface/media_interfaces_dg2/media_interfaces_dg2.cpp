@@ -166,17 +166,14 @@ void VphalInterfacesXe_Hpm::InitPlatformKernelBinary(
     vp::VpPlatformInterface  *&vpPlatformInterface)
 {
 #if defined(ENABLE_KERNELS)
-    vpPlatformInterface->SetVpKernelBinary(
+    vpPlatformInterface->SetVpFCKernelBinary(
                         IGVPKRN_XE_HPG,
                         IGVPKRN_XE_HPG_SIZE,
                         IGVPKRN_XE_HPG_CMFCPATCH,
                         IGVPKRN_XE_HPG_CMFCPATCH_SIZE);
 #if !defined(_FULL_OPEN_SOURCE)
-    vpPlatformInterface->SetVpISAKernelBinary(
-                        IGVP3DLUT_GENERATION_XE_HPG,
-                        IGVP3DLUT_GENERATION_XE_HPG_SIZE,
-                        IGVPHVS_DENOISE_XE_HPG,
-                        IGVPHVS_DENOISE_XE_HPG_SIZE);  
+    vpPlatformInterface->AddVpIsaKernelEntryToList(IGVP3DLUT_GENERATION_XE_HPG, IGVP3DLUT_GENERATION_XE_HPG_SIZE);
+    vpPlatformInterface->AddVpIsaKernelEntryToList(IGVPHVS_DENOISE_XE_HPG, IGVPHVS_DENOISE_XE_HPG_SIZE);
 #endif
 #endif
 }
@@ -247,7 +244,7 @@ MOS_STATUS MhwInterfacesDg2::Initialize(
         m_hcpInterface =
             MOS_New(Hcp, osInterface, m_miInterface, m_cpInterface, params.m_isDecode);
     }
-    if (params.Flags.m_vdboxAll)
+    if (params.Flags.m_vdboxAll || params.Flags.m_avp)
     {
         m_avpInterface =
             MOS_New(Avp, osInterface, m_miInterface, m_cpInterface, params.m_isDecode);
@@ -501,7 +498,6 @@ MOS_STATUS MhwInterfacesDg2_Next::Initialize(
     }
     if (params.Flags.m_vdboxAll || params.Flags.m_vdenc)
     {
-        m_vdencInterface = MOS_New(Vdenc, osInterface);
         auto ptr = std::make_shared<mhw::vdbox::vdenc::xe_hpm::Impl>(osInterface);
         m_vdencItf = std::static_pointer_cast<mhw::vdbox::vdenc::Itf>(ptr);
     }
@@ -570,7 +566,7 @@ MOS_STATUS CodechalInterfacesXe_Hpm::Initialize(
 
     if (CodecHalIsDecode(CodecFunction))
     {
-        if(osInterface->bHcpDecScalabilityMode = MOS_SCALABILITY_ENABLE_MODE_USER_FORCE)
+        if(osInterface->bHcpDecScalabilityMode == MOS_SCALABILITY_ENABLE_MODE_USER_FORCE)
         {
             disableScalability = false;
         }
@@ -920,12 +916,15 @@ MOS_STATUS CodechalInterfacesXe_Hpm::CreateCodecHalInterface(MhwInterfaces      
                                                              bool                   disableScalability)
 {
     pHwInterface = MOS_New(Hw, osInterface, CodecFunction, mhwInterfaces, disableScalability);
-
     if (pHwInterface == nullptr)
     {
         CODECHAL_PUBLIC_ASSERTMESSAGE("hwInterface is not valid!");
         return MOS_STATUS_NO_SPACE;
     }
+    pHwInterface->m_hwInterfaceNext                            = MOS_New(CodechalHwInterfaceNext, osInterface);
+    pHwInterface->m_hwInterfaceNext->pfnCreateDecodeSinglePipe = decode::DecodeScalabilitySinglePipe::CreateDecodeSinglePipe;
+    pHwInterface->m_hwInterfaceNext->pfnCreateDecodeMultiPipe  = decode::DecodeScalabilityMultiPipe::CreateDecodeMultiPipe;
+
 #if USE_CODECHAL_DEBUG_TOOL
     pDebugInterface = MOS_New(CodechalDebugInterface);
     if (pDebugInterface == nullptr)

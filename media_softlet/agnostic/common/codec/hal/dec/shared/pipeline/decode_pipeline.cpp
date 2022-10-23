@@ -161,6 +161,16 @@ MOS_STATUS DecodePipeline::Initialize(void *settings)
     DECODE_CHK_NULL(m_hwInterface);
     DECODE_CHK_STATUS(m_hwInterface->Initialize(codecSettings));
 
+    if (m_mediaCopy == nullptr)
+    {
+        m_mediaCopy = m_hwInterface->CreateMediaCopy(m_osInterface);
+    }
+
+#if USE_CODECHAL_DEBUG_TOOL
+    DECODE_CHK_NULL(m_debugInterface);
+    DECODE_CHK_STATUS(m_debugInterface->SetFastDumpConfig(m_mediaCopy));
+#endif
+
     m_mediaContext = MOS_New(MediaContext, scalabilityDecoder, m_hwInterface, m_osInterface);
     DECODE_CHK_NULL(m_mediaContext);
 
@@ -175,7 +185,7 @@ MOS_STATUS DecodePipeline::Initialize(void *settings)
 
     DECODE_CHK_STATUS(CreateStatusReport());
 
-    m_decodecp = Create_DecodeCpInterface(codecSettings, m_hwInterface);
+    m_decodecp = Create_DecodeCpInterface(codecSettings, m_hwInterface->GetCpInterface(), m_hwInterface->GetOsInterface());
     if (m_decodecp)
     {
         m_decodecp->RegisterParams(codecSettings);

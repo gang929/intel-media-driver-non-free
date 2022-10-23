@@ -83,7 +83,7 @@ MosMutex          MosUtilitiesSpecificNext::m_userSettingMutex;
 //!
 //! \brief trace event size definition
 //!
-#define TRACE_EVENT_MAX_SIZE           (1024)
+#define TRACE_EVENT_MAX_SIZE           (3072)
 #define TRACE_EVENT_HEADER_SIZE        (sizeof(uint32_t)*3)
 #define TRACE_EVENT_MAX_DATA_SIZE      (TRACE_EVENT_MAX_SIZE - TRACE_EVENT_HEADER_SIZE - sizeof(uint16_t)) // Trace info data size section is in uint16_t
 
@@ -2442,12 +2442,12 @@ void MosUtilities::MosTraceEvent(
 
             if (pArg1 && dwSize1 > 0)
             {
-                memcpy(pTraceBuf+nLen, pArg1, dwSize1);
+                MOS_SecureMemcpy(pTraceBuf+nLen, dwSize1, pArg1, dwSize1);
                 nLen += dwSize1;
             }
             if (pArg2 && dwSize2 > 0)
             {
-                memcpy(pTraceBuf+nLen, pArg2, dwSize2);
+                MOS_SecureMemcpy(pTraceBuf+nLen, dwSize2, pArg2, dwSize2);
                 nLen += dwSize2;
             }
             size_t writeSize = write(MosUtilitiesSpecificNext::m_mosTraceFd, pTraceBuf, nLen);

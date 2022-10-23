@@ -46,12 +46,14 @@
 #include "vp_ste_filter.h"
 #include "vp_procamp_filter.h"
 #include "vp_hdr_filter.h"
+#include "vp_hdr_render_filter.h"
 #include "vp_di_filter.h"
 #include "vp_fc_filter.h"
 
 namespace vp
 {
 class VpInterface;
+class VpSinglePipeContext;
 
 enum EngineType
 {

@@ -19,3 +19,4 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 
 media_include_subdirectory(enc)
+media_include_subdirectory(shared)

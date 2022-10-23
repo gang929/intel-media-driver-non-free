@@ -56,10 +56,83 @@ CodechalHwInterfaceNext::CodechalHwInterfaceNext(
 
     // Remove legacy mhw sub interfaces.
     m_cpInterface = mhwInterfacesNext->m_cpInterface;
-    m_mfxInterface = mhwInterfacesNext->m_mfxInterface;
-    m_vdencInterface = mhwInterfacesNext->m_vdencInterface;
 }
 
+MOS_STATUS CodechalHwInterfaceNext::Initialize(
+    CodechalSetting *settings)
+{
+    CODEC_HW_FUNCTION_ENTER;
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+    m_enableCodecMmc = !MEDIA_IS_WA(GetWaTable(), WaDisableCodecMmc);
+
+    return eStatus;
+}
+
+MOS_STATUS CodechalHwInterfaceNext::InitCacheabilityControlSettings(
+    CODECHAL_FUNCTION codecFunction)
+{
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+    CODEC_HW_FUNCTION_ENTER;
+
+    CODEC_HW_CHK_NULL_RETURN(m_osInterface);
+
+    for (uint32_t i = MOS_CODEC_RESOURCE_USAGE_BEGIN_CODEC + 1; i < MOS_CODEC_RESOURCE_USAGE_END_CODEC; i++)
+    {
+        CODEC_HW_CHK_STATUS_RETURN(CachePolicyGetMemoryObject(
+            (MOS_HW_RESOURCE_DEF)i));
+    }
+
+    SetCacheabilitySettings(m_cacheabilitySettings);
+
+    bool l3CachingEnabled = !m_osInterface->bSimIsActive;
+
+    if (m_checkBankCount)
+    {
+        CODEC_HW_CHK_NULL_RETURN(m_osInterface);
+        auto gtSysInfo = m_osInterface->pfnGetGtSystemInfo(m_osInterface);
+        CODEC_HW_CHK_NULL_RETURN(gtSysInfo);
+
+        l3CachingEnabled = (gtSysInfo->L3BankCount != 0 || gtSysInfo->L3CacheSizeInKb != 0);
+    }
+
+    if (l3CachingEnabled)
+    {
+        InitL3CacheSettings();
+    }
+
+    return eStatus;
+}
+
+MOS_STATUS CodechalHwInterfaceNext::CachePolicyGetMemoryObject(
+    MOS_HW_RESOURCE_DEF mosUsage)
+{
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+    m_cacheabilitySettings[mosUsage].Value =
+        (m_osInterface->pfnCachePolicyGetMemoryObject(
+            mosUsage, 
+            m_osInterface->pfnGetGmmClientContext(m_osInterface))).DwordValue;
+
+    return eStatus;
+}
+
+CodechalHwInterfaceNext::CodechalHwInterfaceNext(
+    PMOS_INTERFACE osInterface)
+{
+    CODEC_HW_ASSERT(osInterface);
+    m_osInterface = osInterface;
+
+    m_skuTable = m_osInterface->pfnGetSkuTable(m_osInterface);
+    m_waTable  = m_osInterface->pfnGetWaTable(m_osInterface);
+    CODEC_HW_ASSERT(m_skuTable);
+    CODEC_HW_ASSERT(m_waTable);
+
+    MOS_ZeroMemory(&m_hucDmemDummy, sizeof(m_hucDmemDummy));
+    MOS_ZeroMemory(&m_dummyStreamIn, sizeof(m_dummyStreamIn));
+    MOS_ZeroMemory(&m_dummyStreamOut, sizeof(m_dummyStreamOut));
+}
 MOS_STATUS CodechalHwInterfaceNext::GetAvpStateCommandSize(
     uint32_t                        mode,
     uint32_t                        *commandsSize,
@@ -147,9 +220,9 @@ MOS_STATUS CodechalHwInterfaceNext::SetCacheabilitySettings(
     {
         CODEC_HW_CHK_STATUS_RETURN(m_mfxInterface->SetCacheabilitySettings(cacheabilitySettings));
     }
-    if (m_vdencInterface)
+    if (m_vdencItf)
     {
-        CODEC_HW_CHK_STATUS_RETURN(m_vdencInterface->SetCacheabilitySettings(cacheabilitySettings));
+        CODEC_HW_CHK_STATUS_RETURN(m_vdencItf->SetCacheabilitySettings(cacheabilitySettings));
     }
     /*                                                                    */
 
@@ -365,14 +438,40 @@ MOS_STATUS CodechalHwInterfaceNext::GetMfxPrimitiveCommandsDataSize(
     uint32_t cpCmdsize = 0;
     uint32_t cpPatchListSize = 0;
 
-    if (m_mfxInterface)
+    if (m_mfxItf)
     {
-        CODEC_HW_CHK_STATUS_RETURN(m_mfxInterface->GetMfxPrimitiveCommandsDataSize(
+        CODEC_HW_CHK_STATUS_RETURN(m_mfxItf->GetMfxPrimitiveCommandsDataSize(
             mode, (uint32_t*)commandsSize, (uint32_t*)patchListSize, modeSpecific ? true : false));
 
         m_cpInterface->GetCpSliceLevelCmdSize(cpCmdsize, cpPatchListSize);
     }
 
+    *commandsSize += (uint32_t)cpCmdsize;
+    *patchListSize += (uint32_t)cpPatchListSize;
+
+    return eStatus;
+}
+
+MOS_STATUS CodechalHwInterfaceNext::GetMfxStateCommandsDataSize(
+    uint32_t  mode,
+    uint32_t *commandsSize,
+    uint32_t *patchListSize,
+    bool      shortFormat)
+{
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+    CODEC_HW_FUNCTION_ENTER;
+
+    uint32_t cpCmdsize       = 0;
+    uint32_t cpPatchListSize = 0;
+
+    if (m_mfxItf)
+    {
+        CODEC_HW_CHK_STATUS_RETURN(m_mfxItf->GetMfxStateCommandsDataSize(
+            mode, (uint32_t *)commandsSize, (uint32_t *)patchListSize, shortFormat ? true : false));
+
+        m_cpInterface->GetCpStateLevelCmdSize(cpCmdsize, cpPatchListSize);
+    }
     *commandsSize += (uint32_t)cpCmdsize;
     *patchListSize += (uint32_t)cpPatchListSize;
 
@@ -670,6 +769,117 @@ MOS_STATUS CodechalHwInterfaceNext::ReadImageStatusForHcp(
 
     return eStatus;
 }
+
+MOS_STATUS CodechalHwInterfaceNext::SetRowstoreCachingOffsets(
+    PMHW_VDBOX_ROWSTORE_PARAMS rowstoreParams)
+{
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+    CODEC_HW_FUNCTION_ENTER;
+
+    if (m_vdencItf)
+    {
+        mhw::vdbox::vdenc::RowStorePar par = {};
+        if (rowstoreParams->Mode == CODECHAL_ENCODE_MODE_AVC)
+        {
+            par.mode    = mhw::vdbox::vdenc::RowStorePar::AVC;
+            par.isField = !rowstoreParams->bIsFrame;
+        }
+        else if (rowstoreParams->Mode == CODECHAL_ENCODE_MODE_VP9)
+        {
+            par.mode = mhw::vdbox::vdenc::RowStorePar::VP9;
+            par.bitDepth = mhw::vdbox::vdenc::RowStorePar::DEPTH_8;
+            if (rowstoreParams->ucBitDepthMinus8 == 1 || rowstoreParams->ucBitDepthMinus8 == 2)
+            {
+                par.bitDepth = mhw::vdbox::vdenc::RowStorePar::DEPTH_10;
+            }
+            else if (rowstoreParams->ucBitDepthMinus8 > 2)
+            {
+                par.bitDepth = mhw::vdbox::vdenc::RowStorePar::DEPTH_12;
+            }
+            par.frameWidth = rowstoreParams->dwPicWidth;
+            switch (rowstoreParams->ucChromaFormat)
+            {
+            case HCP_CHROMA_FORMAT_MONOCHROME:
+                par.format = mhw ::vdbox::vdenc::RowStorePar::MONOCHROME;
+                break;
+            case HCP_CHROMA_FORMAT_YUV420:
+                par.format = mhw ::vdbox::vdenc::RowStorePar::YUV420;
+                break;
+            case HCP_CHROMA_FORMAT_YUV422:
+                par.format = mhw ::vdbox::vdenc::RowStorePar::YUV422;
+                break;
+            case HCP_CHROMA_FORMAT_YUV444:
+                par.format = mhw ::vdbox::vdenc::RowStorePar::YUV444;
+                break;
+            }
+        }
+        else if (rowstoreParams->Mode == CODECHAL_ENCODE_MODE_HEVC)
+        {
+            par.mode = mhw::vdbox::vdenc::RowStorePar::HEVC;
+            par.bitDepth = mhw::vdbox::vdenc::RowStorePar::DEPTH_8;
+            if (rowstoreParams->ucBitDepthMinus8 == 1 || rowstoreParams->ucBitDepthMinus8 == 2)
+            {
+                par.bitDepth = mhw::vdbox::vdenc::RowStorePar::DEPTH_10;
+            }
+            else if (rowstoreParams->ucBitDepthMinus8 > 2)
+            {
+                par.bitDepth = mhw::vdbox::vdenc::RowStorePar::DEPTH_12;
+            }
+            par.lcuSize = mhw ::vdbox::vdenc::RowStorePar::SIZE_OTHER;
+            if (rowstoreParams->ucLCUSize == 32)
+            {
+                par.lcuSize = mhw ::vdbox::vdenc::RowStorePar::SIZE_32;
+            }
+            else if (rowstoreParams->ucLCUSize == 64)
+            {
+                par.lcuSize = mhw ::vdbox::vdenc::RowStorePar::SIZE_64;
+            }
+            par.frameWidth = rowstoreParams->dwPicWidth;
+            switch (rowstoreParams->ucChromaFormat)
+            {
+            case HCP_CHROMA_FORMAT_MONOCHROME:
+                par.format = mhw ::vdbox::vdenc::RowStorePar::MONOCHROME;
+                break;
+            case HCP_CHROMA_FORMAT_YUV420:
+                par.format = mhw ::vdbox::vdenc::RowStorePar::YUV420;
+                break;
+            case HCP_CHROMA_FORMAT_YUV422:
+                par.format = mhw ::vdbox::vdenc::RowStorePar::YUV422;
+                break;
+            case HCP_CHROMA_FORMAT_YUV444:
+                par.format = mhw ::vdbox::vdenc::RowStorePar::YUV444;
+                break;
+            }
+        }
+        else if (rowstoreParams->Mode == CODECHAL_ENCODE_MODE_AV1)
+        {
+            par.mode = mhw::vdbox::vdenc::RowStorePar::AV1;
+        }
+        CODEC_HW_CHK_STATUS_RETURN(m_vdencItf->SetRowstoreCachingOffsets(par));
+    }
+    if (m_mfxItf)
+    {
+        CODEC_HW_CHK_STATUS_RETURN(m_mfxItf->GetRowstoreCachingAddrs(rowstoreParams));
+    }
+    if (m_hcpItf)
+    {
+        mhw::vdbox::hcp::HcpVdboxRowStorePar rowstoreParamsHCP = {};
+        rowstoreParamsHCP.Mode             = rowstoreParams->Mode;
+        rowstoreParamsHCP.dwPicWidth       = rowstoreParams->dwPicWidth;
+        rowstoreParamsHCP.ucChromaFormat   = rowstoreParams->ucChromaFormat;
+        rowstoreParamsHCP.ucBitDepthMinus8 = rowstoreParams->ucBitDepthMinus8;
+        rowstoreParamsHCP.ucLCUSize        = rowstoreParams->ucLCUSize;
+        CODEC_HW_CHK_STATUS_RETURN(m_hcpItf->SetRowstoreCachingOffsets(rowstoreParamsHCP));
+    }
+    if (m_avpItf)
+    {
+        CODEC_HW_CHK_STATUS_RETURN(m_avpItf->GetRowstoreCachingAddrs());
+    }
+
+    return eStatus;
+}
+
 MOS_STATUS CodechalHwInterfaceNext::InitL3CacheSettings()
 {
     CODEC_HW_FUNCTION_ENTER;

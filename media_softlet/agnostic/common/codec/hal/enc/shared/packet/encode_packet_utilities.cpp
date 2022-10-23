@@ -166,16 +166,15 @@ namespace encode {
         ENCODE_FUNC_CALL();
 
         ENCODE_CHK_NULL_RETURN(m_hwInterface);
-        ENCODE_CHK_NULL_RETURN(m_hwInterface->GetMfxInterface());
 
-        if (m_vdboxIndex > m_hwInterface->GetMfxInterface()->GetMaxVdboxIndex())
+        if (m_vdboxIndex > m_hwInterface->m_hwInterfaceNext->GetMaxVdboxIndex())
         {
             ENCODE_ASSERTMESSAGE("ERROR - vdbox index exceed the maximum");
             eStatus = MOS_STATUS_INVALID_PARAMETER;
             return eStatus;
         }
 
-        auto pMmioRegistersMfx = m_hwInterface->GetMfxInterface()->GetMmioRegisters(m_vdboxIndex);
+        auto pMmioRegisters = m_hwInterface->GetVdencInterfaceNext()->GetMmioRegisters(m_vdboxIndex);
 
         MOS_ZeroMemory(&FlushDwParams, sizeof(FlushDwParams));
         ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiFlushDwCmd(cmdBuffer, &FlushDwParams));
@@ -187,25 +186,25 @@ namespace encode {
 
         miLoadRegMemParams.presStoreBuffer = presStoreBuffer;
         miLoadRegMemParams.dwOffset = offset;
-        miLoadRegMemParams.dwRegister = pMmioRegistersMfx->generalPurposeRegister0LoOffset;
+        miLoadRegMemParams.dwRegister = pMmioRegisters->generalPurposeRegister0LoOffset;
         ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiLoadRegisterMemCmd(cmdBuffer, &miLoadRegMemParams));
 
         MOS_ZeroMemory(&LoadRegisterImmParams, sizeof(LoadRegisterImmParams));
         LoadRegisterImmParams.dwData = 0;
-        LoadRegisterImmParams.dwRegister = pMmioRegistersMfx->generalPurposeRegister0HiOffset;
+        LoadRegisterImmParams.dwRegister = pMmioRegisters->generalPurposeRegister0HiOffset;
         ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiLoadRegisterImmCmd(
             cmdBuffer,
             &LoadRegisterImmParams));
 
         MOS_ZeroMemory(&LoadRegisterImmParams, sizeof(LoadRegisterImmParams));
         LoadRegisterImmParams.dwData = value;
-        LoadRegisterImmParams.dwRegister = pMmioRegistersMfx->generalPurposeRegister4LoOffset;
+        LoadRegisterImmParams.dwRegister = pMmioRegisters->generalPurposeRegister4LoOffset;
         ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiLoadRegisterImmCmd(
             cmdBuffer,
             &LoadRegisterImmParams));
         MOS_ZeroMemory(&LoadRegisterImmParams, sizeof(LoadRegisterImmParams));
         LoadRegisterImmParams.dwData = 0;
-        LoadRegisterImmParams.dwRegister = pMmioRegistersMfx->generalPurposeRegister4HiOffset;
+        LoadRegisterImmParams.dwRegister = pMmioRegisters->generalPurposeRegister4HiOffset;
         ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiLoadRegisterImmCmd(
             cmdBuffer,
             &LoadRegisterImmParams));
@@ -247,7 +246,7 @@ namespace encode {
         MOS_ZeroMemory(&StoreRegParams, sizeof(StoreRegParams));
         StoreRegParams.presStoreBuffer = presStoreBuffer;
         StoreRegParams.dwOffset = offset;
-        StoreRegParams.dwRegister = pMmioRegistersMfx->generalPurposeRegister0LoOffset;
+        StoreRegParams.dwRegister = pMmioRegisters->generalPurposeRegister0LoOffset;
         ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiStoreRegisterMemCmd(cmdBuffer, &StoreRegParams));
 
         return eStatus;

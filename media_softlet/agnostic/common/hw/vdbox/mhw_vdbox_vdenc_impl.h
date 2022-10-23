@@ -30,6 +30,7 @@
 
 #include "mhw_vdbox_vdenc_itf.h"
 #include "mhw_impl.h"
+#include "mhw_mi_impl.h"
 
 #ifdef IGFX_VDENC_INTERFACE_EXT_SUPPORT
 #include "mhw_vdbox_vdenc_impl_ext.h"
@@ -139,8 +140,10 @@ template <typename cmd_t>
 class Impl : public Itf, public mhw::Impl
 {
     _VDENC_CMD_DEF(_MHW_CMD_ALL_DEF_FOR_IMPL);
+    MmioRegistersVdbox m_mmioRegisters[MHW_VDBOX_NODE_MAX] = {};  //!< Mfx mmio registers
 
 public:
+
     MOS_STATUS SetRowstoreCachingOffsets(const RowStorePar &par) override
     {
         MHW_FUNCTION_ENTER;
@@ -302,6 +305,63 @@ public:
         return m_rhoDomainStatsEnabled;
     }
 
+    MmioRegistersVdbox *GetMmioRegisters(MHW_VDBOX_NODE_IND index) override
+    {
+        if (index < MHW_VDBOX_NODE_MAX)
+        {
+            return &m_mmioRegisters[index];
+        }
+        else
+        {
+            MHW_ASSERT("index is out of range!");
+            return &m_mmioRegisters[MHW_VDBOX_NODE_1];
+        }
+    }
+private:
+    //VDBOX register offsets
+    static constexpr uint32_t MFC_IMAGE_STATUS_MASK_REG_OFFSET_NODE_1_INIT           = 0x1C08B4;
+    static constexpr uint32_t MFC_IMAGE_STATUS_CTRL_REG_OFFSET_NODE_1_INIT           = 0x1C08B8;
+    static constexpr uint32_t MFC_AVC_NUM_SLICES_REG_OFFSET_NODE_1_INIT              = 0x1C0954;
+    static constexpr uint32_t MFC_QP_STATUS_COUNT_OFFSET_NODE_1_INIT                 = 0x1C08BC;
+    static constexpr uint32_t MFX_ERROR_FLAG_REG_OFFSET_NODE_1_INIT                  = 0x1C0800;
+    static constexpr uint32_t MFX_FRAME_CRC_REG_OFFSET_NODE_1_INIT                   = 0x1C0850;
+    static constexpr uint32_t MFX_MB_COUNT_REG_OFFSET_NODE_1_INIT                    = 0x1C0868;
+    static constexpr uint32_t MFC_BITSTREAM_BYTECOUNT_FRAME_REG_OFFSET_NODE_1_INIT   = 0x1C08A0;
+    static constexpr uint32_t MFC_BITSTREAM_SE_BITCOUNT_FRAME_REG_OFFSET_NODE_1_INIT = 0x1C08A4;
+    static constexpr uint32_t MFC_BITSTREAM_BYTECOUNT_SLICE_REG_OFFSET_NODE_1_INIT   = 0x1C08D0;
+    //VDBOX register initial value
+    static constexpr uint32_t MFX_LRA0_REG_OFFSET_NODE_1_INIT = 0;
+    static constexpr uint32_t MFX_LRA1_REG_OFFSET_NODE_1_INIT = 0;
+    static constexpr uint32_t MFX_LRA2_REG_OFFSET_NODE_1_INIT = 0;
+
+    void InitMmioRegisters()
+    {
+        MmioRegistersVdbox *mmioRegisters = &m_mmioRegisters[MHW_VDBOX_NODE_1];
+
+        mmioRegisters->generalPurposeRegister0LoOffset           = mhw::mi::GENERAL_PURPOSE_REGISTER0_LO_OFFSET_NODE_1_INIT;
+        mmioRegisters->generalPurposeRegister0HiOffset           = mhw::mi::GENERAL_PURPOSE_REGISTER0_HI_OFFSET_NODE_1_INIT;
+        mmioRegisters->generalPurposeRegister4LoOffset           = mhw::mi::GENERAL_PURPOSE_REGISTER4_LO_OFFSET_NODE_1_INIT;
+        mmioRegisters->generalPurposeRegister4HiOffset           = mhw::mi::GENERAL_PURPOSE_REGISTER4_HI_OFFSET_NODE_1_INIT;
+        mmioRegisters->generalPurposeRegister11LoOffset          = mhw::mi::GENERAL_PURPOSE_REGISTER11_LO_OFFSET_NODE_1_INIT;
+        mmioRegisters->generalPurposeRegister11HiOffset          = mhw::mi::GENERAL_PURPOSE_REGISTER11_HI_OFFSET_NODE_1_INIT;
+        mmioRegisters->generalPurposeRegister12LoOffset          = mhw::mi::GENERAL_PURPOSE_REGISTER12_LO_OFFSET_NODE_1_INIT;
+        mmioRegisters->generalPurposeRegister12HiOffset          = mhw::mi::GENERAL_PURPOSE_REGISTER12_HI_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfcImageStatusMaskRegOffset               = MFC_IMAGE_STATUS_MASK_REG_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfcImageStatusCtrlRegOffset               = MFC_IMAGE_STATUS_CTRL_REG_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfcAvcNumSlicesRegOffset                  = MFC_AVC_NUM_SLICES_REG_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfcQPStatusCountOffset                    = MFC_QP_STATUS_COUNT_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfxErrorFlagsRegOffset                    = MFX_ERROR_FLAG_REG_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfxFrameCrcRegOffset                      = MFX_FRAME_CRC_REG_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfxMBCountRegOffset                       = MFX_MB_COUNT_REG_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfcBitstreamBytecountFrameRegOffset       = MFC_BITSTREAM_BYTECOUNT_FRAME_REG_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfcBitstreamSeBitcountFrameRegOffset      = MFC_BITSTREAM_SE_BITCOUNT_FRAME_REG_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfcBitstreamBytecountSliceRegOffset       = MFC_BITSTREAM_BYTECOUNT_SLICE_REG_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfxLra0RegOffset                          = MFX_LRA0_REG_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfxLra1RegOffset                          = MFX_LRA1_REG_OFFSET_NODE_1_INIT;
+        mmioRegisters->mfxLra2RegOffset                          = MFX_LRA2_REG_OFFSET_NODE_1_INIT;
+
+        m_mmioRegisters[MHW_VDBOX_NODE_2] = m_mmioRegisters[MHW_VDBOX_NODE_1];
+    }
 protected:
     using base_t = Itf;
 
@@ -316,6 +376,7 @@ protected:
     {
         MHW_FUNCTION_ENTER;
 
+        InitMmioRegisters();
         InitRowstoreUserFeatureSettings();
     }
 
@@ -513,7 +574,8 @@ protected:
             resourceParams.presResource    = &params.surfaceRaw->OsResource;
             resourceParams.dwOffset        = params.surfaceRaw->dwOffset;
             resourceParams.pdwCmd          = (uint32_t *)&(cmd.OriginalUncompressedPicture.LowerAddress);
-            resourceParams.dwLocationInCmd = _MHW_CMD_DW_LOCATION(OriginalUncompressedPicture.LowerAddress);
+            //resourceParams.dwLocationInCmd = _MHW_CMD_DW_LOCATION(OriginalUncompressedPicture.LowerAddress);
+            resourceParams.dwLocationInCmd = 10;
             resourceParams.bIsWritable     = false;
             resourceParams.HwCommandType   = MOS_VDENC_PIPE_BUF_ADDR;
 
@@ -1212,7 +1274,9 @@ protected:
     DO_FIELD(DW1, HevcPipelineCommandFlush, params.flushHEVC);                \
     DO_FIELD(DW1, VdencPipelineCommandFlush, params.flushVDENC);              \
     DO_FIELD(DW1, MflPipelineCommandFlush, params.flushMFL);                  \
-    DO_FIELD(DW1, MfxPipelineCommandFlush, params.flushMFX);                  \
+    DO_FIELD(DW1, MfxPipelineCommandFlush, params.flushMFX)
+
+#define DO_FIELDS_EXT() \
     __MHW_VDBOX_VDENC_WRAPPER_EXT(VD_PIPELINE_FLUSH_IMPL_EXT)
 
 #include "mhw_hwcmd_process_cmdfields.h"
@@ -1474,33 +1538,17 @@ protected:
     DO_FIELD(DW61, Av1L0RefID3, params.av1RefId[0][3]);                                                  \
     DO_FIELD(DW61, Av1L1RefID3, params.av1RefId[1][3])
 
-#define NO_RETURN
-#include "mhw_hwcmd_process_cmdfields.h"
-
-        if (params.extSettings.empty())
-        {
-#define DO_FIELDS() \
+#define DO_FIELDS_EXT() \
     __MHW_VDBOX_VDENC_WRAPPER_EXT(VDENC_CMD2_IMPL_EXT)
 
 #include "mhw_hwcmd_process_cmdfields.h"
-        }
-        else
-        {
-            for (const auto &func : params.extSettings)
-            {
-                MHW_CHK_STATUS_RETURN(func(reinterpret_cast<uint32_t *>(&cmd)));
-            }
-        }
-
-        return MOS_STATUS_SUCCESS;
-#undef NO_RETURN
     }
 
     _MHW_SETCMD_OVERRIDE_DECL(VDENC_CMD3)
     {
         _MHW_SETCMD_CALLBASE(VDENC_CMD3);
 
-#define DO_FIELDS() __MHW_VDBOX_VDENC_WRAPPER_EXT(VDENC_CMD3_IMPL_EXT)
+#define DO_FIELDS_EXT() __MHW_VDBOX_VDENC_WRAPPER_EXT(VDENC_CMD3_IMPL_EXT)
 
 #include "mhw_hwcmd_process_cmdfields.h"
     }
@@ -1554,29 +1602,12 @@ protected:
     DO_FIELD(DW16, PocNumberForFwdRef0, params.pocNumberForFwdRef0);                                                \
     DO_FIELD(DW17, PocNumberForFwdRef1, params.pocNumberForFwdRef1);                                                \
     DO_FIELD(DW18, PocNumberForFwdRef2, params.pocNumberForFwdRef2);                                                \
-    DO_FIELD(DW19, PocNumberForBwdRef0, params.pocNumberForBwdRef0);                                                \
-    
-#define NO_RETURN
-#include "mhw_hwcmd_process_cmdfields.h"
+    DO_FIELD(DW19, PocNumberForBwdRef0, params.pocNumberForBwdRef0)
 
-        if (params.extSettings.empty())
-        {
-#define DO_FIELDS() \
+#define DO_FIELDS_EXT() \
     __MHW_VDBOX_VDENC_WRAPPER_EXT(VDENC_AVC_IMG_STATE_IMPL_EXT)
-
+    
 #include "mhw_hwcmd_process_cmdfields.h"
-        }
-        else
-        {
-            for (const auto &func : params.extSettings)
-            {
-                MHW_CHK_STATUS_RETURN(func(reinterpret_cast<uint32_t *>(&cmd)));
-            }
-        }
-
-        return MOS_STATUS_SUCCESS;
-#undef NO_RETURN
-
     }
 MEDIA_CLASS_DEFINE_END(mhw__vdbox__vdenc__Impl)
 };

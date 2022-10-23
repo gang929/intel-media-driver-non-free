@@ -1334,7 +1334,7 @@ VAStatus MediaLibvaCapsG12::QuerySurfaceAttributes(
         attribs[i].value.value.i = VP_MIN_PIC_HEIGHT;
         i++;
 
-        for (int32_t j = 0; j < m_numVpSurfaceAttr; j++)
+        for (int32_t j = 0; j < m_numVpSurfaceAttr && m_vpSurfaceAttr[j]; j++)
         {
             attribs[i].type = VASurfaceAttribPixelFormat;
             attribs[i].value.type = VAGenericValueTypeInteger;
@@ -1916,7 +1916,8 @@ VAStatus MediaLibvaCapsG12::CreateEncAttributes(
     {
         if (IsHevcProfile(profile))
         {
-            attrib.value = VA_ENC_SLICE_STRUCTURE_ARBITRARY_MACROBLOCKS | VA_ENC_SLICE_STRUCTURE_MAX_SLICE_SIZE;
+            attrib.value = VA_ENC_SLICE_STRUCTURE_POWER_OF_TWO_ROWS | VA_ENC_SLICE_STRUCTURE_EQUAL_ROWS |
+                        VA_ENC_SLICE_STRUCTURE_MAX_SLICE_SIZE | VA_ENC_SLICE_STRUCTURE_ARBITRARY_ROWS | VA_ENC_SLICE_STRUCTURE_EQUAL_MULTI_ROWS;
         }
         else
         {
