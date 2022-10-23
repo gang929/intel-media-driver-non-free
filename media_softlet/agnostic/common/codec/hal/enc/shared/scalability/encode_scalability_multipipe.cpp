@@ -31,7 +31,8 @@
 #include "media_status_report.h"
 #include "mhw_utilities.h"
 #include "encode_status_report_defs.h"
-#include "hal_oca_interface.h"
+#include "hal_oca_interface_next.h"
+#include "mos_os_virtualengine_next.h"
 
 namespace encode
 {
@@ -823,9 +824,11 @@ MOS_STATUS EncodeScalabilityMultiPipe::Oca1stLevelBBStart(MOS_COMMAND_BUFFER &cm
 {
     MHW_MI_MMIOREGISTERS mmioRegister;
     SCALABILITY_CHK_NULL_RETURN(m_hwInterface);
-    MhwVdboxMfxInterface *mfxInterface = m_hwInterface->GetMfxInterface();
-    SCALABILITY_CHK_NULL_RETURN(mfxInterface);
-    bool validMmio = mfxInterface->ConvertToMiRegister(MHW_VDBOX_NODE_1, mmioRegister);
+
+    auto vdencItf = m_hwInterface->m_hwInterfaceNext->GetVdencInterfaceNext();
+    SCALABILITY_CHK_NULL_RETURN(vdencItf);
+    bool validMmio = vdencItf->ConvertToMiRegister(MHW_VDBOX_NODE_1, mmioRegister);
+
     if (validMmio)
     {
         SCALABILITY_CHK_NULL_RETURN(m_osInterface);
@@ -845,7 +848,7 @@ MOS_STATUS EncodeScalabilityMultiPipe::Oca1stLevelBBStart(MOS_COMMAND_BUFFER &cm
 MOS_STATUS EncodeScalabilityMultiPipe::Oca1stLevelBBEnd(MOS_COMMAND_BUFFER &cmdBuffer)
 {
     SCALABILITY_CHK_NULL_RETURN(m_osInterface);
-    HalOcaInterface::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
+    HalOcaInterfaceNext::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
 
     return MOS_STATUS_SUCCESS;
 }

@@ -381,16 +381,16 @@ MOS_STATUS MosInterface::InitStreamParameters(
 
     mos_bufmgr_gem_enable_reuse(bufMgr);
 
-    context->SkuTable           = *osDeviceContext->GetSkuTable();
-    context->WaTable            = *osDeviceContext->GetWaTable();
-    context->gtSystemInfo       = *osDeviceContext->GetGtSysInfo();
-    context->platform           = *osDeviceContext->GetPlatformInfo();
+    context->m_skuTable           = *osDeviceContext->GetSkuTable();
+    context->m_waTable            = *osDeviceContext->GetWaTable();
+    context->m_gtSystemInfo       = *osDeviceContext->GetGtSysInfo();
+    context->m_platform           = *osDeviceContext->GetPlatformInfo();
 
     context->bUse64BitRelocs    = true;
-    context->bUseSwSwizzling    = context->bSimIsActive || MEDIA_IS_SKU(&context->SkuTable, FtrUseSwSwizzling);
-    context->bTileYFlag         = MEDIA_IS_SKU(&context->SkuTable, FtrTileY);
+    context->bUseSwSwizzling    = context->bSimIsActive || MEDIA_IS_SKU(&context->m_skuTable, FtrUseSwSwizzling);
+    context->bTileYFlag         = MEDIA_IS_SKU(&context->m_skuTable, FtrTileY);
 
-    if (MEDIA_IS_SKU(&context->SkuTable, FtrContextBasedScheduling))
+    if (MEDIA_IS_SKU(&context->m_skuTable, FtrContextBasedScheduling))
     {
         MOS_TraceEventExt(EVENT_GPU_CONTEXT_CREATE, EVENT_TYPE_START,
                           &eStatus, sizeof(eStatus), nullptr, 0);
@@ -854,7 +854,11 @@ MOS_STATUS MosInterface::DumpCommandBuffer(
             dwCommandBufferNumber);
 
         // Write the output buffer to file.
-        MOS_OS_CHK_STATUS_RETURN(MosUtilities::MosWriteFileFromPtr((const char *)sFileName, pOutputBuffer, dwBytesWritten));
+        if((eStatus = MosUtilities::MosWriteFileFromPtr((const char *)sFileName, pOutputBuffer, dwBytesWritten)) != MOS_STATUS_SUCCESS)
+        {
+            MOS_FreeMemory(pOutputBuffer);
+            MOS_OS_CHK_STATUS_RETURN(eStatus);
+        }
     }
 
     if (streamState->dumpCommandBufferAsMessages)
@@ -879,7 +883,11 @@ MOS_STATUS MosInterface::DumpCommandBuffer(
         {
             if (streamState->dumpCommandBufferToFile)
             {
-                MOS_OS_CHK_STATUS_RETURN(MosUtilities::MosAppendFileFromPtr((const char *)sFileName, pOutputBuffer, dwBytesWritten));
+                if((eStatus = MosUtilities::MosAppendFileFromPtr((const char *)sFileName, pOutputBuffer, dwBytesWritten)) != MOS_STATUS_SUCCESS)
+                {
+                    MOS_FreeMemory(pOutputBuffer);
+                    MOS_OS_CHK_STATUS_RETURN(eStatus);
+                }
             }
             if (streamState->dumpCommandBufferAsMessages)
             {
@@ -893,8 +901,16 @@ MOS_STATUS MosInterface::DumpCommandBuffer(
 
     if (streamState->dumpCommandBufferToFile)
     {
-        MOS_OS_CHK_STATUS_RETURN(MosUtilities::MosAppendFileFromPtr((const char *)sFileName, pOutputBuffer, dwBytesWritten));
-        MOS_OS_CHK_STATUS_RETURN(DumpIndirectState(streamState, cmdBuffer, gpuNode, sFileName));
+        if((eStatus = MosUtilities::MosAppendFileFromPtr((const char *)sFileName, pOutputBuffer, dwBytesWritten)) != MOS_STATUS_SUCCESS)
+        {
+            MOS_FreeMemory(pOutputBuffer);
+            MOS_OS_CHK_STATUS_RETURN(eStatus);
+        }
+        if((eStatus = DumpIndirectState(streamState, cmdBuffer, gpuNode, sFileName)) != MOS_STATUS_SUCCESS)
+        {
+            MOS_FreeMemory(pOutputBuffer);
+            MOS_OS_CHK_STATUS_RETURN(eStatus);
+        }
     }
 
     if (streamState->dumpCommandBufferAsMessages)
@@ -903,7 +919,7 @@ MOS_STATUS MosInterface::DumpCommandBuffer(
     }
 
     dwCommandBufferNumber++;
-
+    MOS_FreeMemory(pOutputBuffer);
     eStatus = MOS_STATUS_SUCCESS;
 
     return eStatus;
@@ -3595,4 +3611,9 @@ void MosInterface::GetRtLogResourceInfo(
         osResource = streamState->osDeviceContext->GetOCARTLogMgr()->GetOcaRTlogResource();
         size = streamState->osDeviceContext->GetOCARTLogMgr()->GetRtlogHeapInfo().size;
     }
+}
+
+bool MosInterface::IsPooledResource(MOS_STREAM_HANDLE streamState, PMOS_RESOURCE osResource)
+{
+    return false;
 }

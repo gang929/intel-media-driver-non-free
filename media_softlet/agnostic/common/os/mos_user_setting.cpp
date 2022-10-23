@@ -56,7 +56,7 @@ MOS_STATUS MosUserSetting::InitMosCommonUserSetting(MediaUserSettingSharedPtr us
         userSettingPtr,
         "ApoDdiEnable",
         MediaUserSetting::Group::Device,
-        0,
+        1,
         true);
 
     DeclareUserSettingKey(
@@ -767,6 +767,20 @@ MOS_STATUS MosUserSetting::InitUserSettingForDebug(MediaUserSettingSharedPtr use
     DeclareUserSettingKeyForDebug(  // VP State Dump Enable
         userSettingPtr,
         __VPHAL_DBG_STATE_DUMP_ENABLE,
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_SPLIT_SCREEN_DEMO_POSITION,
+        MediaUserSetting::Group::Device,
+        0,
+        true);  //Demo position: Disable(0), Left(1), Right(2), Top(3), Bottom(4)
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_SPLIT_SCREEN_DEMO_PARAMETERS,
         MediaUserSetting::Group::Device,
         0,
         true);

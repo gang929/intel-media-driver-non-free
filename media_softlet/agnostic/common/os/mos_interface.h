@@ -55,9 +55,11 @@
 class GpuContextSpecificNext;
 struct _MOS_VIRTUALENGINE_SET_PARAMS;
 struct _MOS_VIRTUALENGINE_INIT_PARAMS;
+
 typedef struct _MOS_VIRTUALENGINE_SET_PARAMS  MOS_VIRTUALENGINE_SET_PARAMS, *PMOS_VIRTUALENGINE_SET_PARAMS;
 typedef struct _MOS_VIRTUALENGINE_INIT_PARAMS MOS_VIRTUALENGINE_INIT_PARAMS, *PMOS_VIRTUALENGINE_INIT_PARAMS;
 typedef struct _MOS_CMD_BUF_ATTRI_VE MOS_CMD_BUF_ATTRI_VE, *PMOS_CMD_BUF_ATTRI_VE;
+typedef struct _MHW_VDBOX_GPUNODE_LIMIT *PMHW_VDBOX_GPUNODE_LIMIT;
 class MosInterface
 {
 protected:
@@ -2127,6 +2129,11 @@ public:
         MOS_STREAM_HANDLE streamState,
         PMOS_RESOURCE &osResource,
         uint32_t &size);
+
+    static bool IsPooledResource(MOS_STREAM_HANDLE streamState, PMOS_RESOURCE osResource);
+
+    static uint64_t GetResourceHandle(MOS_STREAM_HANDLE streamState, PMOS_RESOURCE osResource);
+
 private:
     //!
     //! \brief    Init per stream parameters

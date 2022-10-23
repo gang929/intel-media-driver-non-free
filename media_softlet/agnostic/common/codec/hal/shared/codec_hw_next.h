@@ -76,6 +76,9 @@
 #define CODEC_HW_CHK_COND_RETURN(_expr, _message, ...)                                  \
     MOS_CHK_COND_RETURN(MOS_COMPONENT_CODEC, MOS_CODEC_SUBCOMP_HW,_expr,_message, ##__VA_ARGS__)
 
+class MediaScalability;
+class MediaContext;
+
 //!  Codec hw next interface
 /*!
 This class defines the interfaces for hardware dependent settings and functions used in Codechal
@@ -91,15 +94,47 @@ public:
         CODECHAL_FUNCTION  codecFunction,
         MhwInterfacesNext  *mhwInterfacesNext,
         bool               disableScalability = false);
+    //!
+    //! \brief    Constructor
+    //!
+    CodechalHwInterfaceNext(PMOS_INTERFACE osInterface);
 
     //!
     //! \brief    Destructor
     //!
     virtual ~CodechalHwInterfaceNext() {
         CODEC_HW_FUNCTION_ENTER;
-        m_osInterface->pfnFreeResource(m_osInterface, &m_hucDmemDummy);
-        m_osInterface->pfnFreeResource(m_osInterface, &m_dummyStreamIn);
-        m_osInterface->pfnFreeResource(m_osInterface, &m_dummyStreamOut);
+        if (m_osInterface != nullptr)
+        {
+            m_osInterface->pfnFreeResource(m_osInterface, &m_hucDmemDummy);
+            m_osInterface->pfnFreeResource(m_osInterface, &m_dummyStreamIn);
+            m_osInterface->pfnFreeResource(m_osInterface, &m_dummyStreamOut);
+        }
+    }
+
+    //!
+    //! \brief    Initialize the codechal hw interface
+    //! \details  Initialize the interface before using
+    //! 
+    //! \param    [in] settings
+    //!           Settings for initialization
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS Initialize(
+        CodechalSetting *settings);
+
+    //!
+    //! \brief    Get Wa table
+    //! \details  Get Wa table in codechal hw interface 
+    //!
+    //! \return   [out] MEDIA_WA_TABLE
+    //!           Wa table got.
+    //!
+    inline MEDIA_WA_TABLE *GetWaTable()
+    {
+        return m_waTable;
     }
 
     //!
@@ -220,6 +255,32 @@ public:
     }
 
     //!
+    //! \brief    Init Cacheability Control Settings
+    //! \details  Init Cacheability Control Settings in codechal hw interface 
+    //!
+    //! \param    [in] codecFunction
+    //!           codec function used to judge how to setup cacheability control settings
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS InitCacheabilityControlSettings(
+        CODECHAL_FUNCTION codecFunction);
+
+    //!
+    //! \brief    Get memory object of GMM Cacheability control settings
+    //! \details  Internal function to get memory object of GMM Cacheability control settings
+    //! 
+    //! \param    [in] mosUsage
+    //!           Codec usages in mos type
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS CachePolicyGetMemoryObject(
+        MOS_HW_RESOURCE_DEF mosUsage);
+
+    //!
     //! \brief    Calculates the maximum size for AVP picture level commands
     //! \details  Client facing function to calculate the maximum size for AVP picture level commands
     //! \param    [in] mode
@@ -310,6 +371,28 @@ public:
         uint32_t *patchListSize,
         bool      modeSpecific);
     //!
+    //! \brief    Calculates maximum size for all picture level commands
+    //! \details  Client facing function to calculate maximum size for all slice/MB level commands in mfx pipeline
+    //!
+    //! \param    [in] mode
+    //!           Codec mode
+    //! \param    [out] commandsSize
+    //!           The maximum command buffer size
+    //! \param    [out] patchListSize
+    //!           The maximum command patch list size
+    //! \param    [in] modeSpecific
+    //!           Indicate the long or short format for decoder or single take phase for encoder
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS GetMfxStateCommandsDataSize(
+        uint32_t  mode,
+        uint32_t *commandsSize,
+        uint32_t *patchListSize,
+        bool      modeSpecific);
+
+    //!
     //! \brief    Calculates maximum size for HCP slice/MB level commands
     //! \details  Client facing function to calculate maximum size for HCP slice/MB level commands
     //! \param    [in] mode
@@ -391,8 +474,15 @@ public:
 
     MHW_VDBOX_NODE_IND GetMaxVdboxIndex()
     {
-        return MHW_VDBOX_NODE_1;
-    }
+        return MEDIA_IS_SKU(m_skuTable, FtrVcs2) ? MHW_VDBOX_NODE_2 : MHW_VDBOX_NODE_1;
+    };
+
+    MediaScalability *m_singlePipeScalability = nullptr;
+    MediaScalability *m_multiPipeScalability  = nullptr;
+    MOS_STATUS(*pfnCreateDecodeSinglePipe)
+    (void *hwInterface, MediaContext *mediaContext, uint8_t componentType) = nullptr;
+    MOS_STATUS(*pfnCreateDecodeMultiPipe)
+    (void *hwInterface, MediaContext *mediaContext, uint8_t componentType) = nullptr;
 
     //!
     //! \brief    Init L3 Cache Settings
@@ -401,6 +491,163 @@ public:
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
     virtual MOS_STATUS InitL3CacheSettings();
+    
+    //!
+    //! \brief    Set Rowstore Cache offsets
+    //! \details  Set Rowstore Cache offsets in sub interfaces in codechal hw interface 
+    //!
+    //! \param    [in] rowstoreParams
+    //!           parameters to set rowstore cache offsets
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS SetRowstoreCachingOffsets(
+        PMHW_VDBOX_ROWSTORE_PARAMS rowstoreParams);
+
+    //!
+    //! \brief    Send mi atomic dword cmd
+    //! \details  Send mi atomic dword cmd for sync perpose
+    //!
+    //! \param    [in] resource
+    //!           Reource used in mi atomic dword cmd
+    //! \param    [in] immData
+    //!           Immediate data
+    //! \param    [in] opCode
+    //!           Operation code
+    //! \param    [in,out] cmdBuffer
+    //!           command buffer
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS SendMiAtomicDwordCmd(
+        PMOS_RESOURCE               resource,
+        uint32_t                    immData,
+        MHW_COMMON_MI_ATOMIC_OPCODE opCode,
+        PMOS_COMMAND_BUFFER         cmdBuffer)
+    {
+        MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+        CODEC_HW_FUNCTION_ENTER;
+        CODEC_HW_CHK_NULL_RETURN(m_miItf);
+
+        auto &params             = m_miItf->MHW_GETPAR_F(MI_ATOMIC)();
+        params                   = {};
+        params.pOsResource       = resource;
+        params.dwDataSize        = sizeof(uint32_t);
+        params.Operation         = (mhw::mi::MHW_COMMON_MI_ATOMIC_OPCODE) opCode;
+        params.bInlineData       = true;
+        params.dwOperand1Data[0] = immData;
+        eStatus                  = m_miItf->MHW_ADDCMD_F(MI_ATOMIC)(cmdBuffer);
+
+        return eStatus;
+    }
+
+    //!
+    //! \brief    Send hw semphore wait cmd
+    //! \details  Send hw semphore wait cmd for sync perpose
+    //!
+    //! \param    [in] semaMem
+    //!           Reource of Hw semphore
+    //! \param    [in] semaData
+    //!           Data of Hw semphore
+    //! \param    [in] opCode
+    //!           Operation code
+    //! \param    [in,out] cmdBuffer
+    //!           command buffer
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS SendHwSemaphoreWaitCmd(
+        PMOS_RESOURCE                             semaMem,
+        uint32_t                                  semaData,
+        MHW_COMMON_MI_SEMAPHORE_COMPARE_OPERATION opCode,
+        PMOS_COMMAND_BUFFER                       cmdBuffer,
+        uint32_t                                  semaMemOffset = 0)
+    {
+        CODEC_HW_FUNCTION_ENTER;
+        MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+        CODEC_HW_CHK_NULL_RETURN(m_miItf);
+        auto &params            = m_miItf->MHW_GETPAR_F(MI_SEMAPHORE_WAIT)();
+        params                  = {};
+        params.presSemaphoreMem = semaMem;
+        params.bPollingWaitMode = true;
+        params.dwSemaphoreData  = semaData;
+        params.CompareOperation = (mhw::mi::MHW_COMMON_MI_SEMAPHORE_COMPARE_OPERATION) opCode;
+        params.dwResourceOffset = semaMemOffset;
+        eStatus                 = m_miItf->MHW_ADDCMD_F(MI_SEMAPHORE_WAIT)(cmdBuffer);
+
+        return eStatus;
+    }
+
+    //!
+    //! \brief    Check if simulation/emulation is active
+    //! \return   bool
+    //!           True if simulation/emulation is active, else false.
+    //!
+    bool IsSimActive()
+    {
+        return m_osInterface ? m_osInterface->bSimIsActive : false;
+    }
+
+    //!
+    //! \brief    Send mi store data imm cmd
+    //! \param    [in] resource
+    //!           Reource used in mi store data imm cmd
+    //! \param    [in] immData
+    //!           Immediate data
+    //! \param    [in,out] cmdBuffer
+    //!           command buffer
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    MOS_STATUS SendMiStoreDataImm(
+        PMOS_RESOURCE       resource,
+        uint32_t            immData,
+        PMOS_COMMAND_BUFFER cmdBuffer)
+    {
+        MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+
+        CODEC_HW_FUNCTION_ENTER;
+
+        CODEC_HW_CHK_NULL_RETURN(resource);
+        CODEC_HW_CHK_NULL_RETURN(cmdBuffer);
+
+        CODEC_HW_CHK_NULL_RETURN(m_miItf);
+        auto &params            = m_miItf->MHW_GETPAR_F(MI_STORE_DATA_IMM)();
+        params                  = {};
+        params.pOsResource      = resource;
+        params.dwResourceOffset = 0;
+        params.dwValue          = immData;
+        eStatus                 = m_miItf->MHW_ADDCMD_F(MI_STORE_DATA_IMM)(cmdBuffer);
+
+        return eStatus;
+    }
+
+    // Hardware dependent parameters
+    bool     m_isVdencSuperSliceEnabled          = false;  //!> Flag indicating Vdenc super slice is enabled
+    uint16_t m_sizeOfCmdBatchBufferEnd           = 0;      //!> Size of batch buffer end cmd
+    uint16_t m_sizeOfCmdMediaReset               = 0;      //!> Size of media reset cmd
+    uint32_t m_vdencBrcImgStateBufferSize        = 0;      //!> vdenc brc img state buffer size
+    uint32_t m_vdencBatchBuffer1stGroupSize      = 0;      //!> vdenc batch buffer 1st group size
+    uint32_t m_vdencBatchBuffer2ndGroupSize      = 0;      //!> vdenc batch buffer 2nd group size
+    uint32_t m_vdencReadBatchBufferSize          = 0;      //!> vdenc read batch buffer size for group1 and group2
+    uint32_t m_vdenc2ndLevelBatchBufferSize      = 0;      //!> vdenc 2nd level batch buffer size
+    uint32_t m_vdencBatchBufferPerSliceConstSize = 0;      //!> vdenc batch buffer per slice const size
+    uint32_t m_HucStitchCmdBatchBufferSize       = 0;      //!> huc stitch cmd 2nd level batch buffer size
+    uint32_t m_pakIntTileStatsSize               = 0;      //!> Size of combined statistics across all tiles
+    uint32_t m_pakIntAggregatedFrameStatsSize    = 0;      //!> Size of HEVC/ VP9 PAK Stats, HEVC Slice Streamout, VDEnc Stats
+    uint32_t m_tileRecordSize                    = 0;      //!> Tile record size
+    uint32_t m_hucCommandBufferSize              = 0;      //!> Size of a single HuC command buffer
+
+    bool     m_enableCodecMmc        = false;  //!> Flag to indicate if enable codec MMC by default or not
+
+    //! \brief    default disable the get vdbox node by UMD, decided by MHW and MOS
+    bool m_getVdboxNodeByUMD = false;
 
 protected:
 
@@ -436,7 +683,10 @@ protected:
     // Next: remove legacy Interfaces
     MhwCpInterface                  *m_cpInterface = nullptr;         //!< Pointer to Mhw cp interface
     MhwVdboxMfxInterface            *m_mfxInterface = nullptr;        //!< Pointer to Mhw mfx interface
-    MhwVdboxVdencInterface          *m_vdencInterface = nullptr;      //!< Pointer to Mhw vdenc interface
+
+    MHW_MEMORY_OBJECT_CONTROL_PARAMS m_cacheabilitySettings[MOS_CODEC_RESOURCE_USAGE_END_CODEC] = {};  //!< Cacheability Settings list
+    
+    bool m_checkBankCount   = false;  //!> Used to check L3 cache enable
 
 MEDIA_CLASS_DEFINE_END(CodechalHwInterfaceNext)
 };

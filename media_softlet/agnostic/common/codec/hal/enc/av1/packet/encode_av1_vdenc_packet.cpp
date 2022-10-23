@@ -299,7 +299,7 @@ namespace encode{
             rowStoreParams.ucChromaFormat   = m_basicFeature->m_outputChromaFormat;
             rowStoreParams.ucBitDepthMinus8 = m_basicFeature->m_is10Bit ? 2 : 0;
 
-            ENCODE_CHK_STATUS_RETURN(m_hwInterface->SetRowstoreCachingOffsets(&rowStoreParams));
+            ENCODE_CHK_STATUS_RETURN(m_hwInterface->m_hwInterfaceNext->SetRowstoreCachingOffsets(&rowStoreParams));
         }
         return MOS_STATUS_SUCCESS;
     }
@@ -875,7 +875,7 @@ namespace encode{
         uint32_t operand1Offset  = offsetInline + m_atomicScratchBuf.operand1Offset;
         uint32_t operand2Offset  = offsetInline + m_atomicScratchBuf.operand2Offset;
         uint32_t operand3Offset  = offsetInline + m_atomicScratchBuf.operand3Offset;
-        auto     mmioRegisters   = m_hwInterface->SelectVdboxAndGetMmioRegister(m_vdboxIndex, cmdBuffer);
+        auto     mmioRegisters   = m_hwInterface->GetVdencInterfaceNext()->GetMmioRegisters(m_vdboxIndex);
 
         // Make Flush DW call to make sure all previous work is done
         auto &flushDwParams = m_miItf->MHW_GETPAR_F(MI_FLUSH_DW)();

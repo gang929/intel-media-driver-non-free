@@ -282,6 +282,12 @@ protected:
 #define __MEDIA_USER_FEATURE_VALUE_CSC_COEFF_PATCH_MODE_DISABLE         "CSC Patch Mode Disable"
 #define __MEDIA_USER_FEATURE_VALUE_DISABLE_DN                           "Disable Dn"
 #define __MEDIA_USER_FEATURE_VALUE_DISABLE_PACKET_REUSE                 "Disable PacketReuse"
+#define __MEDIA_USER_FEATURE_VALUE_ENABLE_PACKET_REUSE_TEAMS_ALWAYS     "Enable PacketReuse Teams mode Always"
+
+#define __VPHAL_HDR_LUT_MODE                                            "HDR Lut Mode"
+#define __VPHAL_HDR_GPU_GENERTATE_3DLUT                                 "HDR GPU generate 3DLUT"
+#define __VPHAL_HDR_DISABLE_AUTO_MODE                                   "Disable HDR Auto Mode"
+#define __VPHAL_HDR_SPLIT_FRAME_PORTIONS                                "VPHAL HDR Split Frame Portions"
 
 #if (_DEBUG || _RELEASE_INTERNAL)
 #define __VPHAL_ENABLE_COMPUTE_CONTEXT                                  "VP Enable Compute Context"
@@ -289,6 +295,9 @@ protected:
 #define __VPHAL_RNDR_CMFC_CONTROL                                       "CMFC Control"
 #define __VPHAL_ENABLE_1K_1DLUT                                         "Enable 1K 1DLUT"
 #define __VPHAL_VEBOX_HDR_MODE                                          "VeboxHDRMode"
+#define __VPHAL_HDR_ENABLE_QUALITY_TUNING                               "VPHAL HDR Enable Quality Tuning"
+#define __VPHAL_HDR_ENABLE_KERNEL_DUMP                                  "VPHAL HDR Enable Kernel Dump"
+#define __VPHAL_HDR_H2S_RGB_TM                                          "VPHAL H2S TM RGB Based"
 
 // Compression
 #define __VPHAL_MMC_ENABLE                                              "VP MMC In Use"

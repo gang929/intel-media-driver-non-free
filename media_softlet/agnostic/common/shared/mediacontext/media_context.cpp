@@ -70,12 +70,6 @@ MediaContext::~MediaContext()
         m_osInterface->pfnWaitAllCmdCompletion(m_osInterface);
     }
 
-    if ((MOS_VE_MULTINODESCALING_SUPPORTED(m_osInterface)) &&
-       (m_curNodeOrdinal == MOS_GPU_NODE_VIDEO || m_curNodeOrdinal == MOS_GPU_NODE_VIDEO2))
-    {
-        m_osInterface->pfnDestroyVideoNodeAssociation(m_osInterface, m_curNodeOrdinal);
-    }
-
     for (auto& curAttribute : m_gpuContextAttributeTable)
     {
         if (curAttribute.scalabilityState)
@@ -109,7 +103,18 @@ MediaContext::~MediaContext()
                     return;
                 }
             }
-#if EMUL
+#if !_VULKAN
+            else if (m_osInterface->modularizedGpuCtxEnabled)
+            {
+                // Be compatible to legacy MOS
+                auto status = m_osInterface->pfnDestroyGpuContextByHandle(m_osInterface, curAttribute.gpuContext);
+                if (status != MOS_STATUS_SUCCESS)
+                {
+                    MOS_OS_NORMALMESSAGE("Could not destroy gpu context");
+                    return;
+                }
+            }
+#endif //!_VULKAN
             else
             {
                 auto status = m_osInterface->pfnDestroyGpuContext(
@@ -121,18 +126,6 @@ MediaContext::~MediaContext()
                     return;
                 }
             }
-#elif !_VULKAN
-            else
-            {
-                // Be compatible to legacy MOS
-                auto status = m_osInterface->pfnDestroyGpuContextByHandle(m_osInterface, curAttribute.gpuContext);
-                if (status != MOS_STATUS_SUCCESS)
-                {
-                    MOS_OS_NORMALMESSAGE("Could not destroy gpu context");
-                    return;
-                }
-            }
-#endif //!_VULKAN
         }
         else
         {
@@ -403,18 +396,6 @@ MOS_STATUS MediaContext::FunctionToNode(MediaFunction func, const MOS_GPUCTX_CRE
         if (option.LRCACount >= 2)
         {
             node = MOS_GPU_NODE_VIDEO; // multiple pipe decode or encode always using VIDEO node
-            if (MOS_VE_MULTINODESCALING_SUPPORTED(m_osInterface))
-            {
-                if (m_curNodeOrdinal == MOS_GPU_NODE_VIDEO || m_curNodeOrdinal == MOS_GPU_NODE_VIDEO2)
-                {
-                    m_osInterface->pfnDestroyVideoNodeAssociation(m_osInterface, m_curNodeOrdinal);
-                }
-                MOS_OS_CHK_STATUS_RETURN(m_osInterface->pfnCreateVideoNodeAssociation(
-                    m_osInterface,
-                    true,
-                    &node));
-            }
-            m_curNodeOrdinal = node;
         }
 #if !EMUL
         else
@@ -448,6 +429,7 @@ MOS_STATUS MediaContext::FunctionToNode(MediaFunction func, const MOS_GPUCTX_CRE
 MOS_STATUS MediaContext::FunctionToNodeCodec(MOS_GPU_NODE& node)
 {
     MHW_VDBOX_GPUNODE_LIMIT gpuNodeLimit = {0};
+
     MOS_OS_CHK_STATUS_RETURN(FindGpuNodeToUse(&gpuNodeLimit));
 
     node = (MOS_GPU_NODE)(gpuNodeLimit.dwGpuNodeToUse);
@@ -460,10 +442,11 @@ MOS_STATUS MediaContext::CheckScalabilityOverrideValidity()
 {
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
-    MEDIA_SYSTEM_INFO *gtSystemInfo;
-    uint32_t           forceVdbox;
-    bool               scalableDecMode;
-    bool               useVD1, useVD2;
+    MEDIA_SYSTEM_INFO *gtSystemInfo = nullptr;
+    uint32_t           forceVdbox   = 0;
+    bool               scalableDecMode = false;
+    bool               useVD1          = false;
+    bool               useVD2          = false;
 
     MHW_MI_CHK_NULL(m_osInterface);
     scalableDecMode = m_osInterface->bHcpDecScalabilityMode ? true : false;
@@ -482,7 +465,6 @@ MOS_STATUS MediaContext::CheckScalabilityOverrideValidity()
         MHW_ASSERTMESSAGE("user feature forceVdbox value is invalid.");
         return eStatus;
     }
-
     if (!scalableDecMode &&
         (forceVdbox == MOS_FORCE_VDBOX_1_1_2 ||
             forceVdbox == MOS_FORCE_VDBOX_2_1_2))
@@ -499,7 +481,6 @@ MOS_STATUS MediaContext::CheckScalabilityOverrideValidity()
         return eStatus;
     }
 
-    useVD1 = useVD2 = false;
     if (forceVdbox == 0)
     {
         useVD1 = true;
@@ -509,7 +490,6 @@ MOS_STATUS MediaContext::CheckScalabilityOverrideValidity()
         MHW_VDBOX_IS_VDBOX_SPECIFIED(forceVdbox, MOS_FORCE_VDBOX_1, MOS_FORCEVDBOX_VDBOXID_BITSNUM, MOS_FORCEVDBOX_MASK, useVD1);
         MHW_VDBOX_IS_VDBOX_SPECIFIED(forceVdbox, MOS_FORCE_VDBOX_2, MOS_FORCEVDBOX_VDBOXID_BITSNUM, MOS_FORCEVDBOX_MASK, useVD2);
     }
-
     if (!gtSystemInfo->VDBoxInfo.IsValid ||
         (useVD1 && !gtSystemInfo->VDBoxInfo.Instances.Bits.VDBox0Enabled) ||
         (useVD2 && !gtSystemInfo->VDBoxInfo.Instances.Bits.VDBox1Enabled))
@@ -537,15 +517,10 @@ MOS_STATUS MediaContext::FindGpuNodeToUse(PMHW_VDBOX_GPUNODE_LIMIT gpuNodeLimit)
         }
         else
         {
-            if (m_curNodeOrdinal == MOS_GPU_NODE_VIDEO || m_curNodeOrdinal == MOS_GPU_NODE_VIDEO2)
-            {
-                m_osInterface->pfnDestroyVideoNodeAssociation(m_osInterface, m_curNodeOrdinal);
-            }
             MHW_MI_CHK_STATUS(m_osInterface->pfnCreateVideoNodeAssociation(
                 m_osInterface,
                 setVideoNode,
                 &videoGpuNode));
-            m_curNodeOrdinal = videoGpuNode;
         }
     }
 #if (_DEBUG || _RELEASE_INTERNAL)
@@ -567,6 +542,7 @@ MOS_STATUS MediaContext::FindGpuNodeToUse(PMHW_VDBOX_GPUNODE_LIMIT gpuNodeLimit)
     return eStatus;
 }
 #endif
+
 MOS_STATUS MediaContext::FunctionToGpuContext(MediaFunction func, const MOS_GPUCTX_CREATOPTIONS_ENHANCED &option, const MOS_GPU_NODE &node, MOS_GPU_CONTEXT &ctx)
 {
     MOS_OS_FUNCTION_ENTER;

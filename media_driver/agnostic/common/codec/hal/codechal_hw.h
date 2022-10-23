@@ -36,6 +36,7 @@
 #include "mhw_vebox.h"
 #include "mhw_sfc.h"
 #include "mhw_cp_interface.h"
+#include "media_copy.h"
 #include "media_blt_copy.h"
 
 #include "mhw_vdbox_mfx_interface.h"
@@ -90,8 +91,6 @@
 
 #define CODECHAL_HW_CHK_COND_RETURN(_expr, _message, ...)                           \
     MOS_CHK_COND_RETURN(MOS_COMPONENT_CODEC, MOS_CODEC_SUBCOMP_HW,_expr,_message, ##__VA_ARGS__)
-
-#define CODECHAL_PAK_OBJ_EACH_CU                66
 
 #define CODECHAL_SURFACE_PITCH_ALIGNMENT        128
 
@@ -746,6 +745,18 @@ public:
         return m_cacheabilitySettings;
     }
 
+    //! \brief    Create media copy
+    //! \details  Create media copy instance.
+    //! \param    osInterface
+    //!           [in] Pointer to MOS_INTERFACE.
+    //! \return   MediaCopyBaseState*
+    //!           Pointer to MediaCopyBaseState
+    //!
+    virtual MediaCopyBaseState* CreateMediaCopy(PMOS_INTERFACE mosInterface)
+    {
+        return nullptr;
+    }
+
     //! \brief    Get blt state
     //! \details  Get blt interface in codechal hw interface
     //!
@@ -1039,6 +1050,17 @@ public:
     virtual MOS_STATUS GetStreamoutCommandSize(
         uint32_t                       *commandsSize,
         uint32_t                       *patchListSize);
+
+    //!
+    //! \brief    Get max vdbox index
+    //!
+    //! \return   MHW_VDBOX_NODE_IND
+    //!           max vdbox index got
+    //!
+    inline MHW_VDBOX_NODE_IND GetMaxVdboxIndex()
+    {
+        return MEDIA_IS_SKU(m_skuTable, FtrVcs2) ? MHW_VDBOX_NODE_2 : MHW_VDBOX_NODE_1;
+    }
 
     //!
     //! \brief    Initialize the codechal hw interface

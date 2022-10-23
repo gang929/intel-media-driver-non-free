@@ -236,6 +236,7 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
         memPolicyPar.resInfo          = gmmResourceInfoPtr;
         memPolicyPar.resName          = params.m_name.c_str();
         memPolicyPar.preferredMemType = params.m_memType;
+        memPolicyPar.isServer         = PLATFORM_INFORMATION_IS_SERVER & mos_get_platform_information(pOsContextSpecific->GetBufMgr());
 
         mem_type = MemoryPolicyManager::UpdateMemoryPolicy(&memPolicyPar);
     }
@@ -722,7 +723,7 @@ MOS_STATUS GraphicsResourceSpecificNext::AllocateExternalResource(
         gmmParams.Flags.Info.Linear = true;
         tileformat_linux            = I915_TILING_NONE;
     }
-    gmmParams.Flags.Info.LocalOnly = MEDIA_IS_SKU(&perStreamParameters->SkuTable, FtrLocalMemory);
+    gmmParams.Flags.Info.LocalOnly = MEDIA_IS_SKU(&perStreamParameters->m_skuTable, FtrLocalMemory);
 
     resource->pGmmResInfo = gmmResourceInfo = perStreamParameters->pGmmClientContext->CreateResInfoObject(&gmmParams);
 

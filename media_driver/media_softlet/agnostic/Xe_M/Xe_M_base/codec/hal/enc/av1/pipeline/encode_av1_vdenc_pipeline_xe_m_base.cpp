@@ -159,7 +159,7 @@ MOS_STATUS Av1VdencPipelineXe_M_Base::Initialize(void *settings)
         m_debugInterface = MOS_New(CodechalDebugInterface);
         ENCODE_CHK_NULL_RETURN(m_debugInterface);
         ENCODE_CHK_STATUS_RETURN(
-            m_debugInterface->Initialize(m_hwInterface, m_codecFunction));
+            m_debugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopy));
 
         if (m_statusReportDebugInterface != nullptr)
         {
@@ -168,7 +168,7 @@ MOS_STATUS Av1VdencPipelineXe_M_Base::Initialize(void *settings)
         m_statusReportDebugInterface = MOS_New(CodechalDebugInterface);
         ENCODE_CHK_NULL_RETURN(m_statusReportDebugInterface);
         ENCODE_CHK_STATUS_RETURN(
-            m_statusReportDebugInterface->Initialize(m_hwInterface, m_codecFunction));
+            m_statusReportDebugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopy));
     );
 
 
@@ -241,7 +241,7 @@ MOS_STATUS Av1VdencPipelineXe_M_Base::InitMmcState()
 #ifdef _MMC_SUPPORTED
     ENCODE_CHK_NULL_RETURN(m_hwInterface);
     m_mmcState = MOS_New(EncodeMemCompG12, m_hwInterface);
-    CODECHAL_ENCODE_CHK_NULL_RETURN(m_mmcState);
+    ENCODE_CHK_NULL_RETURN(m_mmcState);
 #endif
     return MOS_STATUS_SUCCESS;
 }

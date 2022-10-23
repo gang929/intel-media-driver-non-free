@@ -369,7 +369,7 @@ namespace encode {
         ENCODE_FUNC_CALL();
 
         MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
-        if (vdboxIndex > m_hwInterface->GetMfxInterface()->GetMaxVdboxIndex())
+        if (vdboxIndex > m_hwInterface->m_hwInterfaceNext->GetMaxVdboxIndex())
         {
             //ENCODE_ASSERTMESSAGE("ERROR - vdbox index exceed the maximum");
             eStatus = MOS_STATUS_INVALID_PARAMETER;
@@ -522,7 +522,7 @@ namespace encode {
                     if (0 == sliceNumInTile)
                     {
                         // One tile must have at least one slice
-                        CODECHAL_ENCODE_ASSERT(false);
+                        ENCODE_ASSERT(false);
                         eStatus = MOS_STATUS_INVALID_PARAMETER;
                         break;
                     }
