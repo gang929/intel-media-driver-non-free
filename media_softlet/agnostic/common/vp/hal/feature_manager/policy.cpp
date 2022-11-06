@@ -918,8 +918,9 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled,
     uint32_t dwOutputSurfaceWidth = 0, dwOutputSurfaceHeight = 0;
     uint32_t veboxMinWidth = 0, veboxMaxWidth = 0;
     uint32_t veboxMinHeight = 0, veboxMaxHeight = 0;
-    uint32_t dwSfcMinWidth = 0, dwSfcMaxWidth = 0;
-    uint32_t dwSfcMinHeight = 0, dwSfcMaxHeight = 0;
+    uint32_t dwSfcInputMinWidth = 0, dwSfcMaxWidth = 0;
+    uint32_t dwSfcInputMinHeight = 0, dwSfcMaxHeight = 0;
+    uint32_t dwSfcOutputMinWidth = 0, dwSfcOutputMinHeight = 0;
     uint32_t dwDstMinHeight = 0;
     float    fScaleMin = 0, fScaleMax = 0;
     float    fScaleMin2Pass = 0, fScaleMax2Pass = 0;
@@ -1010,16 +1011,18 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled,
         return MOS_STATUS_SUCCESS;
     }
 
-    veboxMinWidth  = m_hwCaps.m_veboxHwEntry[scalingParams->formatInput].minWidth;
-    veboxMaxWidth  = m_hwCaps.m_veboxHwEntry[scalingParams->formatInput].maxWidth;
-    veboxMinHeight = m_hwCaps.m_veboxHwEntry[scalingParams->formatInput].minHeight;
-    veboxMaxHeight = m_hwCaps.m_veboxHwEntry[scalingParams->formatInput].maxHeight;
-    dwSfcMinWidth  = m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].minResolution;
-    dwSfcMaxWidth  = m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].maxResolution;
-    dwSfcMinHeight = m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].minResolution;
-    dwSfcMaxHeight = m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].maxResolution;
-    fScaleMin      = m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].minScalingRatio;
-    fScaleMax      = m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].maxScalingRatio;
+    veboxMinWidth        = m_hwCaps.m_veboxHwEntry[scalingParams->formatInput].minWidth;
+    veboxMaxWidth        = m_hwCaps.m_veboxHwEntry[scalingParams->formatInput].maxWidth;
+    veboxMinHeight       = m_hwCaps.m_veboxHwEntry[scalingParams->formatInput].minHeight;
+    veboxMaxHeight       = m_hwCaps.m_veboxHwEntry[scalingParams->formatInput].maxHeight;
+    dwSfcInputMinWidth   = m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].inputMinResolution;
+    dwSfcMaxWidth        = m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].maxResolution;
+    dwSfcInputMinHeight  = m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].inputMinResolution;
+    dwSfcMaxHeight       = m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].maxResolution;
+    dwSfcOutputMinWidth  = m_hwCaps.m_sfcHwEntry[scalingParams->formatOutput].outputMinResolution;
+    dwSfcOutputMinHeight = m_hwCaps.m_sfcHwEntry[scalingParams->formatOutput].outputMinResolution;
+    fScaleMin            = m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].minScalingRatio;
+    fScaleMax            = m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].maxScalingRatio;
     if (m_hwCaps.m_rules.sfcMultiPassSupport.scaling.enable)
     {
         fScaleMin2Pass = fScaleMin * m_hwCaps.m_rules.sfcMultiPassSupport.scaling.downScaling.minRatioEnlarged;
@@ -1028,11 +1031,11 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled,
 
     if (scalingParams->interlacedScalingType == ISCALING_FIELD_TO_INTERLEAVED)
     {
-        dwDstMinHeight = dwSfcMinHeight * 2;
+        dwDstMinHeight = dwSfcOutputMinHeight * 2;
     }
     else
     {
-        dwDstMinHeight = dwSfcMinHeight;
+        dwDstMinHeight = dwSfcOutputMinHeight;
     }
 
     if (OUT_OF_BOUNDS(dwSurfaceWidth, veboxMinWidth, veboxMaxWidth) ||
@@ -1084,8 +1087,8 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled,
         scalingParams->interlacedScalingType != ISCALING_INTERLEAVED_TO_FIELD &&
         scalingParams->interlacedScalingType != ISCALING_FIELD_TO_INTERLEAVED)
     {
-        if (OUT_OF_BOUNDS(dwSurfaceWidth, dwSfcMinWidth, dwSfcMaxWidth)    ||
-                OUT_OF_BOUNDS(dwSurfaceHeight, dwSfcMinHeight, dwSfcMaxHeight))
+        if (OUT_OF_BOUNDS(dwSurfaceWidth, dwSfcInputMinWidth, dwSfcMaxWidth)    ||
+                OUT_OF_BOUNDS(dwSurfaceHeight, dwSfcInputMinHeight, dwSfcMaxHeight))
         {
             // for non-Scaling cases, all engine supported
             scalingEngine->bEnabled             = 0;
@@ -1098,7 +1101,7 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled,
             scalingEngine->hdrKernelSupported   = 1;
             scalingEngine->sfcNotSupported      = 1;
             VP_PUBLIC_NORMALMESSAGE("The surface resolution (%d x %d) is not supported by sfc (%d x %d) ~ (%d x %d).",
-                dwSurfaceWidth, dwSurfaceHeight, dwSfcMinWidth, dwSfcMinHeight, dwSfcMaxWidth, dwSfcMaxHeight);
+                dwSurfaceWidth, dwSurfaceHeight, dwSfcInputMinWidth, dwSfcInputMinHeight, dwSfcMaxWidth, dwSfcMaxHeight);
         }
         else if (isSfcIscalingNotSupported())
         {
@@ -1159,13 +1162,13 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled,
         (m_hwCaps.m_sfcHwEntry[scalingParams->formatOutput].outputSupported & VpGetFormatTileSupport(scalingParams->output.tileMode) ) &&
         m_hwCaps.m_sfcHwEntry[scalingParams->formatInput].scalingSupported)
     {
-        if (!(OUT_OF_BOUNDS(dwSurfaceWidth, dwSfcMinWidth, dwSfcMaxWidth)         ||
-              OUT_OF_BOUNDS(dwSurfaceHeight, dwSfcMinHeight, dwSfcMaxHeight)      ||
-              OUT_OF_BOUNDS(dwSourceRegionWidth, dwSfcMinWidth, dwSfcMaxWidth)    ||
-              OUT_OF_BOUNDS(dwSourceRegionHeight, dwSfcMinHeight, dwSfcMaxHeight) ||
-              OUT_OF_BOUNDS(dwOutputRegionWidth, dwSfcMinWidth, dwSfcMaxWidth)    ||
-              OUT_OF_BOUNDS(dwOutputRegionHeight, dwSfcMinHeight, dwSfcMaxHeight) ||
-              OUT_OF_BOUNDS(dwOutputSurfaceWidth, dwSfcMinWidth, dwSfcMaxWidth)   ||
+        if (!(OUT_OF_BOUNDS(dwSurfaceWidth, dwSfcInputMinWidth, dwSfcMaxWidth)         ||
+              OUT_OF_BOUNDS(dwSurfaceHeight, dwSfcInputMinHeight, dwSfcMaxHeight)      ||
+              OUT_OF_BOUNDS(dwSourceRegionWidth, dwSfcInputMinWidth, dwSfcMaxWidth)    ||
+              OUT_OF_BOUNDS(dwSourceRegionHeight, dwSfcInputMinHeight, dwSfcMaxHeight) ||
+              OUT_OF_BOUNDS(dwOutputRegionWidth, dwSfcOutputMinWidth, dwSfcMaxWidth)    ||
+              OUT_OF_BOUNDS(dwOutputRegionHeight, dwSfcOutputMinHeight, dwSfcMaxHeight) ||
+              OUT_OF_BOUNDS(dwOutputSurfaceWidth, dwSfcOutputMinWidth, dwSfcMaxWidth)   ||
               OUT_OF_BOUNDS(dwOutputSurfaceHeight, dwDstMinHeight, dwSfcMaxHeight)))
         {
             if ((m_hwCaps.m_rules.sfcMultiPassSupport.scaling.enable             &&
@@ -1426,14 +1429,14 @@ MOS_STATUS Policy::GetDenoiseExecutionCaps(SwFilter* feature)
                 heightAlignUnit = MOS_ALIGN_CEIL(m_hwCaps.m_veboxHwEntry[inputformat].verticalAlignUnit, 2);
             }
 
-            if (MOS_IS_ALIGNED(denoiseParams.heightInput, heightAlignUnit))
+            if (MOS_IS_ALIGNED(MOS_MIN(denoiseParams.heightInput, denoiseParams.srcBottom), heightAlignUnit))
             {
                 denoiseEngine.bEnabled    = 1;
                 denoiseEngine.VeboxNeeded = 1;
             }
             else
             {
-                VP_PUBLIC_NORMALMESSAGE("Denoise Feature is disabled since heightInput (%d) not being %d aligned.", denoiseParams.heightInput, heightAlignUnit);
+                VP_PUBLIC_NORMALMESSAGE("Denoise Feature is disabled since min of heightInput (%d) and srcBottom (%d) not being %d aligned.", denoiseParams.heightInput, denoiseParams.srcBottom, heightAlignUnit);
             }
         }
     }
@@ -1473,16 +1476,24 @@ MOS_STATUS Policy::GetDeinterlaceExecutionCaps(SwFilter* feature)
         return MOS_STATUS_SUCCESS;
     }
 
-    if (!m_hwCaps.m_veboxHwEntry[inputformat].deinterlaceSupported              ||
-        diParams.diParams && diParams.diParams->DIMode == DI_MODE_BOB           &&
+    if (!m_hwCaps.m_veboxHwEntry[inputformat].deinterlaceSupported)
+    {
+        diEngine.bEnabled     = 1;
+        diEngine.RenderNeeded = 1;
+        diEngine.fcSupported  = 1;
+        PrintFeatureExecutionCaps(__FUNCTION__, diEngine);
+        return MOS_STATUS_SUCCESS;
+    }
+
+    if (diParams.diParams                                                       &&
         !MOS_IS_ALIGNED(MOS_MIN((uint32_t)diParams.heightInput, (uint32_t)diParams.rcSrc.bottom), 4) &&
         (diParams.formatInput == Format_P010                                    ||
          diParams.formatInput == Format_P016                                    ||
          diParams.formatInput == Format_NV12))
     {
-        diEngine.bEnabled     = 1;
-        diEngine.RenderNeeded = 1;
-        diEngine.fcSupported  = 1;
+        diEngine.bEnabled     = 0;
+        diEngine.RenderNeeded = 0;
+        diEngine.fcSupported  = 0;
         PrintFeatureExecutionCaps(__FUNCTION__, diEngine);
         return MOS_STATUS_SUCCESS;
     }
@@ -2778,9 +2789,22 @@ MOS_STATUS Policy::UpdateFeatureTypeWithEngineSingleLayer(SwFilterSubPipe *featu
 MOS_STATUS Policy::LayerSelectForProcess(std::vector<int> &layerIndexes, SwFilterPipe& featurePipe, bool isSingleSubPipe, uint32_t pipeIndex, VP_EXECUTE_CAPS& caps)
 {
     layerIndexes.clear();
-    if (isSingleSubPipe && !caps.bComposite)
+    if (isSingleSubPipe && !caps.bComposite && !caps.bRenderHdr)
     {
         layerIndexes.push_back(pipeIndex);
+        return MOS_STATUS_SUCCESS;
+    }
+
+    if (caps.bRenderHdr)
+    {
+        auto it = m_RenderFeatureHandlers.find(FeatureTypeHdrOnRender);
+        if (m_RenderFeatureHandlers.end() == it)
+        {
+            VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
+        }
+        PolicyRenderHdrHandler *hdrHandler = dynamic_cast<PolicyRenderHdrHandler *>(it->second);
+        VP_PUBLIC_CHK_NULL_RETURN(hdrHandler);
+        VP_PUBLIC_CHK_STATUS_RETURN(hdrHandler->LayerSelectForProcess(layerIndexes, featurePipe, isSingleSubPipe, pipeIndex, caps));
         return MOS_STATUS_SUCCESS;
     }
 
@@ -3235,6 +3259,10 @@ MOS_STATUS Policy::UpdateExeCaps(SwFilter* feature, VP_EXECUTE_CAPS& caps, Engin
             caps.bLACE = 1;
             feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(Lace, Vebox)));
             break;
+        case FeatureTypeSR:
+            caps.bSR = 1;
+            feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(SR, Vebox)));
+            break;
         default:
             break;
         }
@@ -3263,6 +3291,7 @@ MOS_STATUS Policy::UpdateExeCaps(SwFilter* feature, VP_EXECUTE_CAPS& caps, Engin
         case FeatureTypeSR:
             caps.bSR = 1;
             feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(SR, Render)));
+            break;
         case FeatureTypeLace:
             caps.bLACE = 1;
             feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(Lace, Render)));
@@ -3456,6 +3485,14 @@ MOS_STATUS Policy::AddNewFilterOnVebox(
 
         status = csc->Configure(cscParams);
     }
+    else if (featureType == FeatureTypeDn)
+    {
+        SwFilterDenoise *dn        = (SwFilterDenoise *)swfilter;
+        FeatureParamDenoise dnParams = dn->GetSwFilterParams();
+        VP_PUBLIC_CHK_STATUS_RETURN(GetDnParamsOnCaps(pSurfInput, pSurfOutput, caps, dnParams));
+
+        status = dn->Configure(dnParams);
+    }
     else
     {
         status = swfilter->Configure(pSurfInput, pSurfOutput, caps);
@@ -3538,6 +3575,39 @@ MOS_STATUS Policy::GetCscParamsOnCaps(PVP_SURFACE surfInput, PVP_SURFACE surfOut
     }
 
     return MOS_STATUS_UNIMPLEMENTED;
+}
+
+MOS_STATUS Policy::GetDnParamsOnCaps(PVP_SURFACE surfInput, PVP_SURFACE surfOutput, VP_EXECUTE_CAPS &caps, FeatureParamDenoise &dnParams)
+{
+    dnParams.formatInput     = surfInput->osSurface->Format;
+    dnParams.heightInput     = surfInput->osSurface->dwHeight;
+    dnParams.formatOutput    = Format_NV12;
+    dnParams.sampleTypeInput = SAMPLE_PROGRESSIVE;
+
+    dnParams.denoiseParams.bEnableLuma       = true;
+    dnParams.denoiseParams.bEnableChroma     = true;
+    dnParams.denoiseParams.bEnableHVSDenoise = false;
+    dnParams.denoiseParams.bAutoDetect       = false;
+    dnParams.denoiseParams.fDenoiseFactor    = 64.0f;
+
+#if !EMUL
+    GMM_RESOURCE_INFO *pSrcGmmResInfo    = surfInput->osSurface->OsResource.pGmmResInfo;
+    GMM_RESOURCE_INFO *pTargetGmmResInfo = surfOutput->osSurface->OsResource.pGmmResInfo;
+    VP_PUBLIC_CHK_NULL_RETURN(pSrcGmmResInfo);
+    VP_PUBLIC_CHK_NULL_RETURN(pTargetGmmResInfo);
+
+    bool inputProtected  = pSrcGmmResInfo->GetSetCpSurfTag(0, 0);
+    bool outputProtected = pTargetGmmResInfo->GetSetCpSurfTag(0, 0);
+
+    if (inputProtected || outputProtected ||
+        (m_vpInterface.GetHwInterface()->m_osInterface->osCpInterface &&
+            m_vpInterface.GetHwInterface()->m_osInterface->osCpInterface->IsHMEnabled()))
+    {
+        dnParams.secureDnNeeded = true;
+    }
+#endif
+
+    return MOS_STATUS_SUCCESS;
 }
 
 void Policy::PrintFeatureExecutionCaps(const char *name, VP_EngineEntry &engineCaps)

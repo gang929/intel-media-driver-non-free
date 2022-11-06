@@ -32,8 +32,6 @@
 #include <vector>
 #include <stdint.h>
 #include <fstream>
-#include <string>
-#include <vector>
 #include <map>
 #include <mutex>
 #include "mos_utilities_common.h"
@@ -1997,7 +1995,7 @@ public:
     //!
     static bool TraceKeyEnabled(MEDIA_EVENT_FILTER_KEYID key)
     {
-        return m_mosTraceFilter & (static_cast<uint64_t>(1) << key);
+        return m_mosTraceFilter ? ((*m_mosTraceFilter) & (1ULL << key)):0;
     }
 
     //!
@@ -2008,7 +2006,7 @@ public:
     //!
     static bool TracelevelEnabled(MT_EVENT_LEVEL level)
     {
-        return level <= static_cast<MT_EVENT_LEVEL>(m_mosTraceLevel.Event);
+        return m_mosTraceLevel? (level <= static_cast<MT_EVENT_LEVEL>(m_mosTraceLevel->Event)):0;
     }
 
     //!
@@ -2019,7 +2017,7 @@ public:
     //!
     static bool TracelevelEnabled(MT_DATA_LEVEL level)
     {
-        return level <= static_cast<MT_DATA_LEVEL>(m_mosTraceLevel.Data);
+        return m_mosTraceLevel? (level <= static_cast<MT_DATA_LEVEL>(m_mosTraceLevel->Data)):0;
     }
 
     //!
@@ -2030,7 +2028,7 @@ public:
     //!
     static bool TracelevelEnabled(MT_LOG_LEVEL level)
     {
-        return level <= static_cast<MT_LOG_LEVEL>(m_mosTraceLevel.Log);
+        return m_mosTraceLevel? (level <= static_cast<MT_LOG_LEVEL>(m_mosTraceLevel->Log)):0;
     }
 
     //!
@@ -2240,6 +2238,21 @@ public:
         size_t                      dataSize,
         MediaUserSetting::Value     &dstValue,
         MOS_USER_FEATURE_VALUE_TYPE type);
+#if (_DEBUG || _RELEASE_INTERNAL)
+
+    //!
+    //! \brief    MosMMPWriteFile
+    //! \details  Accelerate Writing file's IO speed using Memory Map
+    //! \param    [in] name
+    //!           [in] data
+    //!           [in] size
+    //! \return   void
+    //!
+    static void MosMMPWriteFile(
+        const std::string &name,
+        const void        *data,
+        size_t             size);
+#endif
 
 private:
 
@@ -2718,8 +2731,8 @@ public:
     static uint8_t                      m_mosUltFlag;
     static int32_t                      m_mosMemAllocCounterNoUserFeature;
     static int32_t                      m_mosMemAllocCounterNoUserFeatureGfx;
-    static uint64_t                     m_mosTraceFilter;
-    static MtLevel                      m_mosTraceLevel;
+    static uint64_t*                    m_mosTraceFilter;
+    static MtLevel*                     m_mosTraceLevel;
 
     //Temporarily defined as the reference to compatible with the cases using uf key to enable/disable APG.
     static int32_t                      m_mosMemAllocCounter;

@@ -33,6 +33,8 @@
 #include "decode_av1_feature_manager_g12.h"
 #include "decode_mem_compression_g12.h"
 #include "decode_av1_feature_defs_g12.h"
+#include "decode_marker_packet_g12.h"
+#include "decode_predication_packet_g12.h"
 
 namespace decode
 {
@@ -60,6 +62,11 @@ namespace decode
         DECODE_CHK_STATUS(RegisterPacket(DecodePacketId(this, av1DecodePacketId), m_av1DecodePkt));
         DECODE_CHK_STATUS(m_av1DecodePkt->Init());
 
+        if (m_numVdbox == 2)
+        {
+            m_allowVirtualNodeReassign = true;
+        }
+
         return MOS_STATUS_SUCCESS;
     }
 
@@ -84,7 +91,16 @@ namespace decode
         }
         scalPars.numVdbox = m_numVdbox;
 
-        m_mediaContext->SwitchContext(VdboxDecodeFunc, &scalPars, &m_scalability);
+        if (m_allowVirtualNodeReassign)
+        {
+            // reassign decoder virtual node at the first frame for each stream
+            DECODE_CHK_STATUS(m_mediaContext->ReassignContextForDecoder(basicFeature->m_frameNum, &scalPars, &m_scalability));
+            m_mediaContext->SetLatestDecoderVirtualNode();
+        }
+        else
+        {
+            DECODE_CHK_STATUS(m_mediaContext->SwitchContext(VdboxDecodeFunc, &scalPars, &m_scalability));
+        }
         DECODE_CHK_NULL(m_scalability);
 
         m_decodeContext = m_osInterface->pfnGetGpuContext(m_osInterface);
@@ -261,19 +277,19 @@ namespace decode
         DECODE_CHK_STATUS(InitMmcState());
 
         auto *codecSettings     = (CodechalSetting *)settings;
-        m_fgCoordValSurfInitPipeline = MOS_New(FilmGrainSurfaceInit, this, m_task, m_numVdbox);
+        m_fgCoordValSurfInitPipeline = MOS_New(FilmGrainSurfaceInit, this, m_task, m_numVdbox, m_hwInterface);
         DECODE_CHK_NULL(m_fgCoordValSurfInitPipeline);
         DECODE_CHK_STATUS(m_preSubPipeline->Register(*m_fgCoordValSurfInitPipeline));
         DECODE_CHK_STATUS(m_fgCoordValSurfInitPipeline->Init(*codecSettings));
 
         //pre subpipeline for generate noise
-        m_fgGenNoiseSubPipeline = MOS_New(FilmGrainPreSubPipeline, this, m_task, m_numVdbox);
+        m_fgGenNoiseSubPipeline = MOS_New(FilmGrainPreSubPipeline, this, m_task, m_numVdbox, m_hwInterface);
         DECODE_CHK_NULL(m_fgGenNoiseSubPipeline);
         DECODE_CHK_STATUS(m_preSubPipeline->Register(*m_fgGenNoiseSubPipeline));
         DECODE_CHK_STATUS(m_fgGenNoiseSubPipeline->Init(*codecSettings));
 
         //post subpipeline for apply noise
-        m_fgAppNoiseSubPipeline = MOS_New(FilmGrainPostSubPipeline, this, m_task, m_numVdbox);
+        m_fgAppNoiseSubPipeline = MOS_New(FilmGrainPostSubPipeline, this, m_task, m_numVdbox, m_hwInterface);
         DECODE_CHK_NULL(m_fgAppNoiseSubPipeline);
         DECODE_CHK_STATUS(m_postSubPipeline->Register(*m_fgAppNoiseSubPipeline));
         DECODE_CHK_STATUS(m_fgAppNoiseSubPipeline->Init(*codecSettings));
@@ -307,7 +323,15 @@ namespace decode
 
     MOS_STATUS Av1PipelineG12::CreateSubPackets(DecodeSubPacketManager &subPacketManager, CodechalSetting &codecSettings)
     {
-        DECODE_CHK_STATUS(DecodePipeline::CreateSubPackets(subPacketManager, codecSettings));
+        DecodePredicationPktG12 *predicationPkt = MOS_New(DecodePredicationPktG12, this, m_hwInterface);
+        DECODE_CHK_NULL(predicationPkt);
+        DECODE_CHK_STATUS(subPacketManager.Register(
+            DecodePacketId(this, predicationSubPacketId), *predicationPkt));
+
+        DecodeMarkerPktG12 *markerPkt = MOS_New(DecodeMarkerPktG12, this, m_hwInterface);
+        DECODE_CHK_NULL(markerPkt);
+        DECODE_CHK_STATUS(subPacketManager.Register(
+            DecodePacketId(this, markerSubPacketId), *markerPkt));
 
         Av1DecodePicPktG12 *pictureDecodePkt = MOS_New(Av1DecodePicPktG12, this, m_hwInterface);
         DECODE_CHK_NULL(pictureDecodePkt);

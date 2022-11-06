@@ -52,7 +52,7 @@ public:
     //! \param  [in] debugInterface
     //!         Pointer to CodechalDebugInterface
     //!
-    HevcPipeline(CodechalHwInterface *hwInterface, CodechalDebugInterface *debugInterface);
+    HevcPipeline(CodechalHwInterfaceNext *hwInterface, CodechalDebugInterface *debugInterface);
 
     virtual ~HevcPipeline() {}
 
@@ -297,6 +297,8 @@ protected:
     DecodeHevcScalabilityOption m_scalabOption; //!< Hevc decode scalability option
 
     std::vector<DecodePhase *>  m_phaseList;    //!< Phase list
+
+    bool m_allowVirtualNodeReassign = false;    //!< Whether allow virtual node reassign
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     uint32_t m_rtFrameCount = 0; //!< frame count for real tile decoding

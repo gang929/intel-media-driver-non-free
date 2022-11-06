@@ -43,7 +43,7 @@
     DEF(AVP_SURFACE_STATE);           \
     DEF(AVP_BSD_OBJECT);              \
     DEF(AVP_PAK_INSERT_OBJECT);       \
-    DEF(AVP_CMD1)
+    DEF(AVP_FILM_GRAIN_STATE)
 
 namespace mhw
 {
@@ -80,6 +80,7 @@ public:
         AVP_PIC_STATE_CMD_NUMBER_OF_ADDRESSES               = 0,
         AVP_REF_IDX_STATE_CMD_NUMBER_OF_ADDRESSES           = 0,
         AVP_SEGMENT_STATE_CMD_NUMBER_OF_ADDRESSES           = 0,
+        AVP_TILE_CODING_CMD_LST_NUMBER_OF_ADDRESSES         =  0,
         AVP_TILE_CODING_CMD_NUMBER_OF_ADDRESSES             = 0,
         AVP_BSD_OBJECT_CMD_NUMBER_OF_ADDRESSES              = 0,
         AVP_INLOOP_FILTER_STATE_CMD_NUMBER_OF_ADDRESSES     = 0,
