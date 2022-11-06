@@ -26,7 +26,7 @@
 #ifndef __ENCODE_BASIC_FEATURE_H__
 #define __ENCODE_BASIC_FEATURE_H__
 
-#include "codechal_hw.h"
+#include "codec_hw_next.h"
 #include "codec_def_encode.h"
 #include "codechal_setting.h"
 #include "encode_tracked_buffer.h"
@@ -40,7 +40,7 @@ class EncodeBasicFeature:public MediaFeature
 {
 public:
     EncodeBasicFeature(EncodeAllocator *allocator,
-                        CodechalHwInterface *hwInterface,
+                        CodechalHwInterfaceNext *hwInterface,
                         TrackedBuffer *trackedBuf,
                         RecycleResource *recycleBuf);
     virtual ~EncodeBasicFeature() { }
@@ -181,6 +181,17 @@ public:
 
     uint8_t m_par65Inter = 0;
     uint8_t m_par65Intra = 0;
+
+    /*! \brief Specifies motion search modes that will be used.
+    *
+    *    SubPelMode is only valid when bEnableSubPelMode is true. Following are valid values of SubPelMode:
+    *    0:Integer mode searching
+    *    1:Half-pel mode searching
+    *    2:Reserved
+    *    3:Quarter-pel mode searching
+    */
+    bool    m_bEnableSubPelMode = false;
+    uint8_t m_SubPelMode        = 3;
 
 protected:
     //!

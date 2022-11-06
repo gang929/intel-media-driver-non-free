@@ -174,6 +174,7 @@ MOS_STATUS SwFilterCsc::Configure(VP_PIPELINE_PARAMS &params, bool isInputSurf, 
     m_Params.output.chromaSiting    = surfOutput->ChromaSiting;
     // Alpha should be handled in input pipe to avoid alpha data lost from image.
     m_Params.pAlphaParams           = params.pCompAlpha;
+    m_Params.formatforCUS           = Format_None;
 
     VP_PUBLIC_NORMALMESSAGE("formatInput %d, formatOutput %d", m_Params.formatInput, m_Params.formatOutput);
 
@@ -808,6 +809,7 @@ MOS_STATUS SwFilterDenoise::Configure(VP_PIPELINE_PARAMS& params, bool isInputSu
     m_Params.formatInput   = surfInput->Format;
     m_Params.formatOutput  = surfInput->Format;// Denoise didn't change the original format;
     m_Params.heightInput   = surfInput->dwHeight;
+    m_Params.srcBottom     = surfInput->rcSrc.bottom;
 
     m_Params.denoiseParams.bEnableChroma =
         m_Params.denoiseParams.bEnableChroma && m_Params.denoiseParams.bEnableLuma;
@@ -827,6 +829,21 @@ MOS_STATUS SwFilterDenoise::Configure(VP_PIPELINE_PARAMS& params, bool isInputSu
         m_Params.secureDnNeeded = true;
     }
 #endif
+
+    VP_PUBLIC_NORMALMESSAGE("denoiseLevel = %d,secureDn = %d, AutoDn = %d", m_Params.denoiseParams.NoiseLevel, m_Params.secureDnNeeded, m_Params.denoiseParams.bAutoDetect);
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS SwFilterDenoise::Configure(FeatureParamDenoise &params)
+{
+    VP_FUNC_CALL();
+
+    m_Params.sampleTypeInput = params.sampleTypeInput;
+    m_Params.denoiseParams   = params.denoiseParams;
+    m_Params.formatInput     = params.formatInput;
+    m_Params.formatOutput    = params.formatOutput;
+    m_Params.heightInput     = params.heightInput;
+    m_Params.secureDnNeeded  = params.secureDnNeeded;
 
     VP_PUBLIC_NORMALMESSAGE("denoiseLevel = %d,secureDn = %d, AutoDn = %d", m_Params.denoiseParams.NoiseLevel, m_Params.secureDnNeeded, m_Params.denoiseParams.bAutoDetect);
     return MOS_STATUS_SUCCESS;
@@ -1282,7 +1299,6 @@ MOS_STATUS SwFilterHdr::Configure(VP_PIPELINE_PARAMS &params, bool isInputSurf, 
     m_Params.uiMaxContentLevelLum = surfInput->pHDRParams->MaxCLL;
     m_Params.srcColorSpace        = surfInput->ColorSpace;
     m_Params.dstColorSpace        = surfOutput->ColorSpace;
-    m_Params.ScalingMode          = surfInput->ScalingMode;
 
     if (surfInput->pHDRParams->EOTF == VPHAL_HDR_EOTF_SMPTE_ST2084)
     {

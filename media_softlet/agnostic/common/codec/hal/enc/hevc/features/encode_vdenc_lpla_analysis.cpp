@@ -32,7 +32,7 @@ namespace encode
     VdencLplaAnalysis::VdencLplaAnalysis(
         MediaFeatureManager *featureManager,
         EncodeAllocator     *allocator,
-        CodechalHwInterface *hwInterface,
+        CodechalHwInterfaceNext *hwInterface,
         void                *constSettings) :
         MediaFeature(constSettings, hwInterface ? hwInterface->GetOsInterface() : nullptr),
         m_hwInterface(hwInterface),
@@ -141,7 +141,7 @@ namespace encode
             }
             else
             {
-                ENCODE_ASSERTMESSAGE("Invalid GopPicSize in LPLA!");
+                CODECHAL_ENCODE_ASSERTMESSAGE("Invalid GopPicSize in LPLA!");
                 return MOS_STATUS_INVALID_PARAMETER;
             }
         }
@@ -471,17 +471,20 @@ namespace encode
         }
 
 #if (_SW_BRC)
-        CodechalVdencHevcLaData *data = (CodechalVdencHevcLaData *)m_allocator->LockResourceForRead(m_vdencLaDataBuffer);
-        ENCODE_CHK_NULL_RETURN(data);
+        if (m_isLookAheadDllCall)
+        {
+            CodechalVdencHevcLaData *data = (CodechalVdencHevcLaData *)m_allocator->LockResourceForRead(m_vdencLaDataBuffer);
+            ENCODE_CHK_NULL_RETURN(data);
 
-        LookaheadReport *lookaheadStatus     = &encodeStatusMfx->lookaheadStatus;
-        lookaheadStatus->targetFrameSize     = data[m_offset].targetFrameSize;
-        lookaheadStatus->targetBufferFulness = data[m_offset].targetBufferFulness;
-        lookaheadStatus->encodeHints         = data[m_offset].encodeHints;
-        lookaheadStatus->pyramidDeltaQP      = data[m_offset].pyramidDeltaQP;
-        lookaheadStatus->miniGopSize         = data[m_offset].miniGopSize;
-
-        m_allocator->UnLock(m_vdencLaDataBuffer);
+            LookaheadReport *lookaheadStatus     = &encodeStatusMfx->lookaheadStatus;
+            lookaheadStatus->targetFrameSize     = data[m_offset].targetFrameSize;
+            lookaheadStatus->targetBufferFulness = data[m_offset].targetBufferFulness;
+            lookaheadStatus->encodeHints         = data[m_offset].encodeHints;
+            lookaheadStatus->pyramidDeltaQP      = data[m_offset].pyramidDeltaQP;
+            lookaheadStatus->miniGopSize         = data[m_offset].miniGopSize;
+            
+            m_allocator->UnLock(m_vdencLaDataBuffer);
+        }
 #endif
 
         if (m_lookaheadReport && (encodeStatusMfx->lookaheadStatus.targetFrameSize > 0))
@@ -766,6 +769,11 @@ namespace encode
     MOS_STATUS VdencLplaAnalysis::ReadLPLAData(PMOS_COMMAND_BUFFER cmdBuffer, PMOS_RESOURCE resource, uint32_t baseOffset, bool hucStsUpdNeeded)
     {
         ENCODE_FUNC_CALL();
+
+#if _SW_BRC
+        m_isLookAheadDllCall = hucStsUpdNeeded;
+#endif
+
         if (!hucStsUpdNeeded)
         {
             // Write lookahead status to encode status buffer
@@ -787,8 +795,9 @@ namespace encode
             miCpyMemMemParams.dwSrcOffset = m_offset * sizeof(CodechalVdencHevcLaData) + CODECHAL_OFFSETOF(CodechalVdencHevcLaData, pyramidDeltaQP);
             miCpyMemMemParams.dwDstOffset = baseOffset + CODECHAL_OFFSETOF(LookaheadReport, pyramidDeltaQP);
             ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_COPY_MEM_MEM)(cmdBuffer));
-            miCpyMemMemParams.dwSrcOffset = m_offset * sizeof(CodechalVdencHevcLaData) + CODECHAL_OFFSETOF(CodechalVdencHevcLaData, miniGopSize);
-            miCpyMemMemParams.dwDstOffset = baseOffset + CODECHAL_OFFSETOF(LookaheadReport, miniGopSize);
+            //MI_COPY_MEM_MEM reads a DWord from memory and stores it to memory. This copy will include adaptive_rounding and minigop
+            miCpyMemMemParams.dwSrcOffset = m_offset * sizeof(CodechalVdencHevcLaData) + CODECHAL_OFFSETOF(CodechalVdencHevcLaData, adaptive_rounding);
+            miCpyMemMemParams.dwDstOffset = baseOffset + CODECHAL_OFFSETOF(LookaheadReport, adaptive_rounding);
             ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_COPY_MEM_MEM)(cmdBuffer));
 
             flushDwParams = {};
@@ -901,6 +910,20 @@ namespace encode
         hucVdencLaUpdateDmem->currentPass = (uint8_t)curPass;
 
         m_allocator->UnLock(m_vdencLaUpdateDmemBuffer[currRecycledBufIdx][curPass]);
+
+        return eStatus;
+    }
+
+    MOS_STATUS VdencLplaAnalysis::SetVdencPipeModeSelectParams(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS_G12 &pipeModeSelectParams)
+    {
+        ENCODE_FUNC_CALL();
+        MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+        
+        if (!m_enabled)
+        {
+            return eStatus;
+        }
+        pipeModeSelectParams.bLookaheadPass = true;
 
         return eStatus;
     }

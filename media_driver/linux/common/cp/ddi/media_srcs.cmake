@@ -25,7 +25,6 @@ set(TMP_SOURCES_
 )
 
 set(TMP_HEADERS_
-    ${CMAKE_CURRENT_LIST_DIR}/media_ddi_prot.h
     ${CMAKE_CURRENT_LIST_DIR}/media_libva_cp_interface.h
     ${CMAKE_CURRENT_LIST_DIR}/media_libva_caps_cp_interface.h
 )

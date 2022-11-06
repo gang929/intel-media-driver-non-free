@@ -116,6 +116,7 @@ enum FeatureType
     FeatureTypeSecureCopy       = 0x1000,
     FeatureTypeSecureCopyOnRender = FeatureTypeSecureCopy | FEATURE_TYPE_ENGINE_BITS_RENDER,
     FeatureTypeSR               = 0x1100,
+    FeatureTypeSROnVebox        = FeatureTypeSR | FEATURE_TYPE_ENGINE_BITS_VEBOX,
     FeatureTypeSROnRender       = FeatureTypeSR | FEATURE_TYPE_ENGINE_BITS_RENDER,
     FeatureTypeLace             = 0x1200,
     FeatureTypeLaceOnVebox      = FeatureTypeLace | FEATURE_TYPE_ENGINE_BITS_VEBOX,
@@ -984,6 +985,7 @@ struct FeatureParamCsc : public FeatureParam
     CSC_PARAMS          output          = {};
     PVPHAL_IEF_PARAMS   pIEFParams      = nullptr;
     PVPHAL_ALPHA_PARAMS pAlphaParams    = nullptr;
+    MOS_FORMAT          formatforCUS    = Format_None;            //!< Only valid when formatforCUS != Format_None for Chromaupsampling. To be cleared in SwFilterCsc::Configure
     FeatureParamCsc     *next           = nullptr;                //!< pointe to new/next generated CSC params
 };
 
@@ -1022,7 +1024,22 @@ struct FeatureParamScaling : public FeatureParam
         MOS_TILE_MODE_GMM       tileMode   = MOS_TILE_4_GMM;
         bool operator == (struct SCALING_PARAMS &b)
         {
-            return 0 == memcmp(this, &b, sizeof(SCALING_PARAMS));
+            return (dwWidth         ==  b.dwWidth           &&
+                    dwHeight        ==  b.dwHeight          &&
+                    sampleType      ==  b.sampleType        &&
+                    tileMode        ==  b.tileMode          &&
+                    (rcSrc.left     ==  b.rcSrc.left        &&
+                    rcSrc.right     ==  b.rcSrc.right       &&
+                    rcSrc.top       ==  b.rcSrc.top         &&
+                    rcSrc.bottom    ==  b.rcSrc.bottom)     &&
+                    (rcDst.left     ==  b.rcDst.left        &&
+                    rcDst.right     ==  b.rcDst.right       &&
+                    rcDst.top       ==  b.rcDst.top         &&
+                    rcDst.bottom    ==  b.rcDst.bottom)     &&
+                    (rcMaxSrc.left  ==  b.rcMaxSrc.left     &&
+                    rcMaxSrc.right  ==  b.rcMaxSrc.right    &&
+                    rcMaxSrc.top    ==  b.rcMaxSrc.top      &&
+                    rcMaxSrc.bottom ==  b.rcMaxSrc.bottom));
         }
     };
 
@@ -1151,13 +1168,14 @@ struct FeatureParamDenoise : public FeatureParam
     uint32_t             heightInput          = 0;
     bool                 secureDnNeeded       = false;
     DN_STAGE             stage                = DN_STAGE_DEFAULT;
+    uint32_t             srcBottom            = 0;
     bool                 operator==(const struct FeatureParamDenoise &b)
     {
         return sampleTypeInput     == b.sampleTypeInput &&
                denoiseParams       == b.denoiseParams   &&
                widthAlignUnitInput == b.widthAlignUnitInput &&
                heightAlignUnitInput == b.heightAlignUnitInput &&
-               heightInput         == b.heightInput &&
+               MOS_MIN(heightInput, srcBottom) == MOS_MIN(b.heightInput, srcBottom) &&
                secureDnNeeded      == b.secureDnNeeded &&
                stage               == b.stage;
     }
@@ -1170,6 +1188,7 @@ public:
     virtual ~SwFilterDenoise();
     virtual MOS_STATUS Clean();
     virtual MOS_STATUS Configure(VP_PIPELINE_PARAMS& params, bool isInputSurf, int surfIndex);
+    virtual MOS_STATUS Configure(FeatureParamDenoise &params);
     virtual FeatureParamDenoise& GetSwFilterParams();
     virtual SwFilter* Clone();
     virtual bool operator == (SwFilter& swFilter);
@@ -1369,7 +1388,6 @@ struct FeatureParamHdr : public FeatureParam
     uint32_t                uiSplitFramePortions                 = 1;                     //!< Split Frame flag
     bool                    bForceSplitFrame                     = false;
     bool                    bNeed3DSampler                       = false;                 //!< indicate whether 3D should neede by force considering AVS removal etc.
-    VPHAL_SCALING_MODE      ScalingMode                          = VPHAL_SCALING_NEAREST; //!<  Scaling Mode
 
     uint16_t         InputSrc[VPHAL_MAX_HDR_INPUT_LAYER]                 = {}; // Input Surface
     uint16_t         Target[VPHAL_MAX_HDR_OUTPUT_LAYER]                  = {}; // Target Surface

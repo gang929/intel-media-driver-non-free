@@ -36,7 +36,7 @@
 
 namespace decode {
 
-HevcPipeline::HevcPipeline(CodechalHwInterface *hwInterface, CodechalDebugInterface *debugInterface)
+HevcPipeline::HevcPipeline(CodechalHwInterfaceNext *hwInterface, CodechalDebugInterface *debugInterface)
     : DecodePipeline(hwInterface, debugInterface)
 {
     MOS_STATUS m_status = InitUserSetting(m_userSettingPtr);
@@ -116,7 +116,16 @@ MOS_STATUS HevcPipeline::Execute()
             // switch context
             DecodeScalabilityOption *scalabOption = phase->GetDecodeScalabilityOption();
             DECODE_CHK_NULL(scalabOption);
-            DECODE_CHK_STATUS(m_mediaContext->SwitchContext(VdboxDecodeFunc, *scalabOption, &m_scalability));
+            if (m_allowVirtualNodeReassign)
+            {
+                // reassign decoder virtual node at the first frame for each stream
+                DECODE_CHK_STATUS(m_mediaContext->ReassignContextForDecoder(m_basicFeature->m_frameNum, *scalabOption, &m_scalability));
+                m_mediaContext->SetLatestDecoderVirtualNode();
+            }
+            else
+            {
+                DECODE_CHK_STATUS(m_mediaContext->SwitchContext(VdboxDecodeFunc, *scalabOption, &m_scalability));
+            }
             if (scalabOption->IsScalabilityOptionMatched(m_scalabOption))
             {
                 m_decodeContext = m_osInterface->pfnGetGpuContext(m_osInterface);
@@ -140,7 +149,7 @@ MOS_STATUS HevcPipeline::Execute()
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS HevcPipeline::CreateFeatureManager()  // After HwNext rebase, Need override
+MOS_STATUS HevcPipeline::CreateFeatureManager()
 {
     DECODE_FUNC_CALL();
     m_featureManager = MOS_New(DecodeHevcFeatureManager, m_allocator, m_hwInterface, m_osInterface);
@@ -305,7 +314,7 @@ MOS_STATUS HevcPipeline::HwStatusCheck(const DecodeStatusMfx &status)
     if (m_basicFeature->m_shortFormatInUse)
     {
         // Check HuC_status2 Imem loaded bit, if 0, return error
-        if (((status.m_hucErrorStatus2 >> 32) && (m_hwInterface->GetHucInterface()->GetHucStatus2ImemLoadedMask())) == 0)
+        if (((status.m_hucErrorStatus2 >> 32) && (m_hwInterface->GetHucInterfaceNext()->GetHucStatus2ImemLoadedMask())) == 0)
         {
             if (!m_reportHucStatus)
             {
@@ -317,7 +326,7 @@ MOS_STATUS HevcPipeline::HwStatusCheck(const DecodeStatusMfx &status)
         }
 
         // Check Huc_status None Critical Error bit, bit 15. If 0, return error.
-        if (((status.m_hucErrorStatus >> 32) & m_hwInterface->GetHucInterface()->GetHucStatusHevcS2lFailureMask()) == 0)
+        if (((status.m_hucErrorStatus >> 32) & m_hwInterface->GetHucInterfaceNext()->GetHucStatusHevcS2lFailureMask()) == 0)
         {
             if (!m_reportHucCriticalError)
             {
