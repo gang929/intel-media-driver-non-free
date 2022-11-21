@@ -30,11 +30,11 @@
 #if USE_MEDIA_DEBUG_TOOL
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
 #include <fstream>
-#include <functional>
 #include <future>
 #include <map>
 #include <memory>
@@ -89,6 +89,9 @@ protected:
         size_t       size     = 0;
         size_t       offset   = 0;
         std::string  name;
+        std::function<
+            void(std::ostream &, const void *, size_t)>
+            serializer;
     };
 
     struct MemMng
@@ -158,6 +161,15 @@ protected:
                 ofs.open(name, std::ios_base::out | std::ios_base::binary);
                 ofs.write(static_cast<const char *>(data), size);
             }
+        }
+
+        void operator()(
+            std::string &&name,
+            const void   *data,
+            size_t        size,
+            std::function<void(std::ostream &, const void *, size_t)> &&)
+        {
+            (*this)(std::move(name), data, size);
         }
 
     private:
@@ -257,7 +269,14 @@ public:
         }
     }
 
-    void operator()(MOS_RESOURCE &res, std::string &&name, size_t dumpSize, size_t offset)
+    void operator()(
+        MOS_RESOURCE &res,
+        std::string &&name,
+        size_t        dumpSize,
+        size_t        offset,
+        std::function<
+            void(std::ostream &, const void *, size_t)>
+            &&serializer)
     {
         if (m_2CacheTask() == false)
         {
@@ -325,11 +344,12 @@ public:
                     "input_surface_copy_failed");
             }
 
-            (*resIt)->occupied = true;
-            (*resIt)->localMem = resInfo.dwMemType != MOS_MEMPOOL_SYSTEMMEMORY;
-            (*resIt)->size     = dumpSize;
-            (*resIt)->offset   = offset;
-            (*resIt)->name     = std::move(name);
+            (*resIt)->occupied   = true;
+            (*resIt)->localMem   = resInfo.dwMemType != MOS_MEMPOOL_SYSTEMMEMORY;
+            (*resIt)->size       = dumpSize;
+            (*resIt)->offset     = offset;
+            (*resIt)->name       = std::move(name);
+            (*resIt)->serializer = std::move(serializer);
             m_resQueue.emplace(*resIt);
         }
 
@@ -354,7 +374,7 @@ protected:
 
             m_2CacheTask = [=] {
                 auto elapsed = std::chrono::duration_cast<MS>(Clock::now() - startTime);
-                return (elapsed % (samplingTime + samplingInterval)) <= samplingTime;
+                return (elapsed % (samplingTime + samplingInterval)) < samplingTime;
             };
         }
         else  // frame index based sampling
@@ -364,40 +384,50 @@ protected:
             const auto *frameIdx         = cfg.frameIdx;
 
             m_2CacheTask = [=] {
-                return (*frameIdx % (samplingTime + samplingInterval)) <= samplingTime;
+                return (*frameIdx % (samplingTime + samplingInterval)) < samplingTime;
             };
         }
     }
 
     void ConfigureAllocator(const Config &cfg)
     {
-        m_memMng1st.policy = MOS_MEMPOOL_SYSTEMMEMORY;
-        m_memMng2nd.policy = MOS_MEMPOOL_VIDEOMEMORY;
+#define TMP_ASSIGN(shared, local, dst)                              \
+    m_memMng[0].dst = cfg.memUsagePolicy != 2 ? (shared) : (local); \
+    m_memMng[1].dst = cfg.memUsagePolicy == 2 ? (shared) : (local)
+
+        TMP_ASSIGN(
+            MOS_MEMPOOL_SYSTEMMEMORY,
+            MOS_MEMPOOL_VIDEOMEMORY,
+            policy);
 
         auto adapter = MosInterface::GetAdapterInfo(m_osItf.osStreamState);
         if (adapter)
         {
-            m_memMng1st.cap = static_cast<size_t>(adapter->SystemSharedMemory) /
-                              100 * cfg.maxPercentSharedMem;
-
-            m_memMng2nd.cap = static_cast<size_t>(adapter->DedicatedVideoMemory) /
-                              100 * cfg.maxPercentLocalMem;
+            TMP_ASSIGN(
+                static_cast<size_t>(adapter->SystemSharedMemory),
+                static_cast<size_t>(adapter->DedicatedVideoMemory),
+                cap);
+            m_memMng[0].cap = m_memMng[0].cap / 100 * cfg.maxPrioritizedMem;
+            m_memMng[1].cap = m_memMng[1].cap / 100 * cfg.maxDeprioritizedMem;
         }
-        m_memMng1st.cap = m_memMng1st.cap ? m_memMng1st.cap : -1;
+        m_memMng[0].cap = m_memMng[0].cap ? m_memMng[0].cap : -1;
+        m_memMng[1].cap = m_memMng[1].cap || cfg.maxDeprioritizedMem == 0 ? m_memMng[1].cap : -1;
 
-        if (m_memMng2nd.cap == 0)
+#undef TMP_ASSIGN
+
+        if (m_memMng[1].cap == 0)
         {
             m_allocate = [this](ResInfo &resInfo, MOS_RESOURCE &res) -> size_t {
-                if (m_memMng1st.usage >= m_memMng1st.cap)
+                if (m_memMng[0].usage >= m_memMng[0].cap)
                 {
                     return 0;
                 }
-                resInfo.dwMemType = m_memMng1st.policy;
+                resInfo.dwMemType = m_memMng[0].policy;
                 if (m_osItf.pfnAllocateResource(&m_osItf, &resInfo, &res) == MOS_STATUS_SUCCESS)
                 {
                     assert(res.pGmmResInfo != nullptr);
                     auto resSize = static_cast<size_t>(res.pGmmResInfo->GetSizeAllocation());
-                    m_memMng1st.usage += resSize;
+                    m_memMng[0].usage += resSize;
                     return resSize;
                 }
                 return 0;
@@ -406,41 +436,41 @@ protected:
         else
         {
             auto allocator = [this](ResInfo &resInfo, MOS_RESOURCE &res) -> size_t {
-                if (m_memMng1st.usage >= m_memMng1st.cap)
+                if (m_memMng[0].usage >= m_memMng[0].cap)
                 {
-                    if (m_memMng2nd.usage >= m_memMng2nd.cap)
+                    if (m_memMng[1].usage >= m_memMng[1].cap)
                     {
                         return 0;
                     }
-                    resInfo.dwMemType = m_memMng2nd.policy;
+                    resInfo.dwMemType = m_memMng[1].policy;
                 }
                 else
                 {
-                    resInfo.dwMemType = m_memMng1st.policy;
+                    resInfo.dwMemType = m_memMng[0].policy;
                 }
                 if (m_osItf.pfnAllocateResource(&m_osItf, &resInfo, &res) == MOS_STATUS_SUCCESS)
                 {
                     assert(res.pGmmResInfo != nullptr);
                     auto resSize = static_cast<size_t>(res.pGmmResInfo->GetSizeAllocation());
-                    m_memMng1st.usage += (resInfo.dwMemType == m_memMng1st.policy ? resSize : 0);
-                    m_memMng2nd.usage += (resInfo.dwMemType == m_memMng2nd.policy ? resSize : 0);
+                    m_memMng[0].usage += (resInfo.dwMemType == m_memMng[0].policy ? resSize : 0);
+                    m_memMng[1].usage += (resInfo.dwMemType == m_memMng[1].policy ? resSize : 0);
                     return resSize;
                 }
                 return 0;
             };
 
-            if (cfg.balanceMemUsage)
+            if (cfg.memUsagePolicy == 0)
             {
                 m_allocate = [this, allocator](ResInfo &resInfo, MOS_RESOURCE &res) -> size_t {
                     std::random_device           rd;
                     std::mt19937                 gen(rd());
                     std::discrete_distribution<> distribution({
-                        static_cast<double>(m_memMng1st.cap - m_memMng1st.usage),
-                        static_cast<double>(m_memMng2nd.cap - m_memMng2nd.usage),
+                        static_cast<double>(m_memMng[0].cap - m_memMng[0].usage),
+                        static_cast<double>(m_memMng[1].cap - m_memMng[1].usage),
                     });
                     if (distribution(gen))
                     {
-                        std::swap(m_memMng1st, m_memMng2nd);
+                        std::swap(m_memMng[0], m_memMng[1]);
                     }
                     return allocator(resInfo, res);
                 };
@@ -486,62 +516,61 @@ protected:
 
     void ConfigureWriter(const Config &cfg)
     {
-        std::function<
-            void(std::string &&, const void *, size_t)>
-            fileWriter;
-
-        if (cfg.write2File)
+        switch (cfg.writeMode)
         {
-            if (cfg.bufferSize4Write > 0)
-            {
-                fileWriter = BufferedWriter(cfg.bufferSize4Write);
-            }
-            else
-            {
-                fileWriter = [](std::string &&name, const void *data, size_t size) {
-                    std::ofstream ofs(name, std::ios_base::out | std::ios_base::binary);
-                    ofs.write(static_cast<const char *>(data), size);
-                };
-            }
-        }
-
-        if (cfg.write2File && !cfg.write2Trace)
-        {
-            m_write = [this, fileWriter](std::string &&name, const void *data, size_t size) {
-                fileWriter(std::move(name), data, size);
+        case 0: {
+            m_write = [](
+                          std::string &&name,
+                          const void   *data,
+                          size_t        size,
+                          std::function<void(std::ostream &, const void *, size_t)> &&) {
+                std::ofstream ofs(name, std::ios_base::out | std::ios_base::binary);
+                ofs.write(static_cast<const char *>(data), size);
             };
+            break;
         }
-        else if (!cfg.write2File && cfg.write2Trace)
-        {
-            m_write = [](std::string &&name, const void *data, size_t size) {
+        case 1: {
+            m_write = BufferedWriter(cfg.bufferSize);
+            break;
+        }
+        case 2: {
+            m_write = [](std::string &&name,
+                          const void  *data,
+                          size_t       size,
+                          std::function<void(std::ostream &, const void *, size_t)>
+                              &&serializer) {
+                std::ofstream ofs(name, std::ios_base::out);
+                serializer(ofs, data, size);
+            };
+            break;
+        }
+        case 3: {
+            m_write = [](
+                          std::string &&name,
+                          const void   *data,
+                          size_t        size,
+                          std::function<void(std::ostream &, const void *, size_t)> &&) {
                 MOS_TraceDataDump(name.c_str(), 0, data, size);
             };
+            break;
         }
-        else if (cfg.write2File && cfg.write2Trace)
-        {
-            m_write = [this, fileWriter](std::string &&name, const void *data, size_t size) {
-                auto future = std::async(
-                    std::launch::async,
-                    fileWriter,
-                    std::move(name),
-                    data,
-                    size);
-                MOS_TraceDataDump(name.c_str(), 0, data, size);
-                future.wait();
-            };
-        }
-        else
-        {
+        default: {
             // should not happen
-            m_write = [](std::string &&, const void *, size_t) {};
+            m_write = [](
+                          std::string &&,
+                          const void *,
+                          size_t,
+                          std::function<void(std::ostream &, const void *, size_t)> &&) {};
+            break;
+        }
         }
 
-        if (cfg.informOnError && cfg.write2File)
+        if (cfg.informOnError && cfg.writeMode != 3)
         {
             m_writeError = [this](const std::string &name, const std::string &error) {
                 static const char dummy = 0;
                 std::thread       w(
-                    [&] {
+                    [=] {
                         std::ofstream ofs(
                             name + "." + error,
                             std::ios_base::out | std::ios_base::binary);
@@ -682,7 +711,8 @@ protected:
             m_write(
                 std::move(res->name),
                 data + res->offset,
-                res->size == 0 ? resSize - res->offset : res->size);
+                res->size == 0 ? resSize - res->offset : res->size,
+                std::move(res->serializer));
             m_osItf.pfnUnlockResource(&m_osItf, pRes);
         }
         else
@@ -699,10 +729,12 @@ protected:
     }
 
 protected:
-    // global configurations
-    bool   m_allowDataLoss = true;
-    MemMng m_memMng1st;
-    MemMng m_memMng2nd;
+    bool m_allowDataLoss = true;
+
+    std::array<
+        MemMng,
+        2>
+        m_memMng;
 
     std::thread m_scheduler;
 
@@ -729,7 +761,11 @@ protected:
         m_copyMethod;
 
     std::function<
-        void(std::string &&, const void *, size_t)>
+        void(
+            std::string &&,
+            const void *,
+            size_t,
+            std::function<void(std::ostream &, const void *, size_t)> &&)>
         m_write;
 
     std::function<

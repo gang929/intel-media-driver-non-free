@@ -25,7 +25,7 @@
 //!
 #include "codec_hw_next.h"
 #include "codechal_setting.h"
-#include "mhw_render_legacy.h"
+#include "mos_os_cp_interface_specific.h"
 
 CodechalHwInterfaceNext::CodechalHwInterfaceNext(
     PMOS_INTERFACE     osInterface,
@@ -60,10 +60,11 @@ CodechalHwInterfaceNext::CodechalHwInterfaceNext(
 
     // Remove legacy mhw sub interfaces.
     m_cpInterface     = mhwInterfacesNext->m_cpInterface;
-    m_miInterface     = mhwInterfacesNext->m_miInterface;
-    m_renderInterface = mhwInterfacesNext->m_renderInterface;
     m_veboxInterface  = mhwInterfacesNext->m_veboxInterface;
     m_sfcInterface    = mhwInterfacesNext->m_sfcInterface;
+
+    m_disableScalability = disableScalability;
+    m_userSettingPtr     = osInterface->pfnGetUserSettingInstance(osInterface);
 }
 
 CodechalHwInterfaceNext::~CodechalHwInterfaceNext()
@@ -81,18 +82,6 @@ CodechalHwInterfaceNext::~CodechalHwInterfaceNext()
 
     Delete_MhwCpInterface(m_cpInterface);
     m_cpInterface = nullptr;
-
-    if (m_miInterface)
-    {
-        MOS_Delete(m_miInterface);
-        m_miInterface = nullptr;
-    }
-
-    if (m_renderInterface)
-    {
-        MOS_Delete(m_renderInterface);
-        m_renderInterface = nullptr;
-    }
 
     if (m_veboxInterface)
     {
@@ -210,7 +199,8 @@ MOS_STATUS CodechalHwInterfaceNext::CachePolicyGetMemoryObject(
 }
 
 CodechalHwInterfaceNext::CodechalHwInterfaceNext(
-    PMOS_INTERFACE osInterface)
+    PMOS_INTERFACE osInterface,
+    bool           disableScalability)
 {
     CODEC_HW_ASSERT(osInterface);
     m_osInterface = osInterface;
@@ -227,6 +217,7 @@ CodechalHwInterfaceNext::CodechalHwInterfaceNext(
     MOS_ZeroMemory(&m_conditionalBbEndDummy, sizeof(m_conditionalBbEndDummy));
 
     m_enableCodecMmc = !MEDIA_IS_WA(GetWaTable(), WaDisableCodecMmc);
+    m_disableScalability = disableScalability;
 }
 MOS_STATUS CodechalHwInterfaceNext::GetAvpStateCommandSize(
     uint32_t                        mode,
@@ -1031,69 +1022,60 @@ MOS_STATUS CodechalHwInterfaceNext::InitL3ControlUserFeatureSettings(
     CODEC_HW_CHK_NULL_RETURN(l3CacheConfig);
     CODEC_HW_CHK_NULL_RETURN(l3Overrides);
 
-    MOS_USER_FEATURE_VALUE_DATA userFeatureData;
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    userFeatureData.u32Data     = l3CacheConfig->dwL3CacheCntlReg_Setting;
-    userFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_ENCODE_L3_CACHE_CNTLREG_OVERRIDE_ID,
-        &userFeatureData,
-        m_osInterface->pOsContext);
-    l3Overrides->dwCntlReg = (uint32_t)userFeatureData.i32Data;
+    MediaUserSetting::Value outValue;
+    ReadUserSettingForDebug(
+        m_userSettingPtr,
+        outValue,
+        "Encode L3CNTLREG Override",
+        MediaUserSetting::Group::Device,
+        l3CacheConfig->dwL3CacheCntlReg_Setting,
+        true);
+    l3Overrides->dwCntlReg = outValue.Get<uint32_t>();
 
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    userFeatureData.u32Data     = l3CacheConfig->dwL3CacheCntlReg2_Setting;
-    userFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_ENCODE_L3_CACHE_CNTLREG2_OVERRIDE_ID,
-        &userFeatureData,
-        m_osInterface->pOsContext);
-    l3Overrides->dwCntlReg2 = (uint32_t)userFeatureData.i32Data;
+    ReadUserSettingForDebug(
+        m_userSettingPtr,
+        outValue,
+        "Encode L3CNTLREG2 Override",
+        MediaUserSetting::Group::Device,
+        l3CacheConfig->dwL3CacheCntlReg2_Setting,
+        true);
+    l3Overrides->dwCntlReg2 = outValue.Get<uint32_t>();
 
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    userFeatureData.u32Data     = l3CacheConfig->dwL3CacheCntlReg3_Setting;
-    userFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_ENCODE_L3_CACHE_CNTLREG3_OVERRIDE_ID,
-        &userFeatureData,
-        m_osInterface->pOsContext);
-    l3Overrides->dwCntlReg3 = (uint32_t)userFeatureData.i32Data;
+    ReadUserSettingForDebug(
+        m_userSettingPtr,
+        outValue,
+        "Encode L3CNTLREG3 Override",
+        MediaUserSetting::Group::Device,
+        l3CacheConfig->dwL3CacheCntlReg3_Setting,
+        true);
+    l3Overrides->dwCntlReg3 = outValue.Get<uint32_t>();
 
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    userFeatureData.u32Data     = l3CacheConfig->dwL3CacheSqcReg1_Setting;
-    userFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_ENCODE_L3_CACHE_SQCREG1_OVERRIDE_ID,
-        &userFeatureData,
-        m_osInterface->pOsContext);
-    l3Overrides->dwSqcReg1 = (uint32_t)userFeatureData.i32Data;
+    ReadUserSettingForDebug(
+        m_userSettingPtr,
+        outValue,
+        "Encode L3SQCREG1 Override",
+        MediaUserSetting::Group::Device,
+        l3CacheConfig->dwL3CacheSqcReg1_Setting,
+        true);
+    l3Overrides->dwSqcReg1 = outValue.Get<uint32_t>();
 
-    MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-    userFeatureData.u32Data     = l3CacheConfig->dwL3CacheSqcReg4_Setting;
-    userFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_ENCODE_L3_CACHE_SQCREG4_OVERRIDE_ID,
-        &userFeatureData,
-        m_osInterface->pOsContext);
-    l3Overrides->dwSqcReg4 = (uint32_t)userFeatureData.i32Data;
+    ReadUserSettingForDebug(
+        m_userSettingPtr,
+        outValue,
+        "Encode L3SQCREG4 Override",
+        MediaUserSetting::Group::Device,
+        l3CacheConfig->dwL3CacheSqcReg4_Setting,
+        true);
+    l3Overrides->dwSqcReg4 = outValue.Get<uint32_t>();
 
-    if (l3CacheConfig->bL3LRA1Reset)
-    {
-        MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-        userFeatureData.u32Data     = l3CacheConfig->dwL3LRA1Reg_Setting;
-        userFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
-        MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_ENCODE_L3_LRA_1_REG1_OVERRIDE_ID,
-            &userFeatureData,
-            m_osInterface->pOsContext);
-        l3Overrides->dwLra1Reg = (uint32_t)userFeatureData.i32Data;
-    }
+    ReadUserSettingForDebug(
+        m_userSettingPtr,
+        outValue,
+        "L3LRA1RegOverride",
+        MediaUserSetting::Group::Device,
+        l3CacheConfig->dwL3LRA1Reg_Setting,
+        true);
+    l3Overrides->dwLra1Reg = outValue.Get<uint32_t>();
 
     return MOS_STATUS_SUCCESS;
 }

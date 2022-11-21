@@ -34,11 +34,13 @@
 #include "mos_os.h"
 #include "mos_utilities_specific.h"
 
-int32_t MosUtilities::m_mosMemAllocCounterNoUserFeature            = 0;
-int32_t MosUtilities::m_mosMemAllocCounterNoUserFeatureGfx         = 0;
-uint8_t MosUtilities::m_mosUltFlag                                 = 0;
-uint64_t *MosUtilities::m_mosTraceFilter                           = nullptr;
-MtLevel *MosUtilities::m_mosTraceLevel                             = nullptr;
+int32_t              MosUtilities::m_mosMemAllocCounterNoUserFeature    = 0;
+int32_t              MosUtilities::m_mosMemAllocCounterNoUserFeatureGfx = 0;
+uint8_t              MosUtilities::m_mosUltFlag                         = 0;
+const MtControlData *MosUtilities::m_mosTraceControlData                = nullptr;
+MtEnable             MosUtilities::m_mosTraceEnable                     = false;
+MtFilter             MosUtilities::m_mosTraceFilter                     = {};
+MtLevel              MosUtilities::m_mosTraceLevel                      = {};
 
 int32_t MosUtilities::m_mosMemAllocCounter                         = 0;
 int32_t MosUtilities::m_mosMemAllocFakeCounter                     = 0;
@@ -542,14 +544,14 @@ MOS_STATUS MosUtilities::MosWriteFileFromPtr(
     uint32_t        bytesWritten;
     MOS_STATUS      eStatus;
 
-    MOS_OS_CHK_NULL(pFilename);
-    MOS_OS_CHK_NULL(lpBuffer);
+    MOS_OS_CHK_NULL_RETURN(pFilename);
+    MOS_OS_CHK_NULL_RETURN(lpBuffer);
 
     if (writeSize == 0)
     {
         MOS_OS_ASSERTMESSAGE("Attempting to write 0 bytes to a file");
         eStatus = MOS_STATUS_INVALID_PARAMETER;
-        goto finish;
+        return eStatus;
     }
 
     bytesWritten    = 0;
@@ -559,19 +561,18 @@ MOS_STATUS MosUtilities::MosWriteFileFromPtr(
     if (eStatus != MOS_STATUS_SUCCESS)
     {
         MOS_OS_ASSERTMESSAGE("Failed to open file '%s'.", pFilename);
-        goto finish;
+        return eStatus;
     }
 
     if((eStatus = MosWriteFile(hFile, lpBuffer, writeSize, &bytesWritten, nullptr)) != MOS_STATUS_SUCCESS)
     {
         MOS_OS_ASSERTMESSAGE("Failed to write to file '%s'.", pFilename);
         MosCloseHandle(hFile);
-        goto finish;
+        return eStatus;
     }
 
     MosCloseHandle(hFile);
 
-finish:
     return eStatus;
 }
 

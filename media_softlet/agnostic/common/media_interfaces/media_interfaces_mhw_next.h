@@ -44,8 +44,6 @@
 
 // forward declarations
 class MhwCpInterface;
-class MhwMiInterface;
-class MhwRenderInterface;
 class MhwSfcInterface;
 class XMHW_STATE_HEAP_INTERFACE;
 class MhwVeboxInterface;
@@ -103,12 +101,9 @@ public:
     //! \brief These interfaces are responsible for constructing instructions,
      //!           structures, and registers for hardware.
     MhwCpInterface            *m_cpInterface        = nullptr;
-    MhwMiInterface            *m_miInterface        = nullptr;
-    MhwRenderInterface        *m_renderInterface    = nullptr;
     MhwSfcInterface           *m_sfcInterface       = nullptr;
     XMHW_STATE_HEAP_INTERFACE *m_stateHeapInterface = nullptr;
     MhwVeboxInterface         *m_veboxInterface     = nullptr;
-    MhwVdboxMfxInterface      *m_mfxInterface       = nullptr;
     MhwBltInterface           *m_bltInterface       = nullptr;
 
     /* New mhw sub interfaces*/

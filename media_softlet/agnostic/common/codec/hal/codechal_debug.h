@@ -29,7 +29,7 @@
 
 #include "media_debug_interface.h"
 #include "codec_hw_next.h"
-#include "codechal_hw.h"
+#include "encode_status_report.h"
 
 #if USE_MEDIA_DEBUG_TOOL
 
@@ -45,6 +45,11 @@ namespace CodechalDbgBufferType  = MediaDbgBufferType;
 namespace CodechalDbgAttr        = MediaDbgAttr;
 namespace CodechalDbgKernel      = MediaDbgKernel;
 
+#define __MEDIA_USER_FEATURE_VALUE_DECODE_SFC_RGBFORMAT_OUTPUT_DEBUG "Decode SFC RGB Format Output"
+#define __MEDIA_USER_FEATURE_VALUE_DECODE_SFC_LINEAR_OUTPUT_DEBUG "Decode SFC Linear Output Debug"
+#define __MEDIA_USER_FEATURE_ENABLE_HW_DEBUG_HOOKS_DEBUG "Enable Media Debug Hooks"
+#define __MEDIA_USER_FEATURE_VALUE_CODECHAL_FRAME_NUMBER_TO_STOP_DEBUG "Decode Stop To Frame"
+#define __MEDIA_USER_FEATURE_VALUE_CODECHAL_ENABLE_SW_CRC_DEBUG "Enable SW CRC"
 //------------------------------------------------------------------------------
 // Macros specific to MOS_CODEC_SUBCOMP_DEBUG sub-comp
 //------------------------------------------------------------------------------
@@ -101,6 +106,7 @@ typedef struct _CODECHAL_ME_OUTPUT_PARAMS
 } CODECHAL_ME_OUTPUT_PARAMS, *PCODECHAL_ME_OUTPUT_PARAMS;
 
 class MediaDebugInterface;
+class CodechalHwInterface;
 class CodechalDebugInterface : public MediaDebugInterface
 {
 public:
@@ -138,24 +144,14 @@ public:
     MOS_STATUS DetectCorruptionHw(void *hwInterface, PMOS_RESOURCE frameCntRes, uint32_t curIdx, uint32_t frameCrcOffset, std::vector<MOS_RESOURCE> &vStatusBuffer, PMOS_COMMAND_BUFFER pCmdBuffer, uint32_t frameNum);
     
     MOS_STATUS StoreNumFrame(PMHW_MI_INTERFACE pMiInterface, PMOS_RESOURCE pResource, int32_t frameNum, PMOS_COMMAND_BUFFER pCmdBuffer);
-    
-    MOS_STATUS SetFastDumpConfig(MediaCopyBaseState *mediaCopy);
-
-    MOS_STATUS DumpEncodeStatusReport(
-        void* report);
 
     MOS_STATUS DumpEncodeStatusReport(
         const struct EncodeStatusReport *report);
 
-    void CheckGoldenReferenceExist();
+    MOS_STATUS DumpEncodeStatusReport(
+        const struct encode::EncodeStatusReportData *report);
 
-    MOS_STATUS DumpYUVSurface(
-        PMOS_SURFACE           surface,
-        const char            *attrName,
-        const char            *surfName,
-        MEDIA_DEBUG_STATE_TYPE mediaState = CODECHAL_NUM_MEDIA_STATES,
-        uint32_t               width_in   = 0,
-        uint32_t               height_in  = 0) override;
+    void CheckGoldenReferenceExist();
 
     MOS_STATUS DumpRgbDataOnYUVSurface(
         PMOS_SURFACE           surface,
@@ -169,14 +165,16 @@ public:
         PMOS_SURFACE surface,
         const char  *attrName) override;
 
+    virtual MOS_STATUS InitializeUserSetting() override;
+
     CodechalHwInterface     *m_hwInterface      = nullptr;
     CodechalHwInterfaceNext *m_hwInterfaceNext  = nullptr;
     CODECHAL_FUNCTION        m_codecFunction    = CODECHAL_FUNCTION_INVALID;
     PCODECHAL_DBG_CFG        m_dbgCfgHead       = nullptr;
 
 protected:
-    MOS_USER_FEATURE_VALUE_ID SetOutputPathKey() override;
-    MOS_USER_FEATURE_VALUE_ID InitDefaultOutput() override;
+    std::string SetOutputPathKey() override;
+    std::string InitDefaultOutput() override;
     uint8_t *m_decodeOutputBuf = nullptr;
 
 MEDIA_CLASS_DEFINE_END(CodechalDebugInterface)

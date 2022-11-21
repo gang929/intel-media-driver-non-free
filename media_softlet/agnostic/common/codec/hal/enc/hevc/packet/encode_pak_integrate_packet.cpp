@@ -23,11 +23,12 @@
 //! \file     encode_pak_integrate_packet.cpp
 //! \brief    Defines the interface for pak integrate packet
 //!
+#include "mos_defs.h"
 #include "encode_pak_integrate_packet.h"
 #include "mhw_vdbox.h"
 #include "encode_hevc_brc.h"
 #include "encode_status_report_defs.h"
-#include "mos_defs.h"
+#include "mos_os_cp_interface_specific.h"
 
 namespace encode {
     MOS_STATUS HevcPakIntegratePkt::Init()
@@ -197,7 +198,7 @@ namespace encode {
         ENCODE_CHK_STATUS_RETURN(EndStatusReport(statusReportMfx, commandBuffer));
         if (false == m_pipeline->IsFrameTrackingEnabled())
         {
-            ENCODE_CHK_STATUS_RETURN(UpdateStatusReport(statusReportGlobalCount, commandBuffer));
+            ENCODE_CHK_STATUS_RETURN(UpdateStatusReportNext(statusReportGlobalCount, commandBuffer));
         }
         CODECHAL_DEBUG_TOOL(
             if (m_mmcState) {
@@ -517,7 +518,7 @@ namespace encode {
                     if (0 == sliceNumInTile)
                     {
                         // One tile must have at least one slice
-                        CODECHAL_ENCODE_ASSERT(false);
+                        ENCODE_ASSERT(false);
                         eStatus = MOS_STATUS_INVALID_PARAMETER;
                         break;
                     }

@@ -27,14 +27,9 @@
 #ifndef __CODEC_HW_NEXT_H__
 #define __CODEC_HW_NEXT_H__
 
-#include "codechal.h"
+#include "codechal_common.h"
 #include "media_interfaces_mhw_next.h"
 
-// Remove legacy header files
-#include "mhw_vdbox_mfx_interface.h"
-#include "mhw_vdbox_hcp_interface.h"
-#include "mhw_vdbox_vdenc_interface.h"
-#include "mhw_vdbox_huc_interface.h"
 #include "mhw_mi_itf.h"
 #include "media_sfc_interface.h"
 #include "renderhal.h"
@@ -80,6 +75,8 @@
 #define CODEC_HW_CHK_COND_RETURN(_expr, _message, ...)                                  \
     MOS_CHK_COND_RETURN(MOS_COMPONENT_CODEC, MOS_CODEC_SUBCOMP_HW,_expr,_message, ##__VA_ARGS__)
 
+#define CODECHAL_SURFACE_PITCH_ALIGNMENT 128
+
 class MediaScalability;
 class MediaContext;
 class MediaCopyBaseState;
@@ -102,7 +99,9 @@ public:
     //!
     //! \brief    Constructor
     //!
-    CodechalHwInterfaceNext(PMOS_INTERFACE osInterface);
+    CodechalHwInterfaceNext(
+        PMOS_INTERFACE osInterface,
+        bool           disableScalability = false);
 
     //!
     //! \brief    Destructor
@@ -172,18 +171,6 @@ public:
     inline MEDIA_WA_TABLE *GetWaTable()
     {
         return m_waTable;
-    }
-
-    //!
-    //! \brief    Get mi interface
-    //! \details  Get mi interface in codechal hw interface
-    //!
-    //! \return   [out] MhwMiInterface*
-    //!           Interface got.
-    //!
-    inline MhwMiInterface *GetMiInterface()
-    {
-        return m_miInterface;
     }
 
     //!
@@ -284,18 +271,6 @@ public:
     inline std::shared_ptr<mhw::render::Itf> GetRenderInterfaceNext()
     {
         return m_renderItf;
-    }
-    
-    //!
-    //! \brief    Get render interface
-    //! \details  Get render interface in codechal hw interface
-    //!
-    //! \return   [out] MhwRenderInterface*
-    //!           Interface got.
-    //!
-    inline MhwRenderInterface *GetRenderInterface()
-    {
-        return m_renderInterface;
     }
 
     //!
@@ -930,14 +905,14 @@ protected:
 
     // States
     PMOS_INTERFACE       m_osInterface;  //!< Pointer to OS interface
+
+    MediaUserSettingSharedPtr   m_userSettingPtr = nullptr;
     
     // Auxiliary
     PLATFORM             m_platform;  //!< Platform information
 
     MHW_STATE_HEAP_SETTINGS                 m_stateHeapSettings;               //!< State heap Mhw settings
-    MhwMiInterface                         *m_miInterface          = nullptr;  //!< Pointer to Mhw mi interface
     MhwCpInterface                         *m_cpInterface          = nullptr;  //!< Pointer to Mhw cp interface
-    MhwRenderInterface                     *m_renderInterface      = nullptr;  //!< Pointer to Mhw render interface
     RENDERHAL_INTERFACE                    *m_renderHal            = nullptr;  //!< RenderHal interface
     MhwCpInterface                         *m_renderHalCpInterface = nullptr;  //!< Pointer to RenderHal cp interface
     MhwVeboxInterface                      *m_veboxInterface       = nullptr;  //!< Pointer to Mhw vebox interface

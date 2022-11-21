@@ -848,7 +848,7 @@ void VpRenderCmdPacket::OcaDumpDbgInfo(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTEX
         }
     }
     // Add vphal param to log.
-    HalOcaInterfaceNext::DumpVphalParam(cmdBuffer, mosContext, m_renderHal->pVphalOcaDumper);
+    HalOcaInterfaceNext::DumpVphalParam(cmdBuffer, (MOS_CONTEXT_HANDLE)&mosContext, m_renderHal->pVphalOcaDumper);
 }
 
 MOS_STATUS VpRenderCmdPacket::SetMediaFrameTracking(RENDERHAL_GENERIC_PROLOG_PARAMS &genericPrologParams)
@@ -896,18 +896,6 @@ MOS_STATUS VpRenderCmdPacket::InitStateHeapSurface(SurfaceType type, RENDERHAL_S
         mosSurface.OsResource = pVeboxHeap->DriverResource;
         break;
     case SurfaceTypeVeboxStateHeap_Knr:
-    case SurfaceTypeVeboxInput:
-    case SurfaceTypeLaceAceRGBHistogram:
-    case SurfaceTypeLaceLut:
-    case SurfaceTypeStatistics:
-    case SurfaceTypeSkinScore:
-    case SurfaceTypeAggregatedHistogram:
-    case SurfaceTypeFrameHistogram:
-    case SurfaceTypeStdStatistics:
-    case SurfaceTypePwlfIn:
-    case SurfaceTypePwlfOut:
-    case SurfaceTypeWeitCoef:
-    case SurfaceTypGlobalToneMappingCurveLUT:
         mosSurface.OsResource = pVeboxHeap->KernelResource;
         break;
     default:
@@ -1680,7 +1668,7 @@ MOS_STATUS VpRenderCmdPacket::SendMediaStates(
     MHW_RENDERHAL_CHK_STATUS(pRenderHal->pRenderHalPltInterface->AddPipelineSelectCmd(pRenderHal, pCmdBuffer, (m_walkerType == WALKER_TYPE_COMPUTE) ? true : false));
 
     // The binding table for surface states is at end of command buffer. No need to add it to indirect state heap.
-    HalOcaInterfaceNext::OnIndirectState(*pCmdBuffer, *pOsContext, pRenderHal->StateBaseAddressParams.presInstructionBuffer, pStateHeap->CurIDEntryParams.dwKernelOffset, false, pStateHeap->iKernelUsedForDump);
+    HalOcaInterfaceNext::OnIndirectState(*pCmdBuffer, (MOS_CONTEXT_HANDLE)pOsContext, pRenderHal->StateBaseAddressParams.presInstructionBuffer, pStateHeap->CurIDEntryParams.dwKernelOffset, false, pStateHeap->iKernelUsedForDump);
 
     // Send State Base Address command
     MHW_RENDERHAL_CHK_STATUS(pRenderHal->pfnSendStateBaseAddress(pRenderHal, pCmdBuffer));
@@ -1820,7 +1808,7 @@ MOS_STATUS VpRenderCmdPacket::SetFcParams(PRENDER_FC_PARAMS params)
     KERNEL_PARAMS kernelParams = {};
     kernelParams.kernelId      = params->kernelId;
     m_renderKernelParams.push_back(kernelParams);
-
+    m_bindingtableMode = MULTI_KERNELS_WITH_ONE_BINDINGTABLE;
     return MOS_STATUS_SUCCESS;
 }
 

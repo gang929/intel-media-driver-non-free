@@ -4502,6 +4502,9 @@ MOS_STATUS RenderHal_Destroy(PRENDERHAL_INTERFACE pRenderHal)
     // Free Debug Surface
     RenderHal_FreeDebugSurface(pRenderHal);
 
+    // Decrease reference count for shared pointer
+    pRenderHal->userSettingPtr = nullptr;
+
     eStatus = MOS_STATUS_SUCCESS;
 
     return eStatus;
@@ -4610,7 +4613,7 @@ MOS_STATUS RenderHal_SendCurbeLoad(
 
         MHW_RENDERHAL_CHK_STATUS_RETURN(pRenderHal->pRenderHalPltInterface->AddMediaCurbeLoadCmd(pRenderHal, pCmdBuffer, &CurbeLoadParams));
 
-        HalOcaInterfaceNext::OnIndirectState(*pCmdBuffer, *pOsContext, pRenderHal->StateBaseAddressParams.presDynamicState,
+        HalOcaInterfaceNext::OnIndirectState(*pCmdBuffer, (MOS_CONTEXT_HANDLE)pOsContext, pRenderHal->StateBaseAddressParams.presDynamicState,
             CurbeLoadParams.dwCURBEDataStartAddress, false, CurbeLoadParams.dwCURBETotalDataLength);
     }
 
@@ -4648,7 +4651,7 @@ MOS_STATUS RenderHal_SendMediaIdLoad(
 
     MHW_RENDERHAL_CHK_STATUS_RETURN(pRenderHal->pRenderHalPltInterface->AddMediaIDLoadCmd(pRenderHal, pCmdBuffer, &IdLoadParams));
 
-    HalOcaInterfaceNext::OnIndirectState(*pCmdBuffer, *pOsContext, pRenderHal->StateBaseAddressParams.presDynamicState,
+    HalOcaInterfaceNext::OnIndirectState(*pCmdBuffer, (MOS_CONTEXT_HANDLE)pOsContext, pRenderHal->StateBaseAddressParams.presDynamicState,
         IdLoadParams.dwInterfaceDescriptorStartOffset, false, IdLoadParams.dwInterfaceDescriptorLength);
 
     return eStatus;
@@ -5296,7 +5299,7 @@ MOS_STATUS RenderHal_SendMediaStates(
     MHW_RENDERHAL_CHK_STATUS_RETURN(pRenderHal->pRenderHalPltInterface->AddPipelineSelectCmd(pRenderHal, pCmdBuffer, (pGpGpuWalkerParams) ? true : false));
 
     // The binding table for surface states is at end of command buffer. No need to add it to indirect state heap.
-    HalOcaInterfaceNext::OnIndirectState(*pCmdBuffer, *pOsContext, pRenderHal->StateBaseAddressParams.presInstructionBuffer,
+    HalOcaInterfaceNext::OnIndirectState(*pCmdBuffer, (MOS_CONTEXT_HANDLE)pOsContext, pRenderHal->StateBaseAddressParams.presInstructionBuffer,
         pStateHeap->CurIDEntryParams.dwKernelOffset, false, pStateHeap->iKernelUsedForDump);
 
     // Send State Base Address command
@@ -6468,8 +6471,8 @@ MOS_STATUS RenderHal_GetSamplerOffsetAndPtr(
 //!
 //! \brief      Checks how per thread scratch space size bits in VFE state are interpreted by HW
 //! \details    For BDW GT1/2/3 A0 steppings, per thread scratch space size in VFE state
-//!             is 11 bits indicating [2k bytes, 2 Mbytes]: 0=2k, 1=4k, 2=8k � 10=2M
-//!             BDW+ excluding A0 step is 12 bits indicating [1k bytes, 2 Mbytes]: 0=1k, 1=2k, 2=4k, 3=8k � 11=2M
+//!             is 11 bits indicating [2k bytes, 2 Mbytes]: 0=2k, 1=4k, 2=8k ... 10=2M
+//!             BDW+ excluding A0 step is 12 bits indicating [1k bytes, 2 Mbytes]: 0=1k, 1=2k, 2=4k, 3=8k ... 11=2M
 //! \param      PRENDERHAL_INTERFACE pRenderHal
 //!             [in]    Pointer to RenderHal interface
 //! \return     true if BDW A0 stepping, false otherwise
@@ -6787,7 +6790,6 @@ MOS_STATUS RenderHal_InitInterface(
     MhwCpInterface       **ppCpInterface,
     PMOS_INTERFACE       pOsInterface)
 {
-    PMOS_USER_FEATURE_INTERFACE     pUserFeatureInterface = nullptr;
     MOS_STATUS                      eStatus = MOS_STATUS_SUCCESS;
     MHW_VFE_PARAMS                  *pVfeStateParams = nullptr;
 
@@ -6807,6 +6809,7 @@ MOS_STATUS RenderHal_InitInterface(
 
     pRenderHal->pSkuTable                     = pOsInterface->pfnGetSkuTable(pOsInterface);
     pRenderHal->pWaTable                      = pOsInterface->pfnGetWaTable(pOsInterface);
+    pRenderHal->userSettingPtr                = pOsInterface->pfnGetUserSettingInstance(pOsInterface);
 
     // Initialize hardware resources for the current Os/Platform
     pRenderHal->pRenderHalPltInterface = RenderHalDevice::CreateFactory(pOsInterface);
@@ -6848,33 +6851,30 @@ MOS_STATUS RenderHal_InitInterface(
         pRenderHal->ChromaKey[i].dwIndex = i;
     }
 
+    pRenderHal->bVDIWalker = true;
+    int32_t  walkerMode    = MHW_WALKER_MODE_NOT_SET;
+#if (_DEBUG || _RELEASE_INTERNAL)
+    if (pRenderHal->userSettingPtr != nullptr)
+    {
     // Read VDI Walker Regkey once during initialization
-    MOS_USER_FEATURE_VALUE_DATA userFeatureValueData;
-
-    MOS_ZeroMemory(&userFeatureValueData, sizeof(userFeatureValueData));
-    userFeatureValueData.u32Data = true;  // Init as default value
-    userFeatureValueData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
-#if (_DEBUG || _RELEASE_INTERNAL)
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_VDI_MODE_ID,
-        &userFeatureValueData,
-        pOsInterface->pOsContext);
-#endif
-    pRenderHal->bVDIWalker = userFeatureValueData.u32Data ? true : false;
-
-    MOS_ZeroMemory(&userFeatureValueData, sizeof(userFeatureValueData));
-    userFeatureValueData.u32Data     = MHW_WALKER_MODE_NOT_SET;  // Init as default value
-    userFeatureValueData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
-#if (_DEBUG || _RELEASE_INTERNAL)
+        ReadUserSettingForDebug(
+            pRenderHal->userSettingPtr,
+            pRenderHal->bVDIWalker,
+            __MEDIA_USER_FEATURE_VALUE_VDI_MODE,
+            MediaUserSetting::Group::Device,
+            true,
+            true);
     // Read Media Walker Mode from RegKey once in initialization
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_MEDIA_WALKER_MODE_ID,
-        &userFeatureValueData,
-        pOsInterface->pOsContext);
+        ReadUserSettingForDebug(
+            pRenderHal->userSettingPtr,
+            walkerMode,
+            __MEDIA_USER_FEATURE_VALUE_MEDIA_WALKER_MODE,
+            MediaUserSetting::Group::Device,
+            int32_t(-1),
+            true);
+    }
 #endif
-    pRenderHal->MediaWalkerMode = (MHW_WALKER_MODE)userFeatureValueData.u32Data;
+    pRenderHal->MediaWalkerMode               = (MHW_WALKER_MODE)walkerMode;
 
     pRenderHal->pPlaneDefinitions             = g_cRenderHal_SurfacePlanes;
 

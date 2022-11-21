@@ -25,7 +25,6 @@
 //!
 #include "decode_jpeg_pipeline.h"
 #include "decode_utils.h"
-#include "media_user_settings_mgr_g12.h"
 #include "codechal_setting.h"
 #include "decode_jpeg_feature_manager.h"
 #include "decode_jpeg_input_bitstream.h"
@@ -53,6 +52,7 @@ MOS_STATUS JpegPipeline::Initialize(void *settings)
     MOS_ZeroMemory(&scalPars, sizeof(scalPars));
     DECODE_CHK_STATUS(m_mediaContext->SwitchContext(VdboxDecodeFunc, &scalPars, &m_scalability));
     m_decodeContext = m_osInterface->pfnGetGpuContext(m_osInterface);
+    m_decodeContextHandle = m_osInterface->CurrentGpuContextHandle;
 
     return MOS_STATUS_SUCCESS;
 }

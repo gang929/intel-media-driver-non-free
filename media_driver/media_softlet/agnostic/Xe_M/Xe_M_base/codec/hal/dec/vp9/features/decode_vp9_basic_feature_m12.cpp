@@ -25,6 +25,7 @@
 //!
 
 #include "decode_vp9_basic_feature_m12.h"
+#include "codechal_hw.h"
 
 namespace decode
 {

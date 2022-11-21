@@ -67,12 +67,6 @@
 #include "codechal_decode_mpeg2.h"
 #endif
 
-#if USE_CODECHAL_DEBUG_TOOL
-#include <sstream>
-#include <fstream>
-#include "codechal_debug.h"
-#endif
-
 MOS_STATUS CodechalDecode::AllocateBuffer(
     PMOS_RESOURCE   resource,
     uint32_t        size,

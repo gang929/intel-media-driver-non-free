@@ -27,7 +27,7 @@
 #ifndef __DECODE_PIPELINE_ADAPTER_H__
 #define __DECODE_PIPELINE_ADAPTER_H__
 
-#include "codechal.h"
+#include "codechal_common.h"
 
 class DecodePipelineAdapter: public Codechal
 {
@@ -64,6 +64,8 @@ public:
     virtual void SetDummyReferenceStatus(CODECHAL_DUMMY_REFERENCE_STATUS status) = 0;
     virtual uint32_t GetCompletedReport() = 0;
     virtual MOS_GPU_CONTEXT GetDecodeContext() = 0;
+    virtual GPU_CONTEXT_HANDLE GetDecodeContextHandle() = 0;
+    virtual MOS_STATUS SetDecodeFormat(bool isShortFormat ){ return MOS_STATUS_UNIMPLEMENTED; };
 
 MEDIA_CLASS_DEFINE_END(DecodePipelineAdapter)
 };

@@ -614,13 +614,6 @@ MOS_STATUS VpUtils::DeclareUserSettings(MediaUserSettingSharedPtr userSettingPtr
         0,
         true);
 
-    DeclareUserSettingKey(  //Enable memory compression
-        userSettingPtr,
-        __VPHAL_ENABLE_MMC,
-        MediaUserSetting::Group::Sequence,
-        0,
-        true);
-
     DeclareUserSettingKey(
         userSettingPtr,
         __MEDIA_USER_FEATURE_VALUE_VEBOX_TGNE_ENABLE_VP,
@@ -748,6 +741,13 @@ MOS_STATUS VpUtils::DeclareUserSettings(MediaUserSettingSharedPtr userSettingPtr
         0,
         true);
 
+    DeclareUserSettingKeyForDebug(  // Eanble Apogeios path in VP PipeLine. 1: enabled, 0: disabled.
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_VPP_APOGEIOS_ENABLE,
+        MediaUserSetting::Group::Sequence,
+        uint32_t(0),
+        true);
+
     DeclareUserSettingKeyForDebug(  // VP Compression Enable
         userSettingPtr,
         __VPHAL_MMC_ENABLE,
@@ -849,6 +849,20 @@ MOS_STATUS VpUtils::DeclareUserSettings(MediaUserSettingSharedPtr userSettingPtr
     DeclareUserSettingKeyForDebug(  // VP parameter dump sku and wa info enable
         userSettingPtr,
         __VPHAL_DBG_PARA_DUMP_ENABLE_SKUWA_DUMP,
+        MediaUserSetting::Group::Sequence,
+        0,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_INTER_FRAME_MEMORY_NINJA_START_COUNTER,
+        MediaUserSetting::Group::Sequence,
+        0,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_INTER_FRAME_MEMORY_NINJA_END_COUNTER,
         MediaUserSetting::Group::Sequence,
         0,
         true);

@@ -44,8 +44,6 @@
 #include "mos_utilities.h"
 #include "renderhal.h"
 #include "vp_utils.h"
-// Need to remove below header files, after legacy contents clean up
-#include "mhw_render_legacy.h"
 #include "media_perf_profiler.h"
 
 MOS_STATUS XRenderHal_Platform_Interface_Next::AddPipelineSelectCmd(
@@ -597,20 +595,10 @@ MOS_STATUS XRenderHal_Platform_Interface_Next::CreateMhwInterfaces(
     MhwInterfacesNext *mhwInterfaces =  MhwInterfacesNext::CreateFactory(params, pOsInterface);
     MHW_RENDERHAL_CHK_NULL_RETURN(mhwInterfaces);
     MHW_RENDERHAL_CHK_NULL_RETURN(mhwInterfaces->m_cpInterface);
-#if !EMUL
-    MHW_RENDERHAL_CHK_NULL_RETURN(mhwInterfaces->m_miInterface);
-#endif
+
     pRenderHal->pCpInterface = mhwInterfaces->m_cpInterface;
-    pRenderHal->pMhwMiInterface = mhwInterfaces->m_miInterface;
     m_renderItf = mhwInterfaces->m_renderItf;
     m_miItf     = mhwInterfaces->m_miItf;
-
-    // After removing MhwRenderInterface from Mhw Next, need to clean this WA delete m_renderInterface code
-    if (mhwInterfaces->m_renderInterface)
-    {
-        MOS_Delete(mhwInterfaces->m_renderInterface);
-    }
-
     MOS_Delete(mhwInterfaces);
 
     return eStatus;
@@ -629,7 +617,7 @@ MOS_STATUS XRenderHal_Platform_Interface_Next::On1stLevelBBStart(
     MHW_RENDERHAL_CHK_NULL_RETURN(m_miItf);
     MHW_RENDERHAL_CHK_NULL_RETURN(pCmdBuffer);
 
-    HalOcaInterfaceNext::On1stLevelBBStart(*pCmdBuffer, *pOsContext, pRenderHal->pOsInterface->CurrentGpuContextHandle,
+    HalOcaInterfaceNext::On1stLevelBBStart(*pCmdBuffer, (MOS_CONTEXT_HANDLE)pOsContext, pRenderHal->pOsInterface->CurrentGpuContextHandle,
         m_miItf, *pMmioReg);
 
     return eStatus;
@@ -842,12 +830,7 @@ MOS_STATUS XRenderHal_Platform_Interface_Next::DestoryMhwInterface(
 {
     MOS_STATUS  eStatus = MOS_STATUS_SUCCESS;
     MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
-    // Destroy MHW MI Interface
-    if (pRenderHal->pMhwMiInterface)
-    {
-        MOS_Delete(pRenderHal->pMhwMiInterface);
-        pRenderHal->pMhwMiInterface = nullptr;
-    }
+
     return MOS_STATUS_SUCCESS;
 }
 

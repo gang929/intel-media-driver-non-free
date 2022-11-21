@@ -82,15 +82,14 @@ public:
         }
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-        MOS_USER_FEATURE_VALUE_DATA UserFeatureData;
-        // read the "Vebox Split Ratio" user feature
-        MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
-        MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_VEBOX_SPLIT_RATIO_ID,
-            &UserFeatureData,
-            osItf->pOsContext);
-        m_veboxSplitRatio = UserFeatureData.u32Data;
+        if (m_userSettingPtr != nullptr)
+        {
+            ReadUserSettingForDebug(
+                m_userSettingPtr,
+                m_veboxSplitRatio,
+                __MEDIA_USER_FEATURE_VALUE_VEBOX_SPLIT_RATIO,
+                MediaUserSetting::Group::Device);
+        }
 #endif
     };
 
@@ -121,7 +120,7 @@ public:
         return tileMode;
     }
 
-    MOS_STATUS UpdateVeboxSync()
+    MOS_STATUS UpdateVeboxSync() override
     {
         PMHW_VEBOX_HEAP          pVeboxHeap;
         MOS_STATUS               eStatus = MOS_STATUS_SUCCESS;
@@ -130,7 +129,7 @@ public:
         MHW_FUNCTION_ENTER;
 
         MHW_CHK_NULL_RETURN(this->m_osItf);
-        MHW_CHK_NULL(m_veboxHeap);
+        MHW_CHK_NULL_RETURN(m_veboxHeap);
 
         pVeboxHeap      = m_veboxHeap;
         pOsInterface    = this->m_osItf;
@@ -144,12 +143,11 @@ public:
         }
         pVeboxHeap->pStates[pVeboxHeap->uiCurState].bBusy = true;
 
-    finish:
         return eStatus;
     }
 
     MOS_STATUS GetVeboxHeapInfo(
-        const MHW_VEBOX_HEAP** ppVeboxHeap)
+        const MHW_VEBOX_HEAP** ppVeboxHeap) override
     {
         MOS_STATUS               eStatus = MOS_STATUS_SUCCESS;
 
@@ -162,7 +160,7 @@ public:
     }
 
     MOS_STATUS SetVeboxHeapStateIndex(
-        uint32_t index)
+        uint32_t index) override
     {
         MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
@@ -174,14 +172,14 @@ public:
         return eStatus;
     }
 
-    uint32_t GetVeboxNumInstances()
+    uint32_t GetVeboxNumInstances() override
     {
         MHW_FUNCTION_ENTER;
 
         return m_veboxSettings.uiNumInstances;
     }
 
-    MOS_STATUS DestroyHeap()
+    MOS_STATUS DestroyHeap() override
     {
         PMOS_INTERFACE       pOsInterface;
         MOS_STATUS           eStatus = MOS_STATUS_SUCCESS;
@@ -220,7 +218,7 @@ public:
         return eStatus;
     }
 
-    MOS_STATUS CreateHeap()
+    MOS_STATUS CreateHeap() override
     {
         MOS_STATUS              eStatus;
         uint8_t* pMem;
@@ -347,7 +345,7 @@ public:
         return eStatus;
     }
 
-    MOS_STATUS SetgnLumaWgts(uint32_t lumaStadTh, uint32_t TGNEThCnt, bool tGNEEnable)
+    MOS_STATUS SetgnLumaWgts(uint32_t lumaStadTh, uint32_t TGNEThCnt, bool tGNEEnable) override
     {
         dw4X4TGNEThCnt = TGNEThCnt;
         bTGNEEnable    = tGNEEnable;
@@ -356,7 +354,7 @@ public:
         return MOS_STATUS_SUCCESS;
     }
 
-    MOS_STATUS SetgnChromaWgts(uint32_t chromaStadTh)
+    MOS_STATUS SetgnChromaWgts(uint32_t chromaStadTh) override
     {
         dwChromaStadTh = chromaStadTh;
 
@@ -365,7 +363,7 @@ public:
 
     MOS_STATUS SetgnHVSParams(
         bool tGNEEnable, uint32_t lumaStadTh, uint32_t chromaStadTh, 
-        uint32_t tGNEThCnt, uint32_t historyInit, bool fallBack)
+        uint32_t tGNEThCnt, uint32_t historyInit, bool fallBack) override
     {
         dw4X4TGNEThCnt = tGNEThCnt;
         bTGNEEnable    = tGNEEnable;
@@ -377,7 +375,7 @@ public:
         return MOS_STATUS_SUCCESS;
     }
 
-    MOS_STATUS SetgnHVSMode(bool hVSAutoBdrate, bool hVSAutoSubjective, uint32_t bSDThreshold)
+    MOS_STATUS SetgnHVSMode(bool hVSAutoBdrate, bool hVSAutoSubjective, uint32_t bSDThreshold) override
     {
         bHVSAutoBdrateEnable     = hVSAutoBdrate;
         bHVSAutoSubjectiveEnable = hVSAutoSubjective;
@@ -447,31 +445,31 @@ public:
 
     MOS_STATUS SetVeboxSurfaceControlBits(
         PMHW_VEBOX_SURFACE_CNTL_PARAMS pVeboxSurfCntlParams,
-        uint32_t* pSurfCtrlBits)
+        uint32_t* pSurfCtrlBits) override
     {
         return MOS_STATUS_SUCCESS;
     }
 
     MOS_STATUS SetVeboxDndiState(
-        PMHW_VEBOX_DNDI_PARAMS pVeboxDndiParams)
+        PMHW_VEBOX_DNDI_PARAMS pVeboxDndiParams) override
     {
         return MOS_STATUS_SUCCESS;
     }
 
     MOS_STATUS SetVeboxIecpState(
-        PMHW_VEBOX_IECP_PARAMS pVeboxIecpParams)
+        PMHW_VEBOX_IECP_PARAMS pVeboxIecpParams) override
     {
         return MOS_STATUS_SUCCESS;
     }
 
     MOS_STATUS SetDisableHistogram(
-        PMHW_VEBOX_IECP_PARAMS pVeboxIecpParams)
+        PMHW_VEBOX_IECP_PARAMS pVeboxIecpParams) override
     {
         return MOS_STATUS_SUCCESS;
     }
 
     MOS_STATUS SetVeboxLaceColorParams(
-        MHW_LACE_COLOR_CORRECTION *pLaceColorParams)
+        MHW_LACE_COLOR_CORRECTION *pLaceColorParams) override
     {
         MHW_CHK_NULL_RETURN(pLaceColorParams);
         MOS_SecureMemcpy(&m_laceColorCorrection, sizeof(MHW_LACE_COLOR_CORRECTION), pLaceColorParams, sizeof(MHW_LACE_COLOR_CORRECTION));
@@ -480,7 +478,7 @@ public:
     }
 
     MOS_STATUS SetVeboxChromaParams(
-        MHW_VEBOX_CHROMA_PARAMS* chromaParams)
+        MHW_VEBOX_CHROMA_PARAMS* chromaParams) override
     {
         MHW_CHK_NULL_RETURN(chromaParams);
         MOS_SecureMemcpy(&m_chromaParams, sizeof(MHW_VEBOX_CHROMA_PARAMS), chromaParams, sizeof(MHW_VEBOX_CHROMA_PARAMS));
@@ -488,7 +486,7 @@ public:
         return MOS_STATUS_SUCCESS;
     }
 
-    MOS_STATUS AssignVeboxState()
+    MOS_STATUS AssignVeboxState() override
     {
         uint32_t                dwWaitMs, dwWaitTag;
         MOS_STATUS              eStatus = MOS_STATUS_SUCCESS;
@@ -681,7 +679,7 @@ public:
     MOS_STATUS SetVeboxIndex(
         uint32_t dwVeboxIndex,
         uint32_t dwVeboxCount,
-        uint32_t dwUsingSFC)
+        uint32_t dwUsingSFC) override
     {
         MOS_STATUS      eStatus = MOS_STATUS_SUCCESS;
 
@@ -700,19 +698,19 @@ public:
         if (isCmBuffer)
         {
             char ocaLog[] = "Vebox indirect state use CmBuffer";
-            HalOcaInterfaceNext::TraceMessage(cmdBuffer, mosContext, ocaLog, sizeof(ocaLog));
+            HalOcaInterfaceNext::TraceMessage(cmdBuffer, (MOS_CONTEXT_HANDLE)&mosContext, ocaLog, sizeof(ocaLog));
         }
         else
         {
             if (useVeboxHeapKernelResource)
             {
                 char ocaLog[] = "Vebox indirect state use KernelResource";
-                HalOcaInterfaceNext::TraceMessage(cmdBuffer, mosContext, ocaLog, sizeof(ocaLog));
+                HalOcaInterfaceNext::TraceMessage(cmdBuffer, (MOS_CONTEXT_HANDLE)&mosContext, ocaLog, sizeof(ocaLog));
             }
             else
             {
                 char ocaLog[] = "Vebox indirect state use DriverResource";
-                HalOcaInterfaceNext::TraceMessage(cmdBuffer, mosContext, ocaLog, sizeof(ocaLog));
+                HalOcaInterfaceNext::TraceMessage(cmdBuffer, (MOS_CONTEXT_HANDLE)&mosContext, ocaLog, sizeof(ocaLog));
             }
         }
         return MOS_STATUS_SUCCESS;
@@ -733,7 +731,7 @@ public:
     MOS_STATUS CreateGpuContext(
         PMOS_INTERFACE  pOsInterface,
         MOS_GPU_CONTEXT VeboxGpuContext,
-        MOS_GPU_NODE    VeboxGpuNode)
+        MOS_GPU_NODE    VeboxGpuNode) override
     {
         MEDIA_FEATURE_TABLE *skuTable;
         MOS_STATUS          eStatus = MOS_STATUS_SUCCESS;
@@ -865,7 +863,7 @@ public:
         PMHW_VEBOX_SURFACE_PARAMS pcurrSurf,
         uint32_t *                pdwSurfaceWidth,
         uint32_t *                pdwSurfaceHeight,
-        bool                      bDIEnable)
+        bool                      bDIEnable) override
     {
         MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
@@ -884,7 +882,7 @@ public:
     }
 
     MOS_STATUS FindVeboxGpuNodeToUse(
-        PMHW_VEBOX_GPUNODE_LIMIT pGpuNodeLimit)
+        PMHW_VEBOX_GPUNODE_LIMIT pGpuNodeLimit) override
     {
         MOS_GPU_NODE VeboxGpuNode = MOS_GPU_NODE_VE;
         MOS_STATUS   eStatus      = MOS_STATUS_SUCCESS;
@@ -927,17 +925,17 @@ public:
 
     MOS_STATUS AddVeboxSurfaces(
         PMOS_COMMAND_BUFFER                pCmdBufferInUse,
-        PMHW_VEBOX_SURFACE_STATE_CMD_PARAMS pVeboxSurfaceStateCmdParams)
+        PMHW_VEBOX_SURFACE_STATE_CMD_PARAMS pVeboxSurfaceStateCmdParams) override
     {
         return MOS_STATUS_SUCCESS;
     }
 
-    bool IsVeboxScalabilitywith4K()
+    bool IsVeboxScalabilitywith4K() override
     {
         return m_veboxScalabilitywith4K;
     }
 
-    MOS_STATUS Add1DLutState(void *&surface, PMHW_1DLUT_PARAMS p1DLutParams)
+    MOS_STATUS Add1DLutState(void *&surface, PMHW_1DLUT_PARAMS p1DLutParams) override
     {
         return MOS_STATUS_SUCCESS;
     }

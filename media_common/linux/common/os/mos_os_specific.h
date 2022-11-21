@@ -26,12 +26,11 @@
 
 #ifndef __MOS_OS_SPECIFIC_H__
 #define __MOS_OS_SPECIFIC_H__
-
+#include "mos_defs.h"
 #include "media_skuwa_specific.h"
 #include "GmmLib.h"
 #include "mos_resource_defs.h"
-#include "mos_defs.h"
-#include "mos_os_cp_interface_specific.h"
+#include "mos_os_hw.h"
 #ifdef ANDROID
 #include <utils/Log.h>
 #endif
@@ -917,12 +916,80 @@ MOS_STATUS Mos_Specific_IsResourceReleasable(
     PMOS_INTERFACE         pOsInterface,
     PMOS_RESOURCE          pOsResource);
 
+struct _MOS_SPECIFIC_VE_HINT_PARAMS;
+typedef struct _MOS_SPECIFIC_VE_HINT_PARAMS *PMOS_VIRTUALENGINE_HINT_PARAMS;
+struct _MOS_VIRTUALENGINE_INIT_PARAMS;
+typedef struct _MOS_VIRTUALENGINE_INIT_PARAMS MOS_VIRTUALENGINE_INIT_PARAMS, *PMOS_VIRTUALENGINE_INIT_PARAMS;
+
+//!
+//! \brief    Virtual Engine Init for media Scalability
+//! \details  
+//! \param    PMOS_INTERFACE pOsInterface
+//!           [in] Pointer to OS interface structure
+//! \param    MOS_VE_HANDLE pVeState
+//!           [out] Virtual Engine State
+//! \param    PMOS_VIRTUALENGINE_HINT_PARAMS veHitParams
+//!           [out] Pointer to Virtual Engine hint parameters
+//! \param    PMOS_VIRTUALENGINE_INTERFACE veInterface
+//!           [out] Pointer to Virtual Engine Interface
+//! \return   MOS_STATUS
+//!           MOS_STATUS_SUCCESS if succeeded, otherwise error code
+//!
+MOS_STATUS Mos_Specific_Virtual_Engine_Init(
+    PMOS_INTERFACE                  pOsInterface,
+    PMOS_VIRTUALENGINE_HINT_PARAMS* veHitParams,
+    MOS_VIRTUALENGINE_INIT_PARAMS&  veInParams);
+
+struct _MOS_VIRTUALENGINE_SET_PARAMS;
+typedef struct _MOS_VIRTUALENGINE_SET_PARAMS  MOS_VIRTUALENGINE_SET_PARAMS, *PMOS_VIRTUALENGINE_SET_PARAMS;
+
+//!
+//! \brief    Set hint parameters
+//! \details  
+//! \param    PMOS_INTERFACE pOsInterface
+//!           [in] Pointer to OS interface structure
+//! \param    MOS_VIRTUALENGINE_SET_PARAMS veParams
+//!           [out] VIRTUALENGINE SET PARAMS
+//! \return   MOS_STATUS
+//!           MOS_STATUS_SUCCESS if succeeded, otherwise error code
+//!
+MOS_STATUS Mos_Specific_SetHintParams(
+    PMOS_INTERFACE               pOsInterface,
+    PMOS_VIRTUALENGINE_SET_PARAMS veParams);
+
+typedef struct _MOS_VIRTUALENGINE_INTERFACE *PMOS_VIRTUALENGINE_INTERFACE;
+
+//!
+//! \brief    Destroy veInterface
+//! \details  
+//! \param    PMOS_VIRTUALENGINE_INTERFACE *veInterface
+//!           [in] Pointer to PMOS_VIRTUALENGINE_INTERFACE
+//! \return   MOS_STATUS
+//!           MOS_STATUS_SUCCESS if succeeded, otherwise error code
+//!
+MOS_STATUS Mos_Specific_DestroyVeInterface(
+    PMOS_VIRTUALENGINE_INTERFACE *veInterface);
+
 #if (_DEBUG || _RELEASE_INTERNAL)
 MOS_LINUX_BO * Mos_GetNopCommandBuffer_Linux(
     PMOS_INTERFACE        pOsInterface);
 
 MOS_LINUX_BO * Mos_GetBadCommandBuffer_Linux(
     PMOS_INTERFACE        pOsInterface);
+
+//!
+//! \brief    gpuCtxCreateOption Init for media Scalability
+//! \details  
+//! \param    PMOS_INTERFACE pOsInterface
+//!           [in] Pointer to OS interface structure
+//! \param    uint8_t id
+//!           [out] EngineLogicId
+//! \return   MOS_STATUS
+//!           MOS_STATUS_SUCCESS if succeeded, otherwise error code
+//!
+MOS_STATUS Mos_Specific_GetEngineLogicId(
+    PMOS_INTERFACE                 pOsInterface,
+    uint8_t&                       id);
 #endif
 
 #ifdef __cplusplus

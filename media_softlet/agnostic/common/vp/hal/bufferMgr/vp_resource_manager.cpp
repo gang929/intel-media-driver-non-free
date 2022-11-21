@@ -150,8 +150,8 @@ extern const VEBOX_SPATIAL_ATTRIBUTES_CONFIGURATION g_cInit_VEBOX_SPATIAL_ATTRIB
     }
 };
 
-VpResourceManager::VpResourceManager(MOS_INTERFACE &osInterface, VpAllocator &allocator, VphalFeatureReport &reporting, vp::VpPlatformInterface &vpPlatformInterface)
-    : m_osInterface(osInterface), m_allocator(allocator), m_reporting(reporting), m_vpPlatformInterface(vpPlatformInterface)
+VpResourceManager::VpResourceManager(MOS_INTERFACE &osInterface, VpAllocator &allocator, VphalFeatureReport &reporting, vp::VpPlatformInterface &vpPlatformInterface, MediaCopyBaseState *mediaCopy)
+    : m_osInterface(osInterface), m_allocator(allocator), m_reporting(reporting), m_vpPlatformInterface(vpPlatformInterface), m_mediaCopy(mediaCopy)
 {
     InitSurfaceConfigMap();
     m_userSettingPtr = m_osInterface.pfnGetUserSettingInstance(&m_osInterface);
@@ -244,6 +244,7 @@ VpResourceManager::~VpResourceManager()
     }
 
     m_allocator.DestroyVpSurface(m_cmfcCoeff);
+    m_allocator.DestroyVpSurface(m_decompressionSyncSurface);
 
     m_allocator.CleanRecycler();
 }
@@ -623,6 +624,7 @@ void VpResourceManager::InitSurfaceConfigMap()
     // outOfBound
     AddSurfaceConfig(true,  true,  false, true,  true,  false, true,  VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_PAST_REF, VEBOX_SURFACE_FRAME1, VEBOX_SURFACE_FRAME0);
     AddSurfaceConfig(true,  true,  false, true,  true,  false, false, VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_NULL,     VEBOX_SURFACE_FRAME1, VEBOX_SURFACE_NULL);
+
     // sfc disable
     AddSurfaceConfig(true,  false,  false, false, true,  false, true,  VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_PAST_REF, VEBOX_SURFACE_FRAME1, VEBOX_SURFACE_OUTPUT);
     AddSurfaceConfig(true,  false,  true,  false, true,  false, false, VEBOX_SURFACE_FRAME1, VEBOX_SURFACE_NULL,     VEBOX_SURFACE_NULL,   VEBOX_SURFACE_NULL);
@@ -631,6 +633,18 @@ void VpResourceManager::InitSurfaceConfigMap()
     AddSurfaceConfig(true,  false,  false, false, true,  false, false, VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_PAST_REF, VEBOX_SURFACE_FRAME1, VEBOX_SURFACE_FRAME0);
     AddSurfaceConfig(true,  false,  true,  false, false, false, true,  VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_NULL,     VEBOX_SURFACE_FRAME1, VEBOX_SURFACE_NULL);
     AddSurfaceConfig(true,  false,  true,  false, false, false, false, VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_NULL,     VEBOX_SURFACE_FRAME1, VEBOX_SURFACE_NULL);
+
+    //30i -> 30p sfc Enable
+    AddSurfaceConfig(false, true,   false, false, false, false, true,  VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_NULL,     VEBOX_SURFACE_FRAME1, VEBOX_SURFACE_NULL);
+    AddSurfaceConfig(false, true,   false, false, true,  false, false, VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_PAST_REF, VEBOX_SURFACE_FRAME1, VEBOX_SURFACE_FRAME0);
+    AddSurfaceConfig(false, true,   false, false, true,  false, true,  VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_PAST_REF, VEBOX_SURFACE_FRAME1, VEBOX_SURFACE_FRAME0);
+    AddSurfaceConfig(false, true,   false, true,  true,  false, true,  VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_PAST_REF, VEBOX_SURFACE_FRAME1, VEBOX_SURFACE_FRAME0);
+    AddSurfaceConfig(false, true,   false, true,  true,  false, false, VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_PAST_REF, VEBOX_SURFACE_FRAME1, VEBOX_SURFACE_FRAME0);
+    
+    //30i -> 30p sfc disable
+    AddSurfaceConfig(false, false,  false, false, true,  false, true,  VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_NULL,     VEBOX_SURFACE_OUTPUT, VEBOX_SURFACE_NULL);
+    AddSurfaceConfig(false, false,  false, true,  true,  false, true,  VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_NULL,     VEBOX_SURFACE_OUTPUT, VEBOX_SURFACE_NULL);
+    AddSurfaceConfig(false, false,  false, false, false, false, true,  VEBOX_SURFACE_INPUT,  VEBOX_SURFACE_NULL,     VEBOX_SURFACE_OUTPUT, VEBOX_SURFACE_NULL);
 }
 
 uint32_t VpResourceManager::GetHistogramSurfaceSize(VP_EXECUTE_CAPS& caps, uint32_t inputWidth, uint32_t inputHeight)
@@ -974,27 +988,39 @@ MOS_STATUS VpResourceManager::AssignFcResources(VP_EXECUTE_CAPS &caps, std::vect
         memTypeSurfVideoMem = MOS_MEMPOOL_DEVICEMEMORY;
     }
 
-    for (size_t i = 0; i < inputSurfaces.size(); ++i)
+    if (caps.bTemperalInputInuse)
     {
-        surfSetting.surfGroup.insert(std::make_pair((SurfaceType)(SurfaceTypeFcInputLayer0 + i), inputSurfaces[i]));
-
-        if (!resHint.isIScalingTypeNone)
+        if (inputSurfaces.size() > 1)
         {
-            // For Interlaced scaling, 2nd field is part of the same frame.
-            // For Field weaving, 2nd field is passed in as a ref.
-            VP_SURFACE *surfField1Dual = nullptr;
-            if (resHint.isFieldWeaving)
+            VP_PUBLIC_ASSERTMESSAGE("Temperal input only has 1 layer, do not support multi-layer case!");
+            return MOS_STATUS_INVALID_PARAMETER;
+        }
+        surfSetting.surfGroup.insert(std::make_pair((SurfaceType)(SurfaceTypeFcInputLayer0), m_temperalInput));
+    }
+    else
+    {
+        for (size_t i = 0; i < inputSurfaces.size(); ++i)
+        {
+            surfSetting.surfGroup.insert(std::make_pair((SurfaceType)(SurfaceTypeFcInputLayer0 + i), inputSurfaces[i]));
+
+            if (!resHint.isIScalingTypeNone)
             {
-                surfField1Dual = pastSurfaces[i];
-                VP_PUBLIC_NORMALMESSAGE("Field weaving case. 2nd field is passed in as a ref.");
+                // For Interlaced scaling, 2nd field is part of the same frame.
+                // For Field weaving, 2nd field is passed in as a ref.
+                VP_SURFACE *surfField1Dual = nullptr;
+                if (resHint.isFieldWeaving)
+                {
+                    surfField1Dual = pastSurfaces[i];
+                    VP_PUBLIC_NORMALMESSAGE("Field weaving case. 2nd field is passed in as a ref.");
+                }
+                else
+                {
+                    surfField1Dual = GetCopyInstOfExtSurface(inputSurfaces[i]);
+                    VP_PUBLIC_NORMALMESSAGE("Interlaced scaling. 2nd field is part of the same frame.");
+                }
+                VP_PUBLIC_CHK_NULL_RETURN(surfField1Dual);
+                surfSetting.surfGroup.insert(std::make_pair((SurfaceType)(SurfaceTypeFcInputLayer0Field1Dual + i), surfField1Dual));
             }
-            else
-            {
-                surfField1Dual = GetCopyInstOfExtSurface(inputSurfaces[i]);
-                VP_PUBLIC_NORMALMESSAGE("Interlaced scaling. 2nd field is part of the same frame.");
-            }
-            VP_PUBLIC_CHK_NULL_RETURN(surfField1Dual);
-            surfSetting.surfGroup.insert(std::make_pair((SurfaceType)(SurfaceTypeFcInputLayer0Field1Dual + i), surfField1Dual));
         }
     }
     surfSetting.surfGroup.insert(std::make_pair(SurfaceTypeFcTarget0, outputSurface));
@@ -1019,6 +1045,20 @@ MOS_STATUS VpResourceManager::AssignFcResources(VP_EXECUTE_CAPS &caps, std::vect
         VPP_INTER_RESOURCE_NOTLOCKABLE));
 
     surfSetting.surfGroup.insert(std::make_pair(SurfaceTypeFcCscCoeff, m_cmfcCoeff));
+
+    //for decompreesion sync on interlace input of FC
+    VP_PUBLIC_CHK_STATUS_RETURN(m_allocator.ReAllocateSurface(
+        m_decompressionSyncSurface,
+        "AuxDecompressSyncSurface",
+        Format_Buffer,
+        MOS_GFXRES_BUFFER,
+        MOS_TILE_LINEAR,
+        32,
+        1,
+        false,
+        MOS_MMC_DISABLED,
+        allocated));
+    surfSetting.surfGroup.insert(std::make_pair(SurfaceTypeDecompressionSync, m_decompressionSyncSurface));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -2086,6 +2126,15 @@ MOS_STATUS VpResourceManager::AssignVeboxResource(VP_EXECUTE_CAPS& caps, VP_SURF
         auto it = m_veboxSurfaceConfigMap.find(cfg.value);
         if (m_veboxSurfaceConfigMap.end() == it)
         {
+            VP_PUBLIC_ASSERTMESSAGE("SurfaceConfig is invalid, cfg.value = %d", cfg.value);
+            VP_PUBLIC_ASSERTMESSAGE("b64Di = %d, sfcEnable = %d, sameSample = %d, outOfBound = %d, pastframeAvailable = %d, future frameAvaliable = %d, FirstDiFiels = %d",
+                cfg.b64DI,
+                cfg.sfcEnable,
+                cfg.sameSample,
+                cfg.outOfBound,
+                cfg.pastFrameAvailable,
+                cfg.futureFrameAvailable,
+                cfg.firstDiField);
             VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
         }
         auto surfaces = it->second;
@@ -2104,15 +2153,7 @@ MOS_STATUS VpResourceManager::AssignVeboxResource(VP_EXECUTE_CAPS& caps, VP_SURF
     }
     else
     {
-        if (caps.bTemperalInputInuse)
-        {
-            VP_PUBLIC_CHK_NULL_RETURN(m_temperalInput);
-            surfGroup.insert(std::make_pair(SurfaceTypeVeboxInput, m_temperalInput));
-        }
-        else
-        {
-            surfGroup.insert(std::make_pair(SurfaceTypeVeboxInput, inputSurface));
-        }
+        surfGroup.insert(std::make_pair(SurfaceTypeVeboxInput, inputSurface));
         surfGroup.insert(std::make_pair(SurfaceTypeVeboxCurrentOutput, GetVeboxOutputSurface(caps, outputSurface)));
 
         if (caps.bDN)

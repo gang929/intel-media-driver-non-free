@@ -77,10 +77,9 @@ const int32_t VpRenderFcKernel::s_bindingTableIndexField[] =
 };
 
 VpRenderFcKernel::VpRenderFcKernel(PVP_MHWINTERFACE hwInterface, PVpAllocator allocator) :
-    VpRenderKernelObj(hwInterface, allocator)
+    VpRenderKernelObj(hwInterface, (VpKernelID)kernelCombinedFc, 0, VpRenderKernel::s_kernelNameNonAdvKernels, allocator)
 {
     m_kernelBinaryID = IDR_VP_EOT;
-    m_kernelId       = kernelCombinedFc;
 
     if (m_hwInterface && m_hwInterface->m_vpPlatformInterface &&
         m_hwInterface->m_vpPlatformInterface->GetKernelPool().end() != m_hwInterface->m_vpPlatformInterface->GetKernelPool().find(VpRenderKernel::s_kernelNameNonAdvKernels))
@@ -271,6 +270,23 @@ MOS_STATUS VpRenderFcKernel::SetupSurfaceState()
             VP_RENDER_ASSERTMESSAGE("layer->layerID = d% is out of range!", layer->layerID);
             return MOS_STATUS_INVALID_PARAMETER;
         }
+
+        auto                          decompressionSycSurfaceID = m_surfaceGroup->find(SurfaceTypeDecompressionSync);
+        VP_SURFACE                   *pDecompressionSycSurface = (m_surfaceGroup->end() != decompressionSycSurfaceID) ? decompressionSycSurfaceID->second : nullptr;
+        auto        pSrcID       = m_surfaceGroup->find(SurfaceType(SurfaceTypeFcInputLayer0 + i));
+        VP_SURFACE                   *pSrc         = (m_surfaceGroup->end() != pSrcID) ? pSrcID->second : nullptr;
+        if (pDecompressionSycSurface && pSrc && pSrc->SampleType != SAMPLE_PROGRESSIVE && pSrc->osSurface->CompressionMode == MOS_MMC_RC)
+        {
+            VP_RENDER_CHK_STATUS_RETURN(m_hwInterface->m_osInterface->pfnSetDecompSyncRes(m_hwInterface->m_osInterface, &pDecompressionSycSurface->osSurface->OsResource))
+            VP_RENDER_CHK_STATUS_RETURN(m_hwInterface->m_osInterface->pfnDecompResource(m_hwInterface->m_osInterface, &pSrc->osSurface->OsResource));
+            VP_RENDER_CHK_STATUS_RETURN(m_hwInterface->m_osInterface->pfnSetDecompSyncRes(m_hwInterface->m_osInterface, nullptr));
+            VP_RENDER_CHK_STATUS_RETURN(m_hwInterface->m_osInterface->pfnRegisterResource(m_hwInterface->m_osInterface, &pDecompressionSycSurface->osSurface->OsResource, true, true));
+
+            pSrc->osSurface->bIsCompressed        = false;
+            pSrc->osSurface->CompressionMode      = MOS_MMC_DISABLED;
+            pSrc->osSurface->CompressionFormat    = 0;
+        }
+
         surfParam.surfaceOverwriteParams.bindIndex = s_bindingTableIndex[layer->layerID];
 
         SetSurfaceParams(surfParam, *layer, false);
@@ -633,7 +649,7 @@ MOS_STATUS VpRenderFcKernel::InitRenderHalSurface(
 
 void VpRenderFcKernel::OcaDumpKernelInfo(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTEXT &mosContext)
 {
-    HalOcaInterfaceNext::DumpVpKernelInfo(cmdBuffer, mosContext, m_kernelId, m_kernelSearch.KernelCount, m_kernelSearch.KernelID);
+    HalOcaInterfaceNext::DumpVpKernelInfo(cmdBuffer, (MOS_CONTEXT_HANDLE)&mosContext, m_kernelId, m_kernelSearch.KernelCount, m_kernelSearch.KernelID);
 }
 
 bool IsRenderAlignmentWANeeded(VP_SURFACE *surface)

@@ -39,6 +39,8 @@
 #include "media_copy.h"
 #include <sstream>
 #include <fstream>
+#include <functional>
+
 using GoldenReferences = std::vector<std::vector<uint32_t>>;
 class MediaDebugInterface
 {
@@ -47,6 +49,8 @@ public:
     virtual ~MediaDebugInterface();
 
     MOS_STATUS InitDumpLocation();
+
+    MOS_STATUS SetFastDumpConfig(MediaCopyBaseState *mediaCopy);
 
     bool DumpIsEnabled(
         const char *           attr,
@@ -96,7 +100,7 @@ public:
         uint32_t               width_in   = 0,
         uint32_t               height_in  = 0);
 
-    virtual MOS_STATUS DumpYUVSurface(
+    MOS_STATUS DumpYUVSurface(
         PMOS_SURFACE           surface,
         const char *           attrName,
         const char *           surfName,
@@ -184,9 +188,8 @@ public:
     MOS_SURFACE       m_temp2DSurfForCopy = {};
     PMOS_INTERFACE    m_osInterface       = nullptr;
     MhwCpInterface   *m_cpInterface       = nullptr;
-    //#ifndef softlet_build
-    MhwMiInterface   *m_miInterface       = nullptr;
-    //#endif
+    void             *m_miInterface       = nullptr;
+
     MediaDbgFunction  m_mediafunction     = MEDIA_FUNCTION_DEFAULT;
     CODEC_PICTURE     m_currPic;
     uint32_t          m_scaledBottomFieldOffset = 0;
@@ -204,7 +207,7 @@ public:
     bool              m_swCRC = false;
     uint16_t          m_preIndex                 = 0;
     uint16_t          m_refIndex                 = 0;
-    uint32_t          m_bufferDumpFrameNum       = 0;
+    size_t            m_bufferDumpFrameNum       = 0;
     uint32_t          m_decodeSurfDumpFrameNum   = 0;
     uint32_t          m_streamId                 = 0;
     uint32_t          m_crcTable[256]            ={0};
@@ -212,7 +215,7 @@ public:
     std::vector<uint32_t> m_crcGoldenReference   = {};
     GoldenReferences      m_goldenReferences     = {};
     uint32_t*         m_semaData                 = nullptr;
-
+    MediaUserSettingSharedPtr m_userSettingPtr   = nullptr;
 
 protected:
     MOS_STATUS ReAllocateSurface(
@@ -243,12 +246,35 @@ protected:
         uint32_t height,
         uint32_t pitch);
 
-    virtual MOS_USER_FEATURE_VALUE_ID SetOutputPathKey()  = 0;
-    virtual MOS_USER_FEATURE_VALUE_ID InitDefaultOutput() = 0;
+    virtual MOS_STATUS InitializeUserSetting() { return MOS_STATUS_SUCCESS; };
+
+    virtual std::string SetOutputPathKey()  = 0;
+    virtual std::string InitDefaultOutput() = 0;
 
     std::string          m_outputFileName;
     MediaDebugConfigMgr *m_configMgr = nullptr;
-MEDIA_CLASS_DEFINE_END(MediaDebugInterface)
+
+    std::function<
+        MOS_STATUS(
+            PMOS_SURFACE           surface,
+            const char            *attrName,
+            const char            *surfName,
+            MEDIA_DEBUG_STATE_TYPE mediaState,
+            uint32_t               width_in,
+            uint32_t               height_in)>
+        m_dumpYUVSurface;
+
+    std::function<
+        MOS_STATUS(
+            PMOS_RESOURCE          resource,
+            const char            *attrName,
+            const char            *bufferName,
+            uint32_t               size,
+            uint32_t               offset,
+            MEDIA_DEBUG_STATE_TYPE mediaState)>
+        m_dumpBuffer;
+
+    MEDIA_CLASS_DEFINE_END(MediaDebugInterface)
 };
 
 #else

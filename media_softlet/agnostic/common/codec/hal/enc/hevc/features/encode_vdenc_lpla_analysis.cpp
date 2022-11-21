@@ -141,7 +141,7 @@ namespace encode
             }
             else
             {
-                CODECHAL_ENCODE_ASSERTMESSAGE("Invalid GopPicSize in LPLA!");
+                ENCODE_ASSERTMESSAGE("Invalid GopPicSize in LPLA!");
                 return MOS_STATUS_INVALID_PARAMETER;
             }
         }
@@ -647,11 +647,10 @@ namespace encode
             storeIntraCuCount.dwValue          = m_statsBuffer[index][2];
             ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_DATA_IMM)(&cmdBuffer));
 
-            auto &flushDwParams = m_miItf->MHW_GETPAR_F(MI_STORE_DATA_IMM)();
+            auto &flushDwParams = m_miItf->MHW_GETPAR_F(MI_FLUSH_DW)();
             flushDwParams       = {};
-            MOS_ZeroMemory(&flushDwParams, sizeof(flushDwParams));
             // Make Flush DW call to make sure all previous work is done
-            ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_DATA_IMM)(&cmdBuffer));
+            ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_FLUSH_DW)(&cmdBuffer));
         }
         else
         {
@@ -910,20 +909,6 @@ namespace encode
         hucVdencLaUpdateDmem->currentPass = (uint8_t)curPass;
 
         m_allocator->UnLock(m_vdencLaUpdateDmemBuffer[currRecycledBufIdx][curPass]);
-
-        return eStatus;
-    }
-
-    MOS_STATUS VdencLplaAnalysis::SetVdencPipeModeSelectParams(MHW_VDBOX_PIPE_MODE_SELECT_PARAMS_G12 &pipeModeSelectParams)
-    {
-        ENCODE_FUNC_CALL();
-        MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
-        
-        if (!m_enabled)
-        {
-            return eStatus;
-        }
-        pipeModeSelectParams.bLookaheadPass = true;
 
         return eStatus;
     }

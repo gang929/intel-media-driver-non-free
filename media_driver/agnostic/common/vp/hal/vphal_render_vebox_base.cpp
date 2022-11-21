@@ -1256,9 +1256,9 @@ MOS_STATUS VPHAL_VEBOX_STATE::VeboxFlushUpdateStateCmdBuffer()
         *pMhwMiInterface, *pMmioRegisters);
 
     // Add kernel info to log.
-    HalOcaInterface::DumpVpKernelInfo(CmdBuffer, *pOsContext, kernelVeboxUpdateDnState, 0, nullptr);
+    HalOcaInterface::DumpVpKernelInfo(CmdBuffer, (MOS_CONTEXT_HANDLE)pOsContext, kernelVeboxUpdateDnState, 0, nullptr);
     // Add vphal param to log.
-    HalOcaInterface::DumpVphalParam(CmdBuffer, *pOsContext, pRenderHal->pVphalOcaDumper);
+    HalOcaInterface::DumpVphalParam(CmdBuffer, (MOS_CONTEXT_HANDLE)pOsContext, pRenderHal->pVphalOcaDumper);
 
     // Initialize command buffer and insert prolog
     VPHAL_RENDER_CHK_STATUS(pRenderHal->pfnInitCommandBuffer(pRenderHal, &CmdBuffer, nullptr));
@@ -1985,7 +1985,7 @@ MOS_STATUS VPHAL_VEBOX_STATE::VeboxRenderVeboxCmd(
     HalOcaInterface::TraceOcaSkuValue(CmdBuffer, *pOsInterface);
 
     // Add vphal param to log.
-    HalOcaInterface::DumpVphalParam(CmdBuffer, *pOsContext, pRenderHal->pVphalOcaDumper);
+    HalOcaInterface::DumpVphalParam(CmdBuffer, (MOS_CONTEXT_HANDLE)pOsContext, pRenderHal->pVphalOcaDumper);
 
     // Initialize command buffer and insert prolog
     VPHAL_RENDER_CHK_STATUS(pRenderHal->pfnInitCommandBuffer(pRenderHal, &CmdBuffer, pGenericPrologParams));
@@ -2005,7 +2005,7 @@ MOS_STATUS VPHAL_VEBOX_STATE::VeboxRenderVeboxCmd(
     {
         std::string info = "in_comps = " + std::to_string(int(this->m_currentSurface->bCompressible)) + ", out_comps = " + std::to_string(int(VeboxSurfaceStateCmdParams.pSurfOutput->bCompressible));
         const char* ocaLog = info.c_str();
-        HalOcaInterface::TraceMessage(CmdBuffer, *pOsContext, ocaLog, info.size());
+        HalOcaInterface::TraceMessage(CmdBuffer, (MOS_CONTEXT_HANDLE)pOsContext, ocaLog, info.size());
     }
 
     VPHAL_RENDER_CHK_STATUS(pVeboxState->SetupVeboxState(
@@ -3625,6 +3625,7 @@ MOS_STATUS VPHAL_VEBOX_STATE::Render(
     MOS_STATUS               eStatus;
     PVPHAL_VEBOX_RENDER_DATA pRenderData;
     bool                     bRender;
+    bool                     bDIVeboxBypass;
     PVPHAL_VEBOX_STATE       pVeboxState = this;
     PVPHAL_SURFACE           pSrcSurface;
     PVPHAL_SURFACE           pOutputSurface;
@@ -3643,6 +3644,7 @@ MOS_STATUS VPHAL_VEBOX_STATE::Render(
     pOsInterface            = pVeboxState->m_pOsInterface;
     eStatus                 = MOS_STATUS_SUCCESS;
     bRender                 = false;
+    bDIVeboxBypass          = false;
     pRenderData             = pVeboxState->GetLastExecRenderData();
 
     VPHAL_DBG_STATE_DUMPPER_SET_CURRENT_STAGE(VPHAL_DBG_STAGE_VEBOX);
@@ -3656,7 +3658,8 @@ MOS_STATUS VPHAL_VEBOX_STATE::Render(
         if (IS_VPHAL_OUTPUT_PIPE_SFC(pRenderData) &&
             pRenderData->bDeinterlace)                // Vebox + SFC
         {
-            pSrcSurface = GetOutputSurfForDiSameSampleWithSFC(pSrcSurface);
+            bDIVeboxBypass = true;
+            pSrcSurface    = GetOutputSurfForDiSameSampleWithSFC(pSrcSurface);
         }
         else
         {
@@ -3797,8 +3800,18 @@ finish:
         SET_VPHAL_OUTPUT_PIPE(pRenderData, VPHAL_OUTPUT_PIPE_MODE_COMP);
     }
     m_reporting->GetFeatures().outputPipeMode = pRenderData->OutputPipe;
-    m_reporting->GetFeatures().veFeatureInUse = !pRenderData->bVeboxBypass;
     m_reporting->GetFeatures().diScdMode      = pRenderData->VeboxDNDIParams.bSyntheticFrame;
+
+    // DI with ref 2nd filed use SFC output
+    // Update VEBOX usage report here
+    if (bDIVeboxBypass)
+    {
+        m_reporting->GetFeatures().veFeatureInUse = false;
+    }
+    else
+    {
+        m_reporting->GetFeatures().veFeatureInUse = !pRenderData->bVeboxBypass;
+    }
 
     return eStatus;
 }

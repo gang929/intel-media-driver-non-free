@@ -25,10 +25,10 @@
 //!
 #include "decode_avc_pipeline.h"
 #include "decode_utils.h"
-#include "media_user_settings_mgr_g12.h"
 #include "codechal_setting.h"
 #include "decode_avc_feature_manager.h"
 #include "decode_huc_packet_creator_base.h" 
+#include "mos_os_cp_interface_specific.h"
 
 namespace decode
 {
@@ -53,6 +53,7 @@ namespace decode
         MOS_ZeroMemory(&scalPars, sizeof(scalPars));
         DECODE_CHK_STATUS(m_mediaContext->SwitchContext(VdboxDecodeFunc, &scalPars, &m_scalability));
         m_decodeContext = m_osInterface->pfnGetGpuContext(m_osInterface);
+        m_decodeContextHandle = m_osInterface->CurrentGpuContextHandle;
 
         auto *codecSettings = (CodechalSetting*)settings;
         DECODE_CHK_NULL(codecSettings);
@@ -246,6 +247,15 @@ namespace decode
     bool AvcPipeline::IsShortFormat()
     {
         return m_shortFormatInUse;
+    }
+
+    MOS_STATUS AvcPipeline::SetDecodeFormat(bool isShortFormat)
+    {
+        DECODE_FUNC_CALL();
+        DECODE_CHK_NULL(m_basicFeature);
+        m_basicFeature->m_shortFormatInUse = isShortFormat;
+        m_shortFormatInUse = isShortFormat;
+        return MOS_STATUS_SUCCESS;
     }
 
 #if USE_CODECHAL_DEBUG_TOOL

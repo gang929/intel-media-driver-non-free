@@ -384,53 +384,59 @@ protected:
     {
         MHW_FUNCTION_ENTER;
 
-        MOS_USER_FEATURE_VALUE_DATA userFeatureData;
-
-        MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+        bool rowstoreCachingDisableDefaultValue = false;
         if (this->m_osItf->bSimIsActive)
         {
             // Disable RowStore Cache on simulation by default
-            userFeatureData.u32Data = 1;
+            rowstoreCachingDisableDefaultValue = true;
         }
         else
         {
-            userFeatureData.u32Data = 0;
+            rowstoreCachingDisableDefaultValue = false;
         }
-
-        userFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
+        bool rowstoreCachingSupported = !rowstoreCachingDisableDefaultValue;
 #if (_DEBUG || _RELEASE_INTERNAL)
-        MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_ROWSTORE_CACHE_DISABLE_ID,
-            &userFeatureData,
-            m_osItf->pOsContext);
+        auto userSettingPtr = m_osItf->pfnGetUserSettingInstance(m_osItf);
+        {
+            MediaUserSetting::Value outValue;
+            ReadUserSettingForDebug(userSettingPtr,
+                outValue,
+                "Disable RowStore Cache",
+                MediaUserSetting::Group::Device,
+                rowstoreCachingDisableDefaultValue,
+                true);
+            rowstoreCachingSupported = !(outValue.Get<bool>());
+        }
 #endif  // _DEBUG || _RELEASE_INTERNAL
-        bool rowstoreCachingSupported = userFeatureData.i32Data ? false : true;
 
         if (!rowstoreCachingSupported)
         {
             return MOS_STATUS_SUCCESS;
         }
 
-        MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+        m_rowStoreCache.vdenc.supported = true;
 #if (_DEBUG || _RELEASE_INTERNAL)
-        MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_VDENCROWSTORECACHE_DISABLE_ID,
-            &userFeatureData,
-            m_osItf->pOsContext);
+        {
+            MediaUserSetting::Value outValue;
+            ReadUserSettingForDebug(userSettingPtr,
+                outValue,
+                "DisableVDEncRowStoreCache",
+                MediaUserSetting::Group::Device);
+            m_rowStoreCache.vdenc.supported = !(outValue.Get<bool>());
+        }
 #endif  // _DEBUG || _RELEASE_INTERNAL
-        this->m_rowStoreCache.vdenc.supported = userFeatureData.i32Data ? false : true;
 
-        MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
+        m_rowStoreCache.ipdl.supported = true;
 #if (_DEBUG || _RELEASE_INTERNAL)
-        MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_INTRAROWSTORECACHE_DISABLE_ID,
-            &userFeatureData,
-            m_osItf->pOsContext);
+        {
+            MediaUserSetting::Value outValue;
+            ReadUserSettingForDebug(userSettingPtr,
+                outValue,
+                "DisableIntraRowStoreCache",
+                MediaUserSetting::Group::Device);
+            m_rowStoreCache.ipdl.supported = !(outValue.Get<bool>());
+        }
 #endif  // _DEBUG || _RELEASE_INTERNAL
-        this->m_rowStoreCache.ipdl.supported = userFeatureData.i32Data ? false : true;
 
         return MOS_STATUS_SUCCESS;
     }
@@ -1547,9 +1553,64 @@ protected:
 
     _MHW_SETCMD_OVERRIDE_DECL(VDENC_CMD3)
     {
-        _MHW_SETCMD_CALLBASE(VDENC_CMD3);
+    _MHW_SETCMD_CALLBASE(VDENC_CMD3);
 
-#define DO_FIELDS_EXT() __MHW_VDBOX_VDENC_WRAPPER_EXT(VDENC_CMD3_IMPL_EXT)
+    for (auto i = 0; i < 12; i++)
+    {
+        cmd.VDENC_CMD3_DW3_5[i] = params.vdencCmd3Par1[i];
+        cmd.VDENC_CMD3_DW6_8[i] = params.vdencCmd3Par2[i];
+    }
+
+#define DO_FIELDS()                                                 \
+    DO_FIELD(DW1_2, VDENC_CMD3_DW1_BIT0,  params.vdencCmd3Par0[0]); \
+    DO_FIELD(DW1_2, VDENC_CMD3_DW1_BIT8,  params.vdencCmd3Par0[1]); \
+    DO_FIELD(DW1_2, VDENC_CMD3_DW1_BIT16, params.vdencCmd3Par0[2]); \
+    DO_FIELD(DW1_2, VDENC_CMD3_DW1_BIT24, params.vdencCmd3Par0[3]); \
+    DO_FIELD(DW1_2, VDENC_CMD3_DW2_BIT0,  params.vdencCmd3Par0[4]); \
+    DO_FIELD(DW1_2, VDENC_CMD3_DW2_BIT8,  params.vdencCmd3Par0[5]); \
+    DO_FIELD(DW1_2, VDENC_CMD3_DW2_BIT16, params.vdencCmd3Par0[6]); \
+    DO_FIELD(DW1_2, VDENC_CMD3_DW2_BIT24, params.vdencCmd3Par0[7]); \
+                                                                    \
+    DO_FIELD(DW10, VDENC_CMD3_DW10_BIT16, params.vdencCmd3Par3);    \
+    DO_FIELD(DW10, VDENC_CMD3_DW10_BIT24, params.vdencCmd3Par4);    \
+                                                                    \
+    DO_FIELD(DW12, VDENC_CMD3_DW12_BIT0,  params.vdencCmd3Par5);    \
+    DO_FIELD(DW12, VDENC_CMD3_DW12_BIT8,  params.vdencCmd3Par6);    \
+    DO_FIELD(DW12, VDENC_CMD3_DW12_BIT16, params.vdencCmd3Par7);    \
+    DO_FIELD(DW12, VDENC_CMD3_DW12_BIT24, params.vdencCmd3Par8);    \
+                                                                    \
+    DO_FIELD(DW13, VDENC_CMD3_DW13_BIT0,  params.vdencCmd3Par9);    \
+    DO_FIELD(DW13, VDENC_CMD3_DW13_BIT8,  params.vdencCmd3Par10);   \
+    DO_FIELD(DW13, VDENC_CMD3_DW13_BIT16, params.vdencCmd3Par11);   \
+    DO_FIELD(DW13, VDENC_CMD3_DW13_BIT24, params.vdencCmd3Par12);   \
+                                                                    \
+    DO_FIELD(DW14, VDENC_CMD3_DW14_BIT8,  params.vdencCmd3Par13);   \
+    DO_FIELD(DW14, VDENC_CMD3_DW14_BIT16, params.vdencCmd3Par14);   \
+    DO_FIELD(DW14, VDENC_CMD3_DW14_BIT24, params.vdencCmd3Par15);   \
+                                                                    \
+    DO_FIELD(DW15, VDENC_CMD3_DW15_BIT8,  params.vdencCmd3Par16);   \
+    DO_FIELD(DW15, VDENC_CMD3_DW15_BIT16, params.vdencCmd3Par17);   \
+    DO_FIELD(DW15, VDENC_CMD3_DW15_BIT24, params.vdencCmd3Par18);   \
+                                                                    \
+    DO_FIELD(DW16, VDENC_CMD3_DW16_BIT16, params.vdencCmd3Par19);   \
+                                                                    \
+    DO_FIELD(DW17, VDENC_CMD3_DW17_BIT0,  params.vdencCmd3Par20);   \
+    DO_FIELD(DW17, VDENC_CMD3_DW17_BIT8,  params.vdencCmd3Par23);   \
+    DO_FIELD(DW17, VDENC_CMD3_DW17_BIT16, params.vdencCmd3Par21);   \
+    DO_FIELD(DW17, VDENC_CMD3_DW17_BIT24, params.vdencCmd3Par22);   \
+                                                                    \
+    DO_FIELD(DW19, VDENC_CMD3_DW19_BIT8,  params.vdencCmd3Par24);   \
+    DO_FIELD(DW19, VDENC_CMD3_DW19_BIT16, params.vdencCmd3Par25);   \
+    DO_FIELD(DW19, VDENC_CMD3_DW19_BIT24, params.vdencCmd3Par26);   \
+                                                                    \
+    DO_FIELD(DW20, VDENC_CMD3_DW20_BIT0, params.vdencCmd3Par27);    \
+    DO_FIELD(DW20, VDENC_CMD3_DW20_BIT8, params.vdencCmd3Par28);    \
+                                                                    \
+    DO_FIELD(DW21, VDENC_CMD3_DW21_BIT0, params.vdencCmd3Par29);    \
+    DO_FIELD(DW21, VDENC_CMD3_DW21_BIT8, params.vdencCmd3Par30);    \
+                                                                    \
+    DO_FIELD(DW22, VDENC_CMD3_DW22_BIT0,  params.vdencCmd3Par31);   \
+    DO_FIELD(DW22, VDENC_CMD3_DW22_BIT16, params.vdencCmd3Par32)
 
 #include "mhw_hwcmd_process_cmdfields.h"
     }

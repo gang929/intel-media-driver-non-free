@@ -53,7 +53,6 @@
     DEF(MI_MATH);                         \
     DEF(MI_COPY_MEM_MEM);                 \
     DEF(MFX_WAIT)
-
 namespace mhw
 {
 namespace mi
@@ -95,11 +94,13 @@ public:
 
     virtual MOS_STATUS AddMiBatchBufferEnd(PMOS_COMMAND_BUFFER cmdBuffer, PMHW_BATCH_BUFFER batchBuffer) = 0;
 
+    virtual MOS_STATUS AddMiBatchBufferEndOnly(PMOS_COMMAND_BUFFER cmdBuffer, PMHW_BATCH_BUFFER batchBuffer) = 0;
+
     virtual MOS_STATUS AddBatchBufferEndInsertionFlag(MOS_COMMAND_BUFFER &constructedCmdBuf) = 0;
 
     virtual MHW_MI_MMIOREGISTERS* GetMmioRegisters() = 0;
 
-    virtual MOS_STATUS SetCpInterface(MhwCpInterface *cpInterface) = 0;
+    virtual MOS_STATUS SetCpInterface(MhwCpInterface *cpInterface, std::shared_ptr<mhw::mi::Itf> m_miItf) = 0;
 
     virtual uint32_t GetMmioInterfaces(MHW_MMIO_REGISTER_OPCODE opCode) = 0;
 

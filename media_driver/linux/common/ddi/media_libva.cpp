@@ -48,7 +48,11 @@
 #endif
 #include "media_libva_vp.h"
 #include "media_ddi_prot.h"
+
 #include "mos_os.h"
+#include "mos_context.h"
+#include "mos_cmdbufmgr.h"
+#include "mos_gpucontextmgr.h"
 
 #include "hwinfo_linux.h"
 #include "mediamemdecomp.h"
@@ -1594,7 +1598,7 @@ VAStatus DdiMedia_CleanUpSoftlet(PDDI_MEDIA_CONTEXT mediaCtx)
     MediaLibvaInterfaceNext::ReleaseCompList(mediaCtx);
     if(mediaCtx->m_hwInfo)
     {
-        MOS_FreeMemory(mediaCtx->m_hwInfo);
+        MOS_Delete(mediaCtx->m_hwInfo);
         mediaCtx->m_hwInfo = nullptr;
     }
 

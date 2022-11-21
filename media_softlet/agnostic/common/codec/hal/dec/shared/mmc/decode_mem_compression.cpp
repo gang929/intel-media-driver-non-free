@@ -29,17 +29,18 @@
 
 #include "mos_defs.h"
 #include "decode_mem_compression.h"
+#include "decode_utils.h"
 
 DecodeMemComp::DecodeMemComp(CodechalHwInterfaceNext *hwInterface, PMOS_INTERFACE osInterface) :
     MediaMemComp(osInterface ? osInterface : hwInterface->GetOsInterface())
 {
-    m_mmcFeatureId      = __MEDIA_USER_FEATURE_VALUE_CODEC_MMC_ENABLE_ID;
-    m_mmcInuseFeatureId = __MEDIA_USER_FEATURE_VALUE_CODEC_MMC_IN_USE_ID;
+    m_mmcEnabledKey     = __MEDIA_USER_FEATURE_VALUE_CODEC_MMC_ENABLE;
+    m_mmcInUseKey       = __MEDIA_USER_FEATURE_VALUE_CODEC_MMC_IN_USE;
     m_miItf             = hwInterface ? hwInterface->GetMiInterfaceNext() : nullptr;
 
     if (hwInterface == nullptr)
     {
-        CODECHAL_HW_ASSERT(hwInterface);
+        CODEC_HW_ASSERT(hwInterface);
     }
     else
     {
@@ -63,20 +64,10 @@ MOS_STATUS DecodeMemComp::UpdateUserFeatureKey(PMOS_SURFACE surface)
     {
         return MOS_STATUS_SUCCESS;
     }
-    m_compressibleId     = __MEDIA_USER_FEATURE_VALUE_MMC_DEC_RT_COMPRESSIBLE_ID;
-    m_compressModeId     = __MEDIA_USER_FEATURE_VALUE_MMC_DEC_RT_COMPRESSMODE_ID;
     m_userFeatureUpdated = true;
 
-    MOS_USER_FEATURE_VALUE_WRITE_DATA userFeatureWriteData;
-    userFeatureWriteData               = __NULL_USER_FEATURE_VALUE_WRITE_DATA__;
-    userFeatureWriteData.Value.i32Data = surface->bCompressible;
-    userFeatureWriteData.ValueID       = (MOS_USER_FEATURE_VALUE_ID)m_compressibleId;
-    MOS_UserFeature_WriteValues_ID(nullptr, &userFeatureWriteData, 1, m_osInterface->pOsContext);
-
-    userFeatureWriteData               = __NULL_USER_FEATURE_VALUE_WRITE_DATA__;
-    userFeatureWriteData.Value.i32Data = surface->MmcState;
-    userFeatureWriteData.ValueID       = (MOS_USER_FEATURE_VALUE_ID)m_compressModeId;
-    MOS_UserFeature_WriteValues_ID(nullptr, &userFeatureWriteData, 1, m_osInterface->pOsContext);
+    ReportUserSetting(m_userSettingPtr, "Decode RT Compressible", surface->bCompressible, MediaUserSetting::Group::Sequence);
+    ReportUserSetting(m_userSettingPtr, "Decode RT Compress Mode", surface->MmcState, MediaUserSetting::Group::Sequence);
 
     return MOS_STATUS_SUCCESS;
 }
@@ -84,21 +75,19 @@ MOS_STATUS DecodeMemComp::UpdateUserFeatureKey(PMOS_SURFACE surface)
 
 void DecodeMemComp::InitDecodeMmc(CodechalHwInterfaceNext *hwInterface)
 {
-    CODECHAL_HW_ASSERT(hwInterface);
-    CODECHAL_HW_ASSERT(hwInterface->GetSkuTable());
+    CODEC_HW_ASSERT(hwInterface);
+    CODEC_HW_ASSERT(hwInterface->GetSkuTable());
     if (MEDIA_IS_SKU(hwInterface->GetSkuTable(), FtrE2ECompression))
     {
-        bool                        decodeMmcEnabled = true;
-        MOS_USER_FEATURE_VALUE_DATA userFeatureData;
-        MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-        userFeatureData.i32Data     = decodeMmcEnabled;
-        userFeatureData.i32DataFlag = MOS_USER_FEATURE_VALUE_DATA_FLAG_CUSTOM_DEFAULT_VALUE_TYPE;
-        MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_DECODE_MMC_ENABLE_ID,
-            &userFeatureData,
-            m_osInterface->pOsContext);
-        decodeMmcEnabled = (userFeatureData.i32Data) ? true : false;
+        MediaUserSetting::Value outValue;
+        ReadUserSetting(
+            m_userSettingPtr,
+            outValue,
+            "Enable Decode MMC",
+            MediaUserSetting::Group::Sequence,
+            true,  // Custom value is true as default
+            true);
+        bool decodeMmcEnabled = outValue.Get<bool>();
 
         m_mmcEnabledForDecode = m_mmcEnabled && decodeMmcEnabled;
 

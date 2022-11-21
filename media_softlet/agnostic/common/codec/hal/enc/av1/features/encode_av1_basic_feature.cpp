@@ -26,7 +26,6 @@
 
 #include "encode_av1_basic_feature.h"
 #include "encode_utils.h"
-#include "codechal_utilities.h"
 #include "encode_allocator.h"
 #include "encode_av1_vdenc_const_settings.h"
 #include "mos_solo_generic.h"
@@ -841,7 +840,7 @@ MHW_SETPAR_DECL_SRC(VDENC_CMD2, Av1BasicFeature)
     ENCODE_CHK_NULL_RETURN(waTable);
     if (MEDIA_IS_WA(waTable, Wa_22011549751) &&
         !m_osInterface->bSimIsActive &&
-        !Mos_Solo_Extension(m_osInterface->pOsContext) &&
+        !Mos_Solo_Extension((MOS_CONTEXT_HANDLE)m_osInterface->pOsContext) &&
         m_av1PicParams->PicFlags.fields.frame_type == keyFrame)
     {
         params.pictureType = 1;

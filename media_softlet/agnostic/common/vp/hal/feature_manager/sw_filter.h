@@ -144,6 +144,7 @@ enum FeatureType
     FeatureTypeFDFBOnVebox      = FeatureTypeFDFB | FEATURE_TYPE_ENGINE_BITS_VEBOX,
     FeatureTypeFDFBOnRender     = FeatureTypeFDFB | FEATURE_TYPE_ENGINE_BITS_RENDER,
     FeatureTypeSegmentation     = 0x2200,
+    FeatureTypeSegmentationOnVebox  = FeatureTypeSegmentation | FEATURE_TYPE_ENGINE_BITS_VEBOX,
     FeatureTypeSegmentationOnRender = FeatureTypeSegmentation | FEATURE_TYPE_ENGINE_BITS_RENDER,
     FeatureTypeS3D                  = 0x2300,
     // ...
@@ -216,6 +217,7 @@ enum SurfaceType
     SurfaceTypeFcTarget0,
     SurfaceTypeFcTarget1,
     SurfaceTypeFcCscCoeff,
+    SurfaceTypeDecompressionSync,
     // LGCA related Surfaces
     SurfaceTypeSamplerSurfaceR,
     SurfaceTypeSamplerSurfaceG,
@@ -650,6 +652,7 @@ enum SurfaceType
     //Segmentation
     SurfaceTypeSegRenderPreviousInput,
     SurfaceTypeSegRenderTempOutput, //Used for seg out only
+    SurfaceTypeSegColorBalanceInput,
     SurfaceTypeSegBackground,
     SurfaceTypeSegGaussianCoeffBuffer,
     SurfaceTypeSegTFMask,
@@ -682,6 +685,7 @@ enum SurfaceType
     SurfaceTypeSegErode2x1Motion3,
     SurfaceTypeSegSumMotion,
     SurfaceTypeSegRemoveBlob,
+    SurfaceTypeSegColorBalance,
     // Segmentation layers
     SurfaceTypeSegModelLayer,
     SurfaceTypeSegModelLayerEnd = SurfaceTypeSegModelLayer + MAX_MODELSURFACE_COUNT,
@@ -769,14 +773,31 @@ struct MOTIONLESS_SETTING
     bool     isFirstConv     = false;
     bool     isMotion        = false;
     bool     isResUpdate     = false;
+    bool     forceDisable    = false;
     uint32_t width           = 0;
     uint32_t height          = 0;
+};
+
+struct COLOR_BALANCE_SETTING
+{
+    bool     isEnable                 = false;
+    uint32_t index                    = 0;
+    uint32_t skipThreshold            = 0;
+    uint16_t inputActiveRegionWidth   = 0;
+    uint16_t inputActiveRegionHeight  = 0;
+    uint32_t pitch                    = 0;
+    uint32_t mPitch                   = 0;
+    uint8_t  downScaleFactor          = 1;
+    uint8_t  colorTemperature         = 0;
+    uint8_t *cbLinearAddressAligned   = 0;
+    double   backgroundWhiteMatrix[3] = {1, 1, 1};
 };
 
 struct VP_POSTPROCESS_SURFACE
 {
     REMOVE_BB_SETTING  removeBBSetting;
     MOTIONLESS_SETTING motionlessSetting;
+    COLOR_BALANCE_SETTING colorBalanceSetting;
 };
 
 struct VP_SURFACE_SETTING
@@ -816,6 +837,7 @@ struct VP_SURFACE_SETTING
         dumpPostSurface                        = false;
         postProcessSurface.removeBBSetting     = {};
         postProcessSurface.motionlessSetting   = {};
+        postProcessSurface.colorBalanceSetting = {};
         pHDRStageConfigTable                   = nullptr;
         coeffAllocated                         = false;
         OETF1DLUTAllocated                     = false;
@@ -1024,22 +1046,8 @@ struct FeatureParamScaling : public FeatureParam
         MOS_TILE_MODE_GMM       tileMode   = MOS_TILE_4_GMM;
         bool operator == (struct SCALING_PARAMS &b)
         {
-            return (dwWidth         ==  b.dwWidth           &&
-                    dwHeight        ==  b.dwHeight          &&
-                    sampleType      ==  b.sampleType        &&
-                    tileMode        ==  b.tileMode          &&
-                    (rcSrc.left     ==  b.rcSrc.left        &&
-                    rcSrc.right     ==  b.rcSrc.right       &&
-                    rcSrc.top       ==  b.rcSrc.top         &&
-                    rcSrc.bottom    ==  b.rcSrc.bottom)     &&
-                    (rcDst.left     ==  b.rcDst.left        &&
-                    rcDst.right     ==  b.rcDst.right       &&
-                    rcDst.top       ==  b.rcDst.top         &&
-                    rcDst.bottom    ==  b.rcDst.bottom)     &&
-                    (rcMaxSrc.left  ==  b.rcMaxSrc.left     &&
-                    rcMaxSrc.right  ==  b.rcMaxSrc.right    &&
-                    rcMaxSrc.top    ==  b.rcMaxSrc.top      &&
-                    rcMaxSrc.bottom ==  b.rcMaxSrc.bottom));
+            // no use sizeof(SCALING_PARAMS) to avoid undefined padding data being used.
+            return 0 == memcmp(this, &b, (uint64_t)(&tileMode) - (uint64_t)(this) + sizeof(tileMode));
         }
     };
 
@@ -1244,8 +1252,12 @@ MEDIA_CLASS_DEFINE_END(vp__SwFilterDeinterlace)
 
 struct FeatureParamSte : public FeatureParam
 {
-    bool       bEnableSTE  = false;
-    uint32_t   dwSTEFactor = 0;
+    bool              bEnableSTE  = false;
+    uint32_t          dwSTEFactor = 0;
+    
+    // For STD alone case
+    bool              bEnableSTD  = false;
+    VPHAL_STD_PARAMS  STDParam    = {};
 };
 
 class SwFilterSte : public SwFilter
@@ -1259,6 +1271,11 @@ public:
     virtual SwFilter* Clone();
     virtual bool operator == (SwFilter& swFilter);
     virtual MOS_STATUS Update(VP_SURFACE* inputSurf, VP_SURFACE* outputSurf, SwFilterSubPipe &pipe);
+    virtual MOS_STATUS SetResourceAssignmentHint(RESOURCE_ASSIGNMENT_HINT &hint)
+    {
+        hint.isSkinScoreDumpNeededForSTDonly = m_Params.bEnableSTD;
+        return MOS_STATUS_SUCCESS;
+    }
 
 private:
     FeatureParamSte m_Params = {};
