@@ -155,11 +155,11 @@ public:
 #endif
 
 protected:
-    MediaFeatureManager     *m_featureManager = nullptr;
-    CodechalHwInterfaceNext     *m_hwInterface = nullptr;
-    MhwMiInterface          *m_miInterface  = nullptr;
-
-    MHW_VDBOX_NODE_IND m_vdboxIndex = MHW_VDBOX_NODE_1;
+    MediaFeatureManager          *m_featureManager = nullptr;
+    CodechalHwInterfaceNext      *m_hwInterface    = nullptr;
+    std::shared_ptr<mhw::mi::Itf> m_miItf          = nullptr;
+    MHW_VDBOX_NODE_IND            m_vdboxIndex     = MHW_VDBOX_NODE_1;
+    MediaUserSettingSharedPtr     m_userSettingPtr = nullptr;
 
 #if USE_CODECHAL_DEBUG_TOOL
     bool    m_enableFakeHrdSize     = false;

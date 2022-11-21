@@ -116,7 +116,7 @@ namespace encode
             if (encodeParams->pSegmentMap)
             {
                 m_pSegmentMap = encodeParams->pSegmentMap;
-                m_segmentMapProvided = true;
+                m_segmentMapProvided = encodeParams->bSegmentMapProvided;
                 m_segmentMapDataSize = encodeParams->segmentMapDataSize;
             }
 
@@ -513,6 +513,7 @@ namespace encode
             // for VP9 VDEnc this is bit used for programming of "segmentation_temporal_update"
             // for AV1 VDEnc this bit indicates negative of "segmentation_update_map"
             params.segmentationTemporal =  m_segmentParams.m_updateMap ? false : true;
+            params.vdencCmd2Par113      =  true;
         }
 
         for (auto i = 0; i < av1MaxSegments; i++)

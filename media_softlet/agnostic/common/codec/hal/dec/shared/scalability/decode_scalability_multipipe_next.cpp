@@ -31,6 +31,8 @@
 #include "media_status_report.h"
 #include "mhw_utilities.h"
 #include "decode_status_report_defs.h"
+#include "mos_interface.h"
+#include "mos_os_virtualengine_next.h"
 
 namespace decode
 {
@@ -142,13 +144,18 @@ MOS_STATUS DecodeScalabilityMultiPipeNext::Initialize(const MediaScalabilityOpti
     veInitParms.bFESeparateSubmit              = decodeScalabilityOption->IsFESeparateSubmission();
     veInitParms.ucMaxNumPipesInUse             = decodeScalabilityOption->GetMaxMultiPipeNum();
     veInitParms.ucNumOfSdryCmdBufSets          = m_maxCmdBufferSetsNum;
-    veInitParms.ucMaxNumOfSdryCmdBufInOneFrame = decodeScalabilityOption->IsFESeparateSubmission() ? veInitParms.ucMaxNumPipesInUse : (veInitParms.ucMaxNumPipesInUse + 1);
-    SCALABILITY_CHK_NULL_RETURN(m_osInterface->osStreamState);
-    SCALABILITY_CHK_STATUS_RETURN(MosInterface::CreateVirtualEngineState(m_osInterface->osStreamState, &veInitParms, m_veState));
-    SCALABILITY_CHK_NULL_RETURN(m_veState);
-
-    SCALABILITY_CHK_STATUS_RETURN(MosInterface::GetVeHintParams(m_osInterface->osStreamState, true, &m_veHitParams));
-    SCALABILITY_CHK_NULL_RETURN(m_veHitParams);
+    veInitParms.ucMaxNumOfSdryCmdBufInOneFrame = decodeScalabilityOption->IsFESeparateSubmission() ?
+                                                 veInitParms.ucMaxNumPipesInUse : (veInitParms.ucMaxNumPipesInUse + 1);
+    if (MOS_VE_SUPPORTED(m_osInterface))
+    {
+        MOS_STATUS status = Mos_Specific_Virtual_Engine_Init(m_osInterface, &m_veHitParams, veInitParms);
+        SCALABILITY_CHK_STATUS_MESSAGE_RETURN(status, "Virtual Engine Init failed");
+        if (m_osInterface->osStreamState && m_osInterface->osStreamState->virtualEngineInterface)
+        {
+            // we set m_veState here when pOsInterface->apoMosEnabled is true
+            m_veState = m_osInterface->osStreamState->virtualEngineInterface;
+        }
+    }
 
     m_pipeNum = m_scalabilityOption->GetNumPipe();
     m_pipeIndexForSubmit = m_pipeNum;
@@ -165,10 +172,10 @@ MOS_STATUS DecodeScalabilityMultiPipeNext::Initialize(const MediaScalabilityOpti
     if (m_osInterface->bEnableDbgOvrdInVE)
     {
         gpuCtxCreateOption->DebugOverride = true;
-        for (uint32_t i = 0; i < MosInterface::GetVeEngineCount(m_osInterface->osStreamState); i++)
+        uint8_t engineLogicId             = 0;
+        if (Mos_Specific_GetEngineLogicId(m_osInterface, engineLogicId) == MOS_STATUS_SUCCESS)
         {
-            gpuCtxCreateOption->EngineInstance[i] =
-                MosInterface::GetEngineLogicId(m_osInterface->osStreamState, i);
+            gpuCtxCreateOption->EngineInstance[0] = engineLogicId;
         }
     }
 #endif
@@ -373,8 +380,7 @@ MOS_STATUS DecodeScalabilityMultiPipeNext::ReturnCmdBuffer(PMOS_COMMAND_BUFFER c
 MOS_STATUS DecodeScalabilityMultiPipeNext::SetHintParams()
 {
     SCALABILITY_FUNCTION_ENTER;
-    SCALABILITY_CHK_NULL_RETURN(m_osInterface->osStreamState);
-
+    MOS_STATUS               eStatus                 = MOS_STATUS_SUCCESS;
     DecodeScalabilityOption *decodeScalabilityOption = dynamic_cast<DecodeScalabilityOption *>(m_scalabilityOption);
     SCALABILITY_CHK_NULL_RETURN(decodeScalabilityOption);
 
@@ -386,9 +392,9 @@ MOS_STATUS DecodeScalabilityMultiPipeNext::SetHintParams()
                                  (!decodeScalabilityOption->IsFESeparateSubmission());
     veParams.bScalableMode     = true;
 
-    SCALABILITY_CHK_STATUS_RETURN(MosInterface::SetVeHintParams(m_osInterface->osStreamState, &veParams));
+    eStatus = Mos_Specific_SetHintParams(m_osInterface, &veParams);
 
-    return MOS_STATUS_SUCCESS;
+    return eStatus;
 }
 
 MOS_STATUS DecodeScalabilityMultiPipeNext::PopulateHintParams(PMOS_COMMAND_BUFFER cmdBuffer)
@@ -429,11 +435,8 @@ MOS_STATUS DecodeScalabilityMultiPipeNext::SubmitCmdBuffer(PMOS_COMMAND_BUFFER c
 
     m_attrReady = false;
 
-    if (m_osInterface->apoMosEnabled)
-    {
-        SCALABILITY_CHK_STATUS_RETURN(SetHintParams());
-        SCALABILITY_CHK_STATUS_RETURN(PopulateHintParams(&m_primaryCmdBuffer));
-    }
+    SCALABILITY_CHK_STATUS_RETURN(SetHintParams());
+    SCALABILITY_CHK_STATUS_RETURN(PopulateHintParams(&m_primaryCmdBuffer));
 
     SCALABILITY_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &m_primaryCmdBuffer, false));
 
@@ -599,7 +602,7 @@ MOS_STATUS DecodeScalabilityMultiPipeNext::SendAttrWithFrameTracking(
 
     // initialize command buffer attributes
     cmdBuffer.Attributes.bTurboMode               = m_hwInterface->m_turboMode;
-    cmdBuffer.Attributes.bMediaPreemptionEnabled  = renderEngineUsed ? m_hwInterface->GetRenderInterface()->IsPreemptionEnabled() : 0;
+    cmdBuffer.Attributes.bMediaPreemptionEnabled  = renderEngineUsed ? m_hwInterface->GetRenderInterfaceNext()->IsPreemptionEnabled() : 0;
 
     if (frameTrackingRequested && m_frameTrackingEnabled)
     {

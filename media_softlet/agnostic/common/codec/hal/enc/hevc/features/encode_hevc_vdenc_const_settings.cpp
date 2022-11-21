@@ -442,17 +442,20 @@ MOS_STATUS EncodeHevcVdencConstSettings::PrepareConstSettings()
     if (m_osItf != nullptr)
     {
         // To enable rounding precision here
-        MOS_USER_FEATURE_VALUE_DATA userFeatureData;
-        MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
-        MOS_UserFeature_ReadValue_ID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_HEVC_VDENC_ROUNDING_ENABLE_ID,
-            &userFeatureData,
-            m_osItf->pOsContext);
-        m_hevcVdencRoundingPrecisionEnabled = userFeatureData.i32Data ? true : false;
+        MediaUserSetting::Value outValue;
+        ReadUserSetting(
+            m_userSettingPtr,
+            outValue,
+            "HEVC VDEnc Rounding Enable",
+            MediaUserSetting::Group::Sequence);
+        m_hevcVdencRoundingPrecisionEnabled = outValue.Get<bool>();
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-        WriteUserFeature(__MEDIA_USER_FEATURE_VALUE_HEVC_VDENC_ROUNDING_ENABLE_ID, m_hevcVdencRoundingPrecisionEnabled, m_osItf->pOsContext);
+        ReportUserSettingForDebug(
+            m_userSettingPtr,
+            "HEVC VDEnc Rounding Enable",
+            m_hevcVdencRoundingPrecisionEnabled,
+            MediaUserSetting::Group::Sequence);
 #endif
 /*
         MOS_ZeroMemory(&userFeatureData, sizeof(userFeatureData));
@@ -944,7 +947,7 @@ MOS_STATUS EncodeHevcVdencConstSettings::SetVdencStreaminStateSettings()
                 }
 
                 ENCODE_CHK_NULL_RETURN(m_osItf);
-                if (MEDIA_IS_WA(waTable, Wa_22011549751) && m_hevcPicParams->CodingType == I_TYPE && !m_osItf->bSimIsActive && !Mos_Solo_Extension(m_osItf->pOsContext) && !m_hevcPicParams->pps_curr_pic_ref_enabled_flag)
+                if (MEDIA_IS_WA(waTable, Wa_22011549751) && m_hevcPicParams->CodingType == I_TYPE && !m_osItf->bSimIsActive && !Mos_Solo_Extension((MOS_CONTEXT_HANDLE)m_osItf->pOsContext) && !m_hevcPicParams->pps_curr_pic_ref_enabled_flag)
                 {
                     par.numMergeCandidateCu64x64 = 0;
                     par.numMergeCandidateCu32x32 = 0;

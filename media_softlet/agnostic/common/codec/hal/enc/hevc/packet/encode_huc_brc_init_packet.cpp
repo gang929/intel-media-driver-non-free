@@ -189,6 +189,9 @@ namespace encode {
         hucVdencBrcInitDmem->BRCPyramidEnable_U8 = 0;
 
         //QP modulation settings
+        m_basicFeature->m_hevcSeqParams->GopRefDist = 
+                        m_basicFeature->m_hevcSeqParams->GopRefDist == 0 ? 1 : 
+                        m_basicFeature->m_hevcSeqParams->GopRefDist;
         bool bAllowedPyramid = m_basicFeature->m_hevcSeqParams->GopRefDist != 3;
         uint16_t intraPeriod = m_basicFeature->m_hevcSeqParams->GopPicSize > 4001 ? 4000 : m_basicFeature->m_hevcSeqParams->GopPicSize - 1;
         intraPeriod = ((intraPeriod + m_basicFeature->m_hevcSeqParams->GopRefDist - 1) / m_basicFeature->m_hevcSeqParams->GopRefDist) * m_basicFeature->m_hevcSeqParams->GopRefDist;
@@ -224,7 +227,7 @@ namespace encode {
         {
             if (m_basicFeature->m_hevcSeqParams->TargetBitRate == 0)
             {
-                CODECHAL_ENCODE_ASSERTMESSAGE("TargetBitRate is zero!");
+                ENCODE_ASSERTMESSAGE("TargetBitRate is zero!");
                 return MOS_STATUS_INVALID_PARAMETER;
             }
             hucVdencBrcInitDmem->SlidingWindow_Size_U32     = m_basicFeature->m_hevcSeqParams->SlidingWindowSize;
@@ -234,7 +237,7 @@ namespace encode {
         {
             if (m_basicFeature->m_hevcSeqParams->FrameRate.Denominator == 0)
             {
-                CODECHAL_ENCODE_ASSERTMESSAGE("FrameRate.Deminator is zero!");
+                ENCODE_ASSERTMESSAGE("FrameRate.Deminator is zero!");
                 return MOS_STATUS_INVALID_PARAMETER;
             }
             uint32_t framerate = m_basicFeature->m_hevcSeqParams->FrameRate.Numerator / m_basicFeature->m_hevcSeqParams->FrameRate.Denominator;

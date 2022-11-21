@@ -114,7 +114,10 @@ MOS_STATUS MediaPipeline::InitPlatform()
 MOS_STATUS MediaPipeline::UserFeatureReport()
 {
 #if (_DEBUG || _RELEASE_INTERNAL)
-    WriteUserFeature(__MEDIA_USER_FEATURE_VALUE_APOGEIOS_ENABLE_ID, 1, m_osInterface->pOsContext);
+    ReportUserSetting(m_userSettingPtr,
+                      __MEDIA_USER_FEATURE_VALUE_APOGEIOS_ENABLE,
+                      uint32_t(1),
+                      MediaUserSetting::Group::Device);
 #endif
     return MOS_STATUS_SUCCESS;
 }
@@ -281,7 +284,7 @@ MOS_STATUS MediaPipeline::CreateMediaCopy()
     {
         m_osInterface->pfnGetMosContext(m_osInterface, &mos_context);
     }
-    m_mediaCopy = static_cast<MediaCopyBaseState*>(McpyDeviceNext::CreateFactory(mos_context));
+    m_mediaCopy = static_cast<MediaCopyBaseState *>(McpyDeviceNext::CreateFactory((MOS_CONTEXT_HANDLE)mos_context));
     return MOS_STATUS_SUCCESS;
 }
 

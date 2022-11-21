@@ -140,6 +140,9 @@ using MosFormatArray = std::vector<MOS_FORMAT>;
 #define VP_DEBUG_CHK_STATUS(_stmt)                                                \
     MOS_CHK_STATUS(MOS_COMPONENT_VP, MOS_VP_SUBCOMP_DEBUG, _stmt)
 
+#define VP_DEBUG_CHK_STATUS_RETURN(_stmt)                                         \
+    MOS_CHK_STATUS_RETURN(MOS_COMPONENT_VP, MOS_VP_SUBCOMP_DEBUG, _stmt)
+
 #define VP_DEBUG_CHK_NULL(_ptr)                                                   \
     MOS_CHK_NULL(MOS_COMPONENT_VP, MOS_VP_SUBCOMP_DEBUG, _ptr)
 
@@ -273,7 +276,6 @@ protected:
 #define __VPHAL_VEBOX_FEATURE_INUSE                                     "VeBox Feature In use"
 #define __VPHAL_VEBOX_DISABLE_SFC                                       "Disable SFC"
 #define __MEDIA_USER_FEATURE_VALUE_SFC_OUTPUT_DTR_DISABLE               "Disable SFC DTR"
-#define __VPHAL_ENABLE_MMC                                              "Enable VP MMC"
 #define __MEDIA_USER_FEATURE_VALUE_SFC_OUTPUT_CENTERING_DISABLE         "SFC Output Centering Disable"
 #define __VPHAL_BYPASS_COMPOSITION                                      "Bypass Composition"
 #define __MEDIA_USER_FEATURE_VALUE_VEBOX_TGNE_ENABLE_VP                 "Enable Vebox GNE"
@@ -298,6 +300,7 @@ protected:
 #define __VPHAL_HDR_ENABLE_QUALITY_TUNING                               "VPHAL HDR Enable Quality Tuning"
 #define __VPHAL_HDR_ENABLE_KERNEL_DUMP                                  "VPHAL HDR Enable Kernel Dump"
 #define __VPHAL_HDR_H2S_RGB_TM                                          "VPHAL H2S TM RGB Based"
+#define __MEDIA_USER_FEATURE_VALUE_VPP_APOGEIOS_ENABLE                  "VP Apogeios Enabled"
 
 // Compression
 #define __VPHAL_MMC_ENABLE                                              "VP MMC In Use"
@@ -317,6 +320,9 @@ protected:
 #define __VPHAL_DBG_PARAM_DUMP_END_FRAME_KEY_NAME                       "endxmlFrame"
 #define __VPHAL_DBG_DUMP_OUTPUT_DIRECTORY                               "Vphal Debug Dump Output Directory"
 #define __VPHAL_DBG_PARA_DUMP_ENABLE_SKUWA_DUMP                         "enableSkuWaDump"
+
+#define __MEDIA_USER_FEATURE_VALUE_INTER_FRAME_MEMORY_NINJA_START_COUNTER "InterFrameNinjaStartCounter"
+#define __MEDIA_USER_FEATURE_VALUE_INTER_FRAME_MEMORY_NINJA_END_COUNTER "InterFrameNinjaEndCounter"
 #endif  //(_DEBUG || _RELEASE_INTERNAL)
 
 class VpUtils

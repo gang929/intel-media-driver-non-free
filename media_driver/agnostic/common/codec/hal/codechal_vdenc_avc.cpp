@@ -27,6 +27,7 @@
 
 #include "codechal_vdenc_avc.h"
 #include "hal_oca_interface.h"
+#include "mos_os_cp_interface_specific.h"
 
 #define CODECHAL_ENCODE_AVC_SFD_OUTPUT_BUFFER_SIZE 128
 #define CODECHAL_ENCODE_AVC_SFD_COST_TABLE_BUFFER_SIZE 52
@@ -4518,7 +4519,7 @@ MOS_STATUS CodechalVdencAvcState::SFDKernel()
             MHW_SSH_TYPE,
             kernelState));)
 
-    HalOcaInterface::TraceMessage(cmdBuffer, *m_osInterface->pOsContext, __FUNCTION__, sizeof(__FUNCTION__));
+    HalOcaInterface::TraceMessage(cmdBuffer, (MOS_CONTEXT_HANDLE)m_osInterface->pOsContext, __FUNCTION__, sizeof(__FUNCTION__));
     HalOcaInterface::OnDispatch(cmdBuffer, *m_osInterface, *m_miInterface, *m_renderEngineInterface->GetMmioRegisters());
 
     MHW_MEDIA_OBJECT_PARAMS mediaObjectParams;
@@ -6205,7 +6206,7 @@ MOS_STATUS CodechalVdencAvcState::ExecutePictureLevel()
         }
         MOS_Delete(imageStateParams);
 
-        HalOcaInterface::OnSubLevelBBStart(cmdBuffer, *m_osInterface->pOsContext,&secondLevelBatchBufferUsed->OsResource, 0, true, 0);
+        HalOcaInterface::OnSubLevelBBStart(cmdBuffer, (MOS_CONTEXT_HANDLE)m_osInterface->pOsContext, &secondLevelBatchBufferUsed->OsResource, 0, true, 0);
 
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiBatchBufferStartCmd(&cmdBuffer, secondLevelBatchBufferUsed));
 

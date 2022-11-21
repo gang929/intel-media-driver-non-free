@@ -23,6 +23,8 @@
 //! \file    mos_gpucontext_specific_next.cpp
 //! \brief   Container class for the Linux specific gpu context
 //!
+
+#include <unistd.h>
 #include "mos_gpucontext_specific_next.h"
 #include "mos_context_specific_next.h"
 #include "mos_graphicsresource_specific_next.h"
@@ -30,8 +32,8 @@
 #include "mos_util_devult_specific_next.h"
 #include "mos_cmdbufmgr_next.h"
 #include "mos_os_virtualengine_next.h"
-#include <unistd.h>
 #include "mos_interface.h"
+#include "mos_os_cp_interface_specific.h"
 
 #define MI_BATCHBUFFER_END 0x05000000
 static pthread_mutex_t command_dump_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -1451,7 +1453,7 @@ void GpuContextSpecificNext::UnlockPendingOcaBuffers(PMOS_COMMAND_BUFFER cmdBuff
 
     int count = 0;
     struct MOS_OCA_EXEC_LIST_INFO *info = nullptr;
-    if (cmdBuffer->iSubmissionType & SUBMISSION_TYPE_SINGLE_PIPE_MASK)
+    if ((cmdBuffer->iSubmissionType & SUBMISSION_TYPE_SINGLE_PIPE_MASK) && ((MosOcaInterfaceSpecific*)pOcaInterface)->IsOcaDumpExecListInfoEnabled())
     {
         info = mos_bo_get_softpin_targets_info(cmdBuffer->OsResource.bo, &count);
     }

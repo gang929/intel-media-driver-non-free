@@ -46,7 +46,6 @@
 #include "mos_context_specific_next.h"
 #include "mos_gpucontextmgr_next.h"
 #include "mos_cmdbufmgr_next.h"
-#include "media_user_settings_mgr.h"
 #include "mos_oca_rtlog_mgr.h"
 #define BATCH_BUFFER_SIZE 0x80000
 
@@ -104,7 +103,7 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
         iDeviceId   = mos_bufmgr_gem_get_devid(m_bufmgr);
         m_isAtomSOC = IS_ATOMSOC(iDeviceId);
 
-        eStatus = NullHW::Init(osDriverContext);
+        eStatus = NullHW::Init((MOS_CONTEXT_HANDLE)osDriverContext);
         if (!NullHW::IsEnabled())
         {
             eStatus = HWInfo_GetGfxInfo(m_fd, m_bufmgr, &m_platformInfo, &m_skuTable, &m_waTable, &m_gtSystemInfo, userSettingPtr);
@@ -151,6 +150,11 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
                  mos_bufmgr_gem_enable_vmbind(m_bufmgr);
                  MOS_OS_NORMALMESSAGE("mos_bufmgr_gem_enable_vmbind");
             }
+        }
+
+        if (MEDIA_IS_SKU(&m_skuTable, FtrLocalMemory))
+        {
+            mos_bufmgr_gem_disable_object_capture(m_bufmgr);
         }
 
         if (MEDIA_IS_SKU(&m_skuTable, FtrEnableMediaKernels) == 0)

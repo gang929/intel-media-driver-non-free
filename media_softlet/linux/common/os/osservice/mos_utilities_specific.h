@@ -90,6 +90,7 @@ class MosMutex;
 
 #define UFKEY_INTERNAL_NEXT                   ""
 #define USER_SETTING_CONFIG_PATH             "[config]"
+#define USER_SETTING_CONFIG_PERF_PATH        "[config]"
 #define USER_SETTING_CONFIG_PERMANENT_PATH   "[config]"
 #define USER_SETTING_REPORT_PATH             "[report]"
 
@@ -404,7 +405,6 @@ public:
     static const char*          m_szUserFeatureFile;
     static MOS_PUF_KEYLIST      m_ufKeyList;
     static int32_t              m_mosTraceFd;
-    static void*                m_mosTraceAddr;
     static uint64_t             m_filterEnv;
     static uint32_t             m_levelEnv;
     static const char* const    m_mosTracePath;

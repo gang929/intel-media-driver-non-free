@@ -61,6 +61,27 @@ MOS_STATUS MosUserSetting::InitMosCommonUserSetting(MediaUserSettingSharedPtr us
 
     DeclareUserSettingKey(
         userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_APOGEIOS_ENABLE,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true);
+    
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_RA_MODE_ENABLE,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true);
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PROTECT_MODE_ENABLE,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true);
+
+    DeclareUserSettingKey(
+        userSettingPtr,
         "Enable Compressible Surface Creation",
         MediaUserSetting::Group::Device,
         0,
@@ -80,16 +101,44 @@ MOS_STATUS MosUserSetting::InitMosCommonUserSetting(MediaUserSettingSharedPtr us
         0,
         true);
 
+    DeclareUserSettingKey(  //Enable memory compression
+        userSettingPtr,
+        __VPHAL_ENABLE_MMC,
+        MediaUserSetting::Group::Device,
+        false,
+        true);
+
+    DeclareUserSettingKey(  // VP Compression Enable
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_VP_MMC_IN_USE,
+        MediaUserSetting::Group::Device,
+        false,
+        true);
+
     DeclareUserSettingKey(
         userSettingPtr,
         "Enable Codec MMC",
         MediaUserSetting::Group::Device,
-        int32_t(0),
+        false,
         false);
 
     DeclareUserSettingKey(
         userSettingPtr,
+        "Codec MMC In Use",
+        MediaUserSetting::Group::Device,
+        false,
+        true);
+
+    DeclareUserSettingKey(
+        userSettingPtr,
         "HEVC Encode",
+        MediaUserSetting::Group::Device,
+        int32_t(1),
+        false);
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        "JPEG Encode",
         MediaUserSetting::Group::Device,
         int32_t(1),
         false);
@@ -135,6 +184,114 @@ MOS_STATUS MosUserSetting::InitMosCommonUserSetting(MediaUserSettingSharedPtr us
         MediaUserSetting::Group::Device,
         "",
         true); //" Perf Utility Tool Customize Output Directory. "
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_ENABLE,
+        MediaUserSetting::Group::Device,
+        int32_t(0),
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Perf Profiler Enable Control Flag."
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_ENABLE_MUL_PROC,
+        MediaUserSetting::Group::Device,
+        int32_t(0),
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Perf Profiler Multi Process Support."
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_OUTPUT_FILE_NAME,
+        MediaUserSetting::Group::Device,
+        "Perf_DATA_00_00.bin",
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Perf Profiler Output File Name."
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_BUFFER_SIZE_KEY,
+        MediaUserSetting::Group::Device,
+        uint32_t(10000000),
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Performance Profiler Memory Information Register."
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_REGISTER_KEY_1,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Performance Profiler Memory Information Register."
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_REGISTER_KEY_2,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Performance Profiler Memory Information Register."
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_REGISTER_KEY_3,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Performance Profiler Memory Information Register."
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_REGISTER_KEY_4,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Performance Profiler Memory Information Register."
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_REGISTER_KEY_5,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Performance Profiler Memory Information Register."
+    
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_REGISTER_KEY_6,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Performance Profiler Memory Information Register."
+    
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_REGISTER_KEY_7,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Performance Profiler Memory Information Register."
+    
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_REGISTER_KEY_8,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Performance Profiler Memory Information Register."
 
 #if MOS_COMMAND_BUFFER_DUMP_SUPPORTED
     DeclareUserSettingKey(
@@ -470,6 +627,157 @@ MOS_STATUS MosUserSetting::InitUserSettingForDebug(MediaUserSettingSharedPtr use
 {
     DeclareUserSettingKeyForDebug(
         userSettingPtr,
+        "Disable RowStore Cache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableVp9DfRowStoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableAv1DfluRowstoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableAv1DflvRowstoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableAv1CdefRowstoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableIntraRowStoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableDeblockingFilterRowStoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableBsdMpcRowStoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableMprRowStoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableVDEncRowStoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableHevcDatRowStoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableHevcDfRowStoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableHevcSaoRowStoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableVp9HvdRowStoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableVp9DatRowStoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableAv1BtdlRowstoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableAv1SmvlRowstoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableAv1IpdlRowstoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "DisableAv1DflyRowstoreCache",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "Encode L3CNTLREG Override",
+        MediaUserSetting::Group::Device,
+        0,
+        false);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "Encode L3CNTLREG2 Override",
+        MediaUserSetting::Group::Device,
+        0,
+        false);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "Encode L3CNTLREG3 Override",
+        MediaUserSetting::Group::Device,
+        0,
+        false);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "Encode L3SQCREG1 Override",
+        MediaUserSetting::Group::Device,
+        0,
+        false);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "Encode L3SQCREG4 Override",
+        MediaUserSetting::Group::Device,
+        0,
+        false);
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "L3LRA1RegOverride",
+        MediaUserSetting::Group::Device,
+        0,
+        false);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
         __COMMON_DBG_SURF_DUMPER_RESOURCE_LOCK,
         MediaUserSetting::Group::Device,
         1,
@@ -537,6 +845,195 @@ MOS_STATUS MosUserSetting::InitUserSettingForDebug(MediaUserSettingSharedPtr use
         MediaUserSetting::Group::Device,
         0,
         true);  //"Force set media reset threshold. 1: enabled, 0: not used (default)."
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIA_PREEMPTION_ENABLE,
+        MediaUserSetting::Group::Device,
+        true,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIA_RESET_TH,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIA_DEBUG_CFG_GENERATION,
+        MediaUserSetting::Group::Device,
+        false,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_MCPY_MODE,
+        MediaUserSetting::Group::Device,
+        "",
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_ENABLE_RENDER_ENGINE_MMC,
+        MediaUserSetting::Group::Device,
+        false,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_VEBOX_SPLIT_RATIO,
+        MediaUserSetting::Group::Device,
+        uint32_t(50),
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_VDI_MODE,
+        MediaUserSetting::Group::Device,
+        true,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIA_WALKER_MODE,
+        MediaUserSetting::Group::Device,
+        int32_t(-1),
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_PLATFORM,
+        MediaUserSetting::Group::Device,
+        "",
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_STEPPING,
+        MediaUserSetting::Group::Device,
+        "",
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_TILE_Y_2_TILE_4_ADAPTER,
+        MediaUserSetting::Group::Device,
+        false,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_ENABLE_MEM_TRACE,
+        MediaUserSetting::Group::Device,
+        false,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_ENABLE_LOCAL_MEM,
+        MediaUserSetting::Group::Device,
+        false,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_AUBLOAD_DIRECTORY,
+        MediaUserSetting::Group::Device,
+        "",
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_OUTPUT_DIRECTORY,
+        MediaUserSetting::Group::Device,
+        "",
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_GT_SKU,
+        MediaUserSetting::Group::Device,
+        "",
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_DEBUG_OUTPUT_ENABLE,
+        MediaUserSetting::Group::Device,
+        int32_t(0),
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_AUBCAPTURE_ENABLE,
+        MediaUserSetting::Group::Device,
+        int32_t(0),
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_PATHLIST_ENABLE,
+        MediaUserSetting::Group::Device,
+        int32_t(0),
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_RESET_GFXADDR_PER_CONTEXT_DISABLE,
+        MediaUserSetting::Group::Device,
+        int32_t(0),
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_MMIO_GT_SETTING,
+        MediaUserSetting::Group::Device,
+        uint32_t(0),
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_PERF_TEST_ENABLE,
+        MediaUserSetting::Group::Device,
+        int32_t(0),
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_AUBLOAD_COMMAND_LINE_OPTIONS,
+        MediaUserSetting::Group::Device,
+        "",
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_VE_SCHEDULE_FIXED_MODE_ENABLE,
+        MediaUserSetting::Group::Device,
+        true,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_AUBCAPTURE_BMP_DUMP_ENABLE,
+        MediaUserSetting::Group::Device,
+        int32_t(0),
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_AUBCAPTURE_RECON_DUMP_ENABLE,
+        MediaUserSetting::Group::Device,
+        int32_t(0),
+        true);
+
+    DeclareUserSettingKeyForDebug(  // Surface Dump Outfile
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_CODECHAL_DEBUG_OUTPUT_DIRECTORY,
+        MediaUserSetting::Group::Device,
+        "",
+        true);
 
     DeclareUserSettingKeyForDebug(
         userSettingPtr,
@@ -827,6 +1324,13 @@ MOS_STATUS MosUserSetting::InitUserSettingForDebug(MediaUserSettingSharedPtr use
         MediaUserSetting::Group::Device,
         "",
         true);  //"Report RCS instance infomation"
+    
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_ENGINE_INSTANCE_BLT,
+        MediaUserSetting::Group::Device,
+        "",
+        true);  //"Report BLT instance infomation"
 
     DeclareUserSettingKeyForDebug(
         userSettingPtr,
@@ -855,6 +1359,13 @@ MOS_STATUS MosUserSetting::InitUserSettingForDebug(MediaUserSettingSharedPtr use
         MediaUserSetting::Group::Device,
         0,
         true);  //"Linux Performance Tag."
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "Command Parser Input File Path",
+        MediaUserSetting::Group::Device,
+        std::string(),
+        false);
 
     return MOS_STATUS_SUCCESS;
 }

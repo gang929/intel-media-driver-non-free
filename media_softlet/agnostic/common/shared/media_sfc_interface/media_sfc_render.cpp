@@ -170,7 +170,7 @@ MOS_STATUS MediaSfcRender::Initialize()
 
     if (m_mode.veboxSfcEnabled)
     {
-        if (vphalDevice->Initialize(m_osInterface, m_osInterface->pOsContext, false, &status) != MOS_STATUS_SUCCESS)
+        if (vphalDevice->Initialize(m_osInterface, false, &status) != MOS_STATUS_SUCCESS)
         {
             vphalDevice->Destroy();
             MOS_Delete(vphalDevice);
@@ -215,7 +215,6 @@ MOS_STATUS MediaSfcRender::Initialize()
 
     // mi interface and cp interface will always be created during MhwInterfaces::CreateFactory.
     // Delete them here since they will also be created by RenderHal_InitInterface.
-    MOS_Delete(mhwInterfacesNext->m_miInterface);
     Delete_MhwCpInterface(mhwInterfacesNext->m_cpInterface);
     MOS_Delete(mhwInterfacesNext);
 

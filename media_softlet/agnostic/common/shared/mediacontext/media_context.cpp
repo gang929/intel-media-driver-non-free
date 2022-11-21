@@ -34,7 +34,7 @@
 #include "codec_hw_next.h"
 #include "decode_scalability_defs.h"
 #endif
-
+#include "mos_os_cp_interface_specific.h"
 MediaContext::MediaContext(uint8_t componentType, void *hwInterface, PMOS_INTERFACE osInterface)
 {
     if (!hwInterface)
@@ -57,6 +57,7 @@ MediaContext::MediaContext(uint8_t componentType, void *hwInterface, PMOS_INTERF
 
     m_hwInterface = hwInterface;
     m_osInterface = osInterface;
+    m_userSettingPtr = osInterface->pfnGetUserSettingInstance(osInterface);
     m_componentType = componentType;
 
     m_streamId = m_osInterface->streamIndex;
@@ -74,7 +75,7 @@ MediaContext::~MediaContext()
        (m_curNodeOrdinal == MOS_GPU_NODE_VIDEO || m_curNodeOrdinal == MOS_GPU_NODE_VIDEO2))
     {
         m_osInterface->pfnDestroyVideoNodeAssociation(m_osInterface, m_curNodeOrdinal);
-        if (m_osInterface->osStreamState->component == COMPONENT_Encode)
+        if (m_osInterface->osStreamState && m_osInterface->osStreamState->component == COMPONENT_Encode)
         {
             m_osInterface->pfnSetLatestVirtualNode(m_osInterface, MOS_GPU_NODE_MAX);
         }
@@ -179,12 +180,18 @@ MOS_STATUS MediaContext::SwitchContext(MediaFunction func, ContextRequirement *r
         if (scalPars->raMode)
         {
             MOS_OS_NORMALMESSAGE("request RA mode context for protected render workload");
-            WriteUserFeature(__MEDIA_USER_FEATURE_VALUE_RA_MODE_ENABLE_ID, 1, m_osInterface->pOsContext);
+            ReportUserSetting(m_userSettingPtr,
+                              __MEDIA_USER_FEATURE_VALUE_RA_MODE_ENABLE,
+                              uint32_t(1),
+                              MediaUserSetting::Group::Device);
         }
         if (scalPars->protectMode)
         {
             MOS_OS_NORMALMESSAGE("request protect mode context for protected render workload");
-            WriteUserFeature(__MEDIA_USER_FEATURE_VALUE_PROTECT_MODE_ENABLE_ID, 1, m_osInterface->pOsContext);
+            ReportUserSetting(m_userSettingPtr,
+                              __MEDIA_USER_FEATURE_VALUE_PROTECT_MODE_ENABLE,
+                              uint32_t(1),
+                              MediaUserSetting::Group::Device);
         }
     }
 

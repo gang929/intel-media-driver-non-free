@@ -61,6 +61,7 @@ extern template class MediaFactory<uint32_t, MmdDevice>;
 extern template class MediaFactory<uint32_t, McpyDevice>;
 extern template class MediaFactory<uint32_t, MosUtilDevice>;
 extern template class MediaFactory<uint32_t, CodechalDevice>;
+extern template class MediaFactory<uint32_t, CodechalDeviceNext>;
 extern template class MediaFactory<uint32_t, CMHalDevice>;
 extern template class MediaFactory<uint32_t, VphalDevice>;
 extern template class MediaFactory<uint32_t, RenderHalDevice>;
@@ -77,7 +78,6 @@ Register<VphalInterfacesXe_Hpm>((uint32_t)IGFX_DG2);
 
 MOS_STATUS VphalInterfacesXe_Hpm::Initialize(
     PMOS_INTERFACE  osInterface,
-    PMOS_CONTEXT    osDriverContext,
     bool            bInitVphalState,
     MOS_STATUS      *eStatus)
 {
@@ -121,7 +121,6 @@ MOS_STATUS VphalInterfacesXe_Hpm::Initialize(
         m_vpBase = MOS_New(
             VpPipelineAdapterXe_Hpm,
             osInterface,
-            osDriverContext,
             *vpPlatformInterface,
             *eStatus);
         if (nullptr == m_vpBase)
@@ -137,7 +136,6 @@ MOS_STATUS VphalInterfacesXe_Hpm::Initialize(
         m_vpBase = MOS_New(
             VphalState,
             osInterface,
-            osDriverContext,
             eStatus);
     }
 
@@ -419,6 +417,10 @@ static bool dg2RegisteredCodecHal =
     MediaFactory<uint32_t, CodechalDevice>::
     Register<CodechalInterfacesXe_Hpm>((uint32_t)IGFX_DG2);
 
+static bool dg2RegisteredCodecHalNext =
+    MediaFactory<uint32_t, CodechalDeviceNext>::
+        Register<CodechalInterfacesNextXe_Hpm>((uint32_t)IGFX_DG2);
+
 static bool dg2RegisteredMhwNext =
     MediaFactory<uint32_t, MhwInterfacesNext>::
         Register<MhwInterfacesDg2_Next>((uint32_t)IGFX_DG2);
@@ -449,22 +451,19 @@ MOS_STATUS MhwInterfacesDg2_Next::Initialize(
     // MHW_CP and MHW_MI must always be created
     MOS_STATUS status;
     m_cpInterface = Create_MhwCpInterface(osInterface);
-    m_miInterface = MOS_New(Mi, m_cpInterface, osInterface);
-    {
-        MHW_MI_CHK_NULL(m_miInterface);
-        m_miItf = std::static_pointer_cast<mhw::mi::Itf>(m_miInterface->GetNewMiInterface());
-        //After dependency of legacy m_miInterface is cleanup, code above will be replaced with following codes.
-        //auto ptr = std::make_shared<mhw::mi::xe_xpm_base::Impl>(osInterface);
-        //ptr->SetCpInterface(m_cpInterface);
-        //m_miItf  = std::static_pointer_cast<mhw::mi::Itf>(ptr);
-    }
+    MHW_MI_CHK_NULL(m_cpInterface);
+    m_miInterface = std::make_shared<Mi>(m_cpInterface, osInterface);
+
+    auto ptr = std::make_shared<mhw::mi::xe_xpm_base::Impl>(osInterface);
+    m_miItf       = std::static_pointer_cast<mhw::mi::Itf>(ptr);
+    ptr->SetCpInterface(m_cpInterface, m_miItf);
 
     if (params.Flags.m_render)
     {
         m_renderInterface =
-            MOS_New(Render, m_miInterface, osInterface, gtSystemInfo, params.m_heapMode);
-        auto ptr    = std::make_shared<mhw::render::xe_hpg::Impl>(osInterface);
-        m_renderItf = std::static_pointer_cast<mhw::render::Itf>(ptr);
+            MOS_New(Render, m_miInterface.get(), osInterface, gtSystemInfo, params.m_heapMode);
+        auto renderPtr = std::make_shared<mhw::render::xe_hpg::Impl>(osInterface);
+        m_renderItf    = std::static_pointer_cast<mhw::render::Itf>(renderPtr);
     }
     if (params.Flags.m_stateHeap)
     {
@@ -518,12 +517,13 @@ MOS_STATUS MhwInterfacesDg2_Next::Initialize(
 void MhwInterfacesDg2_Next::Destroy()
 {
     MhwInterfacesNext::Destroy();
-    MOS_Delete(m_miInterface);
-    MOS_Delete(m_renderInterface);
-    m_renderInterface = nullptr;
     MOS_Delete(m_sfcInterface);
     MOS_Delete(m_veboxInterface);
     MOS_Delete(m_bltInterface);
+    if (m_renderInterface != nullptr)
+    {
+        MOS_Delete(m_renderInterface);
+    }
 }
 
 MOS_STATUS CodechalInterfacesXe_Hpm::Initialize(
@@ -539,18 +539,6 @@ MOS_STATUS CodechalInterfacesXe_Hpm::Initialize(
         CODECHAL_PUBLIC_ASSERTMESSAGE("CodecHal device is not valid!");
         return MOS_STATUS_INVALID_PARAMETER;
     }
-
-    bool mdfSupported = true;
-#if (_DEBUG || _RELEASE_INTERNAL)
-    MOS_USER_FEATURE_VALUE_DATA     UserFeatureData;
-    MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
-    MOS_UserFeature_ReadValue_ID(
-        nullptr,
-        __MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_MDF_DISABLE_ID,
-        &UserFeatureData,
-        osInterface->pOsContext);
-    mdfSupported = (UserFeatureData.i32Data == 1) ? false : true;
-#endif // (_DEBUG || _RELEASE_INTERNAL)
 
     PCODECHAL_STANDARD_INFO info = ((PCODECHAL_STANDARD_INFO)standardInfo);
     CODECHAL_FUNCTION CodecFunction = info->CodecFunction;
@@ -789,6 +777,117 @@ MOS_STATUS CodechalInterfacesXe_Hpm::Initialize(
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS CodechalInterfacesNextXe_Hpm::Initialize(
+    void *standardInfo,
+    void *settings,
+    MhwInterfacesNext *mhwInterfaces,
+    PMOS_INTERFACE osInterface)
+{
+     bool mdfSupported = true;
+#if (_DEBUG || _RELEASE_INTERNAL)
+    MOS_USER_FEATURE_VALUE_DATA UserFeatureData;
+    MOS_ZeroMemory(&UserFeatureData, sizeof(UserFeatureData));
+    MOS_UserFeature_ReadValue_ID(
+        nullptr,
+        __MEDIA_USER_FEATURE_VALUE_HEVC_ENCODE_MDF_DISABLE_ID,
+        &UserFeatureData,
+        osInterface->pOsContext);
+    mdfSupported = (UserFeatureData.i32Data == 1) ? false : true;
+#endif  // (_DEBUG || _RELEASE_INTERNAL)
+    if (standardInfo == nullptr ||
+        mhwInterfaces == nullptr ||
+        osInterface == nullptr)
+    {
+        CODECHAL_PUBLIC_ASSERTMESSAGE("CodecHal device is not valid!");
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
+
+    // This part should be moved back to media_intefaces.cpp for softlet build
+    PCODECHAL_STANDARD_INFO info          = ((PCODECHAL_STANDARD_INFO)standardInfo);
+    CODECHAL_FUNCTION       CodecFunction = info->CodecFunction;
+
+    if (mhwInterfaces == nullptr)
+    {
+        CODECHAL_PUBLIC_ASSERTMESSAGE("mhwInterfaces is not valid!");
+        return MOS_STATUS_NO_SPACE;
+    }
+
+    bool disableScalability = false;
+#ifdef _VP9_ENCODE_VDENC_SUPPORTED
+    if (info->Mode == CODECHAL_ENCODE_MODE_VP9)
+        disableScalability = true;
+#endif
+    CodechalHwInterfaceNext *hwInterface = MOS_New(Hw, osInterface, CodecFunction, mhwInterfaces, disableScalability);
+
+    if (hwInterface == nullptr)
+    {
+        CODECHAL_PUBLIC_ASSERTMESSAGE("hwInterface is not valid!");
+        return MOS_STATUS_NO_SPACE;
+    }
+
+#if USE_CODECHAL_DEBUG_TOOL
+    CodechalDebugInterface *debugInterface = MOS_New(CodechalDebugInterface);
+    if (debugInterface == nullptr)
+    {
+        MOS_Delete(hwInterface);
+        mhwInterfaces->SetDestroyState(true);
+        CODECHAL_PUBLIC_ASSERTMESSAGE("debugInterface is not valid!");
+        return MOS_STATUS_NO_SPACE;
+    }
+    if (debugInterface->Initialize(hwInterface, CodecFunction) != MOS_STATUS_SUCCESS)
+    {
+        MOS_Delete(hwInterface);
+        mhwInterfaces->SetDestroyState(true);
+        MOS_Delete(debugInterface);
+        CODECHAL_PUBLIC_ASSERTMESSAGE("Debug interface creation failed!");
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
+#else
+    CodechalDebugInterface *debugInterface = nullptr;
+#endif  // USE_CODECHAL_DEBUG_TOOL
+
+    if (CodecHalIsDecode(CodecFunction))
+    {
+        CODECHAL_PUBLIC_ASSERTMESSAGE("Decode allocation failed, Decoder with CodechalDeviceNext is not supported!");
+        return MOS_STATUS_INVALID_PARAMETER;
+ 
+    }
+    else if (CodecHalIsEncode(CodecFunction))
+    {
+        CodechalEncoderState *encoder = nullptr;
+
+#if defined (_AV1_ENCODE_VDENC_SUPPORTED)
+        if (info->Mode == codechalEncodeModeAv1)
+        {
+            //TODO, use create 
+            if (CodecHalUsesVdencEngine(info->CodecFunction))
+            {
+                m_codechalDevice = MOS_New(Encode::Av1Vdenc, hwInterface, debugInterface);
+                CODECHAL_PUBLIC_CHK_NULL_RETURN(m_codechalDevice);
+                return MOS_STATUS_SUCCESS;
+            }
+            else
+            {
+                return MOS_STATUS_INVALID_PARAMETER;
+            }
+        }
+        else
+#endif
+        {
+            CODECHAL_PUBLIC_ASSERTMESSAGE("Unsupported encode function requested.");
+            return MOS_STATUS_INVALID_PARAMETER;
+        }
+
+    }
+    else
+    {
+        CODECHAL_PUBLIC_ASSERTMESSAGE("Unsupported codec function requested.");
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
 #ifdef _MEDIA_RESERVED
 static bool dg2RegisteredCMHal =
     MediaFactory<uint32_t, CMHalDevice>::
@@ -927,7 +1026,7 @@ MOS_STATUS CodechalInterfacesXe_Hpm::CreateCodecHalInterface(MhwInterfaces *mhwI
         CODECHAL_PUBLIC_ASSERTMESSAGE("hwInterface is not valid!");
         return MOS_STATUS_NO_SPACE;
     }
-    pHwInterface->m_hwInterfaceNext                            = MOS_New(CodechalHwInterfaceNext, osInterface);
+    pHwInterface->m_hwInterfaceNext                            = MOS_New(CodechalHwInterfaceNext, osInterface, pHwInterface->IsDisableScalability());
     pHwInterface->m_hwInterfaceNext->pfnCreateDecodeSinglePipe = decode::DecodeScalabilitySinglePipe::CreateDecodeSinglePipe;
     pHwInterface->m_hwInterfaceNext->pfnCreateDecodeMultiPipe  = decode::DecodeScalabilityMultiPipe::CreateDecodeMultiPipe;
     pHwInterface->m_hwInterfaceNext->SetMediaSfcInterface(pHwInterface->GetMediaSfcInterface());

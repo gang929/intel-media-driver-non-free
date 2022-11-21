@@ -32,13 +32,13 @@
 #include "mos_defs.h"
 #include "mos_os.h"
 #include "codec_hw_next.h"
-#include "media_scalability_singlepipe.h"
+#include "media_scalability_singlepipe_next.h"
 #include "decode_scalability_option.h"
 
 namespace decode
 {
 
-class DecodeScalabilitySinglePipeNext: public MediaScalabilitySinglePipe
+class DecodeScalabilitySinglePipeNext: public MediaScalabilitySinglePipeNext
 {
 public:
     //!

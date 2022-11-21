@@ -130,6 +130,24 @@ MOS_STATUS VpPipeline::DestroySurface()
 }
 #endif
 
+#if (_DEBUG || _RELEASE_INTERNAL)
+MOS_STATUS VpPipeline::ReportIFNCC(bool bStart)
+{
+    //INTER_FRAME_MEMORY_NINJA_START_COUNTER will be reported in Prepare function
+    //INTER_FRAME_MEMORY_NINJA_END_COUNTER will be reported in UserFeatureReport() function which runs in Execute()
+    VP_FUNC_CALL();
+
+    int32_t memninjaCounter = 0;
+    memninjaCounter         = MosUtilities::m_mosMemAllocCounter + MosUtilities::m_mosMemAllocCounterGfx - MosUtilities::m_mosMemAllocFakeCounter;
+    ReportUserSettingForDebug(
+        m_userSettingPtr,
+        bStart ? __MEDIA_USER_FEATURE_VALUE_INTER_FRAME_MEMORY_NINJA_START_COUNTER : __MEDIA_USER_FEATURE_VALUE_INTER_FRAME_MEMORY_NINJA_END_COUNTER,
+        memninjaCounter,
+        MediaUserSetting::Group::Sequence);
+    return MOS_STATUS_SUCCESS;
+}
+#endif
+
 MOS_STATUS VpPipeline::UserFeatureReport()
 {
     VP_FUNC_CALL();
@@ -172,12 +190,23 @@ MOS_STATUS VpPipeline::UserFeatureReport()
 #if (_DEBUG || _RELEASE_INTERNAL)
     if (m_currentFrameAPGEnabled)
     {
-        WriteUserFeature(__MEDIA_USER_FEATURE_VALUE_VPP_APOGEIOS_ENABLE_ID, 1, m_osInterface->pOsContext);
+        ReportUserSettingForDebug(
+            m_userSettingPtr,
+            __MEDIA_USER_FEATURE_VALUE_VPP_APOGEIOS_ENABLE,
+            uint32_t(1),
+            MediaUserSetting::Group::Sequence);
     }
     else
     {
-        WriteUserFeature(__MEDIA_USER_FEATURE_VALUE_VPP_APOGEIOS_ENABLE_ID, 0, m_osInterface->pOsContext);
+        ReportUserSettingForDebug(
+            m_userSettingPtr,
+            __MEDIA_USER_FEATURE_VALUE_VPP_APOGEIOS_ENABLE,
+            uint32_t(0),
+            MediaUserSetting::Group::Sequence);
     }
+
+    //INTER_FRAME_MEMORY_NINJA_START_COUNTER will be reported in ReportIFNCC(true) function which runs in VpPipeline::Prepare()
+    ReportIFNCC(false);
 #endif
     return MOS_STATUS_SUCCESS;
 }
@@ -648,7 +677,7 @@ MOS_STATUS VpPipeline::CreateSinglePipeContext()
     VP_FUNC_CALL();
     VpSinglePipeContext *singlePipeCtx = MOS_New(VpSinglePipeContext);
     VP_PUBLIC_CHK_NULL_RETURN(singlePipeCtx);
-    VP_PUBLIC_CHK_STATUS_RETURN(singlePipeCtx->Init(m_osInterface, m_allocator, m_reporting, m_vpMhwInterface.m_vpPlatformInterface, m_pPacketPipeFactory, m_userFeatureControl));
+    VP_PUBLIC_CHK_STATUS_RETURN(singlePipeCtx->Init(m_osInterface, m_allocator, m_reporting, m_vpMhwInterface.m_vpPlatformInterface, m_pPacketPipeFactory, m_userFeatureControl, m_mediaCopy));
     m_vpPipeContexts.push_back(singlePipeCtx);
     return MOS_STATUS_SUCCESS;
 }
@@ -1020,6 +1049,11 @@ MOS_STATUS VpPipeline::Prepare(void * params)
     VP_PUBLIC_CHK_NULL_RETURN(m_userFeatureControl);
 
     m_pvpParams = *(VP_PARAMS *)params;
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+    // INTER_FRAME_MEMORY_NINJA_END_COUNTER will be reported in UserFeatureReport() function which runs in Execute()
+    ReportIFNCC(true);
+#endif
     // Get Output Pipe for Features. It should be configured in ExecuteVpPipeline.
     if (m_vpPipeContexts.size() <= 0 || m_vpPipeContexts[0] == nullptr)
     {
@@ -1080,10 +1114,10 @@ VpSinglePipeContext::~VpSinglePipeContext()
     MOS_Delete(m_resourceManager);
 }
 
-MOS_STATUS VpSinglePipeContext::Init(PMOS_INTERFACE osInterface, VpAllocator *allocator, VphalFeatureReport *reporting, vp::VpPlatformInterface *vpPlatformInterface, PacketPipeFactory *packetPipeFactory, VpUserFeatureControl *userFeatureControl)
+MOS_STATUS VpSinglePipeContext::Init(PMOS_INTERFACE osInterface, VpAllocator *allocator, VphalFeatureReport *reporting, vp::VpPlatformInterface *vpPlatformInterface, PacketPipeFactory *packetPipeFactory, VpUserFeatureControl *userFeatureControl, MediaCopyBaseState *mediaCopy)
 {
     VP_FUNC_CALL();
-    VP_PUBLIC_CHK_STATUS_RETURN(CreateResourceManager(osInterface, allocator, reporting, vpPlatformInterface, userFeatureControl));
+    VP_PUBLIC_CHK_STATUS_RETURN(CreateResourceManager(osInterface, allocator, reporting, vpPlatformInterface, userFeatureControl, mediaCopy));
     VP_PUBLIC_CHK_NULL_RETURN(m_resourceManager);
     VP_PUBLIC_CHK_STATUS_RETURN(CreatePacketReuseManager(packetPipeFactory, userFeatureControl));
     VP_PUBLIC_CHK_NULL_RETURN(m_packetReuseMgr);
@@ -1096,14 +1130,15 @@ MOS_STATUS VpSinglePipeContext::Init(PMOS_INTERFACE osInterface, VpAllocator *al
 //! \return MOS_STATUS
 //!         MOS_STATUS_SUCCESS if success, else fail reason
 //!
-MOS_STATUS VpSinglePipeContext::CreateResourceManager(PMOS_INTERFACE osInterface, VpAllocator *allocator, VphalFeatureReport *reporting, vp::VpPlatformInterface *vpPlatformInterface, vp::VpUserFeatureControl *userFeatureControl)
+MOS_STATUS VpSinglePipeContext::CreateResourceManager(PMOS_INTERFACE osInterface, VpAllocator *allocator, VphalFeatureReport *reporting, vp::VpPlatformInterface *vpPlatformInterface, vp::VpUserFeatureControl *userFeatureControl,MediaCopyBaseState *mediaCopy)
 {
     VP_FUNC_CALL();
     if (nullptr == m_resourceManager)
     {
-        m_resourceManager = MOS_New(VpResourceManager, *osInterface, *allocator, *reporting, *vpPlatformInterface);
+        m_resourceManager = MOS_New(VpResourceManager, *osInterface, *allocator, *reporting, *vpPlatformInterface, mediaCopy);
         VP_PUBLIC_CHK_NULL_RETURN(m_resourceManager);
     }
+    
     return MOS_STATUS_SUCCESS;
 }
 

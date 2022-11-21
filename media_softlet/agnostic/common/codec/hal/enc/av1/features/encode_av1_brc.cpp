@@ -234,7 +234,7 @@ namespace encode
                 if ((dmem->UPD_CurrFrameType == AV1_BRC_FRAME_TYPE_INVALID) ||
                     (m_basicFeature->m_ref.IsLowDelay() && dmem->UPD_CurrFrameType == AV1_BRC_FRAME_TYPE_B2))
                 {
-                    CODECHAL_ENCODE_ASSERTMESSAGE("AV1_BRC_FRAME_TYPE_INVALID or LBD picture doesn't support Level 4\n");
+                    ENCODE_ASSERTMESSAGE("AV1_BRC_FRAME_TYPE_INVALID or LBD picture doesn't support Level 4\n");
                     return MOS_STATUS_INVALID_PARAMETER;
                 }
             }
@@ -300,8 +300,8 @@ namespace encode
         dmem->UPD_IntraOnly                      = 0;
         dmem->UPD_PrimaryRefFrame                = 0;
         dmem->UPD_SegOn                          = m_basicFeature->m_av1PicParams->stAV1Segments.SegmentFlags.fields.segmentation_enabled;
-        dmem->UPD_SegMapUpdate                   = m_basicFeature->m_av1PicParams->stAV1Segments.SegmentFlags.fields.update_map;
-        dmem->UPD_SegTemporalUpdate              = m_basicFeature->m_av1PicParams->stAV1Segments.SegmentFlags.fields.temporal_update;
+        dmem->UPD_SegMapUpdate                   = 0;
+        dmem->UPD_SegTemporalUpdate              = 0;
         dmem->UPD_SegUpdateData                  = 0;
         dmem->UPD_IsFrameOBU                     = m_basicFeature->m_av1PicParams->PicFlags.fields.EnableFrameOBU;
         dmem->UPD_EnableCDEFUpdate               = m_basicFeature->m_av1SeqParams->CodingToolFlags.fields.enable_cdef;

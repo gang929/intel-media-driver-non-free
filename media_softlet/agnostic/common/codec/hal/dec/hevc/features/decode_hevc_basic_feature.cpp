@@ -26,7 +26,6 @@
 
 #include "decode_hevc_basic_feature.h"
 #include "decode_utils.h"
-#include "codechal_utilities.h"
 #include "decode_allocator.h"
 
 namespace decode
@@ -92,6 +91,9 @@ MOS_STATUS HevcBasicFeature::ErrorDetectAndConceal()
 
     DECODE_CHK_COND(m_curRenderPic.FrameIdx >= CODECHAL_NUM_UNCOMPRESSED_SURFACE_HEVC,
         "currPic.FrameIdx is out of range!");
+
+    DECODE_CHK_COND(m_hevcPicParams->PicHeightInMinCbsY == 0 || m_hevcPicParams->PicWidthInMinCbsY == 0,
+        "picture Weight/Height equals to 0!");
 
     // check LCU size
     // LCU is restricted based on the picture size.
@@ -426,7 +428,7 @@ MOS_STATUS HevcBasicFeature::SetSliceStructs()
 
 MOS_STATUS HevcBasicFeature::CreateReferenceBeforeLoopFilter()
 {
-    if (m_destSurface.dwPitch  == 0 ||
+    if (m_destSurface.dwWidth  == 0 ||
         m_destSurface.dwHeight == 0)
     {
         return MOS_STATUS_SUCCESS;
@@ -435,13 +437,13 @@ MOS_STATUS HevcBasicFeature::CreateReferenceBeforeLoopFilter()
     if (m_referenceBeforeLoopFilter == nullptr)
     {
         m_referenceBeforeLoopFilter = m_allocator->AllocateSurface(
-            m_destSurface.dwPitch, m_destSurface.dwHeight, "Reference before loop filter",
+            m_destSurface.dwWidth, m_destSurface.dwHeight, "Reference before loop filter",
             m_destSurface.Format, m_destSurface.bCompressible, resourceOutputPicture, notLockableVideoMem);
         DECODE_CHK_NULL(m_referenceBeforeLoopFilter);
     }
     else
     {
-        m_allocator->Resize(m_referenceBeforeLoopFilter, m_destSurface.dwPitch, m_destSurface.dwHeight,
+        m_allocator->Resize(m_referenceBeforeLoopFilter, m_destSurface.dwWidth, m_destSurface.dwHeight,
             notLockableVideoMem, false, "Reference before loop filter");
     }
     return MOS_STATUS_SUCCESS;

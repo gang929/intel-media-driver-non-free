@@ -69,7 +69,7 @@ public:
         pVertexTable = (typename TVeboxCmds::VEBOX_VERTEX_TABLE_CMD *)(pVeboxHeap->pLockedDriverResourceMem +
                                                  pVeboxHeap->uiVertexTableOffset +
                                                  uiOffset);
-        memset(pVertexTable, 0, uSize);
+        MOS_ZeroMemory(pVertexTable, uSize);
         if (ColorSpace == MHW_CSpace_BT601 || ColorSpace == MHW_CSpace_xvYCC601)
         {
             MOS_SecureMemcpy(pVertexTable, uSize, g_VeboxVertexTableBT601, uSize);
@@ -287,11 +287,10 @@ protected:
         {
             if (nullptr == pColorPipeParams->StdParams.param || pColorPipeParams->StdParams.paraSizeInBytes > pVeboxStdSteState->byteSize)
             {
-                MHW_ASSERTMESSAGE("StdParams is invaild");
-                return MOS_STATUS_INVALID_PARAMETER;
+                MHW_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
             }
 
-            MOS_SecureMemcpy(pVeboxStdSteState, pColorPipeParams->StdParams.paraSizeInBytes, pColorPipeParams->StdParams.param, pColorPipeParams->StdParams.paraSizeInBytes);  // only copy dw0 - dw14 for DN
+            MOS_SecureMemcpy(pVeboxStdSteState, pColorPipeParams->StdParams.paraSizeInBytes, pColorPipeParams->StdParams.param, pColorPipeParams->StdParams.paraSizeInBytes);
         }
     finish:
         return eStatus;

@@ -34,13 +34,13 @@
 #include <signal.h>
 #include <unistd.h>  // fork
 #include <algorithm>
-#include <execinfo.h> // backtrace
 #include <sys/types.h>
 #include <sys/stat.h>  // fstat
 #include <sys/ipc.h>  // System V IPC
 #include <sys/types.h>
 #include <sys/sem.h>
 #include <sys/mman.h>
+#include "mos_compat.h" // libc variative definitions: backtrace
 #include "mos_user_setting.h"
 #include "mos_utilities_specific.h"
 #include "mos_utilities.h"
@@ -69,14 +69,13 @@ double MosUtilities::MosGetTime()
 //! \brief trace setting definition
 //!
 #define TRACE_SETTING_PATH             "/dev/shm/GFX_MEDIA_TRACE"
-#define TRACE_SETTING_SIZE             (128)
+#define TRACE_SETTING_SIZE             sizeof(MtControlData)
 
 //!
 //! \brief Linux specific trace entry path and file description.
 //!
 const char *const MosUtilitiesSpecificNext::m_mosTracePath  = "/sys/kernel/debug/tracing/trace_marker_raw";
 int32_t           MosUtilitiesSpecificNext::m_mosTraceFd    = -1;
-void*             MosUtilitiesSpecificNext::m_mosTraceAddr  = nullptr;
 uint64_t          MosUtilitiesSpecificNext::m_filterEnv     = 0;
 uint32_t          MosUtilitiesSpecificNext::m_levelEnv      = 0;
 
@@ -1671,6 +1670,19 @@ MOS_STATUS MosUtilities::MosReadEnvVariable(
     return MOS_STATUS_INVALID_PARAMETER;
 }
 
+bool MosUtilities::MosEnvVariableEqual(
+    const std::string            envName,
+    const std::string            targetVal)
+{
+    char *retVal = getenv(envName.c_str());
+    bool res = false;
+    if (retVal != nullptr)
+    {
+        res = strcmp(retVal, targetVal.c_str()) ? false : true;
+    }
+    return res;
+}
+
 MOS_STATUS MosUtilities::MosGetRegValue(
     UFKEY_NEXT keyHandle,
     const std::string &valueName,
@@ -2371,7 +2383,7 @@ void MosUtilities::MosTraceEventInit()
             MosUtilitiesSpecificNext::m_levelEnv = static_cast<uint32_t>(strtoll(val, nullptr, 0));
         }
         m_mosTraceFilter = &MosUtilitiesSpecificNext::m_filterEnv;
-        m_mosTraceLevel  = reinterpret_cast<MtLevel *>(&MosUtilitiesSpecificNext::m_levelEnv);
+        m_mosTraceLevel  = reinterpret_cast<uint8_t *>(&MosUtilitiesSpecificNext::m_levelEnv);
     }
     else
     {
@@ -2386,11 +2398,13 @@ void MosUtilities::MosTraceEventInit()
         {
             return;
         }
-        MosUtilitiesSpecificNext::m_mosTraceAddr = addr;
+        m_mosTraceControlData = reinterpret_cast<const MtControlData *>(addr);
 
-        MT_SETTING *set  = reinterpret_cast<MT_SETTING *>(addr);
-        m_mosTraceFilter = &set->filter;
-        m_mosTraceLevel  = reinterpret_cast<MtLevel *>(&set->level);
+        m_mosTraceEnable = &m_mosTraceControlData->enable;
+        m_mosTraceFilter = {
+                        m_mosTraceControlData->filter,
+                        sizeof(m_mosTraceControlData->filter) / sizeof(uint64_t)};
+        m_mosTraceLevel = &m_mosTraceControlData->level;
     }
 
     // close first, if already opened.
@@ -2405,12 +2419,13 @@ void MosUtilities::MosTraceEventInit()
 
 void MosUtilities::MosTraceEventClose()
 {
-    m_mosTraceFilter = nullptr;
-    m_mosTraceLevel = nullptr;
-    if (MosUtilitiesSpecificNext::m_mosTraceAddr)
+    m_mosTraceEnable.Reset();
+    m_mosTraceFilter.Reset();
+    m_mosTraceLevel.Reset();
+    if (m_mosTraceControlData)
     {
-        munmap(MosUtilitiesSpecificNext::m_mosTraceAddr, TRACE_SETTING_SIZE);
-        MosUtilitiesSpecificNext::m_mosTraceAddr = nullptr;
+        munmap((void *)m_mosTraceControlData, TRACE_SETTING_SIZE);
+        m_mosTraceControlData = nullptr;
     }
     if (MosUtilitiesSpecificNext::m_mosTraceFd >= 0)
     {
@@ -2435,8 +2450,7 @@ void MosUtilities::MosTraceEvent(
     const void       *pArg2,
     uint32_t         dwSize2)
 {
-    if (MosUtilitiesSpecificNext::m_mosTraceAddr &&
-        *(uint32_t *)MosUtilitiesSpecificNext::m_mosTraceAddr == 0)
+    if (!m_mosTraceEnable)
     {
         return; // skip if trace not enabled from share memory
     }
@@ -2446,7 +2460,6 @@ void MosUtilities::MosTraceEvent(
     {
         uint8_t traceBuf[256];
         uint8_t *pTraceBuf = traceBuf;
-        uint64_t keyword = m_mosTraceFilter ? *m_mosTraceFilter:0;
 
         // special handling for media runtime log, filter by component
         if (usId == EVENT_MEDIA_LOG && pArg1 != nullptr && dwSize1 >= 2*sizeof(int32_t))
@@ -2454,7 +2467,7 @@ void MosUtilities::MosTraceEvent(
             int32_t comp = (*(int32_t*)pArg1) >> 24;
             int32_t level = *((int32_t*)pArg1 + 1);
 
-            if ((keyword & ((1ULL << TR_KEY_MOSMSG_ALL) | (1ULL << (comp + 16)))) == 0)
+            if (!m_mosTraceFilter(TR_KEY_MOSMSG_ALL) || !m_mosTraceFilter(MEDIA_EVENT_FILTER_KEYID(comp + 16)))
             {
                 // keyword not set for this component, skip it
                 return;
@@ -2492,7 +2505,8 @@ void MosUtilities::MosTraceEvent(
                 MOS_FreeMemory(pTraceBuf);
             }
         }
-        if (keyword & (1ULL << TR_KEY_CALL_STACK))
+#if Backtrace_FOUND
+        if (m_mosTraceFilter(TR_KEY_CALL_STACK))
         {
             // reserve space for header and stack size field.
             // max 32-2=30 layers call stack in 64bit driver.
@@ -2511,6 +2525,7 @@ void MosUtilities::MosTraceEvent(
                 size_t ret = write(MosUtilitiesSpecificNext::m_mosTraceFd, traceBuf, nLen);
             }
         }
+#endif
     }
     return;
 }

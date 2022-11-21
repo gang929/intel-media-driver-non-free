@@ -25,7 +25,6 @@
 //!
 #include "decode_vp9_pipeline.h"
 #include "decode_utils.h"
-#include "media_user_settings_mgr_g12_plus.h"
 #include "codechal_setting.h"
 #include "decode_vp9_phase_single.h"
 #include "decode_vp9_phase_front_end.h"
@@ -53,6 +52,7 @@ MOS_STATUS Vp9Pipeline::Initialize(void *settings)
     MOS_ZeroMemory(&scalPars, sizeof(scalPars));
     DECODE_CHK_STATUS(m_mediaContext->SwitchContext(VdboxDecodeFunc, &scalPars, &m_scalability));
     m_decodeContext = m_osInterface->pfnGetGpuContext(m_osInterface);
+    m_decodeContextHandle = m_osInterface->CurrentGpuContextHandle;
 
     m_basicFeature = dynamic_cast<Vp9BasicFeature *>(m_featureManager->GetFeature(FeatureIDs::basicFeature));
     DECODE_CHK_NULL(m_basicFeature);
@@ -86,10 +86,11 @@ MOS_STATUS Vp9Pipeline::Uninitialize()
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     // Report real tile frame count and virtual tile frame count
-    MOS_USER_FEATURE_VALUE_WRITE_DATA userFeatureWriteData = __NULL_USER_FEATURE_VALUE_WRITE_DATA__;
-    userFeatureWriteData.Value.i32Data                     = m_vtFrameCount;
-    userFeatureWriteData.ValueID                           = __MEDIA_USER_FEATURE_VALUE_ENABLE_HEVC_DECODE_VT_FRAME_COUNT_ID;
-    MOS_UserFeature_WriteValues_ID(nullptr, &userFeatureWriteData, 1, m_osInterface->pOsContext);
+    ReportUserSettingForDebug(
+        m_userSettingPtr,
+        "VT Decoded Count",
+        m_vtFrameCount,
+        MediaUserSetting::Group::Sequence);
 #endif
 
     DECODE_CHK_STATUS(DestoryPhaseList());
@@ -136,6 +137,7 @@ MOS_STATUS Vp9Pipeline::Execute()
             if (scalabOption->IsScalabilityOptionMatched(m_scalabOption))
             {
                 m_decodeContext = m_osInterface->pfnGetGpuContext(m_osInterface);
+                m_decodeContextHandle = m_osInterface->CurrentGpuContextHandle;
             }
         }
 
