@@ -382,10 +382,11 @@ MOS_STATUS MosInterface::InitStreamParameters(
 
     mos_bufmgr_gem_enable_reuse(bufMgr);
 
-    context->m_skuTable           = *osDeviceContext->GetSkuTable();
-    context->m_waTable            = *osDeviceContext->GetWaTable();
-    context->m_gtSystemInfo       = *osDeviceContext->GetGtSysInfo();
-    context->m_platform           = *osDeviceContext->GetPlatformInfo();
+    context->m_skuTable            = *osDeviceContext->GetSkuTable();
+    context->m_waTable             = *osDeviceContext->GetWaTable();
+    context->m_gtSystemInfo        = *osDeviceContext->GetGtSysInfo();
+    context->m_platform            = *osDeviceContext->GetPlatformInfo();
+    context->m_protectedGEMContext = ((PMOS_CONTEXT)extraParams)->m_protectedGEMContext;
 
     context->bUse64BitRelocs    = true;
     context->bUseSwSwizzling    = context->bSimIsActive || MEDIA_IS_SKU(&context->m_skuTable, FtrUseSwSwizzling);
@@ -395,7 +396,7 @@ MOS_STATUS MosInterface::InitStreamParameters(
     {
         MOS_TraceEventExt(EVENT_GPU_CONTEXT_CREATE, EVENT_TYPE_START,
                           &eStatus, sizeof(eStatus), nullptr, 0);
-        context->intel_context = mos_gem_context_create_ext(context->bufmgr, 0);
+        context->intel_context = mos_gem_context_create_ext(context->bufmgr, 0, context->m_protectedGEMContext);
         MOS_OS_CHK_NULL_RETURN(context->intel_context);
         context->intel_context->vm = mos_gem_vm_create(context->bufmgr);
         MOS_OS_CHK_NULL_RETURN(context->intel_context->vm);
@@ -1259,6 +1260,10 @@ static constexpr GMM_RESOURCE_USAGE_TYPE GmmResourceUsage[MOS_HW_RESOURCE_DEF_MA
     // Media GMM Resource USAGES
     GMM_RESOURCE_USAGE_CCS_MEDIA_WRITABLE,
 
+    // Media BLT copy USAGES
+    GMM_RESOURCE_USAGE_BLT_SOURCE,
+    GMM_RESOURCE_USAGE_BLT_DESTINATION,
+
     // PAT Media Usages
     GMM_RESOURCE_USAGE_MEDIA_BATCH_BUFFERS,
     // DECODE
@@ -1310,6 +1315,45 @@ GMM_RESOURCE_USAGE_TYPE MosInterface::GetGmmResourceUsageType(
     return GmmResourceUsage[resUsage];
 }
 
+MOS_HW_RESOURCE_DEF MosInterface::GmmToMosResourceUsageType(
+    GMM_RESOURCE_USAGE_TYPE gmmResUsage)
+{
+    MOS_HW_RESOURCE_DEF mosResUsage = MOS_HW_RESOURCE_DEF_MAX;
+    switch (gmmResUsage)
+    {
+    case GMM_RESOURCE_USAGE_DECODE_INPUT_BITSTREAM:
+        mosResUsage = MOS_HW_RESOURCE_USAGE_DECODE_INPUT_BITSTREAM;
+        break;
+    case GMM_RESOURCE_USAGE_DECODE_INPUT_REFERENCE:
+        mosResUsage = MOS_HW_RESOURCE_USAGE_DECODE_INPUT_REFERENCE;
+        break;
+    case GMM_RESOURCE_USAGE_DECODE_INTERNAL_READ:
+        mosResUsage = MOS_HW_RESOURCE_USAGE_DECODE_INTERNAL_READ;
+        break;
+    case GMM_RESOURCE_USAGE_DECODE_INTERNAL_WRITE:
+        mosResUsage = MOS_HW_RESOURCE_USAGE_DECODE_INTERNAL_WRITE;
+        break;
+    case GMM_RESOURCE_USAGE_DECODE_INTERNAL_READ_WRITE_CACHE:
+        mosResUsage = MOS_HW_RESOURCE_USAGE_DECODE_INTERNAL_READ_WRITE_CACHE;
+        break;
+    case GMM_RESOURCE_USAGE_DECODE_INTERNAL_READ_WRITE_NOCACHE:
+        mosResUsage = MOS_HW_RESOURCE_USAGE_DECODE_INTERNAL_READ_WRITE_NOCACHE;
+        break;
+    case GMM_RESOURCE_USAGE_DECODE_OUTPUT_PICTURE:
+        mosResUsage = MOS_HW_RESOURCE_USAGE_DECODE_OUTPUT_PICTURE;
+        break;
+    case GMM_RESOURCE_USAGE_DECODE_OUTPUT_STATISTICS_WRITE:
+        mosResUsage = MOS_HW_RESOURCE_USAGE_DECODE_OUTPUT_STATISTICS_WRITE;
+        break;
+    case GMM_RESOURCE_USAGE_DECODE_OUTPUT_STATISTICS_READ_WRITE:
+        mosResUsage = MOS_HW_RESOURCE_USAGE_DECODE_OUTPUT_STATISTICS_READ_WRITE;
+        break;
+    default:
+        mosResUsage = MOS_HW_RESOURCE_DEF_MAX;
+    }
+    return mosResUsage;
+}
+
 MEMORY_OBJECT_CONTROL_STATE MosInterface::GetGmmCachePolicyMemoryObject(
     GMM_CLIENT_CONTEXT      *gmmClientContext,
     GMM_RESOURCE_USAGE_TYPE gmmUsage)
@@ -1324,15 +1368,34 @@ MEMORY_OBJECT_CONTROL_STATE MosInterface::GetGmmCachePolicyMemoryObject(
     {
         return gmmClientContext->CachePolicyGetMemoryObject(nullptr, gmmUsage);
     }
+    else
+    {
+        return GetDefaultCachePolicyMemoryObject(gmmClientContext);
+    }
+}
+
+MEMORY_OBJECT_CONTROL_STATE MosInterface::GetDefaultCachePolicyMemoryObject(
+    GMM_CLIENT_CONTEXT *gmmClientContext)
+{
+    MOS_OS_FUNCTION_ENTER;
+    if (!gmmClientContext)
+    {
+        return {0};
+    }
+    if (gmmClientContext->GetCachePolicyElement(GMM_RESOURCE_USAGE_DECODE_INTERNAL_READ_WRITE_NOCACHE).Initialized)  //For arch usage, use GMM_RESOURCE_USAGE_DECODE_INTERNAL_READ_WRITE_NOCACHE as the default setting.
+    {
+        MOS_OS_NORMALMESSAGE("use GMM_RESOURCE_USAGE_DECODE_INTERNAL_READ_WRITE_NOCACHE");
+        return gmmClientContext->CachePolicyGetMemoryObject(nullptr, GMM_RESOURCE_USAGE_DECODE_INTERNAL_READ_WRITE_NOCACHE);
+    }
     else if (gmmClientContext->GetCachePolicyElement(MP_RESOURCE_USAGE_DEFAULT).Initialized)
     {
-        MOS_OS_NORMALMESSAGE("Cache is not initialized for GMM_RESOURCE_USAGE_TYPE %d, use MP_RESOURCE_USAGE_DEFAULT", gmmUsage);
+        MOS_OS_NORMALMESSAGE("use MP_RESOURCE_USAGE_DEFAULT");
         return gmmClientContext->CachePolicyGetMemoryObject(nullptr, MP_RESOURCE_USAGE_DEFAULT);
     }
     else
     {
-        MOS_OS_NORMALMESSAGE("Cache is not initialized for GMM_RESOURCE_USAGE_TYPE %d", gmmUsage);
-        return gmmClientContext->GetCachePolicyUsage()[GMM_RESOURCE_USAGE_UNKNOWN].MemoryObjectOverride;
+        MOS_OS_NORMALMESSAGE("use GMM_RESOURCE_USAGE_UNKNOWN");
+        return gmmClientContext->CachePolicyGetMemoryObject(nullptr, GMM_RESOURCE_USAGE_UNKNOWN);
     }
 }
 

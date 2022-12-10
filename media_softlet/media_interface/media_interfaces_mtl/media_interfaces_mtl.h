@@ -36,7 +36,6 @@
 
 #include "media_interfaces_vphal.h"
 #include "media_interfaces_renderhal.h"
-#include "media_interfaces_nv12top010.h"
 #include "media_interfaces_hwinfo_device.h"
 
 #include "mhw_cp_interface.h"
@@ -46,12 +45,10 @@
 #include "mhw_vdbox_avp_impl_xe_lpm_plus.h"
 #include "mhw_vdbox_huc_impl_xe_lpm_plus.h"
 #include "mhw_vdbox_hcp_impl_xe_lpm_plus.h"
-#include "mhw_vdbox_vdenc_xe_hpm.h"
 #include "mhw_vdbox_vdenc_impl_xe_lpm_plus.h"
 #include "media_mem_decompress_xe_lpm_plus_base.h"
 #include "media_copy_xe_lpm_plus_base.h"
 #include "mhw_state_heap_xe_hpg.h"
-#include "codechal_hw_xe_hpm.h"
 #include "codec_hw_xe_lpm_plus_base.h"
 
 #ifdef _AVC_DECODE_SUPPORTED
@@ -107,13 +104,8 @@
 #include "encode_vp9_vdenc_pipeline_adapter_xe_lpm_plus.h"
 #endif
 
-#include "codechal_encoder_unsupported.h"
 #include "renderhal_xe_hpg_next.h"
 
-#ifndef _VPHALNEXT_ENABLED
-#include "vphal_xe_lpm_plus.h"
-#include "renderhal_xe_hpg.h"
-#endif
 #include "decode_scalability_singlepipe_next.h"
 #include "decode_scalability_multipipe_next.h"
 
@@ -194,10 +186,6 @@ static const L3ConfigRegisterValues DG2_L3_PLANES[DG2_L3_CONFIG_COUNT] =
 class VphalInterfacesXe_Lpm_Plus : public VphalDevice
 {
 public:
-//Remove vphalstate after legacy code clean up.
-#ifndef _VPHALNEXT_ENABLED
-    using VphalState = VphalStateXe_Lpm_Plus;
-#endif
     MOS_STATUS Initialize(
         PMOS_INTERFACE  osInterface,
         bool            bInitVphalState,
@@ -217,9 +205,6 @@ MEDIA_CLASS_DEFINE_END(VphalInterfacesXe_Lpm_Plus)
 class RenderHalInterfacesXe_Lpg : public RenderHalDevice
 {
 protected:
-#ifndef _VPHALNEXT_ENABLED
-    using XRenderHalLegacy = XRenderHal_Interface_Xe_Hpg;
-#endif
     using XRenderHal = XRenderHal_Interface_Xe_Hpg_Next;
     MOS_STATUS Initialize();
 

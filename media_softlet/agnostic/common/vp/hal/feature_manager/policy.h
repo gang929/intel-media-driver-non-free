@@ -78,6 +78,7 @@ protected:
     virtual void UnregisterFeatures();
     virtual MOS_STATUS GetExecutionCapsForSingleFeature(FeatureType featureType, SwFilterSubPipe& swFilterPipe, VP_EngineEntry& engineCapsCombined);
     virtual MOS_STATUS UpdateExeCaps(SwFilter* feature, VP_EXECUTE_CAPS& caps, EngineType Type);
+    virtual MOS_STATUS UpdateCGCMode(SwFilter* feature, VP_EXECUTE_CAPS& caps, EngineType Type);
     virtual MOS_STATUS BuildVeboxSecureFilters(SwFilterPipe& featurePipe, VP_EXECUTE_CAPS& caps, HW_FILTER_PARAMS& params);
 
     MOS_STATUS BuildExecutionEngines(SwFilterPipe &swFilterPipe, bool isInputPipe, uint32_t index, VP_EngineEntry &engineCapsCombinedAllPipes);
@@ -88,12 +89,12 @@ protected:
     MOS_STATUS Update3DLutoutputColorAndFormat(FeatureParamCsc *cscParams, FeatureParamHdr *hdrParams, MOS_FORMAT Format, VPHAL_CSPACE CSpace);
     MOS_STATUS GetCSCExecutionCapsHdr(SwFilter *hdr, SwFilter *csc);
     MOS_STATUS GetCSCExecutionCapsDi(SwFilter* feature);
+    MOS_STATUS GetCSCExecutionCapsBT2020ToRGB(SwFilter *cgc, SwFilter *csc);
     MOS_STATUS GetCSCExecutionCaps(SwFilter* feature);
     bool IsSfcSupported(MOS_FORMAT format);
     MOS_STATUS GetScalingExecutionCaps(SwFilter* feature);
-    MOS_STATUS GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled, bool isSREnabled);
+    MOS_STATUS GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled, OutMode outMode);
     MOS_STATUS GetScalingExecutionCapsHdr(SwFilter *feature);
-    MOS_STATUS GetScalingExecutionCapsSR(SwFilter *feature);
     bool IsSfcRotationSupported(FeatureParamRotMir *rotationParams);
     MOS_STATUS GetRotationExecutionCaps(SwFilter* feature);
     virtual MOS_STATUS GetDenoiseExecutionCaps(SwFilter* feature);
@@ -107,6 +108,7 @@ protected:
     MOS_STATUS GetAlphaExecutionCaps(SwFilter* feature);
     MOS_STATUS GetLumakeyExecutionCaps(SwFilter* feature);
     MOS_STATUS GetBlendingExecutionCaps(SwFilter* feature);
+    MOS_STATUS GetCgcExecutionCaps(SwFilter* feature);
 
     MOS_STATUS BuildExecuteCaps(SwFilterPipe& featurePipe, VP_EXECUTE_CAPS &caps, VP_EngineEntry &engineCapsInputPipe, VP_EngineEntry &engineCapsOutputPipe,
                                 bool &isSingleSubPipe, uint32_t &selectedPipeIndex);
