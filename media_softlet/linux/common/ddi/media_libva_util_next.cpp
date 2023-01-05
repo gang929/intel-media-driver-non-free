@@ -24,6 +24,7 @@
 //! \brief    libva util next implementaion.
 //!
 #include <sys/time.h>
+#include "inttypes.h"
 #include "media_libva_util_next.h"
 #include "mos_utilities.h"
 #include "mos_os.h"
@@ -37,19 +38,23 @@
 #include "memory_policy_manager.h"
 #include "drm_fourcc.h"
 
+// will remove when mtl open source
+#define INTEL_PRELIM_ID_FLAG         (1ULL << 55)
+
+#define intel_prelim_fourcc_mod_code(val) \
+    (fourcc_mod_code(INTEL, (val)) | INTEL_PRELIM_ID_FLAG)
+
+/* this definition is to avoid duplicate drm_fourcc.h this file is updated seldom */
+#ifndef PRELIM_I915_FORMAT_MOD_4_TILED_MTL_MC_CCS
+#define PRELIM_I915_FORMAT_MOD_4_TILED_MTL_MC_CCS    intel_prelim_fourcc_mod_code(17)
+#endif
+#ifndef PRELIM_I915_FORMAT_MOD_4_TILED_MTL_RC_CCS
+#define PRELIM_I915_FORMAT_MOD_4_TILED_MTL_RC_CCS    intel_prelim_fourcc_mod_code(16)
+#endif
+
 // default protected surface tag
 #define PROTECTED_SURFACE_TAG   0x3000f
 
-/* this definition is to avoid duplicate drm_fourcc.h this file is updated seldom */
-#ifndef I915_FORMAT_MOD_F_TILED
-#define I915_FORMAT_MOD_F_TILED                 fourcc_mod_code(INTEL, 12)
-#endif
-#ifndef I915_FORMAT_MOD_F_TILED_MC_CCS
-#define I915_FORMAT_MOD_F_TILED_MC_CCS          fourcc_mod_code(INTEL, 10)
-#endif
-#ifndef I915_FORMAT_MOD_F_TILED_RC_CCS_CC
-#define I915_FORMAT_MOD_F_TILED_RC_CCS_CC       fourcc_mod_code(INTEL, 11)
-#endif
 int32_t         MediaLibvaUtilNext::m_frameCountFps             = -1;
 struct timeval  MediaLibvaUtilNext::m_tv1                       = {};
 pthread_mutex_t MediaLibvaUtilNext::m_fpsMutex                  = PTHREAD_MUTEX_INITIALIZER;
@@ -224,16 +229,16 @@ VAStatus MediaLibvaUtilNext::SetSurfaceParameterFromModifier(
     DDI_FUNC_ENTER;
     switch (modifier)
     {
-        case I915_FORMAT_MOD_F_TILED:
+        case I915_FORMAT_MOD_4_TILED:
             params.tileFormat = I915_TILING_Y;
             params.bMemCompEnable = false;
             break;
-        case I915_FORMAT_MOD_F_TILED_RC_CCS_CC:
+        case PRELIM_I915_FORMAT_MOD_4_TILED_MTL_RC_CCS:
             params.tileFormat = I915_TILING_Y;
             params.bMemCompEnable = true;
             params.bMemCompRC = true;
             break;
-        case I915_FORMAT_MOD_F_TILED_MC_CCS:
+        case PRELIM_I915_FORMAT_MOD_4_TILED_MTL_MC_CCS:
             params.tileFormat = I915_TILING_Y;
             params.bMemCompEnable = true;
             params.bMemCompRC = false;
@@ -994,7 +999,7 @@ VAStatus MediaLibvaUtilNext::UnRegisterRTSurfaces(
         {
             if (decVACtxHeapBase[j].pVaContext != nullptr)
             {
-                PDDI_DECODE_CONTEXT  decCtx = (PDDI_DECODE_CONTEXT)decVACtxHeapBase[j].pVaContext;
+                decode::PDDI_DECODE_CONTEXT decCtx = (decode::PDDI_DECODE_CONTEXT)decVACtxHeapBase[j].pVaContext;
                 if (decCtx && decCtx->m_ddiDecodeNext)
                 {
                     //not check the return value since the surface may not be registered in the context. pay attention to LOGW.
@@ -1939,12 +1944,12 @@ VAStatus MediaLibvaUtilNext::GetSurfaceModifier(
         case GMM_TILED_4:
             if(mediaCtx->m_auxTableMgr && bMmcEnabled)
             {
-                modifier = gmmFlags.Info.MediaCompressed ? I915_FORMAT_MOD_F_TILED_MC_CCS :
-                    (gmmFlags.Info.RenderCompressed ? I915_FORMAT_MOD_F_TILED_RC_CCS_CC : I915_FORMAT_MOD_F_TILED);
+                modifier = gmmFlags.Info.MediaCompressed ? PRELIM_I915_FORMAT_MOD_4_TILED_MTL_MC_CCS :
+                    (gmmFlags.Info.RenderCompressed ? PRELIM_I915_FORMAT_MOD_4_TILED_MTL_RC_CCS : I915_FORMAT_MOD_4_TILED);
             }
             else
             {
-                modifier = I915_FORMAT_MOD_F_TILED;
+                modifier = I915_FORMAT_MOD_4_TILED;
             }
             break;
         case GMM_TILED_Y:
@@ -2197,7 +2202,7 @@ void MediaLibvaUtilNext::MediaPrintFps()
         int64_t diff  = (tv2.tv_sec - m_tv1.tv_sec)*1000000 + tv2.tv_usec - m_tv1.tv_usec;
         float fps     = m_frameCountFps / (diff / 1000000.0);
         DDI_NORMALMESSAGE("FPS:%6.4f, Interval:%11lu.", fps,((uint64_t)tv2.tv_sec)*1000 + (tv2.tv_usec/1000));
-        sprintf_s(temp, sizeof(temp), "FPS:%6.4f, Interval:%11lu\n", fps,((uint64_t)tv2.tv_sec)*1000 + (tv2.tv_usec/1000));
+        sprintf_s(temp, sizeof(temp), "FPS:%6.4f, Interval:%" PRIu64"\n", fps,((uint64_t)tv2.tv_sec)*1000 + (tv2.tv_usec/1000));
 
         MOS_ZeroMemory(fpsFileName,LENGTH_OF_FPS_FILE_NAME);
         sprintf_s(fpsFileName, sizeof(fpsFileName), FPS_FILE_NAME);

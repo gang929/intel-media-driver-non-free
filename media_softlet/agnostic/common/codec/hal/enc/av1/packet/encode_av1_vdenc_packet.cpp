@@ -404,7 +404,7 @@ namespace encode{
 
         for (uint32_t i = 0; i < statusReportData->numberTilesInFrame; i++)
         {
-            uint32_t offset = tileReportData[i].bitstreamByteOffset * CODECHAL_CACHELINE_SIZE;
+            uint32_t offset = MOS_ALIGN_CEIL(tileReportData[i].bitstreamByteOffset * CODECHAL_CACHELINE_SIZE, MOS_PAGE_SIZE);
             uint32_t len    = tileRecord[i].Length;
 
             MOS_SecureMemcpy(bufPtr, len, &bitstream[offset], len);
@@ -450,14 +450,14 @@ namespace encode{
 
         allocParamsForBufferLinear.dwBytes  = MOS_ROUNDUP_DIVIDE(m_basicFeature->m_frameWidth, av1SuperBlockWidth) * MHW_CACHELINE_SIZE * 2 * 2;
         allocParamsForBufferLinear.pBufName = "vdencIntraRowStoreScratch";
-        allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ_WRITE_CACHE;
+        allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ;
         m_vdencIntraRowStoreScratch         = m_allocator->AllocateResource(allocParamsForBufferLinear, false);
         ENCODE_CHK_NULL_RETURN(m_vdencIntraRowStoreScratch);
 
         allocParamsForBufferLinear.Flags.bNotLockable = !(m_basicFeature->m_lockableResource);
         allocParamsForBufferLinear.dwBytes  = MOS_ALIGN_CEIL(m_basicFeature->m_vdencBrcStatsBufferSize * maxTileNumber, MHW_CACHELINE_SIZE);
         allocParamsForBufferLinear.pBufName = "VDEncStatsBuffer";
-        allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ_WRITE_NOCACHE;
+        allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_WRITE;
         m_resVDEncStatsBuffer               = m_allocator->AllocateResource(allocParamsForBufferLinear, false);
         ENCODE_CHK_NULL_RETURN(m_resVDEncStatsBuffer);
 
@@ -475,7 +475,7 @@ namespace encode{
             uint32_t size        = MHW_CACHELINE_SIZE * 4 * 2;  //  each set of scratch is 4 cacheline size, and allocate 2 set.
             allocParamsForBufferLinear.dwBytes      = size;
             allocParamsForBufferLinear.pBufName     = "atomic sratch buffer";
-            allocParamsForBufferLinear.ResUsageType = MOS_CODEC_RESOURCE_USAGE_BEGIN_CODEC;
+            allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ_WRITE_CACHE;
 
             m_atomicScratchBuf.resAtomicScratchBuffer = m_allocator->AllocateResource(allocParamsForBufferLinear, false);
 

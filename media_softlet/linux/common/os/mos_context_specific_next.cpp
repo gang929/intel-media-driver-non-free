@@ -103,8 +103,8 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
         iDeviceId   = mos_bufmgr_gem_get_devid(m_bufmgr);
         m_isAtomSOC = IS_ATOMSOC(iDeviceId);
 
-        eStatus = NullHW::Init((MOS_CONTEXT_HANDLE)osDriverContext);
-        if (!NullHW::IsEnabled())
+        eStatus = NullHwInit((MOS_CONTEXT_HANDLE)osDriverContext);
+        if (!GetNullHwIsEnabled())
         {
             eStatus = HWInfo_GetGfxInfo(m_fd, m_bufmgr, &m_platformInfo, &m_skuTable, &m_waTable, &m_gtSystemInfo, userSettingPtr);
         }
@@ -152,7 +152,10 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
             }
         }
 
-        if (MEDIA_IS_SKU(&m_skuTable, FtrLocalMemory))
+        uint64_t isRecoverableContextEnabled = 0;
+        mos_get_context_param(osDriverContext->intel_context, 0, I915_CONTEXT_PARAM_RECOVERABLE, &isRecoverableContextEnabled);
+        // set recoverablecontext disabled if want disable object capture
+        if (MEDIA_IS_WA(&m_waTable, WaDisableSetObjectCapture) && isRecoverableContextEnabled)
         {
             mos_bufmgr_gem_disable_object_capture(m_bufmgr);
         }
@@ -220,7 +223,7 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
 
         m_use64BitRelocs = true;
 
-        if (!NullHW::IsEnabled())
+        if (!GetNullHwIsEnabled())
         {
             osDriverContext->iDeviceId              = iDeviceId;
             osDriverContext->m_skuTable             = m_skuTable;
@@ -277,7 +280,7 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
             }
         }
     }
-    MOS_OS_CHK_STATUS_RETURN(MosOcaRTLogMgr::InitMgr(m_ocaRTLogMgr, this));
+    MosOcaRTLogMgr::RegisterContext(this, osDriverContext);
     return eStatus;
 }
 

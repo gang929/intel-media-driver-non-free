@@ -141,7 +141,7 @@ static const AttribList attribList_VAProfileHEVCMain_VAEntrypointVLD_Xe_Lpm_plus
    {VAConfigAttribDecProcessing, VA_DEC_PROCESSING},
    {VAConfigAttribMaxPictureWidth, CODEC_16K_MAX_PIC_WIDTH},
    {VAConfigAttribMaxPictureHeight, CODEC_16K_MAX_PIC_HEIGHT},
-   {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
+   // {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
    {VAConfigAttribProcessingRate, VA_PROCESSING_RATE_DECODE},
    {VAConfigAttribCustomRoundingControl, 1},
 };
@@ -153,7 +153,7 @@ static const AttribList attribList_VAProfileHEVCMain10_VAEntrypointVLD_Xe_Lpm_pl
    {VAConfigAttribDecProcessing, VA_DEC_PROCESSING},
    {VAConfigAttribMaxPictureWidth, CODEC_16K_MAX_PIC_WIDTH},
    {VAConfigAttribMaxPictureHeight, CODEC_16K_MAX_PIC_HEIGHT},
-   {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
+   // {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
    {VAConfigAttribProcessingRate, VA_PROCESSING_RATE_DECODE},
    {VAConfigAttribCustomRoundingControl, 1},
 };
@@ -165,7 +165,7 @@ static const AttribList attribList_VAProfileHEVCMain12_VAEntrypointVLD_Xe_Lpm_pl
    {VAConfigAttribDecProcessing, VA_DEC_PROCESSING},
    {VAConfigAttribMaxPictureWidth, CODEC_16K_MAX_PIC_WIDTH},
    {VAConfigAttribMaxPictureHeight, CODEC_16K_MAX_PIC_HEIGHT},
-   {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
+   // {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
    {VAConfigAttribProcessingRate, VA_PROCESSING_RATE_DECODE},
    {VAConfigAttribCustomRoundingControl, 1},
 };
@@ -177,7 +177,7 @@ static const AttribList attribList_VAProfileHEVCMain422_10_VAEntrypointVLD_Xe_Lp
    {VAConfigAttribDecProcessing, VA_DEC_PROCESSING},
    {VAConfigAttribMaxPictureWidth, CODEC_16K_MAX_PIC_WIDTH},
    {VAConfigAttribMaxPictureHeight, CODEC_16K_MAX_PIC_HEIGHT},
-   {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
+   // {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
    {VAConfigAttribProcessingRate, VA_PROCESSING_RATE_DECODE},
    {VAConfigAttribCustomRoundingControl, 1},
 };
@@ -189,7 +189,7 @@ static const AttribList attribList_VAProfileHEVCMain422_12_VAEntrypointVLD_Xe_Lp
    {VAConfigAttribDecProcessing, VA_DEC_PROCESSING},
    {VAConfigAttribMaxPictureWidth, CODEC_16K_MAX_PIC_WIDTH},
    {VAConfigAttribMaxPictureHeight, CODEC_16K_MAX_PIC_HEIGHT},
-   {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
+   // {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
    {VAConfigAttribProcessingRate, VA_PROCESSING_RATE_DECODE},
    {VAConfigAttribCustomRoundingControl, 1},
 };
@@ -201,7 +201,7 @@ static const AttribList attribList_VAProfileHEVCMain444_VAEntrypointVLD_Xe_Lpm_p
    {VAConfigAttribDecProcessing, VA_DEC_PROCESSING},
    {VAConfigAttribMaxPictureWidth, CODEC_16K_MAX_PIC_WIDTH},
    {VAConfigAttribMaxPictureHeight, CODEC_16K_MAX_PIC_HEIGHT},
-   {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
+   // {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
    {VAConfigAttribProcessingRate, VA_PROCESSING_RATE_DECODE},
    {VAConfigAttribCustomRoundingControl, 1},
 };
@@ -213,7 +213,7 @@ static const AttribList attribList_VAProfileHEVCSccMain444_VAEntrypointVLD_Xe_Lp
    {VAConfigAttribDecProcessing, VA_DEC_PROCESSING},
    {VAConfigAttribMaxPictureWidth, CODEC_16K_MAX_PIC_WIDTH},
    {VAConfigAttribMaxPictureHeight, CODEC_16K_MAX_PIC_HEIGHT},
-   {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
+   // {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
    {VAConfigAttribProcessingRate, VA_PROCESSING_RATE_DECODE},
    {VAConfigAttribCustomRoundingControl, 1},
 };
@@ -225,7 +225,7 @@ static const AttribList attribList_VAProfileHEVCMain444_10_VAEntrypointVLD_Xe_Lp
    {VAConfigAttribDecProcessing, VA_DEC_PROCESSING},
    {VAConfigAttribMaxPictureWidth, CODEC_16K_MAX_PIC_WIDTH},
    {VAConfigAttribMaxPictureHeight, CODEC_16K_MAX_PIC_HEIGHT},
-   {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
+   // {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
    {VAConfigAttribProcessingRate, VA_PROCESSING_RATE_DECODE},
    {VAConfigAttribCustomRoundingControl, 1},
 };
@@ -237,7 +237,7 @@ static const AttribList attribList_VAProfileHEVCSccMain444_10_VAEntrypointVLD_Xe
    {VAConfigAttribDecProcessing, VA_DEC_PROCESSING},
    {VAConfigAttribMaxPictureWidth, CODEC_16K_MAX_PIC_WIDTH},
    {VAConfigAttribMaxPictureHeight, CODEC_16K_MAX_PIC_HEIGHT},
-   {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
+   // {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
    {VAConfigAttribProcessingRate, VA_PROCESSING_RATE_DECODE},
    {VAConfigAttribCustomRoundingControl, 1},
 };
@@ -249,7 +249,7 @@ static const AttribList attribList_VAProfileHEVCMain444_12_VAEntrypointVLD_Xe_Lp
    {VAConfigAttribDecProcessing, VA_DEC_PROCESSING},
    {VAConfigAttribMaxPictureWidth, CODEC_16K_MAX_PIC_WIDTH},
    {VAConfigAttribMaxPictureHeight, CODEC_16K_MAX_PIC_HEIGHT},
-   {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
+   // {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
    {VAConfigAttribProcessingRate, VA_PROCESSING_RATE_DECODE},
    {VAConfigAttribCustomRoundingControl, 1},
 };
@@ -261,7 +261,7 @@ static const AttribList attribList_VAProfileHEVCSccMain_VAEntrypointVLD_Xe_Lpm_p
    {VAConfigAttribDecProcessing, VA_DEC_PROCESSING},
    {VAConfigAttribMaxPictureWidth, CODEC_16K_MAX_PIC_WIDTH},
    {VAConfigAttribMaxPictureHeight, CODEC_16K_MAX_PIC_HEIGHT},
-   {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
+   // {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
    {VAConfigAttribProcessingRate, VA_PROCESSING_RATE_DECODE},
    {VAConfigAttribCustomRoundingControl, 1},
 };
@@ -273,7 +273,7 @@ static const AttribList attribList_VAProfileHEVCSccMain10_VAEntrypointVLD_Xe_Lpm
    {VAConfigAttribDecProcessing, VA_DEC_PROCESSING},
    {VAConfigAttribMaxPictureWidth, CODEC_16K_MAX_PIC_WIDTH},
    {VAConfigAttribMaxPictureHeight, CODEC_16K_MAX_PIC_HEIGHT},
-   {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
+   // {VAConfigAttribEncryption, VA_ATTRIB_NOT_SUPPORTED},
    {VAConfigAttribProcessingRate, VA_PROCESSING_RATE_DECODE},
    {VAConfigAttribCustomRoundingControl, 1},
 };
@@ -283,123 +283,123 @@ static const AttribList attribList_VAProfileHEVCSccMain10_VAEntrypointVLD_Xe_Lpm
 //!
 static ProfileSurfaceAttribInfo surfaceAttribInfo_VAProfileHEVCMain_VAEntrypointVLD_Xe_Lpm_plus_r0 =
 {
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_NV12}}},
-  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_WIDTH}}},
-  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_HEIGHT}}},
-  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_NV12}}},
+  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_WIDTH}}},
+  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_HEIGHT}}},
+  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
 };
 
 static ProfileSurfaceAttribInfo surfaceAttribInfo_VAProfileHEVCSccMain_VAEntrypointVLD_Xe_Lpm_plus_r0 =
 {
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_NV12}}},
-  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_WIDTH}}},
-  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_HEIGHT}}},
-  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_NV12}}},
+  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_WIDTH}}},
+  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_HEIGHT}}},
+  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
 };
 
 static ProfileSurfaceAttribInfo surfaceAttribInfo_VAProfileHEVCMain10_VAEntrypointVLD_Xe_Lpm_plus_r0 =
 {
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_P010}}},
-  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_WIDTH}}},
-  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_HEIGHT}}},
-  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_P010}}},
+  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_WIDTH}}},
+  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_HEIGHT}}},
+  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
 };
 
 static ProfileSurfaceAttribInfo surfaceAttribInfo_VAProfileHEVCMain12_VAEntrypointVLD_Xe_Lpm_plus_r0 =
 {
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_P012}}},
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_P016}}},
-  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_WIDTH}}},
-  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_HEIGHT}}},
-  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_P012}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_P016}}},
+  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_WIDTH}}},
+  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_HEIGHT}}},
+  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
 };
 
 static ProfileSurfaceAttribInfo surfaceAttribInfo_VAProfileHEVCMain422_10_VAEntrypointVLD_Xe_Lpm_plus_r0 =
 {
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_YUY2}}},
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_Y210}}},
-  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_WIDTH}}},
-  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_HEIGHT}}},
-  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_YUY2}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_Y210}}},
+  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_WIDTH}}},
+  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_HEIGHT}}},
+  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
 };
 
 static ProfileSurfaceAttribInfo surfaceAttribInfo_VAProfileHEVCMain422_12_VAEntrypointVLD_Xe_Lpm_plus_r0 =
 {
 #if VA_CHECK_VERSION(1, 9, 0)
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_Y212}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_Y212}}},
 #endif
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_Y216}}},
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_P012}}},
-  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_WIDTH}}},
-  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_HEIGHT}}},
-  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_Y216}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_P012}}},
+  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_WIDTH}}},
+  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_HEIGHT}}},
+  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
 };
 
 static ProfileSurfaceAttribInfo surfaceAttribInfo_VAProfileHEVCMain444_VAEntrypointVLD_Xe_Lpm_plus_r0 =
 {
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_AYUV}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_AYUV}}},
 #if VA_CHECK_VERSION(1, 13, 0)
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_XYUV}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_XYUV}}},
 #endif
-  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_WIDTH}}},
-  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_HEIGHT}}},
-  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
+  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_WIDTH}}},
+  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_HEIGHT}}},
+  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
 };
 
 static ProfileSurfaceAttribInfo surfaceAttribInfo_VAProfileHEVCMain444_10_VAEntrypointVLD_Xe_Lpm_plus_r0 =
 {
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_Y410}}},
-  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_WIDTH}}},
-  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_HEIGHT}}},
-  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_Y410}}},
+  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_WIDTH}}},
+  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_HEIGHT}}},
+  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
 };
 
 static ProfileSurfaceAttribInfo surfaceAttribInfo_VAProfileHEVCMain444_12_VAEntrypointVLD_Xe_Lpm_plus_r0 =
 {
 #if VA_CHECK_VERSION(1, 9, 0)
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_Y412}}},
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_Y212}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_Y412}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_Y212}}},
 #endif
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_Y416}}},
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_P012}}},
-  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_WIDTH}}},
-  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_HEIGHT}}},
-  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_Y416}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_P012}}},
+  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_WIDTH}}},
+  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_HEIGHT}}},
+  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
 };
 
 static ProfileSurfaceAttribInfo surfaceAttribInfo_VAProfileHEVCSccMain10_VAEntrypointVLD_Xe_Lpm_plus_r0 =
 {
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_P010}}},
-  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_WIDTH}}},
-  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_HEIGHT}}},
-  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_P010}}},
+  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_WIDTH}}},
+  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_HEIGHT}}},
+  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
 };
 
 static ProfileSurfaceAttribInfo surfaceAttribInfo_VAProfileHEVCSccMain444_VAEntrypointVLD_Xe_Lpm_plus_r0 =
 {
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_YUY2}}},
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_Y210}}},
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_AYUV}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_YUY2}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_Y210}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_AYUV}}},
 #if VA_CHECK_VERSION(1, 13, 0)
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_XYUV}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_XYUV}}},
 #endif
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_Y410}}},
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_NV12}}},
-  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_WIDTH}}},
-  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_HEIGHT}}},
-  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_Y410}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_NV12}}},
+  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_WIDTH}}},
+  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_HEIGHT}}},
+  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
 };
 
 static ProfileSurfaceAttribInfo surfaceAttribInfo_VAProfileHEVCSccMain444_10_VAEntrypointVLD_Xe_Lpm_plus_r0 =
 {
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_AYUV}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_AYUV}}},
 #if VA_CHECK_VERSION(1, 13, 0)
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_XYUV}}},
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_XYUV}}},
 #endif
-  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_FOURCC_Y410}}},
-  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_WIDTH}}},
-  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {.i = CODEC_16K_MAX_PIC_HEIGHT}}},
-  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {.i = VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
+  {VASurfaceAttribPixelFormat, VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_FOURCC_Y410}}},
+  {VASurfaceAttribMaxWidth,    VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_WIDTH}}},
+  {VASurfaceAttribMaxHeight,   VA_SURFACE_ATTRIB_GETTABLE, {VAGenericValueTypeInteger, {CODEC_16K_MAX_PIC_HEIGHT}}},
+  {VASurfaceAttribMemoryType,  VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE, {VAGenericValueTypeInteger, {VA_SURFACE_ATTRIB_MEM_TYPE_VA | VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2}}}
 };
 
 //!

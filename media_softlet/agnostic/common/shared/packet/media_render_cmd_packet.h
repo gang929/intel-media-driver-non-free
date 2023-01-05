@@ -217,6 +217,8 @@ public:
 
     bool m_isLargeSurfaceStateNeeded = false;
 
+    bool m_isMultiKernelOneMediaState = false;
+
 protected:
     // Step5: Load Kernel
     virtual MOS_STATUS LoadKernel();
@@ -263,7 +265,6 @@ protected:
 protected:
     PRENDERHAL_INTERFACE        m_renderHal = nullptr;
     MhwCpInterface*             m_cpInterface = nullptr;
-    PMOS_INTERFACE              m_osInterface = nullptr;
     MediaFeatureManager*        m_featureManager = nullptr;
 
     // Perf

@@ -87,13 +87,13 @@ MOS_STATUS AvcHucBrcUpdatePkt::SetDmemBuffer()const
 
     // Program update DMEM
     auto hucVdencBrcUpdateDmem = (VdencAvcHucBrcUpdateDmem*)m_allocator->LockResourceForWrite(
-        const_cast<PMOS_RESOURCE>(&m_vdencBrcUpdateDmemBuffer[m_pipeline->m_currRecycledBufIdx][m_pipeline->GetCurrentPass()]));
+        m_vdencBrcUpdateDmemBuffer[m_pipeline->m_currRecycledBufIdx][m_pipeline->GetCurrentPass()]);
     ENCODE_CHK_NULL_RETURN(hucVdencBrcUpdateDmem);
 
     RUN_FEATURE_INTERFACE_RETURN(AvcEncodeBRC, AvcFeatureIDs::avcBrcFeature, SetDmemForUpdate, hucVdencBrcUpdateDmem, m_pipeline->GetPassNum(), m_pipeline->GetCurrentPass());
 
     ENCODE_CHK_STATUS_RETURN(m_allocator->UnLock(
-        const_cast<PMOS_RESOURCE>(&m_vdencBrcUpdateDmemBuffer[m_pipeline->m_currRecycledBufIdx][m_pipeline->GetCurrentPass()])));
+        m_vdencBrcUpdateDmemBuffer[m_pipeline->m_currRecycledBufIdx][m_pipeline->GetCurrentPass()]));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -114,7 +114,7 @@ MOS_STATUS AvcHucBrcUpdatePkt::AllocateResources()
 {
     ENCODE_FUNC_CALL();
 
-    MOS_RESOURCE *allocatedbuffer;
+    PMOS_RESOURCE allocatedbuffer;
 
     MOS_ALLOC_GFXRES_PARAMS allocParamsForBufferLinear;
     MOS_ZeroMemory(&allocParamsForBufferLinear, sizeof(MOS_ALLOC_GFXRES_PARAMS));
@@ -125,11 +125,12 @@ MOS_STATUS AvcHucBrcUpdatePkt::AllocateResources()
     // Const Data buffer
     allocParamsForBufferLinear.dwBytes  = MOS_ALIGN_CEIL(m_vdencBrcConstDataBufferSize, CODECHAL_PAGE_SIZE);
     allocParamsForBufferLinear.pBufName = "VDENC BRC Const Data Buffer";
+    allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_WRITE;
     for (uint32_t i = 0; i < CODECHAL_ENCODE_VDENC_BRC_CONST_BUFFER_NUM; i++)
     {
         allocatedbuffer = m_allocator->AllocateResource(allocParamsForBufferLinear, true);
         ENCODE_CHK_NULL_RETURN(allocatedbuffer);
-        m_vdencBrcConstDataBuffer[i] = *allocatedbuffer;
+        m_vdencBrcConstDataBuffer[i] = allocatedbuffer;
     }
 
     for (uint32_t k = 0; k < CODECHAL_ENCODE_RECYCLED_BUFFER_NUM; k++)
@@ -137,20 +138,29 @@ MOS_STATUS AvcHucBrcUpdatePkt::AllocateResources()
         // VDENC IMG STATE read buffer
         allocParamsForBufferLinear.dwBytes  = m_brcFeature->GetVdencBRCImgStateBufferSize();
         allocParamsForBufferLinear.pBufName = "VDENC BRC IMG State Read Buffer";
+        allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ_WRITE_CACHE;
         allocatedbuffer = m_allocator->AllocateResource(allocParamsForBufferLinear, true);
         ENCODE_CHK_NULL_RETURN(allocatedbuffer);
-        m_vdencBrcImageStatesReadBuffer[k] = *allocatedbuffer;
+        m_vdencBrcImageStatesReadBuffer[k] = allocatedbuffer;
 
         for (auto i = 0; i < VDENC_BRC_NUM_OF_PASSES; i++)
         {
             // BRC update DMEM
             allocParamsForBufferLinear.dwBytes  = MOS_ALIGN_CEIL(m_vdencBrcUpdateDmemBufferSize, CODECHAL_CACHELINE_SIZE);
             allocParamsForBufferLinear.pBufName = "VDENC BrcUpdate DmemBuffer";
-            allocatedbuffer = m_allocator->AllocateResource(allocParamsForBufferLinear, true, MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ);
+            allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_WRITE;
+            allocatedbuffer = m_allocator->AllocateResource(allocParamsForBufferLinear, true);
             ENCODE_CHK_NULL_RETURN(allocatedbuffer);
-            m_vdencBrcUpdateDmemBuffer[k][i] = *allocatedbuffer;
+            m_vdencBrcUpdateDmemBuffer[k][i] = allocatedbuffer;
         }
     }
+
+    // PAK statistics output buffer 
+    allocParamsForBufferLinear.dwBytes  = CODECHAL_PAGE_SIZE;
+    allocParamsForBufferLinear.pBufName = "VDENC PAK Statistics MMIO Registers Output Buffer";
+    allocatedbuffer                     = m_allocator->AllocateResource(allocParamsForBufferLinear, true);
+    ENCODE_CHK_NULL_RETURN(allocatedbuffer);
+    m_resPakOutputViaMmioBuffer = allocatedbuffer;
 
     return MOS_STATUS_SUCCESS;
 }
@@ -164,18 +174,18 @@ MOS_STATUS AvcHucBrcUpdatePkt::SetConstDataHuCBrcUpdate()const
     {
         for (uint8_t picType = 0; picType < CODECHAL_ENCODE_VDENC_BRC_CONST_BUFFER_NUM; picType++)
         {
-            auto hucConstData = (uint8_t *)m_allocator->LockResourceForWrite(const_cast<PMOS_RESOURCE>(&m_vdencBrcConstDataBuffer[picType]));
+            auto hucConstData = (uint8_t *)m_allocator->LockResourceForWrite(m_vdencBrcConstDataBuffer[picType]);
             ENCODE_CHK_NULL_RETURN(hucConstData);
 
             RUN_FEATURE_INTERFACE_RETURN(AvcEncodeBRC, AvcFeatureIDs::avcBrcFeature, FillHucConstData, hucConstData, picType);
 
-            m_allocator->UnLock(const_cast<PMOS_RESOURCE>(&m_vdencBrcConstDataBuffer[picType]));
+            m_allocator->UnLock(m_vdencBrcConstDataBuffer[picType]);
         }
     }
 
     if (m_vdencStaticFrame)
     {
-        auto hucConstData = (VdencAvcHucBrcConstantData *)m_allocator->LockResourceForWrite(const_cast<PMOS_RESOURCE>(&m_vdencBrcConstDataBuffer[GetCurrConstDataBufIdx()]));
+        auto hucConstData = (VdencAvcHucBrcConstantData *)m_allocator->LockResourceForWrite(m_vdencBrcConstDataBuffer[GetCurrConstDataBufIdx()]);
         ENCODE_CHK_NULL_RETURN(hucConstData);
 
         auto settings = static_cast<AvcVdencFeatureSettings *>(m_featureManager->GetFeatureSettings()->GetConstSettings());
@@ -188,7 +198,7 @@ MOS_STATUS AvcHucBrcUpdatePkt::SetConstDataHuCBrcUpdate()const
             hucConstData->UPD_P_Intra16x16[j] = constTable4[10 + j];
         }
 
-        m_allocator->UnLock(const_cast<PMOS_RESOURCE>(&m_vdencBrcConstDataBuffer[GetCurrConstDataBufIdx()]));
+        m_allocator->UnLock(m_vdencBrcConstDataBuffer[GetCurrConstDataBufIdx()]);
     }
 
     return MOS_STATUS_SUCCESS;
@@ -227,16 +237,31 @@ MOS_STATUS AvcHucBrcUpdatePkt::Execute(PMOS_COMMAND_BUFFER cmdBuffer, bool store
 
     if (m_brcFeature->IsBRCInitRequired())
     {
-        m_resHucStatus2Buffer = *m_brcFeature->GetHucStatus2Buffer();
+        m_resHucStatus2Buffer = m_brcFeature->GetHucStatus2Buffer();
 
         // Insert conditional batch buffer end for HuC valid IMEM loaded check
         auto &miConditionalBatchBufferEndParams               = m_miItf->MHW_GETPAR_F(MI_CONDITIONAL_BATCH_BUFFER_END)();
         miConditionalBatchBufferEndParams                     = {};
-        miConditionalBatchBufferEndParams.presSemaphoreBuffer = &m_resHucStatus2Buffer;
+        miConditionalBatchBufferEndParams.presSemaphoreBuffer = m_resHucStatus2Buffer;
         ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_CONDITIONAL_BATCH_BUFFER_END)(cmdBuffer));
     }
 
     ENCODE_CHK_STATUS_RETURN(StartPerfCollect(*cmdBuffer));
+    if (m_pipeline->IsSingleTaskPhaseSupported())
+    {
+        auto &miCpyMemMemParams       = m_miItf->MHW_GETPAR_F(MI_COPY_MEM_MEM)();
+        miCpyMemMemParams             = {};
+        miCpyMemMemParams.presSrc     = m_resPakOutputViaMmioBuffer;
+        miCpyMemMemParams.presDst     = (m_vdencBrcUpdateDmemBuffer[m_pipeline->m_currRecycledBufIdx][m_pipeline->GetCurrentPass()]);
+        miCpyMemMemParams.dwSrcOffset = miCpyMemMemParams.dwDstOffset = CODECHAL_OFFSETOF(VdencAvcHucBrcUpdateDmem, FrameByteCount);
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_COPY_MEM_MEM)(cmdBuffer));
+
+        miCpyMemMemParams.dwSrcOffset = miCpyMemMemParams.dwDstOffset = CODECHAL_OFFSETOF(VdencAvcHucBrcUpdateDmem, ImgStatusCtrl);
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_COPY_MEM_MEM)(cmdBuffer));
+
+        miCpyMemMemParams.dwSrcOffset = miCpyMemMemParams.dwDstOffset = CODECHAL_OFFSETOF(VdencAvcHucBrcUpdateDmem, NumOfSlice);
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_COPY_MEM_MEM)(cmdBuffer));
+    }
 
     // load kernel from WOPCM into L2 storage RAM
     AddAllCmds_HUC_IMEM_STATE(cmdBuffer);
@@ -274,7 +299,7 @@ MOS_STATUS AvcHucBrcUpdatePkt::Submit(MOS_COMMAND_BUFFER *commandBuffer, uint8_t
 {
     ENCODE_FUNC_CALL();
 
-    ENCODE_CHK_STATUS_RETURN(ConstructImageStateReadBuffer(&m_vdencBrcImageStatesReadBuffer[m_pipeline->m_currRecycledBufIdx]));
+    ENCODE_CHK_STATUS_RETURN(ConstructImageStateReadBuffer(m_vdencBrcImageStatesReadBuffer[m_pipeline->m_currRecycledBufIdx]));
 
     bool firstTaskInPhase = packetPhase & firstPacket;
     bool requestProlog = false;
@@ -314,9 +339,22 @@ MOS_STATUS AvcHucBrcUpdatePkt::Submit(MOS_COMMAND_BUFFER *commandBuffer, uint8_t
     // They are first pass of next frame and next pass of current frame, as the 2nd VDEnc+PAK pass may not be triggered.
     uint32_t nextRecycledBufIdx = (m_pipeline->m_currRecycledBufIdx + 1) % CODECHAL_ENCODE_RECYCLED_BUFFER_NUM;
     uint32_t nextPass           = (m_pipeline->GetCurrentPass() + 1) % CODECHAL_VDENC_BRC_NUM_OF_PASSES;
-    RUN_FEATURE_INTERFACE_NO_RETURN(AvcEncodeBRC, AvcFeatureIDs::avcBrcFeature, SaveBrcUpdateDmemBufferPtr,
-        &m_vdencBrcUpdateDmemBuffer[nextRecycledBufIdx][0],
-        m_pipeline->IsLastPass() ? nullptr : &m_vdencBrcUpdateDmemBuffer[m_pipeline->m_currRecycledBufIdx][nextPass]);
+
+    PMOS_RESOURCE vdencBrcUpdateDmemBuffer0 = m_vdencBrcUpdateDmemBuffer[nextRecycledBufIdx][0];
+    PMOS_RESOURCE vdencBrcUpdateDmemBuffer1 = m_pipeline->IsLastPass() ? nullptr : m_vdencBrcUpdateDmemBuffer[m_pipeline->m_currRecycledBufIdx][nextPass];
+
+#if _SW_BRC
+    if (!m_swBrc->SwBrcEnabled())
+#endif
+    {
+        if (m_pipeline->IsSingleTaskPhaseSupported())
+        {
+            vdencBrcUpdateDmemBuffer0 = m_resPakOutputViaMmioBuffer;
+            vdencBrcUpdateDmemBuffer1 = nullptr;
+        }
+    }
+
+    RUN_FEATURE_INTERFACE_NO_RETURN(AvcEncodeBRC, AvcFeatureIDs::avcBrcFeature, SaveBrcUpdateDmemBufferPtr, vdencBrcUpdateDmemBuffer0, vdencBrcUpdateDmemBuffer1);
 
     // Disable Brc Init/reset  here after init cmd executed, APP will re-trigger the reset by DDI params m_seqParam->bResetBRC
     RUN_FEATURE_INTERFACE_NO_RETURN(AvcEncodeBRC, AvcFeatureIDs::avcBrcFeature, DisableBrcInitReset);
@@ -429,7 +467,7 @@ MHW_SETPAR_DECL_SRC(HUC_DMEM_STATE, AvcHucBrcUpdatePkt)
     SetDmemBuffer();
 
     params.function      = BRC_UPDATE;
-    params.hucDataSource = const_cast<PMOS_RESOURCE>(&m_vdencBrcUpdateDmemBuffer[m_pipeline->m_currRecycledBufIdx][m_pipeline->GetCurrentPass()]);
+    params.hucDataSource = m_vdencBrcUpdateDmemBuffer[m_pipeline->m_currRecycledBufIdx][m_pipeline->GetCurrentPass()];
     params.dataLength    = MOS_ALIGN_CEIL(m_vdencBrcUpdateDmemBufferSize, CODECHAL_CACHELINE_SIZE);
     params.dmemOffset    = HUC_DMEM_OFFSET_RTOS_GEMS;
 
@@ -446,8 +484,8 @@ MHW_SETPAR_DECL_SRC(HUC_VIRTUAL_ADDR_STATE, AvcHucBrcUpdatePkt)
     // Input regions
     params.regionParams[1].presRegion = m_basicFeature->m_recycleBuf->GetBuffer(VdencStatsBuffer, 0);
     params.regionParams[2].presRegion = m_basicFeature->m_recycleBuf->GetBuffer(BrcPakStatisticBuffer, 0);
-    params.regionParams[3].presRegion = const_cast<PMOS_RESOURCE>(&m_vdencBrcImageStatesReadBuffer[m_pipeline->m_currRecycledBufIdx]);
-    params.regionParams[5].presRegion = const_cast<PMOS_RESOURCE>(&m_vdencBrcConstDataBuffer[GetCurrConstDataBufIdx()]);
+    params.regionParams[3].presRegion = m_vdencBrcImageStatesReadBuffer[m_pipeline->m_currRecycledBufIdx];
+    params.regionParams[5].presRegion = m_vdencBrcConstDataBuffer[GetCurrConstDataBufIdx()];
     params.regionParams[7].presRegion = m_basicFeature->m_recycleBuf->GetBuffer(PakSliceSizeStreamOutBuffer, m_pipeline->GetCurrentPass() ?
         m_basicFeature->m_frameNum : m_basicFeature->m_frameNum ? m_basicFeature->m_frameNum-1 : 0);   // use stats from previous frame for pass 0
                                                                                                        // use stats from pass 0 for pass 1
@@ -487,7 +525,7 @@ MOS_STATUS AvcHucBrcUpdatePkt::DumpHucBrcUpdate(bool isInput)
     {
         //HUC DMEM dump
         ENCODE_CHK_STATUS_RETURN(debugInterface->DumpHucDmem(
-            &m_vdencBrcUpdateDmemBuffer[m_pipeline->m_currRecycledBufIdx][currentPass],
+            m_vdencBrcUpdateDmemBuffer[m_pipeline->m_currRecycledBufIdx][currentPass],
             m_vdencBrcUpdateDmemBufferSize,
             currentPass,
             hucRegionDumpUpdate));

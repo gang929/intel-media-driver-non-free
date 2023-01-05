@@ -45,8 +45,6 @@
 #include "ddi_encode_functions.h"
 #include "ddi_vp_functions.h"
 #include "media_libva_register.h"
-#include "media_libva_decoder.h"
-#include "media_libva_encoder.h"
 
 MEDIA_MUTEX_T MediaLibvaInterfaceNext::m_GlobalMutex = MEDIA_MUTEX_INITIALIZER;
 
@@ -1205,14 +1203,18 @@ VAStatus MediaLibvaInterfaceNext::CreateContext (
     else
     {
         DDI_ASSERTMESSAGE("DDI: Invalid configID");
-        vaStatus = VA_STATUS_ERROR_INVALID_CONFIG;
+        return VA_STATUS_ERROR_INVALID_CONFIG;
     }
-
+    if(vaStatus != VA_STATUS_SUCCESS)
+    {
+        return vaStatus;
+    }
     if(*context < DDI_MEDIA_VACONTEXTID_BASE)
     {
         DDI_ASSERTMESSAGE("DDI: Invalid contextID");
         return VA_STATUS_ERROR_INVALID_CONTEXT;
     }
+
     return vaStatus;
 }
 
@@ -1232,6 +1234,12 @@ VAStatus MediaLibvaInterfaceNext::DestroyContext (
     CompType componentIndex = MapComponentFromCtxType(ctxType);
     DDI_CHK_NULL(mediaDrvCtx->m_compList[componentIndex], "nullptr complist", VA_STATUS_ERROR_INVALID_CONTEXT);
 
+    if(componentIndex != CompCodec && componentIndex != CompEncode &&
+        componentIndex != CompDecode && componentIndex != CompVp &&
+        componentIndex != CompCp)
+    {
+        return VA_STATUS_ERROR_INVALID_CONTEXT;
+    }
     return mediaDrvCtx->m_compList[componentIndex]->DestroyContext(ctx, context);
 }
 
@@ -1587,11 +1595,6 @@ VAStatus MediaLibvaInterfaceNext::CopySurfaceToImage(
         }
     }
 
-    if (image->format.fourcc != VA_FOURCC_NV12)
-    {
-       flag = flag | MOS_LOCKFLAG_NO_SWIZZLE;
-    }
-
     void *surfData = MediaLibvaUtilNext::LockSurface(surface, flag);
     if (surfData == nullptr)
     {
@@ -1608,30 +1611,8 @@ VAStatus MediaLibvaInterfaceNext::CopySurfaceToImage(
         return vaStatus;
     }
 
-    uint8_t *ySrc = nullptr;
+    uint8_t *ySrc = (uint8_t*)surfData;
     uint8_t *yDst = (uint8_t*)imageData;
-    uint8_t *swizzleData = nullptr;
-
-    if (!surface->pMediaCtx->bIsAtomSOC && surface->TileType != I915_TILING_NONE && image->format.fourcc != VA_FOURCC_NV12)
-    {
-        swizzleData = (uint8_t*)MOS_AllocMemory(surface->data_size);
-        if (nullptr != swizzleData)
-        {
-            MediaLibvaUtilNext::SwizzleSurface(surface->pMediaCtx, surface->pGmmResourceInfo, surfData, (MOS_TILE_TYPE)surface->TileType, (uint8_t*)swizzleData, false);
-            ySrc = swizzleData;
-        }
-        else
-        {
-             DDI_ASSERTMESSAGE("nullptr swizzleData.");
-             UnmapBuffer(ctx, image->buf);
-             MediaLibvaUtilNext::UnlockSurface(surface);
-             return VA_STATUS_ERROR_INVALID_BUFFER;
-        }
-    }
-    else
-    {
-        ySrc = (uint8_t*)surfData;
-    }
 
     CopyPlane(yDst, image->pitches[0], ySrc, surface->iPitch, image->height);
     if (image->num_planes > 1)
@@ -1654,11 +1635,6 @@ VAStatus MediaLibvaInterfaceNext::CopySurfaceToImage(
         }
     }
 
-    if (nullptr != swizzleData)
-    {
-        MOS_FreeMemory(swizzleData);
-        swizzleData = nullptr;
-    }
     vaStatus = UnmapBuffer(ctx, image->buf);
     if (vaStatus != VA_STATUS_SUCCESS)
     {
@@ -2293,7 +2269,6 @@ VAStatus MediaLibvaInterfaceNext::QuerySurfaceAttributes(
 
     DDI_CHK_NULL(ctx,        "nullptr ctx",         VA_STATUS_ERROR_INVALID_CONTEXT);
     DDI_CHK_NULL(attribsNum, "nullptr attribsNum",  VA_STATUS_ERROR_INVALID_PARAMETER);
-    DDI_CHK_NULL(attribList, "nullptr attribList",  VA_STATUS_ERROR_INVALID_PARAMETER);
 
     PDDI_MEDIA_CONTEXT mediaCtx = GetMediaContext(ctx);
     DDI_CHK_NULL(mediaCtx,             "nullptr mediaCtx", VA_STATUS_ERROR_INVALID_CONTEXT);

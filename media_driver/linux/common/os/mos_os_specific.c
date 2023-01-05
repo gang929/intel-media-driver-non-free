@@ -1583,6 +1583,11 @@ MOS_STATUS Mos_Specific_SetGpuContext(
 
         if (pOsInterface->apoMosEnabled)
         {
+            if(MEDIA_IS_SKU(&pOsInterface->pOsContext->m_skuTable, FtrProtectedGEMContextPatch))
+            {
+                GpuContextSpecificNext* GpuCtxSpecific = MosInterface::GetGpuContext(pOsInterface->osStreamState, pOsInterface->CurrentGpuContextHandle);
+                MOS_OS_CHK_STATUS_RETURN(GpuCtxSpecific->PatchGPUContextProtection(pOsInterface->osStreamState));
+            }
             MOS_OS_CHK_STATUS_RETURN(MosInterface::SetGpuContext(
                 pOsInterface->osStreamState,
                 pOsContextSpecific->GetGpuContextHandle(GpuContext)));
@@ -7112,6 +7117,8 @@ MOS_STATUS Mos_Specific_InitInterface(
     pOsInterface->apoMosEnabled             = pOsDriverContext->m_apoMosEnabled;
     if (pOsInterface->apoMosEnabled)
     {
+        MOS_OS_CHK_NULL(pOsDriverContext->m_osDeviceContext);
+        pOsInterface->bNullHwIsEnabled  = pOsDriverContext->m_osDeviceContext->GetNullHwIsEnabled();
         pOsInterface->streamStateIniter = true;
         MOS_OS_CHK_STATUS(MosInterface::CreateOsStreamState(
             &pOsInterface->osStreamState,

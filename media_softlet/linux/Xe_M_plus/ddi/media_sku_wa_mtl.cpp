@@ -222,12 +222,13 @@ static bool InitMtlMediaSkuExt(struct GfxDeviceInfo *devInfo,
         compressibleSurfaceEnable,
         "Enable Compressible Surface Creation",
         MediaUserSetting::Group::Device);
-
+        
+#ifdef _MMC_SUPPORTED
     if (compressibleSurfaceEnable)
     {
         MEDIA_WR_SKU(skuTable, FtrCompressibleSurfaceDefault, 1);
     }
-
+#endif
     //Disable LocalMemory for all iGraphics
     MEDIA_WR_SKU(skuTable, FtrLocalMemory, 0);
 
@@ -281,6 +282,8 @@ static bool InitMtlMediaWaExt(struct GfxDeviceInfo *devInfo,
 
     /* Turn off MMC for VPP, need to remove once turn it on */
     MEDIA_WR_WA(waTable, WaDisableVPMmc, 0);
+
+    MEDIA_WR_WA(waTable, WaDisableSetObjectCapture, 1);
 
     return true;
 }

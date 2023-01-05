@@ -654,6 +654,8 @@ MOS_STATUS CodechalEncoderState::Execute(void *params)
 {
     CODECHAL_ENCODE_FUNCTION_ENTER;
 
+    PERF_UTILITY_AUTO(__FUNCTION__, PERF_ENCODE, PERF_LEVEL_HAL);
+
     MOS_TraceEventExt(EVENT_CODECHAL_EXECUTE, EVENT_TYPE_START,
             &m_codecFunction, sizeof(m_codecFunction),
             nullptr, 0);
@@ -3185,7 +3187,7 @@ MOS_STATUS CodechalEncoderState::StartStatusReport(
     }
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_perfProfiler->AddPerfCollectStartCmd((void*)this, m_osInterface, m_miInterface, cmdBuffer));
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(NullHW::StartPredicate(m_miInterface, cmdBuffer));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(NullHW::StartPredicate(m_osInterface, m_miInterface, cmdBuffer));
 
     return eStatus;
 }
@@ -3203,7 +3205,7 @@ MOS_STATUS CodechalEncoderState::EndStatusReport(
     CODECHAL_ENCODE_FUNCTION_ENTER;
 
     CODECHAL_ENCODE_CHK_NULL_RETURN(cmdBuffer);
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(NullHW::StopPredicate(m_miInterface, cmdBuffer));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(NullHW::StopPredicate(m_osInterface, m_miInterface, cmdBuffer));
 
     // Update the tag in GPU Sync eStatus buffer (H/W Tag) to match the current S/W tag if applicable
     if (m_frameTrackingEnabled && m_osInterface->bTagResourceSync)
@@ -4441,7 +4443,7 @@ MOS_STATUS CodechalEncoderState::GetStatusReport(
         }
         codecStatus[i] = *encodeStatusReport;
 
-        NullHW::StatusReport((uint32_t &)codecStatus[i].CodecStatus,
+        NullHW::StatusReport(m_osInterface, (uint32_t &)codecStatus[i].CodecStatus,
                                         codecStatus[i].bitstreamSize);
     }
 
