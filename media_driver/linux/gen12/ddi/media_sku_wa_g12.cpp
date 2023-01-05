@@ -285,11 +285,13 @@ static bool InitTglMediaSku(struct GfxDeviceInfo *devInfo,
         compressibleSurfaceEnable,
         "Enable Compressible Surface Creation",
         MediaUserSetting::Group::Device);
-
+        
+#ifdef _MMC_SUPPORTED
     if (compressibleSurfaceEnable)
     {
         MEDIA_WR_SKU(skuTable, FtrCompressibleSurfaceDefault, 1);
     }
+#endif
 
     MEDIA_WR_SKU(skuTable, FtrHDR, 1);
 
@@ -363,6 +365,7 @@ static bool InitTglMediaWa(struct GfxDeviceInfo *devInfo,
     MEDIA_WR_WA(waTable, Wa_22010493002, 1);
 
     MEDIA_WR_WA(waTable, Wa_Vp9UnalignedHeight, 1);
+    MEDIA_WR_WA(waTable, WaDisableSetObjectCapture, 0);
     return true;
 }
 

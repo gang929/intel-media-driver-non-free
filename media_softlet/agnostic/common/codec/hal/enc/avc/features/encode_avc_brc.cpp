@@ -190,21 +190,25 @@ MOS_STATUS AvcEncodeBRC::AllocateResources()
     // VDENC Statistics buffer
     allocParamsForBufferLinear.dwBytes  = MOS_ALIGN_CEIL(brcSettings.vdencBrcStatsBufferSize, CODECHAL_PAGE_SIZE);
     allocParamsForBufferLinear.pBufName = "VDENC BRC Statistics Buffer";
+    allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_WRITE;
     ENCODE_CHK_STATUS_RETURN(m_basicFeature->m_recycleBuf->RegisterResource(VdencStatsBuffer, allocParamsForBufferLinear, 1));
 
     // VDENC BRC PAK MMIO buffer
     allocParamsForBufferLinear.dwBytes = sizeof(VdencBrcPakMmio);
     allocParamsForBufferLinear.pBufName = "VDENC BRC PAK MMIO Buffer";
+    allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ_WRITE_CACHE;
     m_basicFeature->m_recycleBuf->RegisterResource(VdencBrcPakMmioBuffer, allocParamsForBufferLinear, 1);
 
     // Debug buffer
     allocParamsForBufferLinear.dwBytes  = MOS_ALIGN_CEIL(brcSettings.vdencBrcDbgBufferSize, CODECHAL_PAGE_SIZE);
     allocParamsForBufferLinear.pBufName = "VDENC BRC Debug Buffer";
+    allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ_WRITE_CACHE;
     ENCODE_CHK_STATUS_RETURN(m_basicFeature->m_recycleBuf->RegisterResource(VdencBrcDebugBuffer, allocParamsForBufferLinear, 1));
 
     // BRC history buffer
     allocParamsForBufferLinear.dwBytes = MOS_ALIGN_CEIL(brcSettings.vdencBrcHistoryBufferSize, CODECHAL_PAGE_SIZE);
     allocParamsForBufferLinear.pBufName = "VDENC BRC History Buffer";
+    allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ_WRITE_CACHE;
     ENCODE_CHK_STATUS_RETURN(m_basicFeature->m_recycleBuf->RegisterResource(VdencBRCHistoryBuffer, allocParamsForBufferLinear, 1));
 
     // VDENC uses second level batch buffer for image state cmds
@@ -642,7 +646,7 @@ MOS_STATUS AvcEncodeBRC::SetDmemForUpdate(void* params, uint16_t numPasses, uint
     hucVdencBrcUpdateDmem->UPD_LA_TargetSize_U32    = avcPicParams->TargetFrameSize << 3;
     hucVdencBrcUpdateDmem->UPD_TCBRC_SCENARIO_U8    = 0;  // Temporal fix because of DDI flag deprication. Use Cloud Gaming mode by default
     hucVdencBrcUpdateDmem->UPD_NumSlicesForRounding = GetAdaptiveRoundingNumSlices();
-    hucVdencBrcUpdateDmem->UPD_UserMaxFramePB       = avcPicParams->TargetFrameSize;
+    hucVdencBrcUpdateDmem->UPD_UserMaxFramePB       = avcSeqParams->UserMaxPBFrameSize;
 
     if (avcSeqParams->LookaheadDepth == 0 && avcPicParams->TargetFrameSize > 0 &&
         (hucVdencBrcUpdateDmem->UPD_TCBRC_SCENARIO_U8 == 2 || avcSeqParams->UserMaxPBFrameSize <= avcPicParams->TargetFrameSize * 2))

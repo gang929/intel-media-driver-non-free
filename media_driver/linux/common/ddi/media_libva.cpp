@@ -1569,7 +1569,7 @@ VAStatus DdiMedia_GetDeviceFD (
     DDI_CHK_NULL(pDevicefd,    "nullptr pDevicefd", VA_STATUS_ERROR_INVALID_CONTEXT);
 
     // If libva failes to open the graphics card, try to open it again within Media Driver
-    if(pDRMState->fd < 0 || pDRMState->fd == 0 )
+    if(pDRMState->fd < 0)
     {
         DDI_ASSERTMESSAGE("DDI:LIBVA Wrapper doesn't pass file descriptor for graphics adaptor, trying to open the graphics... ");
         pDRMState->fd = DdiMediaUtil_OpenGraphicsAdaptor((char *)DEVICE_NAME);
@@ -1811,8 +1811,6 @@ VAStatus DdiMedia_InitMediaContext (
         mediaCtx->bIsAtomSOC                = mosCtx.bIsAtomSOC;
         mediaCtx->perfData                  = mosCtx.pPerfData;
 
-        MediaUserSettingsMgr::MediaUserSettingsInit(mediaCtx->platform.eProductFamily);
-
 #ifdef _MMC_SUPPORTED
         if (mosCtx.ppMediaMemDecompState == nullptr)
         {
@@ -1874,7 +1872,6 @@ VAStatus DdiMedia_InitMediaContext (
         {
             MEDIA_WR_WA(waTable, WaHucStreamoutOnlyDisable, 0);
         }
-        MediaUserSettingsMgr::MediaUserSettingsInit(platform.eProductFamily);
 
         GMM_SKU_FEATURE_TABLE gmmSkuTable;
         memset(&gmmSkuTable, 0, sizeof(gmmSkuTable));
@@ -2271,7 +2268,6 @@ VAStatus DdiMedia_Terminate (
         mediaCtx->m_osDeviceContext = MOS_INVALID_HANDLE;
         MOS_FreeMemory(mediaCtx->pGtSystemInfo);
         MosOcaInterfaceSpecific::UninitInterface();
-        MediaUserSettingsMgr::MediaUserSettingClose();
         MosInterface::CloseOsUtilities(&mosCtx);
     }
     else if (mediaCtx->modularizedGpuCtxEnabled)
@@ -2310,7 +2306,6 @@ VAStatus DdiMedia_Terminate (
         gmmOutArgs.pGmmClientContext = mediaCtx->pGmmClientContext;
         GmmAdapterDestroy(&gmmOutArgs);
         mediaCtx->pGmmClientContext = nullptr;
-        MediaUserSettingsMgr::MediaUserSettingClose();
         MosUtilities::MosUtilitiesClose(mediaCtx->m_userSettingPtr);
     }
 
@@ -5260,9 +5255,6 @@ static VAStatus DdiMedia_CopySurfaceToImage(
         }
     }
 
-    if (image->format.fourcc != VA_FOURCC_NV12)
-       flag = flag | MOS_LOCKFLAG_NO_SWIZZLE;
-
     void* surfData = DdiMediaUtil_LockSurface(surface, flag);
 
     if (surfData == nullptr)
@@ -5280,31 +5272,8 @@ static VAStatus DdiMedia_CopySurfaceToImage(
         return vaStatus;
     }
 
-    uint8_t *ySrc = nullptr;
+    uint8_t *ySrc = (uint8_t*)surfData;
     uint8_t *yDst = (uint8_t*)imageData;
-
-    uint8_t* swizzleData = nullptr;
-
-    if (!surface->pMediaCtx->bIsAtomSOC && surface->TileType != I915_TILING_NONE && image->format.fourcc != VA_FOURCC_NV12)
-    {
-        swizzleData = (uint8_t*)MOS_AllocMemory(surface->data_size);
-        if (nullptr != swizzleData)
-        {
-            SwizzleSurface(surface->pMediaCtx, surface->pGmmResourceInfo, surfData, (MOS_TILE_TYPE)surface->TileType, (uint8_t*)swizzleData, false);
-            ySrc = swizzleData;
-        }
-        else
-        {
-             DDI_ASSERTMESSAGE("nullptr swizzleData.");
-             DdiMedia_UnmapBuffer(ctx, image->buf);
-             DdiMediaUtil_UnlockSurface(surface);
-             return VA_STATUS_ERROR_INVALID_BUFFER;
-        }
-    }
-    else
-    {
-        ySrc = (uint8_t*)surfData;
-    }
 
     DdiMedia_CopyPlane(yDst, image->pitches[0], ySrc, surface->iPitch, image->height);
     if (image->num_planes > 1)
@@ -5327,11 +5296,6 @@ static VAStatus DdiMedia_CopySurfaceToImage(
         }
     }
 
-    if (nullptr != swizzleData)
-    {
-        MOS_FreeMemory(swizzleData);
-        swizzleData = nullptr;
-    }
     vaStatus = DdiMedia_UnmapBuffer(ctx, image->buf);
     if (vaStatus != VA_STATUS_SUCCESS)
     {

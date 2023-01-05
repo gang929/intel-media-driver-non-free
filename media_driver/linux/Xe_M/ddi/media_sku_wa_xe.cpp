@@ -322,11 +322,13 @@ static bool InitTglMediaSkuExt(struct GfxDeviceInfo *devInfo,
         compressibleSurfaceEnable,
         "Enable Compressible Surface Creation",
         MediaUserSetting::Group::Device);
-
+        
+#ifdef _MMC_SUPPORTED
     if (compressibleSurfaceEnable)
     {
         MEDIA_WR_SKU(skuTable, FtrCompressibleSurfaceDefault, 1);
     }
+#endif
 
     if (drvInfo->devId == 0xFF20)
     {
@@ -908,6 +910,8 @@ static bool InitDg2MediaWa(struct GfxDeviceInfo *devInfo,
 
     // Remove the WA of DummyReference
     MEDIA_WR_WA(waTable, WaDummyReference, 0);
+
+    MEDIA_WR_WA(waTable, WaDisableSetObjectCapture, 1);
 
     return true;
 }

@@ -36,7 +36,6 @@
 #include "mhw_mi_g12_X.h"
 #include "codechal_mmc_decode_hevc_g12.h"
 #include "codechal_hw_g12_X.h"
-#include "media_user_settings_mgr_g12.h"
 #include "codechal_decode_histogram.h"
 #include "codechal_debug.h"
 #include "hal_oca_interface.h"
@@ -1697,12 +1696,12 @@ MOS_STATUS CodechalDecodeHevcG12::SendPictureLongFormat()
         }
         else
         {
-            CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StartPredicate(m_miInterface, cmdBufferInUse));
+            CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StartPredicate(m_osInterface, m_miInterface, cmdBufferInUse));
         }
     }
     else
     {
-        CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StartPredicate(m_miInterface, cmdBufferInUse));
+        CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StartPredicate(m_osInterface, m_miInterface, cmdBufferInUse));
     }
 
     if (CodecHalDecodeScalabilityIsScalableMode(m_scalabilityState))
@@ -1862,12 +1861,12 @@ MOS_STATUS CodechalDecodeHevcG12::AddPipeEpilog(
         }
         else
         {
-            CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StopPredicate(m_miInterface, cmdBufferInUse));
+            CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StopPredicate(m_osInterface, m_miInterface, cmdBufferInUse));
         }
     }
     else
     {
-        CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StopPredicate(m_miInterface, cmdBufferInUse));
+        CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StopPredicate(m_osInterface, m_miInterface, cmdBufferInUse));
     }
 
     MOS_ZeroMemory(&flushDwParams, sizeof(flushDwParams));
@@ -2138,7 +2137,7 @@ MOS_STATUS CodechalDecodeHevcG12::DecodePrimitiveLevel()
     }
     else
     {
-        CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StopPredicate(m_miInterface, cmdBufferInUse));
+        CODECHAL_DECODE_CHK_STATUS_RETURN(NullHW::StopPredicate(m_osInterface, m_miInterface, cmdBufferInUse));
     }
 
     m_osInterface->pfnReturnCommandBuffer(m_osInterface, &primCmdBuffer, 0);

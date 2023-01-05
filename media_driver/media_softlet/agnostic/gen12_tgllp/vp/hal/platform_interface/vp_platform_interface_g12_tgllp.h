@@ -79,6 +79,11 @@ public:
         return false;
     }
 
+    virtual bool IsAdvanceNativeKernelSupported()
+    {
+        return false;
+    }
+
     virtual MOS_STATUS GetInputFrameWidthHeightAlignUnit(
         PVP_MHWINTERFACE          pvpMhwInterface,
         uint32_t                 &widthAlignUnit,
@@ -91,7 +96,7 @@ public:
         PVP_MHWINTERFACE          pvpMhwInterface,
         const MHW_VEBOX_HEAP    **ppVeboxHeap);
 
-    virtual bool VeboxScalabilitywith4K(
+    virtual bool IsVeboxScalabilityWith4KNotSupported(
         VP_MHWINTERFACE           vpMhwInterface);
 
     virtual MOS_STATUS ConfigureVpScalability(VP_MHWINTERFACE &vpMhwInterface);

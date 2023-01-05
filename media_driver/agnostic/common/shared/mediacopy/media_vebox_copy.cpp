@@ -197,7 +197,7 @@ MOS_STATUS VeboxCopyState::CopyMainSurface(PMOS_RESOURCE src, PMOS_RESOURCE dst)
 
     veboxInterface = m_veboxInterface;
 
-    MOS_GPUCTX_CREATOPTIONS      createOption;
+    MOS_GPUCTX_CREATOPTIONS_ENHANCED      createOption = {};
 
     // no gpucontext will be created if the gpu context has been created before.
     VEBOX_COPY_CHK_STATUS_RETURN(m_osInterface->pfnCreateGpuContext(
@@ -238,6 +238,9 @@ MOS_STATUS VeboxCopyState::CopyMainSurface(PMOS_RESOURCE src, PMOS_RESOURCE dst)
 
     VEBOX_COPY_CHK_STATUS_RETURN(m_osInterface->pfnGetCommandBuffer(m_osInterface, &cmdBuffer, 0));
     VEBOX_COPY_CHK_STATUS_RETURN(InitCommandBuffer(&cmdBuffer));
+
+    // Set Vebox Aux MMIO
+    VEBOX_COPY_CHK_STATUS_RETURN(m_veboxInterface->setVeboxPrologCmd(m_miInterface, &cmdBuffer));
 
     // Prepare Vebox_Surface_State, surface input/and output are the same but the compressed status.
     VEBOX_COPY_CHK_STATUS_RETURN(SetupVeboxSurfaceState(&mhwVeboxSurfaceStateCmdParams, &inputSurface, &outputSurface));

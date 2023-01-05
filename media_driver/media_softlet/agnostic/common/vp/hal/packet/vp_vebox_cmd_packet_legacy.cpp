@@ -1421,6 +1421,13 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetupDiIecpState(
     pVeboxDiIecpCmdParams->pOsResStatisticsOutput         = &m_veboxPacketSurface.pStatisticsOutput->osSurface->OsResource;
     pVeboxDiIecpCmdParams->StatisticsOutputSurfCtrl.Value = m_surfMemCacheCtl->DnDi.StatisticsOutputSurfMemObjCtl;
 
+    if (m_veboxPacketSurface.pLaceOrAceOrRgbHistogram->osSurface)
+    {
+        pVeboxDiIecpCmdParams->pOsResLaceOrAceOrRgbHistogram =
+            &m_veboxPacketSurface.pLaceOrAceOrRgbHistogram->osSurface->OsResource;
+        pVeboxDiIecpCmdParams->LaceOrAceOrRgbHistogramSurfCtrl.Value =
+            m_surfMemCacheCtl->DnDi.LaceOrAceOrRgbHistogramSurfCtrl;
+    }
 finish:
     return eStatus;
 }
@@ -1805,6 +1812,7 @@ MOS_STATUS VpVeboxCmdPacketLegacy::RenderVeboxCmd(
     uint32_t              numPipe         = 1;
     bool                  bMultipipe      = false;
 
+    VP_RENDER_CHK_NULL_RETURN(m_hwInterface);
     VP_RENDER_CHK_NULL_RETURN(m_hwInterface->m_renderHal);
     VP_RENDER_CHK_NULL_RETURN(m_hwInterface->m_renderHal->pRenderHalPltInterface);
     VP_RENDER_CHK_NULL_RETURN(m_hwInterface->m_mhwMiInterface);
@@ -1898,7 +1906,7 @@ MOS_STATUS VpVeboxCmdPacketLegacy::RenderVeboxCmd(
 
         VP_RENDER_CHK_STATUS_RETURN(pRenderHal->pRenderHalPltInterface->AddPerfCollectStartCmd(pRenderHal, pOsInterface, pCmdBufferInUse));
        
-        VP_RENDER_CHK_STATUS_RETURN(NullHW::StartPredicate(pRenderHal->pMhwMiInterface, pCmdBufferInUse));
+        VP_RENDER_CHK_STATUS_RETURN(NullHW::StartPredicate(pOsInterface, pRenderHal->pMhwMiInterface, pCmdBufferInUse));
 
         // Add compressible info of input/output surface to log
         if (this->m_currentSurface && VeboxSurfaceStateCmdParams.pSurfOutput)
@@ -2045,7 +2053,7 @@ MOS_STATUS VpVeboxCmdPacketLegacy::RenderVeboxCmd(
             VP_RENDER_CHK_STATUS_RETURN(pMhwMiInterface->AddWatchdogTimerStopCmd(pCmdBufferInUse));
         }
 
-        VP_RENDER_CHK_STATUS_RETURN(NullHW::StopPredicate(pRenderHal->pMhwMiInterface, pCmdBufferInUse));
+        VP_RENDER_CHK_STATUS_RETURN(NullHW::StopPredicate(pOsInterface, pRenderHal->pMhwMiInterface, pCmdBufferInUse));
 
         VP_RENDER_CHK_STATUS_RETURN(pRenderHal->pRenderHalPltInterface->AddPerfCollectEndCmd(pRenderHal, pOsInterface, pCmdBufferInUse));
 

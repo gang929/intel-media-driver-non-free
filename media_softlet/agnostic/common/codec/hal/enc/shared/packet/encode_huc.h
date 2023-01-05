@@ -188,14 +188,13 @@ namespace encode
         EncodeAllocator        *m_allocator      = nullptr;
         MediaFeatureManager    *m_featureManager = nullptr;
         CodechalHwInterfaceNext *m_hwInterface   = nullptr;
-        MOS_INTERFACE          *m_osInterface    = nullptr;
 
         std::shared_ptr<mhw::vdbox::vdenc::Itf> m_vdencItf = nullptr;
         std::shared_ptr<mhw::vdbox::huc::Itf>   m_hucItf   = nullptr;
         std::shared_ptr<mhw::vdbox::avp::Itf>   m_avpItf   = nullptr;
         std::shared_ptr<mhw::vdbox::mfx::Itf>   m_mfxItf   = nullptr;
 
-        MOS_RESOURCE       m_resHucStatus2Buffer      = {};
+        PMOS_RESOURCE      m_resHucStatus2Buffer      = nullptr;
         MHW_VDBOX_NODE_IND m_vdboxIndex               = MHW_VDBOX_NODE_1;
         bool               m_skuFtrEnableMediaKernels = true;
         uint32_t           m_hucStatus2ImemLoadedMask = 0x40;

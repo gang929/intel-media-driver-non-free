@@ -43,6 +43,26 @@ protected:
     //!
     OsContextNext(){};
 
+    //!
+    //! \brief    Interface for initializing NULL Hardware.
+    //! \details  Interface for initializing NULL Hardware.
+    //! \param    [in] osContext
+    //!           Pointer to OS context.
+    //! \param    [in] osDeviceContext
+    //!           Pointer to OS device context.
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    MOS_STATUS NullHwInit(MOS_CONTEXT_HANDLE osContext);
+
+    //!
+    //! \brief    Destroy NULL Hardware.
+    //! \details  Destroy NULL Hardware.
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    MOS_STATUS NullHwDestroy();
+
 public:
     //!
     //! \brief Destructor for the OsContextNext
@@ -110,6 +130,19 @@ public:
     bool GetOsContextValid() { return m_osContextValid; };
 
     //!
+    //! \brief  Set Null Hw enabled flag
+    //! \param  [in] isNullHwEnabled
+    //!         Flag to indicate if Null Hw is enabled. 
+    //!
+    void SetNullHwIsEnabled(bool isNullHwEnabled) { m_nullHwIsEnabled = isNullHwEnabled; }
+
+    //!
+    //! \brief  Return Null Hw enabled flag
+    //! \return true if Null Hw is enabled, false if not enabled
+    //!
+    bool GetNullHwIsEnabled() { return m_nullHwIsEnabled; }
+
+    //!
     //! \brief  Get GPU context manager of the device
     //! \return GPU context manager
     //!
@@ -126,12 +159,6 @@ public:
     //! \return Cmd buffer manager
     //!
     GMM_CLIENT_CONTEXT *GetGmmClientContext() { return m_gmmClientContext; }
-
-    //!
-    //! \brief  Get OCA RTLog manager
-    //! \return OCA RTLog manager
-    //!
-    MosOcaRTLogMgr *GetOCARTLogMgr() { return m_ocaRTLogMgr; }
 
     //!
     //! \brief  Get MosDecompression
@@ -204,6 +231,25 @@ public:
     //!
     bool IsPoolingResourceEnabled() { return m_resourcePooling; }
 
+    //!
+    //! \brief  Set oca rtlog resource
+    //! \return Set oca rtlog resource and return success
+    //!
+    MOS_STATUS SetRtLogRes(PMOS_RESOURCE ocaRTLogResource)
+    {
+        m_ocaRTLogResource = ocaRTLogResource;
+        return MOS_STATUS_SUCCESS;
+    }
+
+    //!
+    //! \brief  Get OcaRTLogResource
+    //! \return ptr to OcaRTLogResource
+    //!
+    PMOS_RESOURCE GetOcaRTLogResource()
+    {
+        return m_ocaRTLogResource;
+    }
+
 protected:
     //!
     //! \brief  Destory the OS ContextNext Object, internal function, called by cleanup
@@ -218,7 +264,7 @@ protected:
     CmdBufMgrNext                  *m_cmdBufMgr         = nullptr; //!> Cmd buffer manager of the device
     GMM_CLIENT_CONTEXT             *m_gmmClientContext  = nullptr; //!> GMM client context of the device
 
-    MosOcaRTLogMgr                 *m_ocaRTLogMgr       = nullptr; // OCA RTLog manager
+    PMOS_RESOURCE                   m_ocaRTLogResource  = nullptr;
     uint32_t                        m_dumpframeNum = 0;             // For use when dump its compressed surface, override the frame number given from MediaVeboxDecompState
     char                            m_dumpLoc[MAX_PATH] = {0};       // For use when dump its compressed surface, to distinguish each loc's pre/post decomp
 
@@ -240,6 +286,9 @@ protected:
 
     //! \brief  Flag to mark whether the os context is valid
     bool                            m_osContextValid =  false;
+
+    //! \brief  Flag to mark whether Null Hw is enabled
+    bool                            m_nullHwIsEnabled = false;
 
     //! \brief  Whether or not need deallocation on exit
     bool                            m_deallocateOnExit = false;

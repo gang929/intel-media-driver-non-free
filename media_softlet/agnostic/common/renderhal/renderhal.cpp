@@ -1685,6 +1685,50 @@ MOS_STATUS RenderHal_ReAllocateStateHeapsforAdvFeature(
     return eStatus;
 }
 
+MOS_STATUS RenderHal_ReAllocateStateHeapsforAdvFeatureWithSetting(
+    PRENDERHAL_INTERFACE      pRenderHal,
+    PRENDERHAL_ENLARGE_PARAMS pParams,
+    bool                     &bAllocated)
+{
+    PRENDERHAL_STATE_HEAP_SETTINGS pRenderhalSettings = nullptr;
+    MOS_STATUS                     eStatus            = MOS_STATUS_SUCCESS;
+    //------------------------------------------------
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pOsInterface);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pHwSizes);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pRenderHalPltInterface);
+    MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pStateHeap);
+
+    pRenderhalSettings = &pRenderHal->StateHeapSettings;
+    bAllocated         = false;
+
+    //------------------------------------------------
+    // Enlarge the binding table size and surface state size
+    if ((pRenderhalSettings->iBindingTables  == pParams->iBindingTables) &&
+        (pRenderhalSettings->iSurfaceStates  == pParams->iSurfaceStates) &&
+        (pRenderhalSettings->iKernelCount    == pParams->iKernelCount) &&
+        (pRenderhalSettings->iCurbeSize      == pParams->iCurbeSize) &&
+        (pRenderhalSettings->iKernelHeapSize == pParams->iKernelHeapSize))
+    {
+        return MOS_STATUS_SUCCESS;
+    }
+
+    // Free State Heaps(RenderHal_FreeStateHeaps):
+    // Free state heap here will only destroy software allocations.
+    // Will not destroy resources used by hw.
+    MHW_RENDERHAL_CHK_STATUS_RETURN((MOS_STATUS)(pRenderHal->pfnFreeStateHeaps(pRenderHal)));
+
+    pRenderhalSettings->iBindingTables  = pParams->iBindingTables;
+    pRenderhalSettings->iSurfaceStates  = pParams->iSurfaceStates;
+    pRenderhalSettings->iKernelCount    = pParams->iKernelCount;
+    pRenderhalSettings->iCurbeSize      = pParams->iCurbeSize;
+    pRenderhalSettings->iKernelHeapSize = pParams->iKernelHeapSize;
+    eStatus                             = pRenderHal->pfnAllocateStateHeaps(pRenderHal, pRenderhalSettings);
+    bAllocated                          = true;
+
+    return eStatus;
+}
+
 //!
 //! \brief    Free State Heaps (including MHW interfaces)
 //! \details  Free State Heap resources allocated by RenderHal
@@ -4010,7 +4054,12 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
                      (PlaneDefinition == RENDERHAL_PLANES_NV12_2PLANES                    ||
                       PlaneDefinition == RENDERHAL_PLANES_P010                            ||
                       PlaneDefinition == RENDERHAL_PLANES_YUY2_2PLANES                    ||
-                      PlaneDefinition == RENDERHAL_PLANES_YUY2))
+                      PlaneDefinition == RENDERHAL_PLANES_YUY2                            ||
+                      PlaneDefinition == RENDERHAL_PLANES_RGBP                            ||
+                      PlaneDefinition == RENDERHAL_PLANES_PL3                             ||
+                      PlaneDefinition == RENDERHAL_PLANES_YV12                            ||
+                      PlaneDefinition == RENDERHAL_PLANES_R16_UNORM                       ||
+                      PlaneDefinition == RENDERHAL_PLANES_A8))
             {
                 dwSurfaceWidth = dwSurfaceWidth / OutputSurfaceWidthRatio;
             }
@@ -6717,14 +6766,19 @@ MOS_STATUS RenderHal_SendSurfaceStateEntry(
         if (pOsInterface->bUsesGfxAddress)
         {
             uint64_t ui64GfxAddress = 0;
+            uint64_t ui64GfxAddressWithoutOffset = 0;
             ui64GfxAddress |= (uint64_t)(pSurfaceStateToken->DW5.SurfaceBaseAddress64 & 0x0000FFFF) << 32;
             ui64GfxAddress |= (uint64_t)(pSurfaceStateToken->DW4.SurfaceBaseAddress);
+            //Original Resouce Address without surface offset
+            ui64GfxAddressWithoutOffset = ui64GfxAddress - pSurfaceStateToken->DW2.SurfaceOffset;
+
             pdwCmd = (uint32_t*)(pParams->pIndirectStateBase + pParams->iSurfaceStateOffset); //point to the start of current RENDER_SURFACE_STATE_CMD
 
             if (pMosResource->pGmmResInfo->GetUnifiedAuxSurfaceOffset(GMM_AUX_CCS))
             {
                 // Set GFX address of AuxiliarySurfaceBaseAddress
-                uint64_t auxAddress = ui64GfxAddress + (uint64_t)pMosResource->pGmmResInfo->GetUnifiedAuxSurfaceOffset(GMM_AUX_CCS);
+                // Should use original resource address here
+                uint64_t auxAddress = ui64GfxAddressWithoutOffset + (uint64_t)pMosResource->pGmmResInfo->GetUnifiedAuxSurfaceOffset(GMM_AUX_CCS);
                 *(pdwCmd + 10) = (*(pdwCmd + 10) & 0x00000FFF) | (uint32_t)(auxAddress & 0x00000000FFFFF000);
                 *(pdwCmd + 11) = *(pdwCmd + 11) | (uint32_t)((auxAddress & 0x0000FFFF00000000) >> 32);
             }
@@ -6732,7 +6786,8 @@ MOS_STATUS RenderHal_SendSurfaceStateEntry(
             if (pMosResource->pGmmResInfo->GetUnifiedAuxSurfaceOffset(GMM_AUX_CC))
             {
                 // Set GFX address of ClearAddress
-                uint64_t clearAddress = ui64GfxAddress + (uint32_t)pMosResource->pGmmResInfo->GetUnifiedAuxSurfaceOffset(GMM_AUX_CC);
+                // Should use original resource address here
+                uint64_t clearAddress = ui64GfxAddressWithoutOffset + (uint32_t)pMosResource->pGmmResInfo->GetUnifiedAuxSurfaceOffset(GMM_AUX_CC);
                 *(pdwCmd + 12) = (*(pdwCmd + 12) & 0x0000001F) | (uint32_t)(clearAddress & 0x00000000FFFFFFE0);
                 *(pdwCmd + 13) = *(pdwCmd + 13) | (uint32_t)((clearAddress & 0x0000FFFF00000000) >> 32);
             }
@@ -6901,6 +6956,7 @@ MOS_STATUS RenderHal_InitInterface(
     pRenderHal->pfnAllocateStateHeaps                = RenderHal_AllocateStateHeaps;
     pRenderHal->pfnFreeStateHeaps                    = RenderHal_FreeStateHeaps;
     pRenderHal->pfnReAllocateStateHeapsforAdvFeature = RenderHal_ReAllocateStateHeapsforAdvFeature;
+    pRenderHal->pfnReAllocateStateHeapsforAdvFeatureWithSetting = RenderHal_ReAllocateStateHeapsforAdvFeatureWithSetting;
 
     // Slice Shutdown Mode
     pRenderHal->pfnSetSliceShutdownMode       = RenderHal_SetSliceShutdownMode;

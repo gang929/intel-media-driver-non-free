@@ -28,7 +28,6 @@
 #define __MEDIA_LIBVA_UTIL_NEXT_H__
 
 #include "media_libva_common_next.h"
-#include "mos_util_debug.h"
 #include "mos_bufmgr.h"
 #include "vp_common.h"
 
@@ -38,6 +37,8 @@
 #else
 #define DDI_FUNC_ENTER                                                      \
     MOS_FUNCTION_TRACE(MOS_COMPONENT_DDI, MOS_SUBCOMP_SELF)
+#define DDI_FUNCTION_EXIT(status)                                               \
+    MOS_FUNCTION_EXIT(MOS_COMPONENT_DDI, MOS_DDI_SUBCOMP_SELF, status)
 #endif
 
 #define DDI_CODEC_FUNC_ENTER                                                \
@@ -843,6 +844,29 @@ private:
     static int32_t         m_vaFpsSampleSize;
     static bool m_isMediaFpsPrintFpsEnabled;
 MEDIA_CLASS_DEFINE_END(MediaLibvaUtilNext)    
+};
+
+//!
+//! \brief  Helper inline class intended to simplify mutex lock/unlock
+//!         operations primarily used as a stack-allocated object.
+//!         In that case, the compiler guarantees to call the destructor
+//!         leaving the scope. The class becomes handy in functions
+//!         where there are several return statements with different
+//!         exit code value.
+//!
+class MediaLibvaUtilNext_LockGuard {
+private:
+    PMEDIA_MUTEX_T m_pMutex;
+public:
+    MediaLibvaUtilNext_LockGuard(PMEDIA_MUTEX_T pMutex):m_pMutex(pMutex)
+    {
+        MosUtilities::MosLockMutex(m_pMutex);
+    }
+    ~MediaLibvaUtilNext_LockGuard()
+    {
+        MosUtilities::MosUnlockMutex(m_pMutex);
+    }
+MEDIA_CLASS_DEFINE_END(MediaLibvaUtilNext_LockGuard)   
 };
 
 #endif  //__MEDIA_LIBVA_UTIL_NEXT_H__

@@ -1369,6 +1369,13 @@ MOS_STATUS VpVeboxCmdPacket::SetupDiIecpState(
     veboxDiIecpCmdParams.pOsResStatisticsOutput         = &m_veboxPacketSurface.pStatisticsOutput->osSurface->OsResource;
     veboxDiIecpCmdParams.StatisticsOutputSurfCtrl.Value = m_surfMemCacheCtl->DnDi.StatisticsOutputSurfMemObjCtl;
 
+    if (m_veboxPacketSurface.pLaceOrAceOrRgbHistogram->osSurface)
+    {
+        veboxDiIecpCmdParams.pOsResLaceOrAceOrRgbHistogram =
+            &m_veboxPacketSurface.pLaceOrAceOrRgbHistogram->osSurface->OsResource;
+        veboxDiIecpCmdParams.LaceOrAceOrRgbHistogramSurfCtrl.Value =
+            m_surfMemCacheCtl->DnDi.LaceOrAceOrRgbHistogramSurfCtrl;
+    }
 finish:
     return eStatus;
 }
@@ -1607,6 +1614,7 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
     uint32_t              numPipe         = 1;
     bool                  bMultipipe      = false;
 
+    VP_RENDER_CHK_NULL_RETURN(m_hwInterface);
     VP_RENDER_CHK_NULL_RETURN(m_hwInterface->m_renderHal);
     VP_RENDER_CHK_NULL_RETURN(m_miItf);
     VP_RENDER_CHK_NULL_RETURN(m_hwInterface->m_osInterface);
@@ -1691,7 +1699,7 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
 
         VP_RENDER_CHK_STATUS_RETURN(pRenderHal->pRenderHalPltInterface->AddPerfCollectStartCmd(pRenderHal, pOsInterface, pCmdBufferInUse));
 
-        VP_RENDER_CHK_STATUS_RETURN(NullHW::StartPredicateNext(m_miItf, pCmdBufferInUse));
+        VP_RENDER_CHK_STATUS_RETURN(NullHW::StartPredicateNext(pOsInterface, m_miItf, pCmdBufferInUse));
 
         // Add compressible info of input/output surface to log
         if (this->m_currentSurface && VeboxSurfaceStateCmdParams.pSurfOutput)
@@ -1833,7 +1841,7 @@ MOS_STATUS VpVeboxCmdPacket::RenderVeboxCmd(
             VP_RENDER_CHK_STATUS_RETURN(m_miItf->AddWatchdogTimerStopCmd(pCmdBufferInUse));
         }
 
-        VP_RENDER_CHK_STATUS_RETURN(NullHW::StopPredicateNext(m_miItf, pCmdBufferInUse));
+        VP_RENDER_CHK_STATUS_RETURN(NullHW::StopPredicateNext(pOsInterface, m_miItf, pCmdBufferInUse));
 
         VP_RENDER_CHK_STATUS_RETURN(pRenderHal->pRenderHalPltInterface->AddPerfCollectEndCmd(pRenderHal, pOsInterface, pCmdBufferInUse));
 

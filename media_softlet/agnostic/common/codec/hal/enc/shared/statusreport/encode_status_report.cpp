@@ -46,7 +46,8 @@ namespace encode {
     };
 
     EncoderStatusReport::EncoderStatusReport(
-        EncodeAllocator *allocator, bool enableMfx, bool enableRcs, bool enablecp):
+        EncodeAllocator *allocator, PMOS_INTERFACE pOsInterface, bool enableMfx, bool enableRcs, bool enablecp):
+        m_osInterface(pOsInterface),
         m_enableMfx(enableMfx),
         m_enableRcs(enableRcs),
         m_enableCp(enablecp),
@@ -70,6 +71,7 @@ namespace encode {
         param.TileType = MOS_TILE_LINEAR;
         param.Format   = Format_Buffer;
         param.dwBytes  = sizeof(uint32_t) * 2;
+        param.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ_WRITE_NOCACHE;
         param.pBufName = "StatusQueryBufferGlobalCount";
         // keeping status buffer persistent since its used in all command buffers
         param.bIsPersistent = true;
@@ -375,8 +377,9 @@ namespace encode {
             eStatus = NotifyObservers(encodeStatusMfx, encodeStatusRcs, statusReportData);
         }
 
-        NullHW::StatusReport((uint32_t &)statusReportData->codecStatus,
-                                         statusReportData->bitstreamSize);
+        NullHW::StatusReport(m_osInterface, 
+                             (uint32_t &)statusReportData->codecStatus,
+                             statusReportData->bitstreamSize);
 
         *((EncodeStatusReportData *)report) = *statusReportData;
         return eStatus;

@@ -27,7 +27,6 @@
 #include "vp_feature_manager_xe_xpm.h"
 #include "vp_platform_interface_xe_xpm.h"
 #include "vp_vebox_cmd_packet_xe_xpm.h"
-#include "media_user_settings_mgr_g12.h"
 #include "vp_render_sfc_xe_xpm_base.h"
 #include "vp_render_ief.h"
 #include "vp_kernel_config_m12_base.h"
@@ -211,7 +210,7 @@ MOS_STATUS VpPlatformInterfaceXe_Xpm::GetVeboxHeapInfo(
     return eStatus;
 }
 
-bool VpPlatformInterfaceXe_Xpm::VeboxScalabilitywith4K(
+bool VpPlatformInterfaceXe_Xpm::IsVeboxScalabilityWith4KNotSupported(
         VP_MHWINTERFACE          vpMhwInterface)
 {
     if (vpMhwInterface.m_veboxInterface && !(vpMhwInterface.m_veboxInterface->m_veboxScalabilitywith4K))
