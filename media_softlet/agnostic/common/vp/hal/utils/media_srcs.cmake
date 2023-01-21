@@ -18,6 +18,8 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
+media_include_subdirectory(hal_ddi_share)
+
 set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/vp_dumper.cpp
     ${CMAKE_CURRENT_LIST_DIR}/vp_debug.cpp
