@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2011-2017, Intel Corporation
+* Copyright (c) 2022, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,16 +19,18 @@
 * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 * OTHER DEALINGS IN THE SOFTWARE.
 */
-//!
-//! \file     codechal_setting.cpp
-//! \brief    Implements class CodechalSetting
-//!
+#ifndef __VP_USER_SETTING_H__
+#define __VP_USER_SETTING_H__
 
-#include "codechal_setting.h"
+#include "vp_common.h"
 
-
-CodechalSetting *CodechalSetting::CreateCodechalSetting()
+class VpUserSetting
 {
-    return MOS_New(CodechalSetting);
-}
+public:
 
+    static MOS_STATUS InitVpUserSetting(MediaUserSettingSharedPtr userSettingPtr);
+
+MEDIA_CLASS_DEFINE_END(VpUserSetting)
+};
+
+#endif // __VP_USER_SETTING_H__

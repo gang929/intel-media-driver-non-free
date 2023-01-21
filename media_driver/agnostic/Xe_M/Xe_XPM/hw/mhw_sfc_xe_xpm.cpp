@@ -32,6 +32,7 @@
 #include "mhw_sfc_xe_xpm.h"
 #include "mhw_sfc_hwcmd_xe_xpm.h"
 #include "mhw_utilities_xe_xpm.h"
+#include "vp_hal_ddi_utils.h"
 
 #define VALUE_XOFFSET 3
 
@@ -769,7 +770,7 @@ MOS_STATUS MhwSfcInterfaceXe_Xpm::AddSfcState(
             }
         }
 
-        if (VpHal_GetSurfaceColorPack(pSfcStateparamsXe_Xpm->OutputFrameFormat) != VPHAL_COLORPACK_444 &&
+        if (VpHalDDIUtils::GetSurfaceColorPack(pSfcStateparamsXe_Xpm->OutputFrameFormat) != VPHAL_COLORPACK_444 &&
             (dest_startX[m_indexofSfc] %2 != 0))
         {
             if (dest_startX[m_indexofSfc] >= 1)
@@ -821,7 +822,7 @@ MOS_STATUS MhwSfcInterfaceXe_Xpm::AddSfcState(
         MHW_NORMALMESSAGE("SFC%d STATE: dest startx %d endx %d", m_indexofSfc, cmd.DW35.Destinationstartx, cmd.DW35.Destinationendx);
     }
 
-    MHW_CHK_STATUS_RETURN(Mos_AddCommand(pCmdBuffer, &cmd, cmd.byteSize));
+    MHW_CHK_STATUS_RETURN(pOsInterface->pfnAddCommand(pCmdBuffer, &cmd, cmd.byteSize));
 
     return MOS_STATUS_SUCCESS;
 }
