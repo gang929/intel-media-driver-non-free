@@ -39,7 +39,7 @@
 #endif
 #endif
 
-#include "media_user_setting.h"
+#include "media_user_setting_specific.h"
 #include "null_hardware.h"
 extern PerfUtility *g_perfutility;
 
@@ -565,6 +565,7 @@ class MosVeInterface;
 class CommandList;
 class CmdBufMgrNext;
 class MosCpInterface;
+class MosDecompression;
 
 struct MosStreamState
 {
@@ -574,6 +575,8 @@ struct MosStreamState
 
     CommandList        *currentCmdList          = nullptr;  //<! Command list used in async mode
     CmdBufMgrNext      *currentCmdBufMgr        = nullptr;  //<! Cmd buffer manager used in async mode
+    MosDecompression   *mosDecompression        = nullptr;  //<! Decompression State used for decompress
+    bool                enableDecomp            = false;    //<! Set true in StreamState init. If false then not inited
     bool                postponedExecution      = false;    //!< Indicate if the stream is work in postponed execution mode. This flag is only used in aync mode.
 
     bool supportVirtualEngine                   = false;    //!< Flag to indicate using virtual engine interface
