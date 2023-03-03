@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2020, Intel Corporation
+* Copyright (c) 2017-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -225,12 +225,12 @@ MOS_STATUS CodechalHevcSfcStateG12::CheckAndInitialize(
             decProcessingParams->m_inputSurfaceRegion.m_x = 0;
             decProcessingParams->m_inputSurfaceRegion.m_y = 0;
             // Honor the region width from the setting of API instead of overriding.
-            if (decProcessingParams->m_inputSurfaceRegion.m_width == 0)
+            if (decProcessingParams->m_inputSurfaceRegion.m_width == 0 || decProcessingParams->m_inputSurfaceRegion.m_width > m_inputFrameWidth)
             {
                 decProcessingParams->m_inputSurfaceRegion.m_width = m_inputFrameWidth;
             }
             // Honor the region height from the setting of API instead of overriding.
-            if (decProcessingParams->m_inputSurfaceRegion.m_height == 0)
+            if (decProcessingParams->m_inputSurfaceRegion.m_height == 0 || decProcessingParams->m_inputSurfaceRegion.m_height > m_inputFrameHeight)
             {
                 decProcessingParams->m_inputSurfaceRegion.m_height = m_inputFrameHeight;
             }

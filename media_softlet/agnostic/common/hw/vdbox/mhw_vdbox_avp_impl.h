@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2022, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -556,6 +556,30 @@ protected:
         InitRowstoreUserFeatureSettings();
         GetRowstoreCachingAddrs(); // Move to CodecHW in the future.
         InitMmioRegisters();
+    }
+
+    virtual ~Impl()
+    {
+        MHW_FUNCTION_ENTER;
+
+#if (_DEBUG || _RELEASE_INTERNAL)
+        if (m_btdlRowstoreCache.enabled ||
+            m_smvlRowstoreCache.enabled ||
+            m_ipdlRowstoreCache.enabled ||
+            m_dflyRowstoreCache.enabled ||
+            m_dfluRowstoreCache.enabled ||
+            m_dflvRowstoreCache.enabled ||
+            m_cdefRowstoreCache.enabled)
+        {
+            // Report rowstore cache usage status to regkey
+            ReportUserSettingForDebug(
+                m_userSettingPtr,
+                __MEDIA_USER_FEATURE_VALUE_IS_CODEC_ROW_STORE_CACHE_ENABLED,
+                1,
+                MediaUserSetting::Group::Device);
+        }
+#endif
+
     }
 
     // Programming Note: CodecHAL layer must add MFX wait command

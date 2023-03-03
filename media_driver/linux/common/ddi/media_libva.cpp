@@ -774,15 +774,16 @@ static void DdiMedia_FreeSurfaceHeapElements(PDDI_MEDIA_CONTEXT mediaCtx)
         return;
 
     int32_t surfaceNums = mediaCtx->uiNumSurfaces;
-    for (int32_t elementId = 0; elementId < surfaceNums; elementId++)
+    for (int32_t elementId = 0; surfaceNums > 0 && elementId < surfaceHeap->uiAllocatedHeapElements; elementId++)
     {
         PDDI_MEDIA_SURFACE_HEAP_ELEMENT mediaSurfaceHeapElmt = &mediaSurfaceHeapBase[elementId];
-        if (nullptr == mediaSurfaceHeapElmt->pSurface)
+        if (nullptr != mediaSurfaceHeapElmt && nullptr == mediaSurfaceHeapElmt->pSurface)
             continue;
 
         DdiMediaUtil_FreeSurface(mediaSurfaceHeapElmt->pSurface);
         MOS_FreeMemory(mediaSurfaceHeapElmt->pSurface);
         DdiMediaUtil_ReleasePMediaSurfaceFromHeap(surfaceHeap,mediaSurfaceHeapElmt->uiVaSurfaceID);
+        surfaceNums--;
         mediaCtx->uiNumSurfaces--;
     }
 }
@@ -809,14 +810,15 @@ static void DdiMedia_FreeBufferHeapElements(VADriverContextP    ctx)
         return;
 
     int32_t bufNums = mediaCtx->uiNumBufs;
-    for (int32_t elementId = 0; bufNums > 0; ++elementId)
+    for (int32_t elementId = 0; bufNums > 0 && elementId < bufferHeap->uiAllocatedHeapElements; ++elementId)
     {
         PDDI_MEDIA_BUFFER_HEAP_ELEMENT mediaBufferHeapElmt = &mediaBufferHeapBase[elementId];
-        if (nullptr == mediaBufferHeapElmt->pBuffer)
+        if (nullptr != mediaBufferHeapElmt && nullptr == mediaBufferHeapElmt->pBuffer)
             continue;
+        //Note: uiNumBufs will recount in DdiMedia_DestroyBuffer
         DdiMedia_DestroyBuffer(ctx,mediaBufferHeapElmt->uiVaBufferID);
         //Ensure the non-empty buffer to be destroyed.
-        --bufNums;
+        bufNums--;
     }
 }
 
@@ -842,12 +844,14 @@ static void DdiMedia_FreeImageHeapElements(VADriverContextP    ctx)
         return;
 
     int32_t imageNums = mediaCtx->uiNumImages;
-    for (int32_t elementId = 0; elementId < imageNums; ++elementId)
+    for (int32_t elementId = 0; imageNums > 0 && elementId < imageHeap->uiAllocatedHeapElements; ++elementId)
     {
         PDDI_MEDIA_IMAGE_HEAP_ELEMENT mediaImageHeapElmt = &mediaImageHeapBase[elementId];
-        if (nullptr == mediaImageHeapElmt->pImage)
+        if (nullptr != mediaImageHeapElmt && nullptr == mediaImageHeapElmt->pImage)
             continue;
+        //Note: uiNumImages will recount in DdiMedia_DestroyImage
         DdiMedia_DestroyImage(ctx,mediaImageHeapElmt->uiVaImageID);
+        imageNums--;
     }
 }
 
@@ -865,13 +869,14 @@ static void DdiMedia_FreeContextHeap(VADriverContextP ctx, PDDI_MEDIA_HEAP conte
     if (nullptr == mediaContextHeapBase)
         return;
 
-    for (int32_t elementId = 0; elementId < ctxNums; ++elementId)
+    for (int32_t elementId = 0; ctxNums > 0 && elementId < contextHeap->uiAllocatedHeapElements; ++elementId)
     {
         PDDI_MEDIA_VACONTEXT_HEAP_ELEMENT mediaContextHeapElmt = &mediaContextHeapBase[elementId];
-        if (nullptr == mediaContextHeapElmt->pVaContext)
+        if (nullptr != mediaContextHeapElmt && nullptr == mediaContextHeapElmt->pVaContext)
             continue;
         VAContextID vaCtxID = (VAContextID)(mediaContextHeapElmt->uiVaContextID + vaContextOffset);
         DdiMedia_DestroyContext(ctx,vaCtxID);
+        ctxNums--;
     }
 
 }
@@ -5255,9 +5260,6 @@ static VAStatus DdiMedia_CopySurfaceToImage(
         }
     }
 
-    if (image->format.fourcc != VA_FOURCC_NV12)
-       flag = flag | MOS_LOCKFLAG_NO_SWIZZLE;
-
     void* surfData = DdiMediaUtil_LockSurface(surface, flag);
 
     if (surfData == nullptr)
@@ -5275,31 +5277,8 @@ static VAStatus DdiMedia_CopySurfaceToImage(
         return vaStatus;
     }
 
-    uint8_t *ySrc = nullptr;
+    uint8_t *ySrc = (uint8_t*)surfData;
     uint8_t *yDst = (uint8_t*)imageData;
-
-    uint8_t* swizzleData = nullptr;
-
-    if (!surface->pMediaCtx->bIsAtomSOC && surface->TileType != I915_TILING_NONE && image->format.fourcc != VA_FOURCC_NV12)
-    {
-        swizzleData = (uint8_t*)MOS_AllocMemory(surface->data_size);
-        if (nullptr != swizzleData)
-        {
-            SwizzleSurface(surface->pMediaCtx, surface->pGmmResourceInfo, surfData, (MOS_TILE_TYPE)surface->TileType, (uint8_t*)swizzleData, false);
-            ySrc = swizzleData;
-        }
-        else
-        {
-             DDI_ASSERTMESSAGE("nullptr swizzleData.");
-             DdiMedia_UnmapBuffer(ctx, image->buf);
-             DdiMediaUtil_UnlockSurface(surface);
-             return VA_STATUS_ERROR_INVALID_BUFFER;
-        }
-    }
-    else
-    {
-        ySrc = (uint8_t*)surfData;
-    }
 
     DdiMedia_CopyPlane(yDst, image->pitches[0], ySrc, surface->iPitch, image->height);
     if (image->num_planes > 1)
@@ -5322,11 +5301,6 @@ static VAStatus DdiMedia_CopySurfaceToImage(
         }
     }
 
-    if (nullptr != swizzleData)
-    {
-        MOS_FreeMemory(swizzleData);
-        swizzleData = nullptr;
-    }
     vaStatus = DdiMedia_UnmapBuffer(ctx, image->buf);
     if (vaStatus != VA_STATUS_SUCCESS)
     {
