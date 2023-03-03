@@ -382,10 +382,7 @@ MOS_STATUS SwFilterScaling::Configure(VP_PIPELINE_PARAMS &params, bool isInputSu
     // Alpha should be handled in input pipe to avoid alpha data lost from image.
     m_Params.pCompAlpha             = params.pCompAlpha;
 
-    if (surfInput->Rotation == VPHAL_ROTATION_IDENTITY ||
-        surfInput->Rotation == VPHAL_ROTATION_180 ||
-        surfInput->Rotation == VPHAL_MIRROR_HORIZONTAL ||
-        surfInput->Rotation == VPHAL_MIRROR_VERTICAL)
+    if (!VpUtils::IsVerticalRotation(surfInput->Rotation))
     {
         m_Params.rotation.rotationNeeded    = false;
         m_Params.output.dwWidth             = surfOutput->dwWidth;
@@ -1309,7 +1306,8 @@ MOS_STATUS SwFilterHdr::Configure(VP_PIPELINE_PARAMS &params, bool isInputSurf, 
     m_Params.srcColorSpace        = surfInput->ColorSpace;
     m_Params.dstColorSpace        = surfOutput->ColorSpace;
 
-    if (surfInput->pHDRParams->EOTF == VPHAL_HDR_EOTF_SMPTE_ST2084)
+    if (surfInput->pHDRParams->EOTF == VPHAL_HDR_EOTF_SMPTE_ST2084 ||
+       (surfInput->pHDRParams->EOTF == VPHAL_HDR_EOTF_TRADITIONAL_GAMMA_SDR && IS_RGB64_FLOAT_FORMAT(surfInput->Format))) // For FP16 HDR CSC typical usage
     {
         m_Params.hdrMode = VPHAL_HDR_MODE_TONE_MAPPING;
         if (surfOutput->pHDRParams)

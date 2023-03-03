@@ -395,6 +395,15 @@ bool SwFilterDnHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS& params, bool isInpu
         return false;
     }
 
+    // Disable VP features DN for resolution > 4K
+    if (inputSurface &&
+        (inputSurface->rcSrc.bottom > inputSurface->rcSrc.top + VPHAL_RNDR_4K_MAX_HEIGHT ||
+         inputSurface->rcSrc.right > inputSurface->rcSrc.left + VPHAL_RNDR_4K_MAX_WIDTH))
+    {
+        VP_PUBLIC_NORMALMESSAGE("DN is disabled for 4K+ res");
+        return false;
+    }
+
     PVPHAL_SURFACE vphalSurf = isInputSurf ? params.pSrc[surfIndex] : params.pTarget[surfIndex];
     if (vphalSurf && vphalSurf->pDenoiseParams &&
         (vphalSurf->pDenoiseParams->bEnableLuma || vphalSurf->pDenoiseParams->bEnableHVSDenoise))
@@ -712,7 +721,7 @@ bool SwFilterHdrHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS &params, bool isInp
 
     // Temorary solution for menu/FBI not show up : route all S2S uage to HDR kernel path, need to consider RenderBlockedFromCp
 
-    return (bBt2020Output || bToneMapping || bMultiLayerBt2020);
+    return (bBt2020Output || bToneMapping || bMultiLayerBt2020 || bFP16);
 }
 
 SwFilter *SwFilterHdrHandler::CreateSwFilter()

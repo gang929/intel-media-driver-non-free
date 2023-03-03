@@ -571,7 +571,7 @@ MOS_STATUS CodechalDebugInterface::DumpRgbDataOnYUVSurface(
         hasAuxSurf = false;
     }
 
-    if (strcmp(attrName, CodechalDbgAttr::attrReferenceSurfaces) == 0)
+    if (strcmp(attrName, CodechalDbgAttr::attrDecodeReferenceSurfaces) == 0)
     {
         hasRefSurf = true;
     }
@@ -932,7 +932,7 @@ MOS_STATUS CodechalDebugInterface::DumpHucDmem(
 {
     CODECHAL_DEBUG_FUNCTION_ENTER;
 
-    if (!m_configMgr->AttrIsEnabled(MediaDbgAttr::attrHuCDmem))
+    if (!m_configMgr->AttrIsEnabled(MediaDbgAttr::attrHuCDmem) && !MosUtilities::GetTraceSetting())
     {
         return MOS_STATUS_SUCCESS;
     }
@@ -993,7 +993,7 @@ MOS_STATUS CodechalDebugInterface::DumpHucDmem(
         break;
     }
 
-    return DumpBuffer(dmemResource, nullptr, funcName.c_str(), dmemSize);
+    return DumpBuffer(dmemResource, MediaDbgAttr::attrHuCDmem, funcName.c_str(), dmemSize);
 }
 
 std::string CodechalDebugInterface::SetOutputPathKey()
@@ -1019,7 +1019,7 @@ MOS_STATUS CodechalDebugInterface::DumpHucRegion(
 {
     CODECHAL_DEBUG_FUNCTION_ENTER;
 
-    if (!m_configMgr->AttrIsEnabled(MediaDbgAttr::attrHucRegions))
+    if (!m_configMgr->AttrIsEnabled(MediaDbgAttr::attrHucRegions) && !MosUtilities::GetTraceSetting())
     {
         return MOS_STATUS_SUCCESS;
     }
@@ -1080,7 +1080,7 @@ MOS_STATUS CodechalDebugInterface::DumpHucRegion(
         break;
     }
 
-    return DumpBuffer(region, nullptr, funcName.c_str(), regionSize, regionOffset);
+    return DumpBuffer(region, MediaDbgAttr::attrHucRegions, funcName.c_str(), regionSize, regionOffset);
 }
 
 #define FIELD_TO_OFS(field_name) ofs << print_shift << std::setfill(' ') << std::setw(25) << std::left << std::string(#field_name) + ": " << (int64_t)report->field_name << std::endl;
@@ -1228,10 +1228,14 @@ MOS_STATUS CodechalDebugInterface::SetFastDumpConfig(MediaCopyBaseState *mediaCo
         private:
             const std::map<std::string, MEDIA_EVENT_FILTER_KEYID> m_filter = {
                 {MediaDbgAttr::attrDecodeOutputSurface, TR_KEY_DECODE_DSTYUV},
+                {MediaDbgAttr::attrDecodeReferenceSurfaces, TR_KEY_DECODE_REFYUV},
+                {MediaDbgAttr::attrDecodeBitstream, TR_KEY_DECODE_BITSTREAM},
                 {MediaDbgAttr::attrEncodeRawInputSurface, TR_KEY_ENCODE_DATA_INPUT_SURFACE},
                 {MediaDbgAttr::attrReferenceSurfaces, TR_KEY_ENCODE_DATA_REF_SURFACE},
                 {MediaDbgAttr::attrReconstructedSurface, TR_KEY_ENCODE_DATA_RECON_SURFACE},
                 {MediaDbgAttr::attrBitstream, TR_KEY_ENCODE_DATA_BITSTREAM},
+                {MediaDbgAttr::attrHuCDmem, TR_KEY_ENCODE_DATA_HUC_DMEM},
+                {MediaDbgAttr::attrHucRegions, TR_KEY_ENCODE_DATA_HUC_REGION},
             };
         };
 
@@ -1261,18 +1265,25 @@ MOS_STATUS CodechalDebugInterface::SetFastDumpConfig(MediaCopyBaseState *mediaCo
         m_dumpBuffer = [this, dumpEnabled, traceSetting, suffix](
                            PMOS_RESOURCE             resource,
                            const char               *attrName,
-                           const char               *bufferName,
+                           const char               *compName,
                            uint32_t                  size,
                            uint32_t                  offset,
                            CODECHAL_MEDIA_STATE_TYPE mediaState) {
             if ((*dumpEnabled)(attrName))
             {
+                std::string bufferName = "";
+
+                if (!strcmp(attrName, "DecodeBitstream") || !strcmp(attrName, "Bitstream"))
+                {
+                    bufferName = "_Bitstream";
+                }
+
                 MediaDebugFastDump::Dump(
                     *resource,
                     std::string(traceSetting->fastDump.filePath) +
                         std::to_string(m_bufferDumpFrameNum) +
                         '-' +
-                        bufferName +
+                        compName + bufferName +
                         suffix,
                     size,
                     offset);
