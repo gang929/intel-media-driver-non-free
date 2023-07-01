@@ -107,7 +107,7 @@ MOS_STATUS Mpeg2BasicFeature::Update(void *params)
     m_mpeg2PicParams                      = (CodecDecodeMpeg2PicParams *)decodeParams->m_picParams;
     m_mpeg2SliceParams                    = (CodecDecodeMpeg2SliceParams *)decodeParams->m_sliceParams;
     m_mpeg2IqMatrixBuffer                 = (CodecMpeg2IqMatrix *)decodeParams->m_iqMatrixBuffer;
-    m_mpeg2MbParams                       = (CodecDecodeMpeg2MbParmas *)decodeParams->m_macroblockParams;
+    m_mpeg2MbParams                       = (CodecDecodeMpeg2MbParams *)decodeParams->m_macroblockParams;
     m_numMacroblocks                      = decodeParams->m_numMacroblocks;
     m_mpeg2ISliceConcealmentMode          = decodeParams->m_mpeg2ISliceConcealmentMode;
     m_mpeg2PbSliceConcealmentMode         = decodeParams->m_mpeg2PBSliceConcealmentMode;
@@ -403,7 +403,7 @@ MOS_STATUS Mpeg2BasicFeature::SetMbStructs()
     DECODE_FUNC_CALL();
 
     DECODE_CHK_NULL(m_mpeg2MbParams);
-    CodecDecodeMpeg2MbParmas *mb = m_mpeg2MbParams;
+    CodecDecodeMpeg2MbParams *mb = m_mpeg2MbParams;
 
     //MPEG2 Error Concealment for IT mode from Gen6+
     m_copiedDataNeeded = (m_incompletePicture || (m_numMacroblocks != (m_picWidthInMb * m_picHeightInMb)));
@@ -411,9 +411,9 @@ MOS_STATUS Mpeg2BasicFeature::SetMbStructs()
     uint32_t startMbIdx = m_totalNumMbsRecv;
     m_totalNumMbsRecv += m_numMacroblocks;
 
-    if (m_mbRecord.size() < m_totalNumSlicesRecv)
+    if (m_mbRecord.size() < m_totalNumMbsRecv)
     {
-        m_mbRecord.resize(m_totalNumSlicesRecv);
+        m_mbRecord.resize(m_totalNumMbsRecv);
     }
 
     uint16_t expectedMBAddress = (m_incompletePicture) ? m_lastMbAddress : 0;
@@ -427,7 +427,7 @@ MOS_STATUS Mpeg2BasicFeature::SetMbStructs()
              uint16_t skippedMBs = mb[mbIdx].m_mbAddr - expectedMBAddress;
         }
 
-        m_mbRecord[mbIdx].recordMbParam  = *mb;
+        m_mbRecord[mbIdx].recordMbParam  = mb[mbIdx];
         m_mbRecord[mbIdx].skippedMBs     = skippedMBs;
         m_mbRecord[mbIdx].expectedMBAddr = expectedMBAddress;
 
@@ -453,7 +453,6 @@ MOS_STATUS Mpeg2BasicFeature::SetMbStructs()
                 m_incompletePicture = false;
             }
         }
-        mb++;
     }
 
     return MOS_STATUS_SUCCESS;

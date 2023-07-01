@@ -176,6 +176,7 @@
 #define __MOS_USER_FEATURE_KEY_MESSAGE_HLT_ENABLED                  "Message HLT Enabled"
 #define __MOS_USER_FEATURE_KEY_MESSAGE_HLT_OUTPUT_DIRECTORY         "Message HLT Output Directory"
 #define __MOS_USER_FEATURE_KEY_MESSAGE_PRINT_ENABLED                "Message Print Enabled"
+#define __MOS_USER_FEATURE_KEY_FLUSH_LOG_FILE_BEFORE_SUBMISSION     "Flush Log File Before Submission"
 
 //!
 //! \brief Message level and assert flag for each component is set through the user feature keys
@@ -428,6 +429,7 @@
 #define __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_ENABLE_MUL_PROC     "Perf Profiler Multi Process Support"
 #define __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_OUTPUT_FILE_NAME    "Perf Profiler Output File Name"
 #define __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_BUFFER_SIZE_KEY     "Perf Profiler Buffer Size"
+#define __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_MUL_PROC_SINGLE_BIN "Perf Profiler Multi Process Single Binary"
 
 #define __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_REGISTER_KEY_1      "Perf Profiler Register 1"
 #define __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_REGISTER_KEY_2      "Perf Profiler Register 2"

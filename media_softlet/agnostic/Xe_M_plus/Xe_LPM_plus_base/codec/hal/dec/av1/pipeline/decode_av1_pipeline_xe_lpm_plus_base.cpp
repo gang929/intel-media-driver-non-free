@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2021, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -60,6 +60,11 @@ namespace decode
         DECODE_CHK_STATUS(RegisterPacket(DecodePacketId(this, av1DecodePacketId), m_av1DecodePkt));
         DECODE_CHK_STATUS(m_av1DecodePkt->Init());
 
+        if (m_numVdbox == 2)
+        {
+            m_allowVirtualNodeReassign = true;
+        }
+
         return MOS_STATUS_SUCCESS;
     }
 
@@ -84,7 +89,16 @@ namespace decode
         }
         scalPars.numVdbox = m_numVdbox;
 
-        m_mediaContext->SwitchContext(VdboxDecodeFunc, &scalPars, &m_scalability);
+        if (m_allowVirtualNodeReassign)
+        {
+            // reassign decoder virtual node at the first frame for each stream
+            DECODE_CHK_STATUS(m_mediaContext->ReassignContextForDecoder(basicFeature->m_frameNum, &scalPars, &m_scalability));
+            m_mediaContext->SetLatestDecoderVirtualNode();
+        }
+        else
+        {
+            DECODE_CHK_STATUS(m_mediaContext->SwitchContext(VdboxDecodeFunc, &scalPars, &m_scalability));
+        }
         DECODE_CHK_NULL(m_scalability);
 
         m_decodeContext = m_osInterface->pfnGetGpuContext(m_osInterface);
@@ -139,7 +153,7 @@ namespace decode
                         m_featureManager->GetFeature(DecodeFeatureIDs::decodeDownSampling));
                     if (downSamplingFeature != nullptr) {
                         auto frameIdx                   = basicFeature->m_curRenderPic.FrameIdx;
-                        inputParameters.sfcOutputPicRes = &downSamplingFeature->m_outputSurfaceList[frameIdx].OsResource;
+                        inputParameters.sfcOutputSurface = &downSamplingFeature->m_outputSurfaceList[frameIdx];
                         DumpDownSamplingParams(*downSamplingFeature);
                     });
 #endif
@@ -208,7 +222,9 @@ namespace decode
                 {
                     DECODE_CHK_STATUS(UserFeatureReport());
                 }
-                basicFeature->m_frameNum++;
+
+                DecodeFrameIndex++;
+                basicFeature->m_frameNum = DecodeFrameIndex;
 
                 DECODE_CHK_STATUS(m_statusReport->Reset());
             }
@@ -273,10 +289,12 @@ namespace decode
             pair.second->Destroy();
         }
 
+#ifdef _MMC_SUPPORTED
         if (m_mmcState != nullptr)
         {
             MOS_Delete(m_mmcState);
         }
+#endif
 
         return Av1Pipeline::Uninitialize();
     }

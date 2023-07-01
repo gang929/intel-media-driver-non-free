@@ -154,7 +154,7 @@ MOS_STATUS JpegDecodePicPkt::CalculateCommandSize(uint32_t &commandBufferSize, u
 MHW_SETPAR_DECL_SRC(MFX_PIPE_MODE_SELECT, JpegDecodePicPkt)
 {
     params.Mode                                           = m_jpegBasicFeature->m_mode;
-    params.streamOutEnabled                               = false;
+    params.streamOutEnable                                = false;
     params.deblockerStreamOutEnable                       = false;
     params.preDeblockingOutputEnablePredeblockoutenable   = true;
     params.postDeblockingOutputEnablePostdeblockoutenable = false;
@@ -420,6 +420,7 @@ MOS_STATUS JpegDecodePicPkt::AddAllCmds_MFD_JPEG_BSD_OBJECT(PMOS_COMMAND_BUFFER 
     for (uint16_t scanCount = 0; scanCount < m_jpegBasicFeature->m_jpegScanParams->NumScans; scanCount++)
     {
         uint16_t numComponents = m_jpegBasicFeature->m_jpegScanParams->ScanHeader[scanCount].NumComponents;
+        MOS_ZeroMemory(&params, sizeof(params));
 
         params.indirectDataLength     = m_jpegBasicFeature->m_jpegScanParams->ScanHeader[scanCount].DataLength;
         params.dataStartAddress       = m_jpegBasicFeature->m_jpegScanParams->ScanHeader[scanCount].DataOffset;

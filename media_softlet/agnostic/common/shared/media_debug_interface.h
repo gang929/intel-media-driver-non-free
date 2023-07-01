@@ -27,7 +27,7 @@
 #ifndef __MEDIA_DEBUG_INTERFACE_H__
 #define __MEDIA_DEBUG_INTERFACE_H__
 
-#if ((_DEBUG || _RELEASE_INTERNAL) && !EMUL)
+#if ((_DEBUG || _RELEASE_INTERNAL))
 #define USE_MEDIA_DEBUG_TOOL 1
 #define MEDIA_DEBUG_TOOL(expr) expr;
 
@@ -36,7 +36,7 @@
 #include "mhw_cp_interface.h"
 #include "media_debug_config_manager.h"
 #include "media_debug_utils.h"
-#include "media_copy.h"
+#include "media_copy_wrapper.h"
 #include <sstream>
 #include <fstream>
 #include <functional>

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2021, Intel Corporation
+* Copyright (c) 2017-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -97,7 +97,6 @@ MOS_STATUS CodechalEncoderState::CreateGpuContexts()
                 setVideoNode,
                 &videoGpuNode));
             m_videoNodeAssociationCreated = true;
-            m_osInterface->pfnSetLatestVirtualNode(m_osInterface, videoGpuNode);
         }
         m_videoGpuNode = videoGpuNode;
 
@@ -672,6 +671,11 @@ MOS_STATUS CodechalEncoderState::Execute(void *params)
 
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->SetWatchdogTimerThreshold(m_frameWidth, m_frameHeight));
 
+    if (m_frameNum == 0)
+    {
+        m_osInterface->pfnSetLatestVirtualNode(m_osInterface, m_videoGpuNode);
+    }
+
     if (m_codecFunction == CODECHAL_FUNCTION_FEI_PRE_ENC)
     {
         CODECHAL_ENCODE_CHK_STATUS_RETURN(ExecutePreEnc(encodeParams));
@@ -1080,8 +1084,9 @@ MOS_STATUS CodechalEncoderState::AllocateMDFResources()
 
         if (m_cmDev == nullptr)
         {
+            CODECHAL_ENCODE_CHK_NULL_RETURN(m_osInterface);
             m_osInterface->pfnNotifyStreamIndexSharing(m_osInterface);
-            CODECHAL_ENCODE_CHK_STATUS_RETURN(CreateCmDevice(m_osInterface->pOsContext, m_cmDev, devOp));
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnCreateCmDevice(m_osInterface->pOsContext, m_cmDev, devOp, CM_DEVICE_CREATE_PRIORITY_DEFAULT));
         }
         //just WA for issues in MDF null support
         if (!m_cmQueue)
@@ -1105,9 +1110,9 @@ MOS_STATUS CodechalEncoderState::DestroyMDFResources()
         m_cmDev->DestroyTask(m_cmTask);
         m_cmTask = nullptr;
     }
-    if (m_cmDev)
+    if (m_cmDev && m_osInterface)
     {
-        DestroyCmDevice(m_cmDev);
+        m_osInterface->pfnDestroyCmDevice(m_cmDev);
         m_cmDev = nullptr;
     }
 
@@ -4118,6 +4123,9 @@ MOS_STATUS CodechalEncoderState::GetStatusReport(
         PCODEC_REF_LIST refList = encodeStatusReport->pCurrRefList;
         uint32_t localCount = encodeStatus->dwStoredData - globalHWStoredData;
 
+        encodeStatusReport->pFrmStatsInfo = codecStatus[i].pFrmStatsInfo;
+        encodeStatusReport->pBlkStatsInfo = codecStatus[i].pBlkStatsInfo;
+
         if (localCount == 0 || localCount > globalCount)
         {
             CODECHAL_DEBUG_TOOL(
@@ -4259,7 +4267,7 @@ MOS_STATUS CodechalEncoderState::GetStatusReport(
                     return eStatus;
                 }
 
-                CODECHAL_ENCODE_CHK_STATUS_RETURN(GetStatusReportExt(encodeStatus, encodeStatusReport, i == (numStatus - 1)));
+                CODECHAL_ENCODE_CHK_STATUS_RETURN(GetStatusReportExt(encodeStatus, encodeStatusReport, index));
 
                 if (m_osInterface->osCpInterface->IsCpEnabled() && m_skipFrameBasedHWCounterRead == false)
                 {
@@ -4712,7 +4720,7 @@ MOS_STATUS CodechalEncoderState::SendPredicationCommand(
         CODECHAL_ENCODE_CHK_STATUS_RETURN(m_miInterface->AddMiFlushDwCmd(cmdBuffer, &flushDwParams));
 
         // load presPredication to general purpose register0
-        MHW_MI_STORE_REGISTER_MEM_PARAMS    loadRegisterMemParams;
+        MHW_MI_LOAD_REGISTER_MEM_PARAMS    loadRegisterMemParams;
         MOS_ZeroMemory(&loadRegisterMemParams, sizeof(loadRegisterMemParams));
         loadRegisterMemParams.presStoreBuffer = m_encodeParams.m_presPredication;
         loadRegisterMemParams.dwOffset = (uint32_t)m_encodeParams.m_predicationResOffset;

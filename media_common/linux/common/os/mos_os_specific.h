@@ -55,6 +55,8 @@ typedef void* HINSTANCE;
 #define Mos_InitInterface(osInterface, osDriverContext, component)                 \
     Mos_InitOsInterface(osInterface, osDriverContext, component)
 
+#define Mos_ResourceIsNull(resource)    MosInterface::MosResourceIsNull(resource)
+
 #define MAKEFOURCC(ch0, ch1, ch2, ch3)  \
     ((uint32_t)(uint8_t)(ch0) | ((uint32_t)(uint8_t)(ch1) << 8) |  \
     ((uint32_t)(uint8_t)(ch2) << 16) | ((uint32_t)(uint8_t)(ch3) << 24 ))
@@ -375,6 +377,11 @@ struct MOS_SURFACE
     bool                bGMMTileEnabled;                                        //!< [out] GMM defined tile mode flag
     uint32_t            YoffsetForUplane;                                       //!< [out] Y offset from U plane to Y plane.
     uint32_t            YoffsetForVplane;                                       //!< [out] Y offset from V plane to Y plane.
+    // Surface cache Usage
+    uint32_t CacheSetting;
+#if (_DEBUG || _RELEASE_INTERNAL)
+    uint32_t oldCacheSetting;
+#endif
 };
 typedef MOS_SURFACE *PMOS_SURFACE;
 
@@ -691,7 +698,6 @@ struct _MOS_OS_CONTEXT
     GMM_CLIENT_CONTEXT* (* GetGmmClientContext)(
         PMOS_CONTEXT               pOsContext) = nullptr;
 
-    MosOcaInterface* (*GetOcaInterface)()      = nullptr;
 };
 
 //!

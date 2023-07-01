@@ -28,7 +28,7 @@
 
 typedef class MhwVeboxInterface              *PMHW_VEBOX_INTERFACE;
 
-typedef struct _VPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS
+typedef struct _VP_VEBOX_SURFACE_STATE_CMD_PARAMS
 {
     PVP_SURFACE                     pSurfInput;
     PVP_SURFACE                     pSurfOutput;
@@ -37,7 +37,7 @@ typedef struct _VPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS
     PVP_SURFACE                     pSurfSkinScoreOutput;
     bool                            bDIEnable;
     bool                            b3DlutEnable;
-} VPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS, *PVPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS;
+} VP_VEBOX_SURFACE_STATE_CMD_PARAMS, *PVP_VEBOX_SURFACE_STATE_CMD_PARAMS;
 
 enum GFX_MEDIA_VEBOX_DI_OUTPUT_MODE
 {
@@ -161,8 +161,9 @@ public:
             bool           bHdr3DLut;             //!< Enable 3DLut to process HDR
             bool           bUseVEHdrSfc;          //!< Use SFC to perform CSC/Scaling for HDR content
             bool           is3DLutTableFilled;    //!< 3DLut is filled by kernel/
-            uint32_t       uiMaxDisplayLum;       //!< Maximum Display Luminance
-            uint32_t       uiMaxContentLevelLum;  //!< Maximum Content Level Luminance
+            bool           is3DLutTableUpdatedByKernel;  //!< 3DLut is updated by kernel/
+            uint32_t       uiMaxDisplayLum;              //!< Maximum Display Luminance
+            uint32_t       uiMaxContentLevelLum;         //!< Maximum Content Level Luminance
             VPHAL_HDR_MODE hdrMode;
             uint32_t       uiLutSize;
         };

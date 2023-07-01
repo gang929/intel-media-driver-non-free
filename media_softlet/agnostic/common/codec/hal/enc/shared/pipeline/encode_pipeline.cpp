@@ -52,7 +52,6 @@ MOS_STATUS EncodePipeline::Initialize(void *settings)
     ENCODE_CHK_STATUS_RETURN(MediaPipeline::InitPlatform());
     ENCODE_CHK_STATUS_RETURN(MediaPipeline::CreateMediaCopyWrapper());
     ENCODE_CHK_NULL_RETURN(m_mediaCopyWrapper);
-    m_mediaCopyWrapper->CreateMediaCopyState();
 
     ENCODE_CHK_NULL_RETURN(m_hwInterface);
     ENCODE_CHK_NULL_RETURN(m_hwInterface->GetOsInterface());
@@ -86,13 +85,13 @@ MOS_STATUS EncodePipeline::Initialize(void *settings)
         m_debugInterface = MOS_New(CodechalDebugInterface);
         ENCODE_CHK_NULL_RETURN(m_debugInterface);
         ENCODE_CHK_STATUS_RETURN(
-            m_debugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper->GetMediaCopyState())
+            m_debugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper)
         );
 
         m_statusReportDebugInterface = MOS_New(CodechalDebugInterface);
         ENCODE_CHK_NULL_RETURN(m_statusReportDebugInterface);
         ENCODE_CHK_STATUS_RETURN(
-        m_statusReportDebugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper->GetMediaCopyState()));
+        m_statusReportDebugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper));
     );
 
     MediaUserSetting::Value outValue;
@@ -129,38 +128,20 @@ MOS_STATUS EncodePipeline::Uninitialize()
 {
     ENCODE_FUNC_CALL();
 
-    if(m_mediaContext != nullptr)
-    {
-        MOS_Delete(m_mediaContext);
-    }
+    MOS_Delete(m_mediaContext);
 
-    if (m_encodecp != nullptr)
-    {
-        MOS_Delete(m_encodecp);
-    }
+    MOS_Delete(m_encodecp);
 
-    if (m_statusReport != nullptr)
-    {
-        MOS_Delete(m_statusReport);
-    }
+    MOS_Delete(m_statusReport);
 
     CODECHAL_DEBUG_TOOL(
-        if (m_statusReportDebugInterface != nullptr)
-        {
-            MOS_Delete(m_statusReportDebugInterface);
-            m_statusReportDebugInterface = nullptr;
-        }
+        MOS_Delete(m_debugInterface);
+        MOS_Delete(m_statusReportDebugInterface);
     );
 
-    if (m_trackedBuf != nullptr)
-    {
-        MOS_Delete(m_trackedBuf);
-    }
+    MOS_Delete(m_trackedBuf);
 
-    if (m_recycleBuf != nullptr)
-    {
-        MOS_Delete(m_recycleBuf);
-    }
+    MOS_Delete(m_recycleBuf);
 
     if (m_featureManager != nullptr)
     {
@@ -175,10 +156,7 @@ MOS_STATUS EncodePipeline::Uninitialize()
         MOS_Delete(m_allocator);
     }
 
-    if (m_packetUtilities != nullptr)
-    {
-        MOS_Delete(m_packetUtilities);
-    }
+    MOS_Delete(m_packetUtilities);
 
     return MOS_STATUS_SUCCESS;
 }
@@ -340,6 +318,7 @@ MOS_STATUS EncodePipeline::ExecuteActivePackets()
 
 MOS_STATUS EncodePipeline::ExecuteResolveMetaData(PMOS_RESOURCE pInput, PMOS_RESOURCE pOutput)
 {
+    ENCODE_FUNC_CALL();
     MOS_COMMAND_BUFFER cmdBuffer;
     MOS_ZeroMemory(&cmdBuffer, sizeof(cmdBuffer));
 
@@ -353,6 +332,26 @@ MOS_STATUS EncodePipeline::ExecuteResolveMetaData(PMOS_RESOURCE pInput, PMOS_RES
     ENCODE_CHK_STATUS_RETURN(m_scalability->ReturnCmdBuffer(&cmdBuffer));
     ENCODE_CHK_STATUS_RETURN(m_scalability->SubmitCmdBuffer(&cmdBuffer));
 
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS EncodePipeline::ReportErrorFlag(PMOS_RESOURCE pMetadataBuffer,
+    uint32_t size, uint32_t offset, uint32_t flag)
+{
+    ENCODE_FUNC_CALL();
+    MOS_COMMAND_BUFFER cmdBuffer;
+    MOS_ZeroMemory(&cmdBuffer, sizeof(cmdBuffer));
+
+    ENCODE_CHK_NULL_RETURN(m_scalability);
+    ENCODE_CHK_STATUS_RETURN(m_scalability->GetCmdBuffer(&cmdBuffer));
+
+    auto basicFeature = dynamic_cast<EncodeBasicFeature *>(m_featureManager->GetFeature(FeatureIDs::basicFeature));
+    ENCODE_CHK_NULL_RETURN(basicFeature);
+
+    basicFeature->m_metaDataOffset.dwMetaDataSize = size;
+    m_packetUtilities->AddStoreDataImmCmd(&cmdBuffer, pMetadataBuffer, offset, flag);
+    ENCODE_CHK_STATUS_RETURN(m_scalability->ReturnCmdBuffer(&cmdBuffer));
+    ENCODE_CHK_STATUS_RETURN(m_scalability->SubmitCmdBuffer(&cmdBuffer));
     return MOS_STATUS_SUCCESS;
 }
 

@@ -203,8 +203,6 @@ bool InitXeHPShadowWa(struct GfxDeviceInfo *devInfo,
     waTable->WaDisregardPlatformChecks          = 1;
     waTable->Wa4kAlignUVOffsetNV12LinearSurface = 1;
 
-    waTable->WaDefaultTile4 = 1;
-
     waTable->Wa_15010089951 = 1;
 
     return true;
@@ -232,8 +230,6 @@ bool InitPvcShadowWa(struct GfxDeviceInfo *devInfo,
 
     // Set it to 0 if need to support 256B compress mode
     waTable->WaLimit128BMediaCompr = 0;
-
-    waTable->WaDefaultTile4 = 1;
 
     return true;
 }
@@ -436,9 +432,6 @@ static bool dg2Gt4Device5696 = DeviceInfoFactory<GfxDeviceInfo>::
 static bool dg2Gt4Device5697 = DeviceInfoFactory<GfxDeviceInfo>::
     RegisterDevice(0x5697, &dg2Gt4Info);
 
-static bool dg2Gt4Device5698 = DeviceInfoFactory<GfxDeviceInfo>::
-    RegisterDevice(0x5698, &dg2Gt4Info);
-
 static bool dg2Gt4Device56A0 = DeviceInfoFactory<GfxDeviceInfo>::
     RegisterDevice(0x56A0, &dg2Gt4Info);
 
@@ -459,15 +452,6 @@ static bool dg2Gt4Device56A5 = DeviceInfoFactory<GfxDeviceInfo>::
 
 static bool dg2Gt4Device56A6 = DeviceInfoFactory<GfxDeviceInfo>::
     RegisterDevice(0x56A6, &dg2Gt4Info);
-
-static bool dg2Gt4Device56A7 = DeviceInfoFactory<GfxDeviceInfo>::
-    RegisterDevice(0x56A7, &dg2Gt4Info);
-
-static bool dg2Gt4Device56A8 = DeviceInfoFactory<GfxDeviceInfo>::
-    RegisterDevice(0x56A8, &dg2Gt4Info);
-
-static bool dg2Gt4Device56A9 = DeviceInfoFactory<GfxDeviceInfo>::
-    RegisterDevice(0x56A9, &dg2Gt4Info);
 
 static bool dg2Gt4Device56B0 = DeviceInfoFactory<GfxDeviceInfo>::
     RegisterDevice(0x56B0, &dg2Gt4Info);

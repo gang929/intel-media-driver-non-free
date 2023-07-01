@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, Intel Corporation
+* Copyright (c) 2022-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -33,18 +33,18 @@ std::unique_ptr<MediaDebugFastDumpImp> imp = nullptr;
 }  // namespace
 
 void MediaDebugFastDump::CreateInstance(
-    MOS_INTERFACE      &osItf,
-    MediaCopyBaseState &mediaCopyItf,
-    const Config       *cfg)
+    MOS_INTERFACE    &osItf,
+    MediaCopyWrapper &mediaCopyWrapper,
+    const Config     *cfg)
 {
     if (imp == nullptr)
     {
         imp =
 #if __cplusplus < 201402L
             decltype(imp)(
-                new MediaDebugFastDumpImp(osItf, mediaCopyItf, cfg));
+                new MediaDebugFastDumpImp(osItf, mediaCopyWrapper, cfg));
 #else
-            std::make_unique<MediaDebugFastDumpImp>(osItf, mediaCopyItf, cfg);
+            std::make_unique<MediaDebugFastDumpImp>(osItf, mediaCopyWrapper, cfg);
 #endif
     }
 }
@@ -59,6 +59,21 @@ void MediaDebugFastDump::DestroyInstance()
 
 void MediaDebugFastDump::Dump(
     MOS_RESOURCE &res,
+    std::string &&name,
+    size_t        dumpSize,
+    size_t        offset,
+    std::function<
+        void(std::ostream &, const void *, size_t)>
+        &&serializer)
+{
+    if (imp)
+    {
+        (*imp)(res, std::move(name), dumpSize, offset, std::move(serializer));
+    }
+}
+
+void MediaDebugFastDump::Dump(
+    const void   *res,
     std::string &&name,
     size_t        dumpSize,
     size_t        offset,

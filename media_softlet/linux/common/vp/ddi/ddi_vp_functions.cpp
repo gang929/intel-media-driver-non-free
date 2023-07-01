@@ -1582,8 +1582,21 @@ void DdiVpFunctions::VpFeatureReport(PVP_CONFIG config, PDDI_VP_CONTEXT vpCtx)
         config->dwRTCompressMode,
         MediaUserSetting::Group::Sequence);
 #endif
+    //VP RT Cache Usage
+    ReportUserSetting(
+        userSettingPtr,
+        __VPHAL_RT_Cache_Setting,
+        config->dwRTCacheSetting,
+        MediaUserSetting::Group::Sequence);
 
 #if (_DEBUG || _RELEASE_INTERNAL)
+    //VP RT Old Cache Usage
+    ReportUserSetting(
+        userSettingPtr,
+        __VPHAL_RT_Old_Cache_Setting,
+        config->dwRTOldCacheSetting,
+        MediaUserSetting::Group::Sequence);
+
     ReportUserSettingForDebug(
         userSettingPtr,
         __VPHAL_VEBOX_HDR_MODE,
@@ -4599,7 +4612,7 @@ VAStatus DdiVpFunctions::PutSurfaceLinuxHW(
     surf.rcSrc                  = srcRect;
     surf.rcDst                  = dstRect;
 
-    MOS_LINUX_BO *drawableBo = mos_bo_gem_create_from_name(mediaCtx->pDrmBufMgr, "rendering buffer", buffer->dri2.name);
+    MOS_LINUX_BO *drawableBo = mos_bo_create_from_name(mediaCtx->pDrmBufMgr, "rendering buffer", buffer->dri2.name);
     DDI_VP_CHK_NULL(drawableBo, "nullptr drawableBo", VA_STATUS_ERROR_ALLOCATION_FAILED);
 
     if (!mos_bo_get_tiling(drawableBo, &drawableTilingMode, &drawableSwizzleMode))

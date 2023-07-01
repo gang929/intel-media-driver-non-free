@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2021, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -33,6 +33,10 @@
 #include "encode_mem_compression_xe_lpm_plus_base.h"
 #include "encode_preenc_packet.h"
 #include "encode_avc_vdenc_preenc.h"
+
+#ifdef _ENCODE_RESERVED
+#include "encode_avc_vdenc_packet_ext.h"
+#endif
 
 namespace encode {
 
@@ -69,7 +73,11 @@ MOS_STATUS AvcVdencPipelineXe_Lpm_Plus_Base::Init(void *settings)
     ENCODE_CHK_STATUS_RETURN(RegisterPacket(HucBrcUpdate, brcUpdatepkt));
     ENCODE_CHK_STATUS_RETURN(brcUpdatepkt->Init());
 
+#ifdef _ENCODE_RESERVED
+    AvcVdencPkt *avcVdencpkt = MOS_New(AvcVdencPktExt, this, task, m_hwInterface);
+#else
     AvcVdencPkt *avcVdencpkt = MOS_New(AvcVdencPkt, this, task, m_hwInterface);
+#endif
     ENCODE_CHK_STATUS_RETURN(RegisterPacket(VdencPacket, avcVdencpkt));
     ENCODE_CHK_STATUS_RETURN(avcVdencpkt->Init());
 
@@ -94,7 +102,7 @@ MOS_STATUS AvcVdencPipelineXe_Lpm_Plus_Base::Initialize(void *settings)
         ENCODE_CHK_NULL_RETURN(m_debugInterface);
         ENCODE_CHK_NULL_RETURN(m_mediaCopyWrapper);
         ENCODE_CHK_STATUS_RETURN(
-            m_debugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper->GetMediaCopyState()));
+            m_debugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper));
 
         if (m_statusReportDebugInterface != nullptr) {
             MOS_Delete(m_statusReportDebugInterface);
@@ -102,7 +110,7 @@ MOS_STATUS AvcVdencPipelineXe_Lpm_Plus_Base::Initialize(void *settings)
         m_statusReportDebugInterface = MOS_New(CodechalDebugInterface);
         ENCODE_CHK_NULL_RETURN(m_statusReportDebugInterface);
         ENCODE_CHK_STATUS_RETURN(
-            m_statusReportDebugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper->GetMediaCopyState())););
+            m_statusReportDebugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper)););
 
     ENCODE_CHK_STATUS_RETURN(GetSystemVdboxNumber());
 

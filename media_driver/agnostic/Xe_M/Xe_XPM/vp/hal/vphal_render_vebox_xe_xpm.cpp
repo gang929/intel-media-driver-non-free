@@ -254,6 +254,12 @@ bool VPHAL_VEBOX_STATE_XE_XPM::IsNeeded(
     VPHAL_RENDER_CHK_NULL_NO_STATUS(pcRenderParams);
     VPHAL_RENDER_CHK_NULL_NO_STATUS(pcRenderParams->pTarget[0]);
 
+    if (pcRenderParams->bForceToRender)
+    {
+        pRenderPassData->bCompNeeded = true;
+        goto finish;
+    }
+
     pVeboxInterface         = pVeboxState->m_pVeboxInterface;
     pVeboxInterfaceXe_Xpm = (MhwVeboxInterfaceXe_Xpm *)pVeboxInterface;
     pOsInterface            = pVeboxState->m_pOsInterface;
@@ -902,7 +908,7 @@ MOS_STATUS VPHAL_VEBOX_STATE_XE_XPM::VeboxRenderVeboxCmd(
             if (pOsInterface->apoMosEnabled)
             {
                 VPHAL_RENDER_CHK_NULL(pOsInterface->osStreamState);
-                VPHAL_RENDER_CHK_STATUS(MosInterface::SetupAttributeVeBuffer(pOsInterface->osStreamState, &CmdBuffer));
+                VPHAL_RENDER_CHK_STATUS(pOsInterface->pfnSetupAttributeVeBuffer(pOsInterface->osStreamState, &CmdBuffer));
             }
             CmdBuffer.Attributes.pAttriVe = &pOsInterface->bufAttriVe[pOsInterface->CurrentGpuContextOrdinal];
         }

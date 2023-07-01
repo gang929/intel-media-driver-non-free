@@ -45,8 +45,13 @@ public:
     ~PacketUtilities();
 
     MOS_STATUS AddMemCopyCmd(PMOS_COMMAND_BUFFER cmdBuf, PMOS_RESOURCE pDst, PMOS_RESOURCE pSrc, uint32_t size);
+    MOS_STATUS AddStoreDataImmCmd(PMOS_COMMAND_BUFFER cmdBuf, PMOS_RESOURCE pSrc, uint32_t offset, uint32_t flag);
 
     MOS_STATUS Init();
+
+    MOS_STATUS SendMarkerCommand(PMOS_COMMAND_BUFFER cmdBuffer, PMOS_RESOURCE presSetMarker);
+
+    MOS_STATUS SendPredicationCommand(PMOS_COMMAND_BUFFER cmdBuffer);
 
 #if USE_CODECHAL_DEBUG_TOOL
     //!

@@ -32,6 +32,7 @@
 #include "mos_os.h"
 #include "mos_util_debug.h"
 #include "mos_utilities.h"
+#include "media_perf_profiler.h"
 class MhwInterfaces;
 
 //!
@@ -95,9 +96,8 @@ BltState_Xe_Hpm::~BltState_Xe_Hpm()
 //!
 MOS_STATUS BltState_Xe_Hpm::Initialize()
 {
-    BLT_CHK_STATUS_RETURN(BltState::Initialize());
-    initialized = true;
-
+    initialized  = true;
+    m_blokCopyon = true;
     return MOS_STATUS_SUCCESS;
 }
 
@@ -614,7 +614,6 @@ MOS_STATUS BltState_Xe_Hpm::SetupCtrlSurfCopyBltParam(
 MOS_STATUS BltState_Xe_Hpm::SubmitCMD(
     PBLT_STATE_PARAM pBltStateParam)
 {
-    MOS_STATUS                   eStatus = MOS_STATUS_SUCCESS;
     MOS_COMMAND_BUFFER           cmdBuffer;
     MHW_FAST_COPY_BLT_PARAM      fastCopyBltParam;
     MHW_CTRL_SURF_COPY_BLT_PARAM ctrlSurfCopyBltParam;
@@ -622,7 +621,7 @@ MOS_STATUS BltState_Xe_Hpm::SubmitCMD(
     int                          planeNum = 1;
     PMHW_BLT_INTERFACE_XE_HP     pbltInterface = dynamic_cast<PMHW_BLT_INTERFACE_XE_HP>(m_bltInterface);
 
-    BLT_CHK_NULL(pbltInterface);
+    BLT_CHK_NULL_RETURN(pbltInterface);
 
     // no gpucontext will be created if the gpu context has been created before.
     BLT_CHK_STATUS_RETURN(m_osInterface->pfnCreateGpuContext(
@@ -632,6 +631,10 @@ MOS_STATUS BltState_Xe_Hpm::SubmitCMD(
         &createOption));
     // Set GPU context
     BLT_CHK_STATUS_RETURN(m_osInterface->pfnSetGpuContext(m_osInterface, MOS_GPU_CONTEXT_BLT));
+    // Register context with the Batch Buffer completion event
+    BLT_CHK_STATUS_RETURN(m_osInterface->pfnRegisterBBCompleteNotifyEvent(
+        m_osInterface,
+        MOS_GPU_CONTEXT_BLT));
 
     // Initialize the command buffer struct
     MOS_ZeroMemory(&cmdBuffer, sizeof(MOS_COMMAND_BUFFER));
@@ -645,6 +648,7 @@ MOS_STATUS BltState_Xe_Hpm::SubmitCMD(
     dstResDetails.Format = Format_Invalid;
     BLT_CHK_STATUS_RETURN(m_osInterface->pfnGetResourceInfo(m_osInterface, pBltStateParam->pSrcSurface, &srcResDetails));
     BLT_CHK_STATUS_RETURN(m_osInterface->pfnGetResourceInfo(m_osInterface, pBltStateParam->pDstSurface, &dstResDetails));
+    m_osInterface->pfnSetPerfTag(m_osInterface, BLT_COPY);
 
     if (srcResDetails.Format != dstResDetails.Format)
     {
@@ -653,6 +657,9 @@ MOS_STATUS BltState_Xe_Hpm::SubmitCMD(
     }
     planeNum = GetPlaneNum(dstResDetails.Format);
 
+    MediaPerfProfiler* perfProfiler = MediaPerfProfiler::Instance();
+    BLT_CHK_NULL_RETURN(perfProfiler);
+    BLT_CHK_STATUS_RETURN(perfProfiler->AddPerfCollectStartCmd((void*)this, m_osInterface, m_miInterface, &cmdBuffer));
     if (pBltStateParam->bCopyMainSurface)
     {
         BLT_CHK_STATUS_RETURN(SetupBltCopyParam(
@@ -678,12 +685,22 @@ MOS_STATUS BltState_Xe_Hpm::SubmitCMD(
         RegisterDwParams.dwData = swctrl.DW0.Value;
         m_miInterface->AddMiLoadRegisterImmCmd(&cmdBuffer, &RegisterDwParams);
 
-        BLT_CHK_STATUS_RETURN(m_bltInterface->AddFastCopyBlt(
-            &cmdBuffer,
-            &fastCopyBltParam,
-            srcResDetails.YPlaneOffset.iSurfaceOffset,
-            dstResDetails.YPlaneOffset.iSurfaceOffset));
-
+        if (m_blokCopyon)
+        {
+            BLT_CHK_STATUS_RETURN(m_bltInterface->AddBlockCopyBlt(
+                &cmdBuffer,
+                &fastCopyBltParam,
+                srcResDetails.YPlaneOffset.iSurfaceOffset,
+                dstResDetails.YPlaneOffset.iSurfaceOffset));
+        }
+        else
+        {
+            BLT_CHK_STATUS_RETURN(m_bltInterface->AddFastCopyBlt(
+                &cmdBuffer,
+                &fastCopyBltParam,
+                srcResDetails.YPlaneOffset.iSurfaceOffset,
+                dstResDetails.YPlaneOffset.iSurfaceOffset));
+        }
         if (planeNum >= 2)
         {
             BLT_CHK_STATUS_RETURN(SetupBltCopyParam(
@@ -691,30 +708,51 @@ MOS_STATUS BltState_Xe_Hpm::SubmitCMD(
              pBltStateParam->pSrcSurface,
              pBltStateParam->pDstSurface,
              1));
-            BLT_CHK_STATUS_RETURN(m_bltInterface->AddFastCopyBlt(
-                 &cmdBuffer,
-                 &fastCopyBltParam,
-                 srcResDetails.UPlaneOffset.iSurfaceOffset,
-                 dstResDetails.UPlaneOffset.iSurfaceOffset));
-
-              if (planeNum == 3)
-              {
-                  BLT_CHK_STATUS_RETURN(SetupBltCopyParam(
-                      &fastCopyBltParam,
-                      pBltStateParam->pSrcSurface,
-                      pBltStateParam->pDstSurface,
-                      2));
-                  BLT_CHK_STATUS_RETURN(m_bltInterface->AddFastCopyBlt(
-                      &cmdBuffer,
-                      &fastCopyBltParam,
-                      srcResDetails.VPlaneOffset.iSurfaceOffset,
-                      dstResDetails.VPlaneOffset.iSurfaceOffset));
-              }
-              else if (planeNum > 3)
-              {
-                  MCPY_ASSERTMESSAGE("illegal usage");
-                  return MOS_STATUS_INVALID_PARAMETER;
-              }
+            if (m_blokCopyon)
+            {
+                BLT_CHK_STATUS_RETURN(m_bltInterface->AddBlockCopyBlt(
+                    &cmdBuffer,
+                    &fastCopyBltParam,
+                    srcResDetails.UPlaneOffset.iSurfaceOffset,
+                    dstResDetails.UPlaneOffset.iSurfaceOffset));
+            }
+            else
+            {
+                BLT_CHK_STATUS_RETURN(m_bltInterface->AddFastCopyBlt(
+                    &cmdBuffer,
+                    &fastCopyBltParam,
+                    srcResDetails.UPlaneOffset.iSurfaceOffset,
+                    dstResDetails.UPlaneOffset.iSurfaceOffset));
+            }
+            if (planeNum == 3)
+            {
+                BLT_CHK_STATUS_RETURN(SetupBltCopyParam(
+                    &fastCopyBltParam,
+                    pBltStateParam->pSrcSurface,
+                    pBltStateParam->pDstSurface,
+                    2));
+                if (m_blokCopyon)
+                {
+                    BLT_CHK_STATUS_RETURN(m_bltInterface->AddBlockCopyBlt(
+                        &cmdBuffer,
+                        &fastCopyBltParam,
+                        srcResDetails.VPlaneOffset.iSurfaceOffset,
+                        dstResDetails.VPlaneOffset.iSurfaceOffset));
+                }
+                else
+                {
+                    BLT_CHK_STATUS_RETURN(m_bltInterface->AddFastCopyBlt(
+                        &cmdBuffer,
+                        &fastCopyBltParam,
+                        srcResDetails.VPlaneOffset.iSurfaceOffset,
+                        dstResDetails.VPlaneOffset.iSurfaceOffset));
+                }
+            }
+            else if(planeNum > 3)
+            {
+                MCPY_ASSERTMESSAGE("illegal usage");
+                return MOS_STATUS_INVALID_PARAMETER;
+            }
          }
 
     }
@@ -730,6 +768,7 @@ MOS_STATUS BltState_Xe_Hpm::SubmitCMD(
             &cmdBuffer,
             &ctrlSurfCopyBltParam));
     }
+    BLT_CHK_STATUS_RETURN(perfProfiler->AddPerfCollectEndCmd((void*)this, m_osInterface, m_miInterface, &cmdBuffer));
 
     // Add flush DW
     MHW_MI_FLUSH_DW_PARAMS FlushDwParams;
@@ -742,8 +781,7 @@ MOS_STATUS BltState_Xe_Hpm::SubmitCMD(
     // Flush the command buffer
     BLT_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &cmdBuffer, false));
 
-finish:
-    return eStatus;
+    return MOS_STATUS_SUCCESS;
 }
 
 MOS_STATUS BltState_Xe_Hpm::CopyMainSurface(

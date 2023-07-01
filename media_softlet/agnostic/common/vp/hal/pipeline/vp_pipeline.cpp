@@ -136,10 +136,13 @@ MOS_STATUS VpPipeline::ReportIFNCC(bool bStart)
     //INTER_FRAME_MEMORY_NINJA_START_COUNTER will be reported in Prepare function
     //INTER_FRAME_MEMORY_NINJA_END_COUNTER will be reported in UserFeatureReport() function which runs in Execute()
     VP_FUNC_CALL();
-    if (m_userFeatureControl->EnableIFNCC())
+    if (m_userFeatureControl->EnableIFNCC() &&
+        MosUtilities::m_mosMemAllocCounter &&
+        MosUtilities::m_mosMemAllocCounterGfx &&
+        MosUtilities::m_mosMemAllocFakeCounter)
     {
         int32_t memninjaCounter = 0;
-        memninjaCounter         = MosUtilities::m_mosMemAllocCounter + MosUtilities::m_mosMemAllocCounterGfx - MosUtilities::m_mosMemAllocFakeCounter;
+        memninjaCounter         = *MosUtilities::m_mosMemAllocCounter + *MosUtilities::m_mosMemAllocCounterGfx - *MosUtilities::m_mosMemAllocFakeCounter;
         ReportUserSettingForDebug(
             m_userSettingPtr,
             bStart ? __MEDIA_USER_FEATURE_VALUE_INTER_FRAME_MEMORY_NINJA_START_COUNTER : __MEDIA_USER_FEATURE_VALUE_INTER_FRAME_MEMORY_NINJA_END_COUNTER,
@@ -184,6 +187,21 @@ MOS_STATUS VpPipeline::UserFeatureReport()
                 m_reporting->GetFeatures().rtCompressible = true;
                 m_reporting->GetFeatures().rtCompressMode = (uint8_t)(params->pTarget[0]->CompressionMode);
             }
+            
+            m_reporting->GetFeatures().rtCacheSetting = (uint8_t)(params->pTarget[0]->CacheSetting);
+#if (_DEBUG || _RELEASE_INTERNAL)
+            if (m_reporting->GetFeatures().outputPipeMode == VPHAL_OUTPUT_PIPE_MODE_SFC)
+            {
+                if (m_vpMhwInterface.m_sfcInterface)
+                {
+                    m_reporting->GetFeatures().rtOldCacheSetting = (uint8_t)((m_vpMhwInterface.m_sfcInterface->m_outputSurfCtrl.Value >> 1) & 0x0000003f);
+                }
+            }
+            else if (m_vpMhwInterface.m_renderHal)
+            {
+                m_reporting->GetFeatures().rtOldCacheSetting = (uint8_t)(m_vpMhwInterface.m_renderHal->oldCacheSettingForTargetSurface);
+            }
+#endif
         }
     }
 
@@ -260,6 +278,10 @@ MOS_STATUS VpPipeline::Init(void *mhwInterface)
         VP_PUBLIC_CHK_STATUS_RETURN(CreateUserFeatureControl());
         m_vpMhwInterface.m_userFeatureControl = m_userFeatureControl;
     }
+    if (m_userFeatureControl && m_vpMhwInterface.m_settings)
+    {
+        m_userFeatureControl->SetClearVideoViewMode(((VP_SETTINGS *)m_vpMhwInterface.m_settings)->clearVideoViewMode);
+    }
 
     VP_PUBLIC_CHK_STATUS_RETURN(m_vpMhwInterface.m_vpPlatformInterface->ConfigVirtualEngine());
 
@@ -321,10 +343,9 @@ MOS_STATUS VpPipeline::Init(void *mhwInterface)
     VP_PUBLIC_CHK_STATUS_RETURN(SetVideoProcessingSettings(m_vpMhwInterface.m_settings));
 
     m_vpMhwInterface.m_settings = m_vpSettings;
-
     if (m_vpMhwInterface.m_vpPlatformInterface->IsGpuContextCreatedInPipelineInit())
     {
-        if (m_numVebox > 0)
+        if (m_numVebox > 0 && !(m_vpSettings && m_vpSettings->clearVideoViewMode))
         {
             VP_PUBLIC_NORMALMESSAGE("Create GpuContext for Vebox.");
             VP_PUBLIC_CHK_STATUS_RETURN(PacketPipe::SwitchContext(VP_PIPELINE_PACKET_VEBOX, m_scalability,
@@ -409,9 +430,14 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
 
     VP_PUBLIC_CHK_STATUS_RETURN(CreateSwFilterPipe(m_pvpParams, swFilterPipes));
 
+    MT_LOG1(MT_VP_FEATURE_GRAPH_CREATESWFILTERPIPE_START, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_SWFILTERPIPE_COUNT, (int64_t)swFilterPipes.size());
     for (uint32_t pipeIdx = 0; pipeIdx < swFilterPipes.size(); pipeIdx++)
     {
         auto &pipe = swFilterPipes[pipeIdx];
+        if (pipe)
+        {
+            pipe->AddRTLog();
+        }
         if (pipeIdx >= m_vpPipeContexts.size())
         {
             VP_PUBLIC_CHK_STATUS_RETURN(CreateSinglePipeContext());
@@ -424,6 +450,7 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
         VP_PUBLIC_CHK_STATUS_RETURN(ExecuteSingleswFilterPipe(singlePipeCtx, pipe, pPacketPipe, featureManagerNext));
     }
 
+    MT_LOG1(MT_VP_FEATURE_GRAPH_CREATESWFILTERPIPE_END, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_SWFILTERPIPE_COUNT, (int64_t)swFilterPipes.size());
     return eStatus;
 }
 
@@ -538,7 +565,7 @@ MOS_STATUS VpPipeline::UpdateExecuteStatus(uint32_t frameCnt)
     VP_FUNC_CALL();
 
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
-#if ((_DEBUG || _RELEASE_INTERNAL) && !EMUL)
+#if ((_DEBUG || _RELEASE_INTERNAL))
     if (PIPELINE_PARAM_TYPE_LEGACY == m_pvpParams.type)
     {
         PVP_PIPELINE_PARAMS params = m_pvpParams.renderParams;
@@ -1150,7 +1177,7 @@ MOS_STATUS VpSinglePipeContext::CreateResourceManager(PMOS_INTERFACE osInterface
     VP_FUNC_CALL();
     if (nullptr == m_resourceManager)
     {
-        m_resourceManager = MOS_New(VpResourceManager, *osInterface, *allocator, *reporting, *vpPlatformInterface, mediaCopyWrapper);
+        m_resourceManager = MOS_New(VpResourceManager, *osInterface, *allocator, *reporting, *vpPlatformInterface, mediaCopyWrapper, userFeatureControl);
         VP_PUBLIC_CHK_NULL_RETURN(m_resourceManager);
     }
     

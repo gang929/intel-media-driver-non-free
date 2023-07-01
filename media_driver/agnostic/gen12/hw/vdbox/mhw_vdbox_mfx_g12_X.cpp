@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017-2020, Intel Corporation
+* Copyright (c) 2017-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -1013,13 +1013,6 @@ MOS_STATUS MhwVdboxMfxInterfaceG12::AddMfxPipeBufAddrCmd(
 
             resourceParams.dwSharedMocsOffset = 51 - resourceParams.dwLocationInCmd;
 
-            MOS_GPU_CONTEXT gpuContext = m_osInterface->pfnGetGpuContext(m_osInterface);
-            m_osInterface->pfnSyncOnResource(
-                m_osInterface,
-                references[i],
-                gpuContext,
-                false);
-
             MHW_MI_CHK_STATUS(AddResourceToCmd(
                 m_osInterface,
                 cmdBuffer,
@@ -1111,18 +1104,6 @@ MOS_STATUS MhwVdboxMfxInterfaceG12::AddMfxPipeBufAddrCmd(
             cmdBuffer,
             &resourceParams));
     }
-
-#if MOS_EVENT_TRACE_DUMP_SUPPORTED
-    if (m_decodeInUse)
-    {
-        uint32_t mmcEnable = params->psPreDeblockSurface ? cmd.DW3.PreDeblockingMemoryCompressionEnable : cmd.DW6.PostDeblockingMemoryCompressionEnable;
-        if (mmcEnable && !bMMCReported)
-        {
-            MOS_TraceEvent(EVENT_DECODE_FEATURE_MMC, EVENT_TYPE_INFO, NULL, 0, NULL, 0);
-            bMMCReported = true;
-        }
-    }
-#endif
 
     MHW_MI_CHK_STATUS(m_osInterface->pfnAddCommand(cmdBuffer, &cmd, sizeof(cmd)));
 

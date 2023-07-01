@@ -2190,7 +2190,6 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
     else if (engineCapsInputPipe.isolated)
     {
         caps.bTemperalInputInuse = engineCapsInputPipe.bTemperalInputInuse;
-        caps.bInternalInputInuse = engineCapsInputPipe.bInternalInputInuse;
         if (engineCapsInputPipe.VeboxNeeded != 0 || engineCapsInputPipe.SfcNeeded != 0)
         {
             caps.bVebox = true;
@@ -2232,7 +2231,6 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
         caps.bIECP = engineCaps.VeboxIECPNeeded;
         caps.bDiProcess2ndField = engineCaps.diProcess2ndField;
         caps.bTemperalInputInuse = engineCaps.bTemperalInputInuse;
-        caps.bInternalInputInuse = engineCaps.bInternalInputInuse;
 
         if (engineCaps.fcOnlyFeatureExists)
         {
@@ -2286,7 +2284,6 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
 
         caps.bDiProcess2ndField = engineCaps.diProcess2ndField;
         caps.bTemperalInputInuse = engineCaps.bTemperalInputInuse;
-        caps.bInternalInputInuse = engineCaps.bInternalInputInuse;
     }
 
     VP_PUBLIC_NORMALMESSAGE("Execute Caps, value 0x%llx (bVebox %d, bSFC %d, bRender %d, bComposite %d, bOutputPipeFeatureInuse %d, bIECP %d, bForceCscToRender %d, bDiProcess2ndField %d)",
@@ -3151,6 +3148,7 @@ MOS_STATUS Policy::SetupExecuteFilter(SwFilterPipe& featurePipe, std::vector<int
 
     VP_PUBLIC_CHK_NULL_RETURN(params.executedFilters);
 
+    MT_LOG1(MT_VP_FEATURE_GRAPH_SETUPEXECUTESWFILTER_START, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_LAYERINDEXES_COUNT, (int64_t)layerIndexes.size());
     for (uint32_t i = 0; i < layerIndexes.size(); ++i)
     {
         VP_PUBLIC_CHK_STATUS_RETURN(AddInputSurfaceForSingleLayer(featurePipe, layerIndexes[i], *params.executedFilters, i, caps));
@@ -3162,6 +3160,12 @@ MOS_STATUS Policy::SetupExecuteFilter(SwFilterPipe& featurePipe, std::vector<int
 
     VP_PUBLIC_CHK_STATUS_RETURN(UpdateFeatureOutputPipe(layerIndexes, featurePipe, *params.executedFilters, caps));
 
+    featurePipe.AddRTLog();
+    if (params.executedFilters)
+    {
+        params.executedFilters->AddRTLog();
+    }
+    MT_LOG1(MT_VP_FEATURE_GRAPH_SETUPEXECUTESWFILTER_END, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_LAYERINDEXES_COUNT, (int64_t)layerIndexes.size());
     return MOS_STATUS_SUCCESS;
 }
 

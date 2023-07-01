@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2022, Intel Corporation
+* Copyright (c) 2018-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -529,6 +529,20 @@ static bool InitAdlsMediaSku(struct GfxDeviceInfo *devInfo,
     MEDIA_WR_SKU(skuTable, FtrDecodeHEVC422VTScalaDisable, 1);
     MEDIA_WR_SKU(skuTable, FtrE2ECompression, 1);
 
+
+    //RPL-S
+    if (drvInfo->devId == 0xA780 || 
+        drvInfo->devId == 0xA781 || 
+        drvInfo->devId == 0xA782 || 
+        drvInfo->devId == 0xA783 || 
+        drvInfo->devId == 0xA788 || 
+        drvInfo->devId == 0xA789 || 
+        drvInfo->devId == 0xA78A || 
+        drvInfo->devId == 0xA78B)
+    {
+        MEDIA_WR_SKU(skuTable, FtrGucSubmission, 1);
+    }
+
     return true;
 }
 
@@ -547,6 +561,7 @@ static bool InitAdlsMediaWa(struct GfxDeviceInfo* devInfo,
     //ADL-S need enable MMC for all stepping
     MEDIA_WR_WA(waTable, WaDisableCodecMmc, 0);
     MEDIA_WR_WA(waTable, WaDisableVPMmc, 0);
+    MEDIA_WR_WA(waTable, WaDisableClearCCS, 1);
 
     return true;
 }
@@ -597,6 +612,7 @@ static bool InitAdlpMediaWa(struct GfxDeviceInfo *devInfo,
 
     //ADL-P not need this
     MEDIA_WR_WA(waTable, Wa_1409820462, 0);
+    MEDIA_WR_WA(waTable, WaDisableClearCCS, 1);
     return true;
 }
 
@@ -651,6 +667,7 @@ static bool InitAdlnMediaWa(struct GfxDeviceInfo *devInfo,
     //ADL-N need enable MMC for all stepping
     MEDIA_WR_WA(waTable, WaDisableCodecMmc, 0);
     MEDIA_WR_WA(waTable, WaDisableVPMmc, 0);
+    MEDIA_WR_WA(waTable, WaDisableClearCCS, 1);
 
     return true;
 }

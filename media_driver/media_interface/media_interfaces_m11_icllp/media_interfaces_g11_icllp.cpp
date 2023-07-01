@@ -48,7 +48,8 @@ Register<VphalInterfacesG11Icllp>((uint32_t)IGFX_ICELAKE_LP);
 MOS_STATUS VphalInterfacesG11Icllp::Initialize(
     PMOS_INTERFACE  osInterface,
     bool            bInitVphalState,
-    MOS_STATUS      *eStatus)
+    MOS_STATUS      *eStatus,
+    bool            clearViewMode)
 {
     m_vpBase = MOS_New(
         VphalState,
@@ -90,7 +91,7 @@ MOS_STATUS MhwInterfacesG11Icllp::Initialize(
 
     // MHW_CP and MHW_MI must always be created
     MOS_STATUS status = MOS_STATUS_SUCCESS;
-    m_cpInterface = Create_MhwCpInterface(osInterface);
+    m_cpInterface = osInterface->pfnCreateMhwCpInterface(osInterface);
     if(m_cpInterface == nullptr)
     {
         MOS_OS_ASSERTMESSAGE("new osInterface failed");

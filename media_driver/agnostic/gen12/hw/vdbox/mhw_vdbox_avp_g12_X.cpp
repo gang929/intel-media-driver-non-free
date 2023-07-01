@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2022, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -552,16 +552,6 @@ MOS_STATUS MhwVdboxAvpInterfaceG12::AddAvpPipeModeSelectCmd(
     cmd.DW3.PicStatusErrorReportId                      = false;
     cmd.DW5.PhaseIndicator                              = paramsG12->ucPhaseIndicator;
 
-#if MOS_EVENT_TRACE_DUMP_SUPPORTED
-    if (m_decodeInUse)
-    {
-        if (cmd.DW1.PipeWorkingMode == MHW_VDBOX_HCP_PIPE_WORK_MODE_CABAC_REAL_TILE)
-        {
-            MOS_TraceEvent(EVENT_DECODE_FEATURE_RT_SCALABILITY, EVENT_TYPE_INFO, NULL, 0, NULL, 0);
-        }
-    }
-#endif
-
     MHW_MI_CHK_STATUS(Mhw_AddCommandCmdOrBB(m_osInterface, cmdBuffer, params->pBatchBuffer, &cmd, sizeof(cmd)));
 
     // for Gen11+, we need to add MFX wait for both KIN and VRT before and after AVP Pipemode select...
@@ -682,13 +672,6 @@ MOS_STATUS MhwVdboxAvpInterfaceG12::AddAvpPipeBufAddrCmd(
             resourceParams.dwLocationInCmd = (i * 2) + 1;
             resourceParams.bIsWritable = false;
             resourceParams.dwSharedMocsOffset = 17 - resourceParams.dwLocationInCmd;
-
-            MOS_GPU_CONTEXT gpuContext = m_osInterface->pfnGetGpuContext(m_osInterface);
-            m_osInterface->pfnSyncOnResource(
-                m_osInterface,
-                params->m_references[i],
-                gpuContext,
-                false);
 
             MHW_MI_CHK_STATUS(AddResourceToCmd(
                 m_osInterface,
@@ -1451,17 +1434,6 @@ MOS_STATUS MhwVdboxAvpInterfaceG12::AddAvpPipeBufAddrCmd(
             cmdBuffer,
             &resourceParams));
     }
-
-#if MOS_EVENT_TRACE_DUMP_SUPPORTED
-    if (m_decodeInUse)
-    {
-        if (cmd.DecodedOutputFrameBufferAddressAttributes.DW0.BaseAddressMemoryCompressionEnable && !bMMCReported)
-        {
-            MOS_TraceEvent(EVENT_DECODE_FEATURE_MMC, EVENT_TYPE_INFO, NULL, 0, NULL, 0);
-            bMMCReported = true;
-        }
-    }
-#endif
 
     MHW_MI_CHK_STATUS(m_osInterface->pfnAddCommand(cmdBuffer, &cmd, sizeof(cmd)));
 

@@ -275,6 +275,7 @@ protected:
 #define __MEDIA_USER_FEATURE_VALUE_DISABLE_DN                           "Disable Dn"
 #define __MEDIA_USER_FEATURE_VALUE_DISABLE_PACKET_REUSE                 "Disable PacketReuse"
 #define __MEDIA_USER_FEATURE_VALUE_ENABLE_PACKET_REUSE_TEAMS_ALWAYS     "Enable PacketReuse Teams mode Always"
+#define __MEDIA_USER_FEATURE_VALUE_FORCE_ENABLE_VEBOX_OUTPUT_SURF       "Force Enable Vebox Output Surf"
 
 #define __VPHAL_HDR_LUT_MODE                                            "HDR Lut Mode"
 #define __VPHAL_HDR_GPU_GENERTATE_3DLUT                                 "HDR GPU generate 3DLUT"
@@ -283,8 +284,10 @@ protected:
 #define __MEDIA_USER_FEATURE_VALUE_VPP_APOGEIOS_ENABLE                  "VP Apogeios Enabled"
 #define __VPHAL_PRIMARY_MMC_COMPRESSMODE                                "VP Primary Surface Compress Mode"
 #define __VPHAL_RT_MMC_COMPRESSMODE                                     "VP RT Compress Mode"
+#define __VPHAL_RT_Cache_Setting                                        "VP RT Cache Setting"
 
 #if (_DEBUG || _RELEASE_INTERNAL)
+#define __VPHAL_RT_Old_Cache_Setting                                    "VP RT Old Cache Setting"
 #define __VPHAL_ENABLE_COMPUTE_CONTEXT                                  "VP Enable Compute Context"
 #define __VPHAL_RNDR_SCOREBOARD_CONTROL                                 "SCOREBOARD Control"
 #define __VPHAL_RNDR_CMFC_CONTROL                                       "CMFC Control"

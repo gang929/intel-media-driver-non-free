@@ -40,6 +40,11 @@ public:
 
     virtual MOS_STATUS Allocate(CodechalSetting *codecHalSettings) override;
 
+    virtual MOS_STATUS ResolveMetaData(PMOS_RESOURCE pInput, PMOS_RESOURCE pOutput) override;
+
+    virtual MOS_STATUS ReportErrorFlag(PMOS_RESOURCE pMetadataBuffer,
+        uint32_t size, uint32_t offset, uint32_t flag) override;
+
 MEDIA_CLASS_DEFINE_END(EncodeAvcVdencPipelineAdapterXe_Lpm_Plus_Base)
 };
 

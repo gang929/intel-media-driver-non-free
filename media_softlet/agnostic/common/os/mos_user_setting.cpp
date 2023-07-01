@@ -214,6 +214,15 @@ MOS_STATUS MosUserSetting::InitMosCommonUserSetting(MediaUserSettingSharedPtr us
 
     DeclareUserSettingKey(
         userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_MUL_PROC_SINGLE_BIN,
+        MediaUserSetting::Group::Device,
+        int32_t(0),
+        true,
+        true,
+        USER_SETTING_CONFIG_PERF_PATH); //"Perf Profiler Multi Process Single Binary Flag."
+
+    DeclareUserSettingKey(
+        userSettingPtr,
         __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_BUFFER_SIZE_KEY,
         MediaUserSetting::Group::Device,
         uint32_t(10000000),
@@ -390,6 +399,13 @@ MOS_STATUS MosUserSetting::InitMosMessageUserSetting(MediaUserSettingSharedPtr u
     DeclareUserSettingKey(
         userSettingPtr,
         __MOS_USER_FEATURE_KEY_MESSAGE_HLT_ENABLED,
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+
+    DeclareUserSettingKey(
+        userSettingPtr,
+        __MOS_USER_FEATURE_KEY_FLUSH_LOG_FILE_BEFORE_SUBMISSION,
         MediaUserSetting::Group::Device,
         0,
         true);
@@ -1379,6 +1395,13 @@ MOS_STATUS MosUserSetting::InitUserSettingForDebug(MediaUserSettingSharedPtr use
         MediaUserSetting::Group::Device,
         0,      // 0 is ignore. 1 blt, 2 render, 3 vebox, 4 bypass copy engine;
         true);  //"media copy force copy model."
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        "Bypass Evict",
+        MediaUserSetting::Group::Device,
+        0,
+        true);
     return MOS_STATUS_SUCCESS;
 }
 

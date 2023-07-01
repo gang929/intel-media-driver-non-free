@@ -693,26 +693,17 @@ VAStatus MediaLibvaCapsDG2::CreateEncAttributes(
 
     attrib.type = VAConfigAttribRateControl;
     attrib.value = VA_RC_CQP;
-    if (entrypoint != VAEntrypointEncSliceLP ||
-            (entrypoint == VAEntrypointEncSliceLP &&
-             MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrEnableMediaKernels) &&
-             !IsHevcSccProfile(profile))) // Currently, SCC doesn't support BRC
+    if (entrypoint == VAEntrypointEncSliceLP &&
+        MEDIA_IS_SKU(&(m_mediaCtx->SkuTable), FtrEnableMediaKernels) &&
+        !IsHevcSccProfile(profile)) // Currently, SCC doesn't support BRC
     {
         attrib.value |= VA_RC_CBR | VA_RC_VBR | VA_RC_MB;
         if (IsHevcProfile(profile))
         {
-            if (entrypoint != VAEntrypointEncSliceLP)
-            {
-                attrib.value |= VA_RC_ICQ;
-            }
+            attrib.value |= VA_RC_ICQ | VA_RC_VCM | VA_RC_QVBR;
 #if VA_CHECK_VERSION(1, 10, 0)
-            else
-            {
-                attrib.value |= VA_RC_TCBRC;
-            }
+            attrib.value |= VA_RC_TCBRC;
 #endif
-
-            attrib.value |= VA_RC_VCM | VA_RC_QVBR;
         }
         if (IsVp9Profile(profile))
         {
@@ -762,6 +753,10 @@ VAStatus MediaLibvaCapsDG2::CreateEncAttributes(
     if (entrypoint == VAEntrypointEncSliceLP)
     {
         attrib.value = DDI_CODEC_VDENC_MAX_L0_REF_FRAMES | (DDI_CODEC_VDENC_MAX_L1_REF_FRAMES << DDI_CODEC_LEFT_SHIFT_FOR_REFLIST1);
+        if (IsAvcProfile(profile))
+        {
+            attrib.value = DDI_CODEC_VDENC_MAX_L0_REF_FRAMES | (DDI_CODEC_VDENC_MAX_L1_REF_FRAMES_RAB_AVC << DDI_CODEC_LEFT_SHIFT_FOR_REFLIST1);
+        }
         if (IsHevcProfile(profile))
         {
             attrib.value = DDI_CODEC_VDENC_MAX_L0_REF_FRAMES_LDB | (DDI_CODEC_VDENC_MAX_L1_REF_FRAMES_LDB << DDI_CODEC_LEFT_SHIFT_FOR_REFLIST1);

@@ -45,7 +45,8 @@ static bool bxtRegisteredVphal =
 MOS_STATUS VphalInterfacesG9Bxt::Initialize(
     PMOS_INTERFACE  osInterface,
     bool            bInitVphalState,
-    MOS_STATUS      *eStatus)
+    MOS_STATUS      *eStatus,
+    bool            clearViewMode)
 {
     m_vpBase = MOS_New(
         VphalState,
@@ -91,7 +92,7 @@ MOS_STATUS MhwInterfacesG9Bxt::Initialize(
 
     // MHW_CP and MHW_MI must always be created
     MOS_STATUS status;
-    m_cpInterface = Create_MhwCpInterface(osInterface);
+    m_cpInterface = osInterface->pfnCreateMhwCpInterface(osInterface);
     m_miInterface = MOS_New(Mi, m_cpInterface, osInterface);
 
     if (params.Flags.m_render)
@@ -134,7 +135,7 @@ MOS_STATUS MhwInterfacesG9Bxt::Initialize(
 
     return MOS_STATUS_SUCCESS;
 }
-#ifdef _MMC_SUPPORTED
+#if defined(_MMC_SUPPORTED) && defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 static bool bxtRegisteredMmd =
     MediaFactory<uint32_t, MmdDevice>::
     Register<MmdDeviceG9Bxt>((uint32_t)IGFX_BROXTON);

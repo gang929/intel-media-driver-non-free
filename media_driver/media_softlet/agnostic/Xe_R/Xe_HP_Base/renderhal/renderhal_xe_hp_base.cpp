@@ -105,7 +105,7 @@ MOS_STATUS XRenderHal_Interface_Xe_Hp_Base::SetupSurfaceState(
     MHW_RENDERHAL_CHK_NULL(pRenderHal->pStateHeap);
     MHW_RENDERHAL_CHK_NULL(pRenderHal->pHwSizes);
     MHW_RENDERHAL_CHK_NULL(pRenderHal->pMhwStateHeap);
-    MHW_RENDERHAL_ASSERT(pRenderHalSurface->Rotation >= 0 && pRenderHalSurface->Rotation < 8);
+    MHW_RENDERHAL_ASSERT(pRenderHalSurface->Rotation >= MHW_ROTATION_IDENTITY && pRenderHalSurface->Rotation <= MHW_ROTATE_90_MIRROR_HORIZONTAL);
     //-----------------------------------------
 
     dwSurfaceSize = pRenderHal->pHwSizes->dwSizeSurfaceState;
@@ -146,6 +146,15 @@ MOS_STATUS XRenderHal_Interface_Xe_Hp_Base::SetupSurfaceState(
         SurfStateParams.RotationMode          = g_cLookup_RotationMode_g12[pRenderHalSurface->Rotation];
         SurfStateParams.TileModeGMM           = pSurface->TileModeGMM;
         SurfStateParams.bGMMTileEnabled       = pSurface->bGMMTileEnabled;
+
+        #if (_DEBUG || _RELEASE_INTERNAL)
+            pParams->MemObjCtl                              = SurfStateParams.dwCacheabilityControl;
+            pSurface->oldCacheSetting                       = (SurfStateParams.dwCacheabilityControl >> 1) & 0x0000003f;
+            if (pParams->isOutput)
+            {
+                pRenderHal->oldCacheSettingForTargetSurface = pSurface->oldCacheSetting;
+            }
+        #endif
 
         if (pSurface->MmcState == MOS_MEMCOMP_RC)
         {

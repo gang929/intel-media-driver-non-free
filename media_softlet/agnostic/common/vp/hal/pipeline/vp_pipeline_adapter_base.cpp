@@ -34,7 +34,8 @@
 
 VpPipelineAdapterBase::VpPipelineAdapterBase(
     vp::VpPlatformInterface &vpPlatformInterface,
-    MOS_STATUS              &eStatus):
+    MOS_STATUS              &eStatus,
+    bool                    clearViewMode) :
     m_vpPlatformInterface(vpPlatformInterface)
 {
     m_osInterface = m_vpPlatformInterface.GetOsInterface();
@@ -42,7 +43,8 @@ VpPipelineAdapterBase::VpPipelineAdapterBase(
     {
         m_userSettingPtr = m_osInterface->pfnGetUserSettingInstance(m_osInterface);
     }
-    VpUserSetting::InitVpUserSetting(m_userSettingPtr);
+    VpUserSetting::InitVpUserSetting(m_userSettingPtr, clearViewMode);
+
     eStatus = MOS_STATUS_SUCCESS;
 }
 
@@ -50,6 +52,7 @@ MOS_STATUS VpPipelineAdapterBase::GetVpMhwInterface(
     VP_MHWINTERFACE &vpMhwinterface)
 {
     VP_FUNC_CALL();
+
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
     bool       sfcNeeded                          = false;
     bool       veboxNeeded                        = false;
@@ -89,14 +92,14 @@ MOS_STATUS VpPipelineAdapterBase::GetVpMhwInterface(
 
     veboxNeeded = MEDIA_IS_SKU(m_skuTable, FtrVERing);
     sfcNeeded   = MEDIA_IS_SKU(m_skuTable, FtrSFCPipe);
-    if (veboxNeeded || sfcNeeded)
+    SetMhwMiItf(m_vprenderHal->pRenderHalPltInterface->GetMhwMiItf());
+    if ((veboxNeeded || sfcNeeded) && !m_clearVideoViewMode)
     {
         eStatus = VphalDevice::CreateVPMhwInterfaces(sfcNeeded, veboxNeeded, veboxItf, sfcItf, miItf, m_osInterface);
         if (eStatus == MOS_STATUS_SUCCESS)
         {
             SetMhwVeboxItf(veboxItf);
             SetMhwSfcItf(sfcItf);
-            SetMhwMiItf(m_vprenderHal->pRenderHalPltInterface->GetMhwMiItf());
         }
         else
         {
@@ -147,8 +150,15 @@ VpPipelineAdapterBase::~VpPipelineAdapterBase()
 
     if (m_cpInterface)
     {
-        Delete_MhwCpInterface(m_cpInterface);
-        m_cpInterface = nullptr;
+        if (m_osInterface)
+        {
+            m_osInterface->pfnDeleteMhwCpInterface(m_cpInterface);
+            m_cpInterface = nullptr;
+        }
+        else
+        {
+            VP_PUBLIC_ASSERTMESSAGE("Failed to destroy cpInterface.");
+        }
     }
 
     if (m_sfcItf)

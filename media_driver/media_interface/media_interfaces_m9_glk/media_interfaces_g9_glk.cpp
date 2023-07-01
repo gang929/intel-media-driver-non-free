@@ -50,7 +50,8 @@ static bool glkRegisteredVphal =
 MOS_STATUS VphalInterfacesG9Glk::Initialize(
     PMOS_INTERFACE  osInterface,
     bool            bInitVphalState,
-    MOS_STATUS      *eStatus)
+    MOS_STATUS      *eStatus,
+    bool            clearViewMode)
 {
     m_vpBase = MOS_New(
         VphalState,
@@ -64,7 +65,7 @@ static bool glkRegisteredMhw =
     MediaFactory<uint32_t, MhwInterfaces>::
     Register<MhwInterfacesG9Kbl>((uint32_t)IGFX_GEMINILAKE);
 
-#ifdef _MMC_SUPPORTED
+#if defined(_MMC_SUPPORTED) && defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 static bool glkRegisteredMmd =
     MediaFactory<uint32_t, MmdDevice>::
     Register<MmdDeviceG9Kbl>((uint32_t)IGFX_GEMINILAKE);

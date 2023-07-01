@@ -841,9 +841,10 @@ typedef struct _VPHAL_STE_PARAMS
 //!
 typedef struct _VPHAL_STD_PARAMS
 {
-    uint32_t           paraSizeInBytes = 0;
-    void              *param           = nullptr;
-    unsigned long long sysMem          = 0;
+    uint32_t           paraSizeInBytes  = 0;
+    void              *param            = nullptr;
+    unsigned long long sysMem           = 0;
+    bool               bOutputSkinScore = false;
 } VPHAL_STD_PARAMS, *PVPHAL_STD_PARAMS;
 
 //!
@@ -1033,6 +1034,8 @@ struct VPHAL_RENDER_PARAMS
     bool bUseVEHdrSfc       = false;  // use SFC for to perform CSC/Scaling/RGBSwap of HDR streaming; if false, use composite render.
     bool bNonFirstFrame     = false;  // first frame or not: first frame false, otherwise true considering zeromemory parameters.
     bool bOptimizeCpuTiming = false;  //!< Optimize Cpu Timing
+
+    bool bForceToRender = false;  // Force to render to perform scaling.
 
     VPHAL_RENDER_PARAMS() : uSrcCount(0),
                             pSrc(),

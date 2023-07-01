@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2021, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -298,7 +298,7 @@ namespace encode
         dmem->UPD_FrameHdrOBUSizeInBytes         = (uint16_t)((m_basicFeature->m_av1PicParams->FrameHdrOBUSizeInBits + 7) >> 3);
         dmem->UPD_FrameHdrOBUSizeByteOffset      = (uint16_t)(m_basicFeature->m_av1PicParams->FrameHdrOBUSizeByteOffset - m_basicFeature->GetAppHdrSizeInBytes(true));
         dmem->UPD_FrameType                      = 0;
-        dmem->UPD_ErrorResilientMode             = 0;
+        dmem->UPD_ErrorResilientMode             = m_basicFeature->m_av1PicParams->PicFlags.fields.error_resilient_mode;
         dmem->UPD_IntraOnly                      = 0;
         dmem->UPD_PrimaryRefFrame                = 0;
         dmem->UPD_SegOn                          = m_basicFeature->m_av1PicParams->stAV1Segments.SegmentFlags.fields.segmentation_enabled;
@@ -689,8 +689,12 @@ namespace encode
 
             break;
         }
+        case PAK_INTEGRATE: {
+            // nothing need to be done within brc feature for pak int
+            break;
+        }
         default:
-            ENCODE_ASSERTMESSAGE("AV1 BRC feature supports only BRC_INIT and BRC_UPDATE HUC functions");
+            ENCODE_ASSERTMESSAGE("AV1 BRC feature supports only PAK_INTEGRATE, BRC_INIT and BRC_UPDATE HUC functions");
             return MOS_STATUS_INVALID_PARAMETER;
         }
 

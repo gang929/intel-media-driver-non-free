@@ -148,14 +148,31 @@ MediaMemDecompState::~MediaMemDecompState()
 {
     MHW_FUNCTION_ENTER;
 
-    Delete_MhwCpInterface(m_cpInterface); 
-    m_cpInterface = nullptr;
+    if (m_cpInterface)
+    {
+        if (m_osInterface)
+        {
+            m_osInterface->pfnDeleteMhwCpInterface(m_cpInterface);
+            m_cpInterface = nullptr;
+        }
+        else
+        {
+            MHW_ASSERTMESSAGE("Failed to destroy cpInterface.");
+        }
+    }
 
     if (m_cmdBufIdGlobal)
     {
-        m_osInterface->pfnUnlockResource(m_osInterface, &m_resCmdBufIdGlobal);
-        m_osInterface->pfnFreeResource(m_osInterface, &m_resCmdBufIdGlobal);
-        m_cmdBufIdGlobal = nullptr;
+        if (m_osInterface)
+        {
+            m_osInterface->pfnUnlockResource(m_osInterface, &m_resCmdBufIdGlobal);
+            m_osInterface->pfnFreeResource(m_osInterface, &m_resCmdBufIdGlobal);
+            m_cmdBufIdGlobal = nullptr;
+        }
+        else
+        {
+            MHW_ASSERTMESSAGE("Failed to destroy command buffer global Id.");
+        }
     }
 
     if (m_miInterface)

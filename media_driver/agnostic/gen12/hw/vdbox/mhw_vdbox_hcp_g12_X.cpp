@@ -1,6 +1,6 @@
 /*===================== begin_copyright_notice ==================================
 
-Copyright (c) 2017-2019, Intel Corporation
+Copyright (c) 2017-2023, Intel Corporation
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -1476,21 +1476,6 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpPipeModeSelectCmd(
         cmd.DW1.PrefetchDisable = 1;
     }
 
-#if MOS_EVENT_TRACE_DUMP_SUPPORTED
-    if (m_decodeInUse)
-    {
-        if (cmd.DW1.PipeWorkingMode == MHW_VDBOX_HCP_PIPE_WORK_MODE_CABAC_FE ||
-            cmd.DW1.PipeWorkingMode == MHW_VDBOX_HCP_PIPE_WORK_MODE_CODEC_BE)
-        {
-            MOS_TraceEvent(EVENT_DECODE_FEATURE_VT_SCALABILITY, EVENT_TYPE_INFO, NULL, 0, NULL, 0);
-        }
-        else if (cmd.DW1.PipeWorkingMode == MHW_VDBOX_HCP_PIPE_WORK_MODE_CABAC_REAL_TILE)
-        {
-            MOS_TraceEvent(EVENT_DECODE_FEATURE_RT_SCALABILITY, EVENT_TYPE_INFO, NULL, 0, NULL, 0);
-        }
-    }
-#endif
-
     MHW_MI_CHK_STATUS(Mhw_AddCommandCmdOrBB(m_osInterface, cmdBuffer, params->pBatchBuffer, &cmd, sizeof(cmd)));
 
     // for Gen11+, we need to add MFX wait for both KIN and VRT before and after HCP Pipemode select...
@@ -2021,13 +2006,6 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpPipeBufAddrCmd(
 
             resourceParams.dwSharedMocsOffset = 53 - resourceParams.dwLocationInCmd; // Common Prodected Data bit is in DW53
 
-            MOS_GPU_CONTEXT gpuContext = m_osInterface->pfnGetGpuContext(m_osInterface);
-            m_osInterface->pfnSyncOnResource(
-                m_osInterface,
-                params->presReferences[i],
-                gpuContext,
-                false);
-
             MHW_MI_CHK_STATUS(pfnAddResourceToCmd(
                 m_osInterface,
                 cmdBuffer,
@@ -2422,17 +2400,6 @@ MOS_STATUS MhwVdboxHcpInterfaceG12::AddHcpPipeBufAddrCmd(
             cmdBuffer,
             &resourceParams));
     }
-
-#if MOS_EVENT_TRACE_DUMP_SUPPORTED
-    if (m_decodeInUse)
-    {
-        if (cmd.DecodedPictureMemoryAddressAttributes.DW0.BaseAddressMemoryCompressionEnable && !bMMCReported)
-        {
-            MOS_TraceEvent(EVENT_DECODE_FEATURE_MMC, EVENT_TYPE_INFO, NULL, 0, NULL, 0);
-            bMMCReported = true;
-        }
-    }
-#endif
 
     MHW_MI_CHK_STATUS(m_osInterface->pfnAddCommand(cmdBuffer, &cmd, sizeof(cmd)));
 

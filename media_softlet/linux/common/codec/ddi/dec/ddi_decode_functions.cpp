@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, Intel Corporation
+* Copyright (c) 2022-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -49,10 +49,6 @@
 #endif
 
 using namespace decode;
-
-#if MOS_EVENT_TRACE_DUMP_SUPPORTED
-static uint32_t DecodeFrameIndex = 0;
-#endif
 
 VAStatus DdiDecodeFunctions::CreateConfig (
     VADriverContextP  ctx,
@@ -169,19 +165,13 @@ VAStatus DdiDecodeFunctions::CreateContext(
     configItem = mediaCtx->m_capsNext->m_capsTable->QueryConfigItemFromIndex(configId + DDI_CODEC_GEN_CONFIG_ATTRIBUTES_DEC_BASE);
     DDI_CODEC_CHK_NULL(configItem, "Invalid config id!", VA_STATUS_ERROR_INVALID_PARAMETER);
 
-    uint16_t mode = CODECHAL_DECODE_MODE_AVCVLD;
     PDDI_DECODE_CONTEXT decCtx = nullptr;
     VAStatus va = VA_STATUS_SUCCESS;
 
     DdiDecodeBase *ddiDecode = DdiDecodeFactory::Create(ComponentInfo{configItem->profile, configItem->entrypoint});
     DDI_CODEC_CHK_NULL(ddiDecode, "DDI: failed to Create Decode Context in CreateContext", VA_STATUS_ERROR_ALLOCATION_FAILED);
 
-    mode = ddiDecode->GetDecodeCodecMode(configItem->profile);
-    va   = ddiDecode->CheckDecodeResolution(
-           mode,
-           configItem->profile,
-           pictureWidth,
-           pictureHeight);
+    va = ddiDecode->CheckDecodeResolution(configItem, pictureWidth, pictureHeight);
     if (va != VA_STATUS_SUCCESS)
     {
         return va;
@@ -816,7 +806,7 @@ VAStatus DdiDecodeFunctions::MapBufferInternal(
         if (buf->bo)
         {
             uint32_t timeout_NS = 100000000;
-            while (0 != mos_gem_bo_wait(buf->bo, timeout_NS))
+            while (0 != mos_bo_wait(buf->bo, timeout_NS))
             {
                 // Just loop while gem_bo_wait times-out.
             }
