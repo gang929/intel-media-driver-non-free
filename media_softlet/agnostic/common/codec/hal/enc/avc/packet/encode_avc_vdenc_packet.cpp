@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2022, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -34,6 +34,7 @@
 #include "mos_solo_generic.h"
 #include "encode_avc_header_packer.h"
 #include "media_perf_profiler.h"
+#include "mos_os_cp_interface_specific.h"
 
 namespace encode {
 
@@ -131,6 +132,7 @@ namespace encode {
             rowstoreParams.Mode       = CODECHAL_ENCODE_MODE_AVC;
             rowstoreParams.dwPicWidth = m_basicFeature->m_frameWidth;
             rowstoreParams.bIsFrame   = (m_seqParam->frame_mbs_only_flag == 1);
+            rowstoreParams.ucChromaFormat = m_basicFeature->m_chromaFormat;
             ENCODE_CHK_STATUS_RETURN(m_hwInterface->SetRowstoreCachingOffsets(&rowstoreParams));
 
             if (m_vdencItf)
@@ -205,11 +207,11 @@ namespace encode {
         allocParamsForBufferLinear.Type     = MOS_GFXRES_BUFFER;
         allocParamsForBufferLinear.TileType = MOS_TILE_LINEAR;
         allocParamsForBufferLinear.Format   = Format_Buffer;
-        allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ_WRITE_CACHE;
 
         // PAK Slice Size Streamout Buffer
         allocParamsForBufferLinear.dwBytes  = MOS_ALIGN_CEIL(CODECHAL_ENCODE_SLICESIZE_BUF_SIZE, CODECHAL_PAGE_SIZE);
         allocParamsForBufferLinear.pBufName = "PAK Slice Size Streamout Buffer";
+        allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ_WRITE_CACHE;
         ENCODE_CHK_STATUS_RETURN(m_basicFeature->m_recycleBuf->RegisterResource(PakSliceSizeStreamOutBuffer, allocParamsForBufferLinear));
 
         // VDENC Intra Row Store Scratch buffer
@@ -226,10 +228,17 @@ namespace encode {
         ENCODE_CHK_STATUS_RETURN(m_basicFeature->m_recycleBuf->RegisterResource(BrcPakStatisticBuffer, allocParamsForBufferLinear, 1));
 
         // Here allocate the buffer for MB+FrameLevel PAK statistics.
+        MOS_ALLOC_GFXRES_PARAMS allocParamsForStatisticBufferFull = allocParamsForBufferLinear;
         uint32_t size = brcSettings.vdencBrcPakStatsBufferSize + m_basicFeature->m_picWidthInMb * m_basicFeature->m_picHeightInMb * 64;
-        allocParamsForBufferLinear.dwBytes  = MOS_ALIGN_CEIL(size, CODECHAL_PAGE_SIZE);
-        allocParamsForBufferLinear.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ_WRITE_CACHE;
-        m_pakStatsBufferFull               = m_allocator->AllocateResource(allocParamsForBufferLinear, false);
+        allocParamsForStatisticBufferFull.dwBytes = MOS_ALIGN_CEIL(size, CODECHAL_PAGE_SIZE);
+        allocParamsForStatisticBufferFull.pBufName = "VDENC BRC PAK Statistics Buffer Full";
+        allocParamsForStatisticBufferFull.ResUsageType = MOS_HW_RESOURCE_USAGE_ENCODE_INTERNAL_READ_WRITE_CACHE;
+        if (m_osInterface->osCpInterface == nullptr || !m_osInterface->osCpInterface->IsCpEnabled())
+        {
+            allocParamsForStatisticBufferFull.dwMemType = MOS_MEMPOOL_SYSTEMMEMORY;
+            allocParamsForStatisticBufferFull.Flags.bCacheable = true;
+        }
+        ENCODE_CHK_STATUS_RETURN(m_basicFeature->m_recycleBuf->RegisterResource(BrcPakStatisticBufferFull, allocParamsForStatisticBufferFull));
 
         if (m_mfxItf->IsDeblockingFilterRowstoreCacheEnabled() == false)
         {
@@ -293,7 +302,9 @@ namespace encode {
 
         ENCODE_CHK_STATUS_RETURN(m_miItf->SetWatchdogTimerThreshold(m_basicFeature->m_frameWidth, m_basicFeature->m_frameHeight, true));
 
-        SetPerfTag(CODECHAL_ENCODE_PERFTAG_CALL_PAK_ENGINE, (uint16_t)m_basicFeature->m_mode, m_basicFeature->m_pictureCodingType);
+        SetPerfTag(m_pipeline->IsFirstPass() ? CODECHAL_ENCODE_PERFTAG_CALL_PAK_ENGINE : CODECHAL_ENCODE_PERFTAG_CALL_PAK_ENGINE_SECOND_PASS,
+            (uint16_t)m_basicFeature->m_mode,
+            m_basicFeature->m_pictureCodingType);
 
         auto brcFeature = dynamic_cast<AvcEncodeBRC*>(m_featureManager->GetFeature(AvcFeatureIDs::avcBrcFeature));
         ENCODE_CHK_NULL_RETURN(brcFeature);
@@ -454,6 +465,8 @@ namespace encode {
                 ENCODE_CHK_STATUS_RETURN(SetSliceStateParams(m_basicFeature->sliceState, slcData, slcCount)))
 
             ENCODE_CHK_STATUS_RETURN(SendSlice(&cmdBuffer));
+            ENCODE_CHK_STATUS_RETURN(ReportSliceSizeMetaData(&cmdBuffer, slcCount));
+
             m_lastSlice = (slcCount == (m_basicFeature->m_numSlices) - 1);
             SETPAR_AND_ADDCMD(VD_PIPELINE_FLUSH, m_vdencItf, &cmdBuffer);
 
@@ -507,6 +520,11 @@ namespace encode {
 #endif
         }
 
+        if (m_picParam->StatusReportEnable.fields.FrameStats)
+        {
+            ENCODE_CHK_STATUS_RETURN(GetAvcVdencFrameLevelStatusExt(m_picParam->StatusReportFeedbackNumber, &cmdBuffer));
+        }
+
         ENCODE_CHK_STATUS_RETURN(EndStatusReport(statusReportMfx, &cmdBuffer));
 
         if (!m_pipeline->IsSingleTaskPhaseSupported() || m_pipeline->IsLastPass())
@@ -554,15 +572,6 @@ namespace encode {
             return MOS_STATUS_SUCCESS;
         }
 
-        ENCODE_CHK_COND_RETURN((m_vdboxIndex > m_mfxItf->GetMaxVdboxIndex()), "ERROR - vdbox index exceed the maximum");
-
-        MmioRegistersMfx *mmioRegisters = SelectVdboxAndGetMmioRegister(m_vdboxIndex, cmdBuffer);
-        CODEC_HW_CHK_NULL_RETURN(mmioRegisters);
-        m_pResource = m_basicFeature->m_recycleBuf->GetBuffer(PakSliceSizeStreamOutBuffer, m_basicFeature->m_frameNum);
-        m_dwOffset  = 0;
-        m_dwValue   = mmioRegisters->mfcBitstreamBytecountFrameRegOffset;
-        SETPAR_AND_ADDCMD(MI_STORE_REGISTER_MEM, m_miItf, cmdBuffer);
-
         m_pResource = presMetadataBuffer;
         m_dwOffset  = resourceOffset.dwEncodeErrorFlags;
         m_dwValue   = 0;
@@ -572,33 +581,387 @@ namespace encode {
         m_dwValue  = m_basicFeature->m_numSlices;
         SETPAR_AND_ADDCMD(MI_STORE_DATA_IMM, m_miItf, cmdBuffer);
 
-        auto &miCpyMemMemParams = m_miItf->MHW_GETPAR_F(MI_COPY_MEM_MEM)();
-        miCpyMemMemParams       = {};
-        for (uint16_t slcCount = 0; slcCount < m_basicFeature->m_numSlices; slcCount++)
+        ENCODE_CHK_COND_RETURN((m_vdboxIndex > m_mfxItf->GetMaxVdboxIndex()), "ERROR - vdbox index exceed the maximum");
+        MmioRegistersMfx *mmioRegisters = SelectVdboxAndGetMmioRegister(m_vdboxIndex, cmdBuffer);
+        CODEC_HW_CHK_NULL_RETURN(mmioRegisters);
+
+        m_dwOffset = resourceOffset.dwEncodedBitstreamWrittenBytesCount;
+        m_dwValue  = mmioRegisters->mfcBitstreamBytecountFrameRegOffset;
+        SETPAR_AND_ADDCMD(MI_STORE_REGISTER_MEM, m_miItf, cmdBuffer);
+
+        // Statistics
+        // Average QP
+        if (m_seqParam->RateControlMethod == RATECONTROL_CQP)
         {
-            uint32_t subRegionSartOffset = resourceOffset.dwMetaDataSize + slcCount * resourceOffset.dwMetaDataSubRegionSize;
-
-            m_dwOffset              = subRegionSartOffset + resourceOffset.dwbStartOffset;
-            m_dwValue  = m_basicFeature->m_slcData[slcCount].SliceOffset;
+            m_dwOffset = resourceOffset.dwEncodeStats + resourceOffset.dwAverageQP;
+            m_dwValue  = m_picParam->QpY + m_sliceParams->slice_qp_delta;
             SETPAR_AND_ADDCMD(MI_STORE_DATA_IMM, m_miItf, cmdBuffer);
-
-            m_dwOffset              = subRegionSartOffset + resourceOffset.dwbHeaderSize;
-            m_dwValue  = m_basicFeature->m_slcData[slcCount].BitSize;
-            SETPAR_AND_ADDCMD(MI_STORE_DATA_IMM, m_miItf, cmdBuffer);
-
-            miCpyMemMemParams.presSrc     = m_basicFeature->m_recycleBuf->GetBuffer(PakSliceSizeStreamOutBuffer, m_basicFeature->m_frameNum);
-            miCpyMemMemParams.presDst     = presMetadataBuffer;
-            miCpyMemMemParams.dwSrcOffset = slcCount * 2;
-            miCpyMemMemParams.dwDstOffset = subRegionSartOffset + resourceOffset.dwbSize;
-            ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_COPY_MEM_MEM)(cmdBuffer));
+        }
+        else
+        {
+            ENCODE_NORMALMESSAGE("RC mode is temporarily not supported");
         }
 
-        ENCODE_CHK_COND_RETURN((m_vdboxIndex > m_mfxItf->GetMaxVdboxIndex()), "ERROR - vdbox index exceed the maximum");
-        mmioRegisters = SelectVdboxAndGetMmioRegister(m_vdboxIndex, cmdBuffer);
-        CODEC_HW_CHK_NULL_RETURN(mmioRegisters);
+        // PAK frame status pointer
+        MOS_RESOURCE *pPakFrameStat = (m_basicFeature->m_perMBStreamOutEnable) ?
+            m_basicFeature->m_recycleBuf->GetBuffer(BrcPakStatisticBufferFull, m_basicFeature->m_frameNum) :
+            m_basicFeature->m_recycleBuf->GetBuffer(BrcPakStatisticBuffer, 0);
+
+        auto &miLoadRegImmParams = m_miItf->MHW_GETPAR_F(MI_LOAD_REGISTER_IMM)();
+        auto &miLoadRegMemParams = m_miItf->MHW_GETPAR_F(MI_LOAD_REGISTER_MEM)();
+        auto &miLoadRegRegParams = m_miItf->MHW_GETPAR_F(MI_LOAD_REGISTER_REG)();
+        auto &flushDwParams      = m_miItf->MHW_GETPAR_F(MI_FLUSH_DW)();
+
+        // Intra/Inter/Skip statistics counted by number of MBs (not sub-blocks)
+
+        // Intra16x16 + Intra8x8 + Intra4x4
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister4LoOffset;
+        miLoadRegImmParams.dwData     = 0xFFFF0000;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwData     = 0;
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister4HiOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+        // DW4 Intra16x16:Intra8x8
+        miLoadRegMemParams                 = {};
+        miLoadRegMemParams.presStoreBuffer = pPakFrameStat;
+        miLoadRegMemParams.dwOffset        = 4 * sizeof(uint32_t);
+        miLoadRegMemParams.dwRegister      = mmioRegisters->generalPurposeRegister0LoOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_MEM)(cmdBuffer));
+
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister0HiOffset;
+        miLoadRegImmParams.dwData     = 0;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+        mhw::mi::MHW_MI_ALU_PARAMS aluParams[4 + 16 * 4];
+        int                        aluCount;
+
+        auto Reg0OpReg4ToReg0 = [&](MHW_MI_ALU_OPCODE opCode) {
+            aluCount = 0;
+            // load  SrcA, reg0
+            aluParams[aluCount].AluOpcode = MHW_MI_ALU_LOAD;
+            aluParams[aluCount].Operand1  = MHW_MI_ALU_SRCA;
+            aluParams[aluCount].Operand2  = MHW_MI_ALU_GPREG0;
+            ++aluCount;
+            // load  SrcB, reg4
+            aluParams[aluCount].AluOpcode = MHW_MI_ALU_LOAD;
+            aluParams[aluCount].Operand1  = MHW_MI_ALU_SRCB;
+            aluParams[aluCount].Operand2  = MHW_MI_ALU_GPREG4;
+            ++aluCount;
+            // and   SrcA, SrcB
+            aluParams[aluCount].AluOpcode = opCode;
+            ++aluCount;
+
+            // store reg0, accu
+            aluParams[aluCount].AluOpcode = MHW_MI_ALU_STORE;
+            aluParams[aluCount].Operand1  = MHW_MI_ALU_GPREG0;
+            aluParams[aluCount].Operand2  = MHW_MI_ALU_ACCU;
+            ++aluCount;
+
+            auto &miMathParams          = m_miItf->MHW_GETPAR_F(MI_MATH)();
+            miMathParams                = {};
+            miMathParams.dwNumAluParams = aluCount;
+            miMathParams.pAluPayload    = aluParams;
+            ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_MATH)(cmdBuffer));
+
+            return MOS_STATUS_SUCCESS;
+        };
+
+        ENCODE_CHK_STATUS_RETURN(Reg0OpReg4ToReg0(MHW_MI_ALU_AND));  // reg0 0:0:intra16x16:0
+
+        // DW5 Intra4x4:Inter16x16
+        miLoadRegMemParams                 = {};
+        miLoadRegMemParams.presStoreBuffer = pPakFrameStat;
+        miLoadRegMemParams.dwOffset        = 5 * sizeof(uint32_t);
+        miLoadRegMemParams.dwRegister      = mmioRegisters->generalPurposeRegister4LoOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_MEM)(cmdBuffer));
+
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister4HiOffset;
+        miLoadRegImmParams.dwData     = 0;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));  // reg4 0:0:intra4x4:inter16x16(garb)
+
+        auto AddHighShortsOfReg0Reg4ToReg0 = [&]() {
+            aluCount = 0;
+            // load  SrcA, reg0
+            aluParams[aluCount].AluOpcode = MHW_MI_ALU_LOAD;
+            aluParams[aluCount].Operand1  = MHW_MI_ALU_SRCA;
+            aluParams[aluCount].Operand2  = MHW_MI_ALU_GPREG0;
+            ++aluCount;
+            // load  SrcB, reg4
+            aluParams[aluCount].AluOpcode = MHW_MI_ALU_LOAD;
+            aluParams[aluCount].Operand1  = MHW_MI_ALU_SRCB;
+            aluParams[aluCount].Operand2  = MHW_MI_ALU_GPREG4;
+            ++aluCount;
+            // add   SrcA, SrcB
+            aluParams[aluCount].AluOpcode = MHW_MI_ALU_ADD;
+            ++aluCount;
+
+            // ACCU keeps now 0:0:reg0+reg4:0
+
+            // 16bit shift left
+            for (int i = 0; i < 16; ++i)
+            {
+                // store reg0, accu
+                aluParams[aluCount].AluOpcode = MHW_MI_ALU_STORE;
+                aluParams[aluCount].Operand1  = MHW_MI_ALU_GPREG0;
+                aluParams[aluCount].Operand2  = MHW_MI_ALU_ACCU;
+                ++aluCount;
+                // load SrcA, accu
+                aluParams[aluCount].AluOpcode = MHW_MI_ALU_LOAD;
+                aluParams[aluCount].Operand1  = MHW_MI_ALU_SRCA;
+                aluParams[aluCount].Operand2  = MHW_MI_ALU_GPREG0;
+                ++aluCount;
+                // load SrcB, accu
+                aluParams[aluCount].AluOpcode = MHW_MI_ALU_LOAD;
+                aluParams[aluCount].Operand1  = MHW_MI_ALU_SRCB;
+                aluParams[aluCount].Operand2  = MHW_MI_ALU_GPREG0;
+                ++aluCount;
+                // add  SrcA, SrcB
+                aluParams[aluCount].AluOpcode = MHW_MI_ALU_ADD;
+                ++aluCount;
+            }
+
+            // store reg0, accu
+            aluParams[aluCount].AluOpcode = MHW_MI_ALU_STORE;
+            aluParams[aluCount].Operand1  = MHW_MI_ALU_GPREG0;
+            aluParams[aluCount].Operand2  = MHW_MI_ALU_ACCU;
+            ++aluCount;
+
+            auto &miMathParams          = m_miItf->MHW_GETPAR_F(MI_MATH)();
+            miMathParams                = {};
+            miMathParams.dwNumAluParams = aluCount;
+            miMathParams.pAluPayload    = aluParams;
+            ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_MATH)(cmdBuffer));
+
+            // move from reg0hi to reg0lo
+            miLoadRegRegParams               = {};
+            miLoadRegRegParams.dwSrcRegister = mmioRegisters->generalPurposeRegister0HiOffset;
+            miLoadRegRegParams.dwDstRegister = mmioRegisters->generalPurposeRegister0LoOffset;
+            ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_REG)(cmdBuffer));
+
+            miLoadRegImmParams            = {};
+            miLoadRegImmParams.dwData     = 0;
+            miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister0HiOffset;
+            ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+            return MOS_STATUS_SUCCESS;
+        };
+
+        ENCODE_CHK_STATUS_RETURN(AddHighShortsOfReg0Reg4ToReg0());  // reg0 0:0:(Intra4x4+Intra16x16).hi:(Intra4x4+Intra16x16).lo
+
+        // Temp store from reg0 to presMetadataBuffer
         m_pResource = presMetadataBuffer;
-        m_dwOffset  = resourceOffset.dwEncodedBitstreamWrittenBytesCount;
-        m_dwValue   = mmioRegisters->mfcBitstreamBytecountFrameRegOffset;
+        m_dwOffset  = resourceOffset.dwEncodeStats + resourceOffset.dwIntraCodingUnitsCount;
+        m_dwValue   = mmioRegisters->generalPurposeRegister0LoOffset;
+        SETPAR_AND_ADDCMD(MI_STORE_REGISTER_MEM, m_miItf, cmdBuffer);
+
+        // DW4 Intra16x16:Intra8x8
+        miLoadRegMemParams                 = {};
+        miLoadRegMemParams.presStoreBuffer = pPakFrameStat;
+        miLoadRegMemParams.dwOffset        = 4 * sizeof(uint32_t);
+        miLoadRegMemParams.dwRegister      = mmioRegisters->generalPurposeRegister0LoOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_MEM)(cmdBuffer));
+
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister4LoOffset;
+        miLoadRegImmParams.dwData     = 0x0000FFFF;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwData     = 0;
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister4HiOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+        ENCODE_CHK_STATUS_RETURN(Reg0OpReg4ToReg0(MHW_MI_ALU_AND));  // reg0 0:0:0:Intra8x8
+
+        flushDwParams = {};
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_FLUSH_DW)(cmdBuffer));
+
+        miLoadRegMemParams                 = {};
+        miLoadRegMemParams.presStoreBuffer = presMetadataBuffer;
+        miLoadRegMemParams.dwOffset        = resourceOffset.dwEncodeStats + resourceOffset.dwIntraCodingUnitsCount;
+        miLoadRegMemParams.dwRegister      = mmioRegisters->generalPurposeRegister4LoOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_MEM)(cmdBuffer));
+
+        ENCODE_CHK_STATUS_RETURN(Reg0OpReg4ToReg0(MHW_MI_ALU_ADD));
+
+        // Store from reg0 to presMetadataBuffer
+        m_pResource = presMetadataBuffer;
+        m_dwOffset  = resourceOffset.dwEncodeStats + resourceOffset.dwIntraCodingUnitsCount;
+        m_dwValue   = mmioRegisters->generalPurposeRegister0LoOffset;
+        SETPAR_AND_ADDCMD(MI_STORE_REGISTER_MEM, m_miItf, cmdBuffer);
+
+        // Inter16x16 + Inter16x8 + Inter8x16 + Inter8x8
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister4LoOffset;
+        miLoadRegImmParams.dwData     = 0xFFFF0000;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwData     = 0;
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister4HiOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+        // DW6 Inter16x8:Inter8x16
+        miLoadRegMemParams                 = {};
+        miLoadRegMemParams.presStoreBuffer = pPakFrameStat;
+        miLoadRegMemParams.dwOffset        = 6 * sizeof(uint32_t);
+        miLoadRegMemParams.dwRegister      = mmioRegisters->generalPurposeRegister0LoOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_MEM)(cmdBuffer));
+
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister0HiOffset;
+        miLoadRegImmParams.dwData     = 0;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+        ENCODE_CHK_STATUS_RETURN(Reg0OpReg4ToReg0(MHW_MI_ALU_AND));  // reg0 0:0:inter16x8:0
+
+        // DW7 Inter8x8:InterSkip16x16
+        miLoadRegMemParams                 = {};
+        miLoadRegMemParams.presStoreBuffer = pPakFrameStat;
+        miLoadRegMemParams.dwOffset        = 7 * sizeof(uint32_t);
+        miLoadRegMemParams.dwRegister      = mmioRegisters->generalPurposeRegister4LoOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_MEM)(cmdBuffer));
+
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister4HiOffset;
+        miLoadRegImmParams.dwData     = 0;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));  // reg4 0:0:inter8x8:0
+
+        ENCODE_CHK_STATUS_RETURN(AddHighShortsOfReg0Reg4ToReg0());  // reg0 0:0:(Inter16x8+Inter8x8).hi:(Inter16x8+Inter8x8).lo;
+
+        // Temp store from reg0 to presMetadataBuffer
+        m_pResource = presMetadataBuffer;
+        m_dwOffset  = resourceOffset.dwEncodeStats + resourceOffset.dwInterCodingUnitsCount;
+        m_dwValue   = mmioRegisters->generalPurposeRegister0LoOffset;
+        SETPAR_AND_ADDCMD(MI_STORE_REGISTER_MEM, m_miItf, cmdBuffer);
+
+        // DW6 Inter16x8:Inter8x16
+        miLoadRegMemParams                 = {};
+        miLoadRegMemParams.presStoreBuffer = pPakFrameStat;
+        miLoadRegMemParams.dwOffset        = 6 * sizeof(uint32_t);
+        miLoadRegMemParams.dwRegister      = mmioRegisters->generalPurposeRegister0HiOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_MEM)(cmdBuffer));
+
+        // DW5 Intra4x4 : Inter16x16
+        miLoadRegMemParams                 = {};
+        miLoadRegMemParams.presStoreBuffer = pPakFrameStat;
+        miLoadRegMemParams.dwOffset        = 5 * sizeof(uint32_t);
+        miLoadRegMemParams.dwRegister      = mmioRegisters->generalPurposeRegister0LoOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_MEM)(cmdBuffer));
+
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister4LoOffset;
+        miLoadRegImmParams.dwData     = 0x0000FFFF;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister4HiOffset;
+        miLoadRegImmParams.dwData     = 0x0000FFFF;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+        ENCODE_CHK_STATUS_RETURN(Reg0OpReg4ToReg0(MHW_MI_ALU_AND));  // reg0 0:Inter8x16:0:Inter16x16
+
+        // move from reg0hi to reg4lo
+        miLoadRegRegParams               = {};
+        miLoadRegRegParams.dwSrcRegister = mmioRegisters->generalPurposeRegister0HiOffset;
+        miLoadRegRegParams.dwDstRegister = mmioRegisters->generalPurposeRegister4LoOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_REG)(cmdBuffer));
+
+        ENCODE_CHK_STATUS_RETURN(Reg0OpReg4ToReg0(MHW_MI_ALU_ADD));  // reg0 0:0:(Inter8x16+Inter16x16).hi::(Inter8x16+Inter16x16).hi
+
+        flushDwParams = {};
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_FLUSH_DW)(cmdBuffer));
+
+        miLoadRegMemParams                 = {};
+        miLoadRegMemParams.presStoreBuffer = presMetadataBuffer;
+        miLoadRegMemParams.dwOffset        = resourceOffset.dwEncodeStats + resourceOffset.dwInterCodingUnitsCount;
+        miLoadRegMemParams.dwRegister      = mmioRegisters->generalPurposeRegister4LoOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_MEM)(cmdBuffer));
+
+        ENCODE_CHK_STATUS_RETURN(Reg0OpReg4ToReg0(MHW_MI_ALU_ADD));
+
+        // Store from reg0 to presMetadataBuffer
+        m_pResource = presMetadataBuffer;
+        m_dwOffset  = resourceOffset.dwEncodeStats + resourceOffset.dwInterCodingUnitsCount;
+        m_dwValue   = mmioRegisters->generalPurposeRegister0LoOffset;
+        SETPAR_AND_ADDCMD(MI_STORE_REGISTER_MEM, m_miItf, cmdBuffer);
+
+        // Inter skip 16x16
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister4LoOffset;
+        miLoadRegImmParams.dwData     = 0x0000FFFF;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+        miLoadRegImmParams            = {};
+        miLoadRegImmParams.dwData     = 0;
+        miLoadRegImmParams.dwRegister = mmioRegisters->generalPurposeRegister4HiOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuffer));
+
+        // DW7 Inter8x8:InterSkip16x16
+        miLoadRegMemParams                 = {};
+        miLoadRegMemParams.presStoreBuffer = pPakFrameStat;
+        miLoadRegMemParams.dwOffset        = 7 * sizeof(uint32_t);
+        miLoadRegMemParams.dwRegister      = mmioRegisters->generalPurposeRegister0LoOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_MEM)(cmdBuffer));
+
+        ENCODE_CHK_STATUS_RETURN(Reg0OpReg4ToReg0(MHW_MI_ALU_AND));
+
+        // Store from reg0 to presMetadataBuffer
+        m_pResource = presMetadataBuffer;
+        m_dwOffset  = resourceOffset.dwEncodeStats + resourceOffset.dwSkipCodingUnitsCount;
+        m_dwValue   = mmioRegisters->generalPurposeRegister0LoOffset;
+        SETPAR_AND_ADDCMD(MI_STORE_REGISTER_MEM, m_miItf, cmdBuffer);
+
+        // Average MV_X/MV_Y, report (0,0) as temp solution, later may need kernel involved
+        m_dwOffset = resourceOffset.dwEncodeStats + resourceOffset.dwAverageMotionEstimationXDirection;
+        m_dwValue  = 0;
+        SETPAR_AND_ADDCMD(MI_STORE_DATA_IMM, m_miItf, cmdBuffer);
+
+        m_dwOffset = resourceOffset.dwEncodeStats + resourceOffset.dwAverageMotionEstimationYDirection;
+        m_dwValue  = 0;
+        SETPAR_AND_ADDCMD(MI_STORE_DATA_IMM, m_miItf, cmdBuffer);
+
+        return MOS_STATUS_SUCCESS;
+    }
+
+    MOS_STATUS AvcVdencPkt::ReportSliceSizeMetaData(
+        PMOS_COMMAND_BUFFER cmdBuffer,
+        uint32_t            slcCount)
+    {
+        ENCODE_FUNC_CALL();
+
+        PMOS_RESOURCE  presMetadataBuffer = m_basicFeature->m_resMetadataBuffer;
+        MetaDataOffset resourceOffset     = m_basicFeature->m_metaDataOffset;
+        if ((presMetadataBuffer == nullptr) || !m_pipeline->IsLastPass())
+        {
+            return MOS_STATUS_SUCCESS;
+        }
+
+        uint32_t subRegionSartOffset = resourceOffset.dwMetaDataSize + slcCount * resourceOffset.dwMetaDataSubRegionSize;
+
+        SETPAR_AND_ADDCMD(MI_FLUSH_DW, m_miItf, cmdBuffer);
+
+        m_pResource = presMetadataBuffer;
+        m_dwOffset = subRegionSartOffset + resourceOffset.dwbStartOffset;
+        m_dwValue   = 0;
+        SETPAR_AND_ADDCMD(MI_STORE_DATA_IMM, m_miItf, cmdBuffer);
+
+        m_dwOffset = subRegionSartOffset + resourceOffset.dwbHeaderSize;
+        m_dwValue  = m_basicFeature->m_slcData[slcCount].BitSize;
+        SETPAR_AND_ADDCMD(MI_STORE_DATA_IMM, m_miItf, cmdBuffer);
+
+        MmioRegistersMfx *mmioRegisters = SelectVdboxAndGetMmioRegister(m_vdboxIndex, cmdBuffer);
+        CODEC_HW_CHK_NULL_RETURN(mmioRegisters);
+        ENCODE_CHK_COND_RETURN((m_vdboxIndex > m_mfxItf->GetMaxVdboxIndex()), "ERROR - vdbox index exceed the maximum");
+        m_pResource = presMetadataBuffer;
+        m_dwOffset  = subRegionSartOffset + resourceOffset.dwbSize;
+        m_dwValue   = mmioRegisters->mfcBitstreamBytecountSliceRegOffset;
         SETPAR_AND_ADDCMD(MI_STORE_REGISTER_MEM, m_miItf, cmdBuffer);
 
         return MOS_STATUS_SUCCESS;
@@ -706,6 +1069,10 @@ namespace encode {
         }
 
         statusReportData->codecStatus = CODECHAL_STATUS_SUCCESSFUL;
+        statusReportData->numberPasses = (uint8_t)encodeStatusMfx->numberPasses;
+        ENCODE_VERBOSEMESSAGE("statusReportData->numberPasses: %d\n", statusReportData->numberPasses);
+
+        ENCODE_CHK_STATUS_RETURN(ReportExtStatistics(*encodeStatusMfx, *statusReportData));
 
         CODECHAL_DEBUG_TOOL(
             ENCODE_CHK_STATUS_RETURN(DumpResources(encodeStatusMfx, statusReportData)););
@@ -1052,6 +1419,14 @@ namespace encode {
         // Set flag bIsMdfLoad in remote gaming scenario to boost GPU frequency for low latency
         cmdBuffer.Attributes.bFrequencyBoost = (m_seqParam->ScenarioInfo == ESCENARIO_REMOTEGAMING);
 
+        auto packetUtilities = m_pipeline->GetPacketUtilities();
+        ENCODE_CHK_NULL_RETURN(packetUtilities);
+        if (m_basicFeature->m_setMarkerEnabled)
+        {
+            PMOS_RESOURCE presSetMarker = m_osInterface->pfnGetMarkerResource(m_osInterface);
+            ENCODE_CHK_STATUS_RETURN(packetUtilities->SendMarkerCommand(&cmdBuffer, presSetMarker));
+        }
+
     #ifdef _MMC_SUPPORTED
         ENCODE_CHK_NULL_RETURN(m_mmcState);
         ENCODE_CHK_STATUS_RETURN(m_mmcState->SendPrologCmd(&cmdBuffer, false));
@@ -1063,6 +1438,12 @@ namespace encode {
         genericPrologParams.pvMiInterface    = nullptr;
         genericPrologParams.bMmcEnabled      = m_mmcState ? m_mmcState->IsMmcEnabled() : false;
         ENCODE_CHK_STATUS_RETURN(Mhw_SendGenericPrologCmdNext(&cmdBuffer, &genericPrologParams, m_miItf));
+
+        // Send predication command
+        if (m_basicFeature->m_predicationEnabled)
+        {
+            ENCODE_CHK_STATUS_RETURN(packetUtilities->SendPredicationCommand(&cmdBuffer));
+        }
 
         return MOS_STATUS_SUCCESS;
     }
@@ -1895,7 +2276,7 @@ namespace encode {
         if (m_basicFeature->m_perMBStreamOutEnable)
         {
             // Using frame and PerMB level buffer to get PerMB StreamOut PAK Statistic.
-            params.presStreamOutBuffer = m_pakStatsBufferFull;
+            params.presStreamOutBuffer = m_basicFeature->m_recycleBuf->GetBuffer(BrcPakStatisticBufferFull, m_basicFeature->m_frameNum);
         }
         else
         {
@@ -1971,6 +2352,10 @@ namespace encode {
         debugInterface->m_bufferDumpFrameNum = m_statusReport->GetReportedCount() + 1; // ToDo: for debug purpose
         debugInterface->m_frameType          = encodeStatusMfx->pictureCodingType;
 
+        auto settings = static_cast<AvcVdencFeatureSettings *>(m_legacyFeatureManager->GetFeatureSettings()->GetConstSettings());
+        ENCODE_CHK_NULL_RETURN(settings);
+        auto brcSettings = settings->brcSettings;
+
         ENCODE_CHK_STATUS_RETURN(debugInterface->DumpBuffer(
             &currRefList.resBitstreamBuffer,
             CodechalDbgAttr::attrBitstream,
@@ -2041,6 +2426,13 @@ namespace encode {
             CodechalDbgAttr::attrSliceSizeStreamout,
             "_SliceSizeStreamOut",
             CODECHAL_ENCODE_SLICESIZE_BUF_SIZE));
+
+        //  here add the dump buffer for PAK statistics
+        ENCODE_CHK_STATUS_RETURN(debugInterface->DumpBuffer(
+            m_basicFeature->m_recycleBuf->GetBuffer(BrcPakStatisticBufferFull, m_statusReport->GetReportedCount()),
+            CodechalDbgAttr::attrPakOutput,
+            "MB and FrameLevel PAK staistics vdenc",
+            brcSettings.vdencBrcPakStatsBufferSize + m_basicFeature->m_picWidthInMb * m_basicFeature->m_picHeightInMb * 64));
 
         return MOS_STATUS_SUCCESS;
     }

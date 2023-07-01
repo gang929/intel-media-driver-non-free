@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021, Intel Corporation
+* Copyright (c) 2021 - 2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -26,15 +26,16 @@
 //!
 
 #include "encode_av1_vdenc_feature_manager_xe_lpm_plus_base.h"
+#include "encode_av1_superres.h"
 #include "encode_av1_basic_feature_xe_lpm_plus_base.h"
 #include "encode_av1_vdenc_const_settings_xe_lpm_plus_base.h"
 #include "encode_av1_pipeline.h"
 #include "encode_av1_vdenc_lpla_enc.h"
 
 #if _MEDIA_RESERVED
-#define ENCODE_AV1_RESERVED_FRATURE0
+#define ENCODE_AV1_RESERVED_FRATURE1
 #include "encode_av1_feature_ext.h"
-#undef ENCODE_AV1_RESERVED_FRATURE0
+#undef ENCODE_AV1_RESERVED_FRATURE1
 #endif  // !(_MEDIA_RESERVED)
 
 namespace encode
@@ -53,12 +54,10 @@ MOS_STATUS EncodeAv1VdencFeatureManagerXe_Lpm_Plus_Base::CreateFeatures(void *co
 
     // packetIdListType indicate whether packet ID list is a block list or an allow list, by default it is a block list.
 
-    #if _MEDIA_RESERVED
-    Av1ReservedFeature0 *av1ReservedFeature = MOS_New(Av1ReservedFeature0, constSettings, this);
-    ENCODE_CHK_STATUS_RETURN(RegisterFeatures(Av1FeatureIDs::av1ReservedFeatureID0, av1ReservedFeature, {Av1Pipeline::encodePreEncPacket}));
-    #endif  // !(_MEDIA_RESERVED)
+    Av1SuperRes *superRes = MOS_New(Av1SuperRes, this, m_allocator, constSettings);
+    ENCODE_CHK_STATUS_RETURN(RegisterFeatures(Av1FeatureIDs::av1SuperRes, superRes));
 
-    EncodeBasicFeature *encBasic = MOS_New(Av1BasicFeatureXe_Lpm_Plus_Base, m_allocator, m_hwInterface, m_trackedBuf, m_recycleResource, constSettings);
+    EncodeBasicFeature *encBasic = MOS_New(Av1BasicFeatureXe_Lpm_Plus_Base, this, m_allocator, m_hwInterface, m_trackedBuf, m_recycleResource, constSettings);
     ENCODE_CHK_STATUS_RETURN(RegisterFeatures(Av1FeatureIDs::basicFeature, encBasic, {Av1Pipeline::encodePreEncPacket}));
 
     Av1EncodeTile *encTile = MOS_New(Av1EncodeTile, this, m_allocator, m_hwInterface, constSettings);
@@ -83,6 +82,10 @@ MOS_STATUS EncodeAv1VdencFeatureManagerXe_Lpm_Plus_Base::CreateFeatures(void *co
     AV1VdencLplaEnc* lplaEnc = MOS_New(AV1VdencLplaEnc, this, m_allocator, m_hwInterface, constSettings);
     ENCODE_CHK_STATUS_RETURN(RegisterFeatures(Av1FeatureIDs::av1LplaEncFeature, lplaEnc, {Av1Pipeline::encodePreEncPacket}));
 
+#if _MEDIA_RESERVED
+    Av1ReservedFeature1* av1ReservedFeature1 = MOS_New(Av1ReservedFeature1, this, m_allocator, m_hwInterface, constSettings);
+    ENCODE_CHK_STATUS_RETURN(RegisterFeatures(Av1FeatureIDs::av1ReservedFeatureID3, av1ReservedFeature1, {Av1Pipeline::encodePreEncPacket}));
+#endif  // !(_MEDIA_RESERVED)
     return MOS_STATUS_SUCCESS;
 }
 

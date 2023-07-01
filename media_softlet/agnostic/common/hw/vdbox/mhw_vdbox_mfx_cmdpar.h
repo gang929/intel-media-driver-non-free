@@ -139,7 +139,7 @@ struct _MHW_PAR_T(MFX_PIPE_MODE_SELECT)
     bool     shortFormatInUse                               = false;
     bool     vc1OddFrameHeight                              = false;
     uint32_t mediaSoftResetCounterPer1000Clocks             = 0;
-    bool     streamOutEnabled                               = false;
+    bool     sliceSizeStreamout32bit                        = false;
 };
 
 struct _MHW_PAR_T(MFX_SURFACE_STATE)
@@ -734,7 +734,7 @@ struct _MHW_PAR_T(MFD_IT_OBJECT)
 
 struct _MHW_PAR_T(MFD_IT_OBJECT_MPEG2_INLINE_DATA)
 {
-    CodecDecodeMpeg2MbParmas *pMBParams = nullptr;
+    CodecDecodeMpeg2MbParams *pMBParams = nullptr;
 
     int32_t CodingType     = 0;
     int16_t sPackedMVs0[4] = {};

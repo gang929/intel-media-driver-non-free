@@ -43,6 +43,10 @@ void VpFeatureReport::InitReportValue()
     m_features.vpMMCInUse          = false;
     m_features.rtCompressible      = false;
     m_features.rtCompressMode      = 0;
+    m_features.rtCacheSetting      = 0;
+#if (_DEBUG || _RELEASE_INTERNAL)
+    m_features.rtOldCacheSetting   = 0;
+#endif
     m_features.ffdiCompressible    = false;
     m_features.ffdiCompressMode    = 0;
     m_features.ffdnCompressible    = false;
@@ -116,6 +120,12 @@ void VpFeatureReport::SetConfigValues(
     configValues->dwScalerCompressMode  = m_features.scalerCompressMode;
     configValues->dwPrimaryCompressible = m_features.primaryCompressible;
     configValues->dwPrimaryCompressMode = m_features.primaryCompressMode;
+
+    // Report Render Target cache usage
+    configValues->dwRTCacheSetting     = m_features.rtCacheSetting;
+#if (_DEBUG || _RELEASE_INTERNAL)
+    configValues->dwRTOldCacheSetting = m_features.rtOldCacheSetting;
+#endif
 
     // Report In Place Compositon status
     configValues->dwCurrentCompositionMode = m_features.compositionMode;

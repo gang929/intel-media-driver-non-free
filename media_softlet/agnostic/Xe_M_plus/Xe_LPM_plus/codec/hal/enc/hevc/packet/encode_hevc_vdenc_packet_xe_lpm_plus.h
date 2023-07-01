@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, Intel Corporation
+* Copyright (c) 2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -20,17 +20,33 @@
 * OTHER DEALINGS IN THE SOFTWARE.
 */
 //!
-//! \file     encode_av1_vdenc_packet_xe_hpm.cpp
-//! \brief    Defines the interface for av1 encode vdenc packet of Xe_HPM
+//! \file     encode_hevc_vdenc_packet_xe_lpm_plus.h
+//! \brief    Defines the interface to adapt to hevc vdenc xe_lpm_plus encode pipeline
 //!
-#include "encode_av1_vdenc_packet_xe_hpm.h"
-#include "mhw_vdbox_avp_hwcmd_xe_hpm.h"
+
+#ifndef __CODECHAL_HEVC_VDENC_PACKET_XE_LPM_PLUS_H__
+#define __CODECHAL_HEVC_VDENC_PACKET_XE_LPM_PLUS_H__
+
+#include "encode_hevc_vdenc_packet.h"
 
 namespace encode
 {
-    Av1VdencPktXe_Hpm::~Av1VdencPktXe_Hpm()
+class HevcVdencPktXe_Lpm_Plus : public HevcVdencPkt
+{
+public:
+    HevcVdencPktXe_Lpm_Plus(MediaPipeline *pipeline, MediaTask *task, CodechalHwInterfaceNext *hwInterface) : HevcVdencPkt(pipeline, task, hwInterface)
     {
-
     }
 
-}
+    virtual ~HevcVdencPktXe_Lpm_Plus(){};
+
+protected:
+    MOS_STATUS SendHwSliceEncodeCommand(const PCODEC_ENCODER_SLCDATA slcData, const uint32_t currSlcIdx, MOS_COMMAND_BUFFER &cmdBuffer) override;
+    MOS_STATUS AddAllCmds_HCP_PAK_INSERT_OBJECT_BRC(PMOS_COMMAND_BUFFER cmdBuffer) const;
+
+    MEDIA_CLASS_DEFINE_END(encode__HevcVdencPktXe_Lpm_Plus)
+};
+
+}  // namespace encode
+
+#endif

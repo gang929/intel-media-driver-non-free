@@ -86,9 +86,6 @@ int32_t HalCm_InsertCloneKernel(
     PCM_HAL_KERNEL_PARAM       kernelParam,
     PRENDERHAL_KRN_ALLOCATION  &kernelAllocation);
 
-extern MOS_STATUS HalCm_GetSipBinary(
-    PCM_HAL_STATE   state);
-
 #if MDF_COMMAND_BUFFER_DUMP
 extern int32_t HalCm_InitDumpCommandBuffer(PCM_HAL_STATE state);
 
@@ -185,6 +182,7 @@ MOS_STATUS HalCm_AllocateTsResource(
     MOS_LOCK_PARAMS         lockFlags;
 
     osInterface    = state->osInterface;
+    CM_CHK_NULL_GOTOFINISH_MOSERROR(osInterface);
 
     size = state->cmHalInterface->GetTimeStampResourceSize() * state->cmDeviceParam.maxTasks;    
     // allocate render engine Ts Resource
@@ -200,8 +198,8 @@ MOS_STATUS HalCm_AllocateTsResource(
                                          &allocParams,
                                          &state->renderTimeStampResource.osResource));
 
-    // RegisterResource will be called in AddResourceToHWCmd. It is not allowed to be called by hal explicitly for Async mode
-    if (MosInterface::IsAsyncDevice(osInterface->osStreamState) == false)
+    // RegisterResource will be called in AddResourceToHWCmd. It is not allowed to be called by hal explicitly
+    if (!osInterface->apoMosEnabled)
     {
         CM_CHK_MOSSTATUS_GOTOFINISH(
             osInterface->pfnRegisterResource(osInterface,
@@ -276,11 +274,12 @@ MOS_STATUS HalCm_AllocateTrackerResource(
     osInterface = state->osInterface;
     renderHal   = state->renderHal;
 
+    CM_CHK_NULL_GOTOFINISH_MOSERROR(osInterface);
     // Tracker producer for RENDER engine
     renderHal->trackerProducer.Initialize(osInterface);
 
     // Tracker resource for VeBox engine
-    Mos_ResetResource(&renderHal->veBoxTrackerRes.osResource);
+    osInterface->pfnResetResource(&renderHal->veBoxTrackerRes.osResource);
 
     MOS_ZeroMemory(&allocParamsLinearBuffer, sizeof(MOS_ALLOC_GFXRES_PARAMS));
     allocParamsLinearBuffer.Type = MOS_GFXRES_BUFFER;
@@ -2135,7 +2134,7 @@ int32_t HalCm_UnloadKernel(
         goto finish;
     }
 
-    CM_CHK_CMSTATUS_GOTOFINISH(HalCm_SyncKernel(state, kernelAllocation->dwSync));
+    CM_CHK_CMSTATUS_GOTOFINISH(state->pfnSyncKernel(state, kernelAllocation->dwSync));
 
     // Unload kernel
     if (kernelAllocation->pMhwKernelParam)
@@ -4333,7 +4332,7 @@ MOS_STATUS HalCm_Setup2DSurfaceState(
 
     if (state->cmHalInterface->GetDecompressFlag())
     {
-        HalCm_DecompressSurface(state, argParam, threadIndex);
+        state->pfnDecompressSurface(state, argParam, threadIndex);
     }
 
     //Binding surface based at the unit of dword
@@ -9139,11 +9138,11 @@ MOS_STATUS HalCm_RegisterSampler(
     {
         entry->ElementType = MHW_Sampler4Elements;
     }
-    CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_GetGfxMapFilter(param->minFilter,  &entry->Unorm.MinFilter));
-    CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_GetGfxMapFilter(param->magFilter,  &entry->Unorm.MagFilter));
-    CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_GetGfxTextAddress(param->addressU, &entry->Unorm.AddressU));
-    CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_GetGfxTextAddress(param->addressV, &entry->Unorm.AddressV));
-    CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_GetGfxTextAddress(param->addressW, &entry->Unorm.AddressW));
+    CM_CHK_MOSSTATUS_GOTOFINISH(state->pfnGetGfxMapFilter(param->minFilter,  &entry->Unorm.MinFilter));
+    CM_CHK_MOSSTATUS_GOTOFINISH(state->pfnGetGfxMapFilter(param->magFilter,  &entry->Unorm.MagFilter));
+    CM_CHK_MOSSTATUS_GOTOFINISH(state->pfnGetGfxTextAddress(param->addressU, &entry->Unorm.AddressU));
+    CM_CHK_MOSSTATUS_GOTOFINISH(state->pfnGetGfxTextAddress(param->addressV, &entry->Unorm.AddressV));
+    CM_CHK_MOSSTATUS_GOTOFINISH(state->pfnGetGfxTextAddress(param->addressW, &entry->Unorm.AddressW));
 
     entry->Unorm.SurfaceFormat = (MHW_SAMPLER_SURFACE_PIXEL_TYPE)param->surfaceFormat;
     switch (entry->Unorm.SurfaceFormat)
@@ -9355,9 +9354,12 @@ MOS_STATUS HalCm_LockBuffer(
         goto finish;
     }
 
-    CM_CHK_HRESULT_GOTOFINISH_MOSERROR(
-        osInterface->pfnRegisterResource(osInterface, &entry->osResource, true,
-                                         true));
+    // RegisterResource will be called in AddResourceToHWCmd. It is not allowed to be called by hal explicitly
+    if (!osInterface->apoMosEnabled)
+    {
+        CM_CHK_HRESULT_GOTOFINISH_MOSERROR(
+            osInterface->pfnRegisterResource(osInterface, &entry->osResource, true, true));
+    }
 
     // Lock the resource
     MOS_ZeroMemory(&lockFlags, sizeof(MOS_LOCK_PARAMS));
@@ -9848,6 +9850,7 @@ MOS_STATUS HalCm_AllocateSurface3D(CM_HAL_STATE *state, // [in]  Pointer to CM S
     CM_ASSERT(param->height > 0);
     //-----------------------------------------------
 
+    MOS_INTERFACE *osInterface = state->osInterface;
     // Finds a free slot.
     CM_HAL_3DRESOURCE_ENTRY *entry = nullptr;
     for (uint32_t i = 0; i < state->cmDeviceParam.max3DSurfaceTableSize; i++)
@@ -9865,7 +9868,8 @@ MOS_STATUS HalCm_AllocateSurface3D(CM_HAL_STATE *state, // [in]  Pointer to CM S
         CM_ASSERTMESSAGE("3D surface table is full");
         return eStatus;
     }
-    Mos_ResetResource(&entry->osResource);  // Resets the Resource
+    CM_CHK_NULL_GOTOFINISH_MOSERROR(osInterface);
+    osInterface->pfnResetResource(&entry->osResource);  // Resets the Resource
 
     MOS_ALLOC_GFXRES_PARAMS alloc_params;
     MOS_ZeroMemory(&alloc_params, sizeof(alloc_params));
@@ -9878,7 +9882,6 @@ MOS_STATUS HalCm_AllocateSurface3D(CM_HAL_STATE *state, // [in]  Pointer to CM S
     alloc_params.Format        = param->format;
     alloc_params.pBufName      = "CmSurface3D";
 
-    MOS_INTERFACE *osInterface = state->renderHal->pOsInterface;
     CM_CHK_HRESULT_GOTOFINISH_MOSERROR(osInterface->pfnAllocateResource(
         osInterface,
         &alloc_params,
@@ -10504,7 +10507,6 @@ MOS_STATUS HalCm_Create(
         MOS_GPU_CONTEXT_VEBOX,
         MOS_GPU_NODE_VE,
         &createOption));
-    state->osInterface->pfnSetGpuContext(state->osInterface, MOS_GPU_CONTEXT_VEBOX);
 
     // Allocate/Initialize CM Rendering Interface
     state->renderHal = (PRENDERHAL_INTERFACE_LEGACY)
@@ -10536,7 +10538,7 @@ MOS_STATUS HalCm_Create(
 
             // MhwInterfaces always create CP and MI interfaces, so we have to delete those we don't need.
             MOS_Delete(mhwInterfaces->m_miInterface);
-            Delete_MhwCpInterface(mhwInterfaces->m_cpInterface);
+            state->osInterface->pfnDeleteMhwCpInterface(mhwInterfaces->m_cpInterface);
             mhwInterfaces->m_cpInterface = nullptr;
             MOS_Delete(mhwInterfaces);
         }
@@ -10679,11 +10681,12 @@ MOS_STATUS HalCm_Create(
     state->pfnSetSurfaceReadFlag          = HalCm_SetSurfaceReadFlag;
     state->pfnSetVtuneProfilingFlag       = HalCm_SetVtuneProfilingFlag;
     state->pfnExecuteVeboxTask            = HalCm_ExecuteVeboxTask;
-    state->pfnGetSipBinary                = HalCm_GetSipBinary;
     state->pfnGetTaskSyncLocation         = HalCm_GetTaskSyncLocation;
 
     state->pfnGetGlobalTime               = HalCm_GetGlobalTime;
     state->pfnConvertToQPCTime            = HalCm_ConvertToQPCTime;
+
+    state->pfnSyncOnResource              = HalCm_SyncOnResource;
 
     state->pfnDeleteFromStateBufferList = HalCm_DeleteFromStateBufferList;
     state->pfnGetMediaStatePtrForKernel = HalCm_GetMediaStatePtrForKernel;
@@ -10704,6 +10707,8 @@ MOS_STATUS HalCm_Create(
     //==========<Initialize 5 OS-dependent DDI functions: pfnAllocate3DResource, pfnAllocateSurface2DUP====
     //                 pfnAllocateBuffer,pfnRegisterKMDNotifyEventHandle, pfnGetSurface2DPitchAndSize >====
     HalCm_OsInitInterface(state);
+    
+    state->osInterface->pfnInitCmInterface(state);
 
     HalCm_InitPerfTagIndexMap(state);
 
@@ -10827,8 +10832,15 @@ void HalCm_Destroy(
     {
         //Delete CmHal Interface
         MosSafeDelete(state->cmHalInterface);
-        Delete_MhwCpInterface(state->cpInterface);
-        state->cpInterface = nullptr;
+        if (state->osInterface)
+        {
+            state->osInterface->pfnDeleteMhwCpInterface(state->cpInterface);
+            state->cpInterface = nullptr;
+        }
+        else
+        {
+            CM_ASSERTMESSAGE("Failed to destroy cpInterface.");
+        }
         MosSafeDelete(state->state_buffer_list_ptr);
         MosSafeDelete(state->criticalSectionDSH);
 
@@ -11001,6 +11013,9 @@ MOS_STATUS HalCm_GetSurfaceDetails(
     MOS_OS_FORMAT              tempOsFormat   ;
 
     CM_SURFACE_BTI_INFO surfBTIInfo;
+    CM_CHK_NULL_GOTOFINISH_MOSERROR(cmState);
+    CM_CHK_NULL_GOTOFINISH_MOSERROR(cmState->cmHalInterface);
+    CM_CHK_NULL_GOTOFINISH_MOSERROR(cmState->osInterface);
     cmState->cmHalInterface->GetHwSurfaceBTIInfo(&surfBTIInfo);
 
     UNUSED(indexParam);
@@ -11017,7 +11032,7 @@ MOS_STATUS HalCm_GetSurfaceDetails(
     surfaceInfos  = taskParam->surfEntryInfoArrays.surfEntryInfosArray[curKernelIndex].surfEntryInfos;
     pgSurfaceInfos = taskParam->surfEntryInfoArrays.surfEntryInfosArray[curKernelIndex].globalSurfInfos;
 
-    tempOsFormat = (MOS_OS_FORMAT)MosInterface::MosFmtToOsFmt(surface.Format);
+    tempOsFormat = (MOS_OS_FORMAT)cmState->osInterface->pfnMosFmtToOsFmt(surface.Format);
 
     switch (argKind)
     {

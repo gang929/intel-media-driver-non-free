@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2021, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -96,6 +96,7 @@ struct AvcVdencBrcSettings
     int8_t   *BRC_UPD_GlobalRateQPAdjTabB_U8;              //!< B Picture Global Rate QP Adjustment Table.
     uint8_t  *BRC_UPD_DistThreshldI_U8;                    //!< I Picture Distortion THreshold.
     uint8_t  *BRC_UPD_DistThreshldP_U8;                    //!< P Picture Distortion THreshold.
+    uint8_t  *BRC_UPD_DistThreshldB_U8;                    //!< B Picture Distortion THreshold.
     int8_t   *CBR_UPD_DistQPAdjTabI_U8;                    //!< I Picture Distortion QP Adjustment Table under CBR Mode.
     int8_t   *CBR_UPD_DistQPAdjTabP_U8;                    //!< P Picture Distortion QP Adjustment Table under CBR Mode.
     int8_t   *CBR_UPD_DistQPAdjTabB_U8;                    //!< B Picture Distortion QP Adjustment Table under CBR Mode.
@@ -205,6 +206,7 @@ struct AvcVdencBrcConstSettings
     static const int8_t   m_BRC_UPD_GlobalRateQPAdjTabB_U8[64];                      //!< B Picture Global Rate QP Adjustment Table.
     static const uint8_t  m_BRC_UPD_DistThreshldI_U8[10];                            //!< I Picture Distortion THreshold.
     static const uint8_t  m_BRC_UPD_DistThreshldP_U8[10];                            //!< P Picture Distortion THreshold.
+    static const uint8_t  m_BRC_UPD_DistThreshldB_U8[10];                            //!< P Picture Distortion THreshold.
     static const int8_t   m_CBR_UPD_DistQPAdjTabI_U8[81];                            //!< I Picture Distortion QP Adjustment Table under CBR Mode.
     static const int8_t   m_CBR_UPD_DistQPAdjTabP_U8[81];                            //!< P Picture Distortion QP Adjustment Table under CBR Mode.
     static const int8_t   m_CBR_UPD_DistQPAdjTabB_U8[81];                            //!< B Picture Distortion QP Adjustment Table under CBR Mode.
@@ -375,7 +377,6 @@ protected:
     PCODEC_AVC_ENCODE_SLICE_PARAMS    m_avcSliceParams = nullptr;
 
     int32_t m_qp                   = 0;
-    bool    m_perMBStreamOutEnable = false;
 
 MEDIA_CLASS_DEFINE_END(encode__EncodeAvcVdencConstSettings)
 };

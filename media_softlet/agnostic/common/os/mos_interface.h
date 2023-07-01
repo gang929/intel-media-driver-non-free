@@ -309,6 +309,21 @@ public:
         MOS_STREAM_HANDLE streamState);
 
     //!
+    //! \brief  Get PAT index from gmm
+    //!
+    //! \param  [in] gmmClient
+    //!         GMM client context
+    //! \param  [in] gmmResourceInfo
+    //!         gmm resource info
+    //!
+    //! \return unsigned int
+    //!         Pat index
+    //!
+    static unsigned int GetPATIndexFromGmm(
+        GMM_CLIENT_CONTEXT *gmmClient,
+        GMM_RESOURCE_INFO *gmmResourceInfo);
+
+    //!
     //! \brief    Get current Gpu context priority
     //! \details  Get current Gpu context priority
     //!
@@ -1102,6 +1117,18 @@ public:
 #endif  // MOS_MESSAGES_ENABLED
     );
 
+    static MOS_STATUS FreeResource(
+        OsDeviceContext       *osDeviceContext,
+        MOS_RESOURCE_HANDLE    resource,
+        uint32_t               flag
+#if MOS_MESSAGES_ENABLED
+        ,
+        const char            *functionName,
+        const char            *filename,
+        int32_t                line
+#endif  // MOS_MESSAGES_ENABLED
+    );
+
     //!
     //! \brief    Get Resource Info
     //! \details  [Resource Interface] Get the info of a graphic resource.
@@ -1129,14 +1156,10 @@ public:
     //! \details  [Resource Interface] Lock the gfx resource for CPU to access
     //! \details  Caller: HAL only
     //! \details  A sys memory ptr will be provided by this interface if executed successfully.
-    //! \details  The sys memory is mapped to the gfx memory inside MOS module. 
+    //! \details  The sys memory is mapped to the gfx memory inside MOS module.
     //! \details  This interface is usually for driver to read/write data into a resource directly (without program HW cmd).
-    //! \details  Caller must make sure no access out of bound of the locked out data. UnlockResource must be called when finished access the locked data.
-    //!           A resource already been locked cannot be locked again. 
-    //!           This is a blocking call if the resource is used by the cmdbuffer which already submitted to an existing GPU context.
-    //!           Unless SkipResourceSync is called. This interface will make sure the sync of Lock.
-    //! \details  If the resource is compressed, gfx memory decompression will be triggered.
-    //!           
+    //! \details  This interface will call the overloading LockMosResource for MOS.
+    //!
     //! \param    [in] streamState
     //!           Handle of Os Stream State
     //! \param    [in] resource
@@ -1148,9 +1171,37 @@ public:
     //!           Locked memory data pointer, nullptr if lock failed.
     //!
     static void *LockMosResource(
-        MOS_STREAM_HANDLE streamState,
+        MOS_STREAM_HANDLE   streamState,
         MOS_RESOURCE_HANDLE resource,
-        PMOS_LOCK_PARAMS flags);
+        PMOS_LOCK_PARAMS    flags);
+    //!
+    //! \brief    Lock Resource
+    //! \details  [Resource Interface] Lock the gfx resource for CPU to access
+    //! \details  Caller: MOS only
+    //! \details  A sys memory ptr will be provided by this interface if executed successfully.
+    //! \details  The sys memory is mapped to the gfx memory inside MOS module.
+    //! \details  This interface is usually for driver to read/write data into a resource directly (without program HW cmd).
+    //! \details  Caller must make sure no access out of bound of the locked out data. UnlockResource must be called when finished access the locked data.
+    //!           A resource already been locked cannot be locked again.
+    //!           This is a blocking call if the resource is used by the cmdbuffer which already submitted to an existing GPU context.
+    //!           Unless SkipResourceSync is called. This interface will make sure the sync of Lock.
+    //! \details  If the resource is compressed, gfx memory decompression will be triggered.
+    //!
+    //! \param    [in] OsDeviceContext
+    //!           Os Device Context
+    //! \param    [in] resource
+    //!           MOS Resource handle of the resource to lock.
+    //! \param    [in] flags
+    //!           Control flags of locking resource.
+    //!
+    //! \return   void *
+    //!           Locked memory data pointer, nullptr if lock failed.
+    //!
+    static void *LockMosResource(
+        OsDeviceContext       *osDeviceContext,
+        MOS_RESOURCE_HANDLE    resource,
+        PMOS_LOCK_PARAMS       flags,
+        bool                   isDumpPacket=0);
 
     //!
     //! \brief    Unlock Resource
@@ -1159,6 +1210,7 @@ public:
     //! \details  UnlockResource must be called when finished access the locked data of the resource.
     //!           A resource already been unlocked cannot be unlocked again. 
     //! \details  Unlock resource will not trigger compressing or changing the layout of the resource.
+    //! \details  This interface will call the overloading UnlockMosResource for MOS.
     //!           
     //! \param    [in] streamState
     //!           Handle of Os Stream State
@@ -1171,7 +1223,25 @@ public:
     static MOS_STATUS UnlockMosResource(
         MOS_STREAM_HANDLE streamState,
         MOS_RESOURCE_HANDLE resource);
-
+    //!
+    //! \brief    Unlock Resource
+    //! \details  [Resource Interface] Unlock the gfx resource which is locked out.
+    //! \details  Caller: MOS only
+    //! \details  UnlockResource must be called when finished access the locked data of the resource.
+    //!           A resource already been unlocked cannot be unlocked again.
+    //! \details  Unlock resource will not trigger compressing or changing the layout of the resource.
+    //!
+    //! \param    [in] OsDeviceContext
+    //!           Os Device Context
+    //! \param    [in] resource
+    //!           MOS Resource handle of the allocated resource.
+    //!
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    static MOS_STATUS UnlockMosResource(
+        OsDeviceContext    *osDeviceContext,
+        MOS_RESOURCE_HANDLE    resource);
     //!
     //! \brief    Update resource usage type
     //! \details  update the resource usage for cache policy
@@ -1695,19 +1765,7 @@ public:
     //!           CP Interface got from stream State, nullptr if get failed
     //!
     static MosCpInterface *GetCpInterface(MOS_STREAM_HANDLE streamState);
-    
-    //!
-    //! \brief   Get OCA Interface
-    //!
-    //! \param    [in] streamState
-    //!           Handle of Os Stream State
-    //!
-    //! \return   MosOcaInterface
-    //!           OCA Interface got from stream State, nullptr if get failed
-    //!
-    static MosOcaInterface *GetOcaInterface(MOS_STREAM_HANDLE streamState);
 
-    static MosOcaInterface *GetOcaInterface(MOS_CONTEXT_HANDLE mosContextHandle);
     //!
     //! \brief    Maps the specified executable module into the address space of
     //!           the calling process.
@@ -2106,12 +2164,22 @@ public:
 
     //! \brief    Get usersetting instance for each stream
     //! \details  the user setting instance
+    //! \details  call the overloading MosGetUserSettingInstance for osDeviceContext
     //! \param    MOS_STREAM_HANDLE streamState
     //!           [in] streamState
     //! \return   MediaUserSettingSharedPtr - user setting instance
     //!
     static MediaUserSettingSharedPtr MosGetUserSettingInstance(
         MOS_STREAM_HANDLE streamState);
+
+    //! \brief    Get usersetting instance for each stream
+    //! \details  the user setting instance
+    //! \param    OsDeviceContext osDeviceContext
+    //!           [in] osDeviceContext
+    //! \return   MediaUserSettingSharedPtr - user setting instance
+    //!
+    static MediaUserSettingSharedPtr MosGetUserSettingInstance(
+        OsDeviceContext *osDeviceContext);
 
     //! \brief    Get usersetting instance for each stream
     //! \details  the user setting instance
@@ -2141,6 +2209,19 @@ public:
     //! \brief  Check if Multiple Codec Devices is in use
     //!
     static bool IsMultipleCodecDevicesInUse(PMOS_INTERFACE osInterface);
+
+
+    static MOS_STATUS SetMultiEngineEnabled(
+        PMOS_INTERFACE pOsInterface,
+        MOS_COMPONENT  component,
+        bool           enabled);
+
+    static MOS_STATUS GetMultiEngineStatus(
+        PMOS_INTERFACE pOsInterface,
+        PLATFORM      *platform,
+        MOS_COMPONENT  component,
+        bool          &isMultiDevices,
+        bool          &isMultiEngine);
 
     //!
     //! \brief  get latest virtual node for encoder and decoder
@@ -2192,14 +2273,6 @@ public:
     static MOS_STATUS RegisterBBCompleteNotifyEvent(
         MOS_STREAM_HANDLE   streamState,
         GPU_CONTEXT_HANDLE  gpuContextHandle);
-
-    static void InsertRTLog(
-        MOS_STREAM_HANDLE streamState,
-        MOS_OCA_RTLOG_COMPONENT_TPYE componentType,
-        bool isErr,
-        int32_t id,
-        uint8_t paramCount,
-        const void *param);
 
     static void GetRtLogResourceInfo(
         MOS_STREAM_HANDLE streamState,
@@ -2313,6 +2386,5 @@ MEDIA_CLASS_DEFINE_END(MosInterface)
 };
 
 #define Mos_ResetResource(resource)     MosInterface::MosResetResource(resource)
-#define Mos_ResourceIsNull(resource)    MosInterface::MosResourceIsNull(resource)
 
 #endif  // __MOS_INTERFACE_H__

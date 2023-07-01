@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2022, Intel Corporation
+* Copyright (c) 2018-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -40,6 +40,7 @@
 #include "decode_hevc_downsampling_packet.h"
 #include "decode_marker_packet_g12.h"
 #include "decode_predication_packet_g12.h"
+#include "mos_interface.h"
 
 namespace decode {
 
@@ -97,10 +98,13 @@ MOS_STATUS HevcPipelineM12::InitContexOption(HevcScalabilityPars &scalPars)
     scalPars.usingHcp           = true;
     scalPars.enableVE           = MOS_VE_SUPPORTED(m_osInterface);
     scalPars.disableScalability = m_hwInterface->IsDisableScalability();
-    if (m_osInterface->pfnIsMultipleCodecDevicesInUse(m_osInterface))
+    bool isMultiDevices = false, isMultiEngine = false;
+    m_osInterface->pfnGetMultiEngineStatus(m_osInterface, nullptr, COMPONENT_Encode, isMultiDevices, isMultiEngine);
+    if (isMultiDevices && !isMultiEngine)
     {
         scalPars.disableScalability = true;
     }
+
 #if (_DEBUG || _RELEASE_INTERNAL)
     if (m_osInterface->bHcpDecScalabilityMode == MOS_SCALABILITY_ENABLE_MODE_FALSE)
     {
@@ -117,6 +121,10 @@ MOS_STATUS HevcPipelineM12::InitContexOption(HevcScalabilityPars &scalPars)
     scalPars.forceMultiPipe =
         ReadUserFeature(m_userSettingPtr, "HCP Decode Always Frame Split", MediaUserSetting::Group::Sequence).Get<bool>();
 #endif
+
+    if (!scalPars.disableScalability)
+        m_osInterface->pfnSetMultiEngineEnabled(m_osInterface, COMPONENT_Decode, true);
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -345,7 +353,7 @@ MOS_STATUS HevcPipelineM12::Prepare(void *params)
             if (downSamplingFeature != nullptr)
             {
                 auto frameIdx = m_basicFeature->m_curRenderPic.FrameIdx;
-                inputParameters.sfcOutputPicRes = &downSamplingFeature->m_outputSurfaceList[frameIdx].OsResource;
+                inputParameters.sfcOutputSurface = &downSamplingFeature->m_outputSurfaceList[frameIdx];
                 if (downSamplingFeature->m_histogramBuffer != nullptr)
                 {
                     inputParameters.histogramOutputBuf = &downSamplingFeature->m_histogramBuffer->OsResource;
@@ -391,21 +399,17 @@ MOS_STATUS HevcPipelineM12::Execute()
 
             // Recover RefList for SCC IBC mode
             DECODE_CHK_STATUS(StoreDestToRefList(*m_basicFeature));
-            CODECHAL_DEBUG_TOOL(DECODE_CHK_STATUS(DumpSecondLevelBatchBuffer()));
 
-#if MOS_EVENT_TRACE_DUMP_SUPPORTED
-            if (MOS_TraceKeyEnabled(TR_KEY_DECODE_COMMAND))
-            {
-                TraceDataDump2ndLevelBB(GetSliceLvlCmdBuffer());
-            }
-#endif
+            CODECHAL_DEBUG_TOOL(DECODE_CHK_STATUS(DumpSecondLevelBatchBuffer()));
 
             // Only update user features for first frame.
             if (m_basicFeature->m_frameNum == 0)
             {
                 DECODE_CHK_STATUS(UserFeatureReport());
             }
-            m_basicFeature->m_frameNum++;
+
+            DecodeFrameIndex++;
+            m_basicFeature->m_frameNum = DecodeFrameIndex;
 
             DECODE_CHK_STATUS(m_statusReport->Reset());
 
@@ -431,6 +435,8 @@ MOS_STATUS HevcPipelineM12::Destroy()
     DECODE_CHK_STATUS(m_allocator->Destroy(m_secondLevelBBArray));
     DECODE_CHK_STATUS(Uninitialize());
 
+    m_osInterface->pfnSetMultiEngineEnabled(m_osInterface, COMPONENT_Decode, false);
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -451,7 +457,6 @@ MOS_STATUS HevcPipelineM12::Initialize(void *settings)
     DECODE_CHK_STATUS(MediaPipeline::InitPlatform());
     DECODE_CHK_STATUS(MediaPipeline::CreateMediaCopyWrapper());
     DECODE_CHK_NULL(m_mediaCopyWrapper);
-    m_mediaCopyWrapper->CreateMediaCopyState();
 
     DECODE_CHK_NULL(m_waTable);
 
@@ -464,10 +469,12 @@ MOS_STATUS HevcPipelineM12::Initialize(void *settings)
         m_mediaCopyWrapper->SetMediaCopyState(m_hwInterface->CreateMediaCopy(m_osInterface));
     }
 
-#if USE_CODECHAL_DEBUG_TOOL
-    DECODE_CHK_NULL(m_debugInterface);
-    DECODE_CHK_STATUS(m_debugInterface->SetFastDumpConfig(m_mediaCopyWrapper->GetMediaCopyState()));
-#endif
+    CODECHAL_DEBUG_TOOL(
+        m_debugInterface = MOS_New(CodechalDebugInterface);
+        DECODE_CHK_NULL(m_debugInterface);
+        DECODE_CHK_STATUS(
+            m_debugInterface->Initialize(m_hwInterface, codecSettings->codecFunction, m_mediaCopyWrapper)););
+
     if (m_hwInterface->m_hwInterfaceNext)
     {
         m_hwInterface->m_hwInterfaceNext->legacyHwInterface = m_hwInterface;
@@ -657,37 +664,28 @@ MOS_STATUS HevcPipelineM12::DumpParams(HevcBasicFeature &basicFeature)
     m_debugInterface->m_secondField        = basicFeature.m_secondField;
     m_debugInterface->m_frameType          = basicFeature.m_pictureCodingType;
 
-    DECODE_CHK_STATUS(m_debugInterface->DumpBuffer(
-        &basicFeature.m_resDataBuffer.OsResource, CodechalDbgAttr::attrDecodeBitstream, "_DEC",
-        basicFeature.m_dataSize, 0, CODECHAL_NUM_MEDIA_STATES));
-
     DECODE_CHK_STATUS(DumpPicParams(
-        basicFeature.m_hevcPicParams,
-        basicFeature.m_hevcRextPicParams,
+        basicFeature.m_hevcPicParams, 
+        basicFeature.m_hevcRextPicParams, 
         basicFeature.m_hevcSccPicParams));
 
-    if (basicFeature.m_hevcIqMatrixParams != nullptr)
-    {
-        DECODE_CHK_STATUS(DumpIQParams(basicFeature.m_hevcIqMatrixParams));
-    }
+    DECODE_CHK_STATUS(DumpSliceParams(
+        basicFeature.m_hevcSliceParams, 
+        basicFeature.m_hevcRextSliceParams, 
+        basicFeature.m_numSlices, 
+        basicFeature.m_shortFormatInUse));
 
-    if (basicFeature.m_hevcSliceParams != nullptr)
-    {
-        DECODE_CHK_STATUS(DumpSliceParams(
-            basicFeature.m_hevcSliceParams,
-            basicFeature.m_hevcRextSliceParams,
-            basicFeature.m_numSlices,
-            basicFeature.m_shortFormatInUse));
-    }
+    DECODE_CHK_STATUS(DumpIQParams(basicFeature.m_hevcIqMatrixParams));
 
-    if(basicFeature.m_hevcSubsetParams != nullptr)
+    DECODE_CHK_STATUS(DumpBitstream(&basicFeature.m_resDataBuffer.OsResource, basicFeature.m_dataSize, 0));
+
+    if (!basicFeature.m_shortFormatInUse)
     {
         DECODE_CHK_STATUS(DumpSubsetsParams(basicFeature.m_hevcSubsetParams));
     }
 
     return MOS_STATUS_SUCCESS;
 }
-
 #endif
 
 }

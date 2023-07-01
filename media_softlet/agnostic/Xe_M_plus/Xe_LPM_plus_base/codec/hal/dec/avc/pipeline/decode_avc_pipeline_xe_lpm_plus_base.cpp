@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021, Intel Corporation
+* Copyright (c) 2021-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -52,6 +52,11 @@ MOS_STATUS AvcPipelineXe_Lpm_Plus_Base::Init(void *settings)
     m_avcDecodePkt = MOS_New(AvcDecodePktXe_Lpm_Plus_Base, this, m_task, m_hwInterface);
     DECODE_CHK_STATUS(RegisterPacket(DecodePacketId(this, avcDecodePacketId), m_avcDecodePkt));
     DECODE_CHK_STATUS(m_avcDecodePkt->Init());
+
+    if (m_numVdbox == 2)
+    {
+        m_allowVirtualNodeReassign = true;
+    }
 
     return MOS_STATUS_SUCCESS;
 }
@@ -162,7 +167,16 @@ MOS_STATUS AvcPipelineXe_Lpm_Plus_Base::InitContext()
     }
 #endif
 
-    m_mediaContext->SwitchContext(VdboxDecodeFunc, &scalPars, &m_scalability);
+    if (m_allowVirtualNodeReassign)
+    {
+        // reassign decoder virtual node at the first frame for each stream
+        DECODE_CHK_STATUS(m_mediaContext->ReassignContextForDecoder(m_basicFeature->m_frameNum, &scalPars, &m_scalability));
+        m_mediaContext->SetLatestDecoderVirtualNode();
+    }
+    else
+    {
+        DECODE_CHK_STATUS(m_mediaContext->SwitchContext(VdboxDecodeFunc, &scalPars, &m_scalability));
+    }
     DECODE_CHK_NULL(m_scalability);
 
     return MOS_STATUS_SUCCESS;
@@ -213,7 +227,7 @@ MOS_STATUS AvcPipelineXe_Lpm_Plus_Base::Prepare(void *params)
                 if (downSamplingFeature != nullptr)
                 {
                     auto frameIdx = m_basicFeature->m_curRenderPic.FrameIdx;
-                    inputParameters.sfcOutputPicRes = &downSamplingFeature->m_outputSurfaceList[frameIdx].OsResource;
+                    inputParameters.sfcOutputSurface = &downSamplingFeature->m_outputSurfaceList[frameIdx];
                     DumpDownSamplingParams(*downSamplingFeature);
                 });
 #endif
@@ -252,7 +266,8 @@ MOS_STATUS AvcPipelineXe_Lpm_Plus_Base::Execute()
             {
                 if (m_basicFeature->m_secondField || CodecHal_PictureIsFrame(m_basicFeature->m_avcPicParams->CurrPic))
                 {
-                    m_basicFeature->m_frameNum++;
+                    DecodeFrameIndex++;
+                    m_basicFeature->m_frameNum = DecodeFrameIndex;
                 }
             }
             DECODE_CHK_STATUS(m_statusReport->Reset());
@@ -291,18 +306,9 @@ MOS_STATUS AvcPipelineXe_Lpm_Plus_Base::DumpParams(AvcBasicFeature &basicFeature
     m_debugInterface->m_bufferDumpFrameNum = m_basicFeature->m_frameNum;
 
     DECODE_CHK_STATUS(DumpPicParams(basicFeature.m_avcPicParams));
-
-    if (basicFeature.m_avcIqMatrixParams != nullptr)
-    {
-        DECODE_CHK_STATUS(DumpIQParams(basicFeature.m_avcIqMatrixParams));
-    }
-
-    if (basicFeature.m_avcSliceParams != nullptr)
-    {
-        DECODE_CHK_STATUS(DumpSliceParams(
-            basicFeature.m_avcSliceParams,
-            basicFeature.m_numSlices));
-    }
+    DECODE_CHK_STATUS(DumpSliceParams(basicFeature.m_avcSliceParams, basicFeature.m_numSlices, basicFeature.m_shortFormatInUse));
+    DECODE_CHK_STATUS(DumpIQParams(basicFeature.m_avcIqMatrixParams));
+    DECODE_CHK_STATUS(DumpBitstream(&basicFeature.m_resDataBuffer.OsResource, basicFeature.m_dataSize, 0));
 
     return MOS_STATUS_SUCCESS;
 }

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, Intel Corporation
+* Copyright (c) 2022-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -150,7 +150,7 @@ static bool InitMtlMediaSkuExt(struct GfxDeviceInfo *devInfo,
         MEDIA_WR_SKU(skuTable, FtrEncodeAV1Vdenc, 1);
         MEDIA_WR_SKU(skuTable, FtrEncodeAV1Vdenc10bit420, 1);
     }
-
+    MEDIA_WR_SKU(skuTable, FtrEnableProtectedHuc, drvInfo->hasProtectedHuc);
     MEDIA_WR_SKU(skuTable, FtrEnableMediaKernels, drvInfo->hasHuc);
     MEDIA_WR_SKU(skuTable, FtrVERing, drvInfo->hasVebox);
     MEDIA_WR_SKU(skuTable, FtrPPGTT, drvInfo->hasPpgtt);
@@ -283,6 +283,8 @@ static bool InitMtlMediaWaExt(struct GfxDeviceInfo *devInfo,
     MEDIA_WR_WA(waTable, WaDisableVPMmc, 0);
 
     MEDIA_WR_WA(waTable, WaDisableSetObjectCapture, 1);
+
+    MEDIA_WR_WA(waTable, Wa_Vp9UnalignedHeight, 1);
 
     return true;
 }

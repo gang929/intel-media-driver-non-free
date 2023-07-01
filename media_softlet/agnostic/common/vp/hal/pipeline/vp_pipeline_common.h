@@ -66,7 +66,8 @@ using PCVP_PIPELINE_PARAMS = const VPHAL_RENDER_PARAMS*;
     uint32_t isHVSTableNeeded : 1;
 
 #define RESOURCE_ASSIGNMENT_HINT_BITS_STD_ALONE \
-    uint32_t isSkinScoreDumpNeededForSTDonly : 1;
+    uint32_t isSkinScoreDumpNeededForSTDonly : 1; \
+    uint32_t isSkinScoreOutputNeededForSTDOnly : 1;
 
 #define RESOURCE_ASSIGNMENT_HINT_BITS           \
         RESOURCE_ASSIGNMENT_HINT_BITS_DI        \
@@ -129,6 +130,7 @@ struct _VP_SETTINGS
     uint32_t               kernelUpdate           = 0;                   //!< For VEBox Copy and Update kernels
     uint32_t               disableHdr             = 0;                   //!< Disable Hdr
     uint32_t               veboxParallelExecution = 0;                   //!< Control VEBox parallel execution with render engine
+    bool                   clearVideoViewMode     = 0;                   //!< Perf Optimize for ClearVideoView DDI
 };
 
 using VP_SETTINGS = _VP_SETTINGS;
@@ -149,7 +151,6 @@ struct _VP_EXECUTE_CAPS
             uint64_t bForceProcampToRender : 1;   // If true, force to use render for procamp.
             uint64_t lastSubmission : 1;    // If true, it's the last submission of current DDI.
             uint64_t bTemperalInputInuse : 1; // If true, will use temperal input instead of input
-            uint64_t bInternalInputInuse : 1; // If true, will use internal input instead of input
 
             // Vebox Features
             uint64_t bDN            : 1;   // Vebox DN needed
@@ -240,7 +241,6 @@ typedef struct _VP_EngineEntry
             uint32_t sfcOnlyFeatureExists : 1;  // The feature exists, which only support sfc.
             uint32_t bTemperalInputInuse : 1;   // true if replace input
             uint32_t veboxRGBOutputWithoutLumaKey : 1;
-            uint32_t bInternalInputInuse : 1;   // true if replace input with Internal Input
         };
         uint32_t value;
     };

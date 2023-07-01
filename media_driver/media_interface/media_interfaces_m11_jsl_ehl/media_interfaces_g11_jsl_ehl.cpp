@@ -48,7 +48,8 @@ Register<VphalInterfacesG11JslEhl>((uint32_t)IGFX_JASPERLAKE);
 MOS_STATUS VphalInterfacesG11JslEhl::Initialize(
     PMOS_INTERFACE  osInterface,
     bool            bInitVphalState,
-    MOS_STATUS      *eStatus)
+    MOS_STATUS      *eStatus,
+    bool            clearViewMode)
 {
     m_vpBase = MOS_New(
         VphalState,
@@ -90,7 +91,7 @@ MOS_STATUS MhwInterfacesG11JslEhl::Initialize(
 
     // MHW_CP and MHW_MI must always be created
     MOS_STATUS status;
-    m_cpInterface = Create_MhwCpInterface(osInterface);
+    m_cpInterface = osInterface->pfnCreateMhwCpInterface(osInterface);
     m_miInterface = MOS_New(Mi, m_cpInterface, osInterface);
 
     if (params.Flags.m_render)

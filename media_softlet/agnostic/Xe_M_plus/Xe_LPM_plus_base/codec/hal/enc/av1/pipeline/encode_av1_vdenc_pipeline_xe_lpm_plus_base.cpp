@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2021, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -28,11 +28,7 @@
 #include "encode_av1_vdenc_feature_manager_xe_lpm_plus_base.h"
 #include "codechal_debug.h"
 #include "encode_mem_compression_xe_lpm_plus_base.h"
-#if _MEDIA_RESERVED
-#define ENCODE_AV1_RESERVED_FRATURE0
-#include "encode_av1_feature_ext.h"
-#undef ENCODE_AV1_RESERVED_FRATURE0
-#endif  // !(_MEDIA_RESERVED)
+#include "encode_av1_superres.h"
 
 namespace encode
 {
@@ -57,8 +53,6 @@ MOS_STATUS Av1VdencPipelineXe_Lpm_Plus_Base::Init(void *settings)
 
     return MOS_STATUS_SUCCESS;
 }
-
-
 
 MOS_STATUS Av1VdencPipelineXe_Lpm_Plus_Base::Prepare(void *params)
 {
@@ -99,7 +93,7 @@ MOS_STATUS Av1VdencPipelineXe_Lpm_Plus_Base::Prepare(void *params)
 
     inputParameters.numberTilesInFrame = numTileRows * numTileColumns;
 
-    m_statusReport->Init(&inputParameters);
+    ENCODE_CHK_STATUS_RETURN(m_statusReport->Init(&inputParameters));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -107,6 +101,25 @@ MOS_STATUS Av1VdencPipelineXe_Lpm_Plus_Base::Prepare(void *params)
 MOS_STATUS Av1VdencPipelineXe_Lpm_Plus_Base::Execute()
 {
     ENCODE_FUNC_CALL();
+
+    ENCODE_CHK_NULL_RETURN(m_featureManager);
+    auto superResFeature = dynamic_cast<Av1SuperRes *>(m_featureManager->GetFeature(Av1FeatureIDs::av1SuperRes));
+    ENCODE_CHK_NULL_RETURN(superResFeature);
+    if (superResFeature->IsEnabled())
+    {
+        if (superResFeature->IsSuperResUsed())
+        {
+            MEDIA_SFC_INTERFACE_MODE sfcMode = {};
+            sfcMode.vdboxSfcEnabled          = false;
+            sfcMode.veboxSfcEnabled          = true;
+            if (!m_sfcItf->IsRenderInitialized())
+            {
+                m_sfcItf->Initialize(sfcMode);
+            }
+            ENCODE_CHK_STATUS_RETURN(m_sfcItf->Render(superResFeature->GetDownScalingParams()));
+            ContextSwitchBack();
+        }
+    }
 
     ENCODE_CHK_STATUS_RETURN(ActivateVdencVideoPackets());
     ENCODE_CHK_STATUS_RETURN(ExecuteActivePackets());
@@ -145,16 +158,6 @@ MOS_STATUS Av1VdencPipelineXe_Lpm_Plus_Base::ActivateVdencVideoPackets()
         }
 #endif
     }
-
-    #if _MEDIA_RESERVED
-    auto reservedFeature = dynamic_cast<Av1ReservedFeature0 *>(m_featureManager->GetFeature(Av1FeatureIDs::av1ReservedFeatureID0));
-    ENCODE_CHK_NULL_RETURN(reservedFeature);
-
-    if (reservedFeature->IsEnabled())
-    {
-        ENCODE_CHK_STATUS_RETURN(ActivatePacket(Av1ReservedPktID, immediateSubmit, 0, 0));
-    }
-    #endif  // !(_MEDIA_RESERVED)
 
     if (brcFeature->IsBRCInitRequired())
     {
@@ -209,47 +212,6 @@ MOS_STATUS Av1VdencPipelineXe_Lpm_Plus_Base::CreateFeatureManager()
     ENCODE_FUNC_CALL();
     m_featureManager = MOS_New(EncodeAv1VdencFeatureManagerXe_Lpm_Plus_Base, m_allocator, m_hwInterface, m_trackedBuf, m_recycleBuf);
     ENCODE_CHK_NULL_RETURN(m_featureManager);
-    return MOS_STATUS_SUCCESS;
-}
-
-MOS_STATUS Av1VdencPipelineXe_Lpm_Plus_Base::Initialize(void *settings)
-{
-    ENCODE_FUNC_CALL();
-    ENCODE_CHK_STATUS_RETURN(Av1VdencPipeline::Initialize(settings));
-    ENCODE_CHK_STATUS_RETURN(InitMmcState());
-
-    CODECHAL_DEBUG_TOOL(
-        if (m_debugInterface != nullptr) {
-            MOS_Delete(m_debugInterface);
-        } m_debugInterface = MOS_New(CodechalDebugInterface);
-        ENCODE_CHK_NULL_RETURN(m_debugInterface);
-        ENCODE_CHK_NULL_RETURN(m_mediaCopyWrapper);
-        ENCODE_CHK_STATUS_RETURN(
-            m_debugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper->GetMediaCopyState()));
-
-        if (m_statusReportDebugInterface != nullptr) {
-            MOS_Delete(m_statusReportDebugInterface);
-        } m_statusReportDebugInterface = MOS_New(CodechalDebugInterface);
-        ENCODE_CHK_NULL_RETURN(m_statusReportDebugInterface);
-        ENCODE_CHK_STATUS_RETURN(
-            m_statusReportDebugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper->GetMediaCopyState())););
-
-    ENCODE_CHK_STATUS_RETURN(GetSystemVdboxNumber());
-
-    return MOS_STATUS_SUCCESS;
-}
-
-MOS_STATUS Av1VdencPipelineXe_Lpm_Plus_Base::Uninitialize()
-{
-    ENCODE_FUNC_CALL();
-
-    if (m_mmcState != nullptr)
-    {
-        MOS_Delete(m_mmcState);
-    }
-
-    ENCODE_CHK_STATUS_RETURN(Av1VdencPipeline::Uninitialize());
-
     return MOS_STATUS_SUCCESS;
 }
 

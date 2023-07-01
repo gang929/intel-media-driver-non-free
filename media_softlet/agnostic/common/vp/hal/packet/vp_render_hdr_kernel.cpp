@@ -2354,6 +2354,7 @@ MOS_STATUS VpRenderHdrKernel::HdrInitCoeff(
     float          *pEOTFCoeff         = nullptr;
     float          *pPivotPoint        = nullptr;
     uint32_t       *pTMType            = nullptr;
+    float          *pFP16Normalizer    = nullptr;
     uint32_t       *pOETFNeqType       = nullptr;
     uint32_t       *pCCMEnable         = nullptr;
     float          *pPWLFStretch       = nullptr;
@@ -2750,6 +2751,10 @@ MOS_STATUS VpRenderHdrKernel::HdrInitCoeff(
         }
     }
 
+    // Coef[64][7] is to normalize the fp16 input value
+    pFP16Normalizer  = pFloat + 7;
+    *pFP16Normalizer = 1.0f / 125.0f;
+
     // Skip the Dst CSC area
     pFloat += 2 * pCoeffSurface->osSurface->dwPitch / sizeof(float);
 
@@ -3069,7 +3074,7 @@ MOS_STATUS VpRenderHdrKernel::UpdatePerLayerPipelineStates(
         }
         else
         {
-            CurrentLUTMode = VPHAL_HDR_LUT_MODE_2D;
+            CurrentLUTMode = VPHAL_HDR_LUT_MODE_3D;
         }
 
         // Neither 1D nor 3D LUT is needed in linear output case.

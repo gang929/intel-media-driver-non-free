@@ -641,6 +641,10 @@ void VpConfigValuesInit(
     pConfigValues->dwScalerCompressModeReported  = LIBVA_VP_CONFIG_NOT_REPORTED;
     pConfigValues->dwPrimaryCompressibleReported = LIBVA_VP_CONFIG_NOT_REPORTED;
     pConfigValues->dwPrimaryCompressModeReported = LIBVA_VP_CONFIG_NOT_REPORTED;
+    pConfigValues->dwRTCacheSettingReported      = LIBVA_VP_CONFIG_NOT_REPORTED;
+#if (_DEBUG || _RELEASE_INTERNAL)
+    pConfigValues->dwRTOldCacheSettingReported   = LIBVA_VP_CONFIG_NOT_REPORTED;
+#endif
 }
 
 void VpFeatureReport(
@@ -696,6 +700,18 @@ void VpFeatureReport(
         userSettingPtr,
         __VPHAL_RT_MMC_COMPRESSIBLE,
         pConfig->dwRTCompressible,
+        MediaUserSetting::Group::Sequence);
+    //VP RT Cache Usage
+    ReportUserSettingForDebug(
+        userSettingPtr,
+        __VPHAL_RT_Cache_Setting,
+        pConfig->dwRTCacheSetting,
+        MediaUserSetting::Group::Sequence);
+    //VP RT Old Cache Usage
+    ReportUserSettingForDebug(
+        userSettingPtr,
+        __VPHAL_RT_Old_Cache_Setting,
+        pConfig->dwRTOldCacheSetting,
         MediaUserSetting::Group::Sequence);
 #endif
 #endif //(_DEBUG || _RELEASE_INTERNAL)

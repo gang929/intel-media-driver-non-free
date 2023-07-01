@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2021, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -246,6 +246,9 @@ MOS_STATUS AvcHucBrcUpdatePkt::Execute(PMOS_COMMAND_BUFFER cmdBuffer, bool store
         ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_CONDITIONAL_BATCH_BUFFER_END)(cmdBuffer));
     }
 
+    SetPerfTag(m_pipeline->IsFirstPass() ? CODECHAL_ENCODE_PERFTAG_CALL_BRC_UPDATE : CODECHAL_ENCODE_PERFTAG_CALL_BRC_UPDATE_SECOND_PASS,
+        (uint16_t)m_basicFeature->m_mode,
+        m_basicFeature->m_pictureCodingType);
     ENCODE_CHK_STATUS_RETURN(StartPerfCollect(*cmdBuffer));
     if (m_pipeline->IsSingleTaskPhaseSupported())
     {
@@ -271,6 +274,39 @@ MOS_STATUS AvcHucBrcUpdatePkt::Execute(PMOS_COMMAND_BUFFER cmdBuffer, bool store
 
     // set HuC DMEM param
     SETPAR_AND_ADDCMD(HUC_DMEM_STATE, m_hucItf, cmdBuffer);
+
+    // Copy data from BrcPakStatisticBufferFull to BrcPakStatisticBuffer if m_perMBStreamOutEnable is true
+    if (m_basicFeature->m_perMBStreamOutEnable)
+    {
+        CodechalHucStreamoutParams hucStreamOutParams;
+        MOS_ZeroMemory(&hucStreamOutParams, sizeof(hucStreamOutParams));
+
+        auto setting = static_cast<AvcVdencFeatureSettings *>(m_featureManager->GetFeatureSettings()->GetConstSettings());
+        ENCODE_CHK_NULL_RETURN(setting);
+
+        PMOS_RESOURCE sourceSurface = m_basicFeature->m_recycleBuf->GetBuffer(BrcPakStatisticBufferFull, m_basicFeature->m_frameNum);
+        PMOS_RESOURCE destSurface   = m_basicFeature->m_recycleBuf->GetBuffer(BrcPakStatisticBuffer, 0);
+        uint32_t      copySize      = setting->brcSettings.vdencBrcPakStatsBufferSize;
+        uint32_t      sourceOffset  = m_basicFeature->m_picWidthInMb * m_basicFeature->m_picHeightInMb * 64;
+        uint32_t      destOffset    = 0;
+
+        // Ind Obj Addr command
+        hucStreamOutParams.dataBuffer            = sourceSurface;
+        hucStreamOutParams.dataSize              = copySize + sourceOffset;
+        hucStreamOutParams.dataOffset            = MOS_ALIGN_FLOOR(sourceOffset, CODECHAL_PAGE_SIZE);
+        hucStreamOutParams.streamOutObjectBuffer = destSurface;
+        hucStreamOutParams.streamOutObjectSize   = copySize + destOffset;
+        hucStreamOutParams.streamOutObjectOffset = MOS_ALIGN_FLOOR(destOffset, CODECHAL_PAGE_SIZE);
+
+        // Stream object params
+        hucStreamOutParams.indStreamInLength    = copySize;
+        hucStreamOutParams.inputRelativeOffset  = sourceOffset - hucStreamOutParams.dataOffset;
+        hucStreamOutParams.outputRelativeOffset = destOffset - hucStreamOutParams.streamOutObjectOffset;
+
+        ENCODE_CHK_STATUS_RETURN(m_hwInterface->PerformHucStreamOut(
+            &hucStreamOutParams,
+            cmdBuffer));
+    }
 
     SETPAR_AND_ADDCMD(HUC_VIRTUAL_ADDR_STATE, m_hucItf, cmdBuffer);
 
@@ -316,21 +352,26 @@ MOS_STATUS AvcHucBrcUpdatePkt::Submit(MOS_COMMAND_BUFFER *commandBuffer, uint8_t
                            "ERROR - vdbox index exceed the maximum");
     auto mmioRegisters = m_hucItf->GetMmioRegisters(m_vdboxIndex);
 
-    // Write HUC_STATUS mask
-    auto &storeDataParams            = m_miItf->MHW_GETPAR_F(MI_STORE_DATA_IMM)();
-    storeDataParams                  = {};
-    storeDataParams.pOsResource      = m_basicFeature->m_recycleBuf->GetBuffer(VdencBrcPakMmioBuffer, 0);
-    storeDataParams.dwResourceOffset = sizeof(uint32_t);
-    storeDataParams.dwValue          = VDENC_AVC_BRC_HUC_STATUS_REENCODE_MASK;
-    ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_DATA_IMM)(commandBuffer));
+#if _SW_BRC
+    if (!m_swBrc->SwBrcEnabled())
+#endif
+    {
+        // Write HUC_STATUS mask
+        auto &storeDataParams            = m_miItf->MHW_GETPAR_F(MI_STORE_DATA_IMM)();
+        storeDataParams                  = {};
+        storeDataParams.pOsResource      = m_basicFeature->m_recycleBuf->GetBuffer(VdencBrcPakMmioBuffer, 0);
+        storeDataParams.dwResourceOffset = sizeof(uint32_t);
+        storeDataParams.dwValue          = VDENC_AVC_BRC_HUC_STATUS_REENCODE_MASK;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_DATA_IMM)(commandBuffer));
 
-    // store HUC_STATUS register
-    auto &storeRegMemParams           = m_miItf->MHW_GETPAR_F(MI_STORE_REGISTER_MEM)();
-    storeRegMemParams                 = {};
-    storeRegMemParams.presStoreBuffer = m_basicFeature->m_recycleBuf->GetBuffer(VdencBrcPakMmioBuffer, 0);
-    storeRegMemParams.dwOffset        = 0;
-    storeRegMemParams.dwRegister      = mmioRegisters->hucStatusRegOffset;
-    ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_REGISTER_MEM)(commandBuffer));
+        // store HUC_STATUS register
+        auto &storeRegMemParams           = m_miItf->MHW_GETPAR_F(MI_STORE_REGISTER_MEM)();
+        storeRegMemParams                 = {};
+        storeRegMemParams.presStoreBuffer = m_basicFeature->m_recycleBuf->GetBuffer(VdencBrcPakMmioBuffer, 0);
+        storeRegMemParams.dwOffset        = 0;
+        storeRegMemParams.dwRegister      = mmioRegisters->hucStatusRegOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_REGISTER_MEM)(commandBuffer));
+    }
 
     CODECHAL_DEBUG_TOOL(
         ENCODE_CHK_STATUS_RETURN(DumpHucBrcUpdate(true));)
@@ -529,6 +570,9 @@ MOS_STATUS AvcHucBrcUpdatePkt::DumpHucBrcUpdate(bool isInput)
             m_vdencBrcUpdateDmemBufferSize,
             currentPass,
             hucRegionDumpUpdate));
+
+        // History Buffer dump
+        ENCODE_CHK_STATUS_RETURN(DumpRegion(0, "_History", isInput, hucRegionDumpUpdate, brcSettings.vdencBrcHistoryBufferSize));
 
         // Constant Data Buffer dump
         ENCODE_CHK_STATUS_RETURN(DumpRegion(5, "_ConstData", isInput, hucRegionDumpUpdate, m_vdencBrcConstDataBufferSize));

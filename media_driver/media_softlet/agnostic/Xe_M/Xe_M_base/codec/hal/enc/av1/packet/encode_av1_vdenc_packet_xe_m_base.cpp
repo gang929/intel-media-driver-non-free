@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2022, Intel Corporation
+* Copyright (c) 2019-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -269,11 +269,14 @@ namespace encode
         allocParamsForBuffer2D.dwWidth            = MOS_ALIGN_CEIL(m_basicFeature->m_frameWidth, av1SuperBlockWidth);
         allocParamsForBuffer2D.dwHeight           = MOS_ALIGN_CEIL(m_basicFeature->m_frameHeight, av1SuperBlockHeight);
 
+#ifdef _MMC_SUPPORTED
+        ENCODE_CHK_NULL_RETURN(m_mmcState);
         if (m_mmcState->IsMmcEnabled() && m_basicFeature->m_reconSurface.bCompressible)
         {
             allocParamsForBuffer2D.CompressionMode = MOS_MMC_MC;
             allocParamsForBuffer2D.bIsCompressible = true;
         }
+#endif
         if (m_basicFeature->m_is10Bit)
         {
             // This is temporary fix for Sim specific ( Grits Utility) issue, HW has no restriction for current platform
@@ -355,6 +358,30 @@ namespace encode
 
             // Send command buffer header at the beginning (OS dependent)
             ENCODE_CHK_STATUS_RETURN(SendPrologCmds(cmdBuffer));
+        }
+
+        if (m_pipeline->GetPipeNum() >= 2)
+        {
+            auto scalability = m_pipeline->GetMediaScalability();
+            if (m_pipeline->IsFirstPass())
+            {
+                ENCODE_CHK_STATUS_RETURN(scalability->ResetSemaphore(syncOnePipeWaitOthers, 0, &cmdBuffer));
+
+                if(m_pipeline->IsFirstPipe())
+                {
+                    PMOS_RESOURCE bsSizeBuf = m_basicFeature->m_recycleBuf->GetBuffer(PakInfo, 0);
+                    ENCODE_CHK_NULL_RETURN(bsSizeBuf);
+                    // clear bitstream size buffer at first tile
+                    auto &miStoreDataParams            = m_miItf->MHW_GETPAR_F(MI_STORE_DATA_IMM)();
+                    miStoreDataParams                  = {};
+                    miStoreDataParams.pOsResource      = bsSizeBuf;
+                    miStoreDataParams.dwResourceOffset = 0;
+                    miStoreDataParams.dwValue          = 0;
+                    ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_DATA_IMM)(&cmdBuffer));
+                }
+
+            }
+            ENCODE_CHK_STATUS_RETURN(scalability->SyncPipe(syncOtherPipesForOne, 0, &cmdBuffer));
         }
 
         ENCODE_CHK_STATUS_RETURN(AddCondBBEndFor2ndPass(cmdBuffer));
@@ -512,19 +539,27 @@ namespace encode
     #endif
 
 #if USE_CODECHAL_DEBUG_TOOL
+        std::string             name           = std::to_string(tileRow) + std::to_string(tileCol) + std::to_string(tileRowPass) + "_TILE_CMD_BUFFER";
         CodechalDebugInterface* debugInterface = m_pipeline->GetDebugInterface();
         ENCODE_CHK_NULL_RETURN(debugInterface);
 
         ENCODE_CHK_STATUS_RETURN(debugInterface->DumpCmdBuffer(
             &constructTileBatchBuf,
             CODECHAL_NUM_MEDIA_STATES,
-            "_TILE_CMD_BUFFER"));
+            name.c_str()));
 #endif
 
         // End patching tile level batch cmds
         RUN_FEATURE_INTERFACE_RETURN(Av1EncodeTile, Av1FeatureIDs::encodeTile, EndPatchTileLevelBatch);
 
-        ENCODE_CHK_STATUS_RETURN(ReadPakMmioRegisters(&cmdBuffer, tileRow == 0 && tileCol == 0));
+        if (m_pipeline->GetPipeNum() > 1)
+        {
+            ENCODE_CHK_STATUS_RETURN(ReadPakMmioRegistersAtomic(&cmdBuffer));
+        }
+        else
+        {
+            ENCODE_CHK_STATUS_RETURN(ReadPakMmioRegisters(&cmdBuffer, tileRow == 0 && tileCol == 0));
+        }
 
         return MOS_STATUS_SUCCESS;
     }
@@ -590,7 +625,10 @@ namespace encode
         auto scalability = m_pipeline->GetMediaScalability();
         ENCODE_CHK_STATUS_RETURN(scalability->SyncPipe(syncOnePipeWaitOthers, 0, &cmdBuffer));
 
-        ENCODE_CHK_STATUS_RETURN(EndStatusReport(statusReportMfx, &cmdBuffer));
+        if (m_pipeline->IsFirstPipe()) 
+        {
+            ENCODE_CHK_STATUS_RETURN(EndStatusReport(statusReportMfx, &cmdBuffer));
+        }
         auto brcFeature = dynamic_cast<Av1Brc *>(m_featureManager->GetFeature(Av1FeatureIDs::av1BrcFeature));
         ENCODE_CHK_NULL_RETURN(brcFeature);
 

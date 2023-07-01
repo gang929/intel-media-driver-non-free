@@ -24,6 +24,7 @@
 #define __CODECHAL_HW_NEXT_XE_HPM_H__
 
 #include "codechal_hw.h"
+#include "codechal_debug.h"
 
 //!  Codechal hw interface Gen12
 /*!
@@ -77,12 +78,14 @@ public:
     //!           Indicate the command size parameters
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
     virtual MOS_STATUS GetAvpStateCommandSize(
             uint32_t                        mode,
             uint32_t                        *commandsSize,
             uint32_t                        *patchListSize,
             PMHW_VDBOX_STATE_CMDSIZE_PARAMS params) override;
 
+#if USE_CODECHAL_DEBUG_TOOL
     //! \brief    Create media copy
     //! \details  Create media copy instance.
     //! \param    osInterface
@@ -91,6 +94,8 @@ public:
     //!           Pointer to MediaCopyBaseState
     //!
     virtual MediaCopyBaseState *CreateMediaCopy(PMOS_INTERFACE mosInterface) override;
+#endif
+
     //!
     //! \brief    Calculates maximum size for AVP tile level commands
     //! \details  Client facing function to calculate maximum size for AVP tile level commands

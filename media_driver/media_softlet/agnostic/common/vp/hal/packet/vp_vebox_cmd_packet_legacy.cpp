@@ -52,18 +52,48 @@ const uint32_t   VpVeboxCmdPacketLegacy::m_satS1Table[MHW_STE_FACTOR_MAX + 1] = 
     0x000000ab, 0x00000080, 0x00000066, 0x00000055, 0x000000c2, 0x000000b9, 0x000000b0, 0x000000a9, 0x000000a2, 0x0000009c };
 
 void VpVeboxCmdPacketLegacy::SetupSurfaceStates(
-    PVPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS   pVeboxSurfaceStateCmdParams)
+    PVP_VEBOX_SURFACE_STATE_CMD_PARAMS   pVeboxSurfaceStateCmdParams)
 {
     VP_FUNC_CALL();
-
     VP_PUBLIC_CHK_NULL_NO_STATUS_RETURN(pVeboxSurfaceStateCmdParams);
-    MOS_ZeroMemory(pVeboxSurfaceStateCmdParams, sizeof(VPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS));
+    MOS_ZeroMemory(pVeboxSurfaceStateCmdParams, sizeof(VP_VEBOX_SURFACE_STATE_CMD_PARAMS));
     pVeboxSurfaceStateCmdParams->pSurfInput    = m_veboxPacketSurface.pCurrInput;
     pVeboxSurfaceStateCmdParams->pSurfOutput   = m_veboxPacketSurface.pCurrOutput;
     pVeboxSurfaceStateCmdParams->pSurfSTMM     = m_veboxPacketSurface.pSTMMInput;
     pVeboxSurfaceStateCmdParams->pSurfDNOutput = m_veboxPacketSurface.pDenoisedCurrOutput;
     pVeboxSurfaceStateCmdParams->bDIEnable     = m_PacketCaps.bDI;
     pVeboxSurfaceStateCmdParams->b3DlutEnable  = m_PacketCaps.bHDR3DLUT;  // Need to consider cappipe
+
+    UpdateCpPrepareResources();
+}
+
+void VpVeboxCmdPacketLegacy::UpdateCpPrepareResources()
+{
+    VP_FUNC_CALL();
+
+    VpVeboxRenderData *pRenderData = GetLastExecRenderData();
+    VP_RENDER_ASSERT(pRenderData);
+    // For 3DLut usage, it update in CpPrepareResources() for kernel usage, should
+    // reupdate here. For other feature usage, it already update in vp_pipeline
+    if (pRenderData->HDR3DLUT.is3DLutTableUpdatedByKernel == true)
+    {
+        VP_RENDER_NORMALMESSAGE("Update CP Prepare Resource for 3DLut kernel.");
+        PMOS_RESOURCE source[VPHAL_MAX_SOURCES] = {nullptr};
+        PMOS_RESOURCE target[VPHAL_MAX_TARGETS] = {nullptr};
+
+        if ((nullptr != m_hwInterface->m_osInterface) &&
+            (nullptr != m_hwInterface->m_osInterface->osCpInterface))
+        {
+            VP_SURFACE *surf = GetSurface(SurfaceTypeVeboxInput);
+            VP_PUBLIC_CHK_NULL_NO_STATUS_RETURN(surf);
+            source[0] = &(surf->osSurface->OsResource);
+
+            VP_PUBLIC_CHK_NULL_NO_STATUS_RETURN(m_renderTarget);
+            target[0] = &(m_renderTarget->osSurface->OsResource);
+
+            m_hwInterface->m_osInterface->osCpInterface->PrepareResources((void **)source, 1, (void **)target, 1);
+        }
+    }
 }
 
 MOS_STATUS VpVeboxCmdPacketLegacy::Init3DLutTable(PVP_SURFACE surf3DLut)
@@ -1042,8 +1072,9 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetHdrParams(PVEBOX_HDR_PARAMS hdrParams)
     pOsInterface                       = m_hwInterface->m_osInterface;
     pRenderData->HDR3DLUT.bHdr3DLut    = true;
 
-    pRenderData->HDR3DLUT.is3DLutTableFilled   = HDR_STAGE::HDR_STAGE_VEBOX_3DLUT_UPDATE == hdrParams->stage ||
-                                                    HDR_STAGE::HDR_STAGE_VEBOX_3DLUT_NO_UPDATE == hdrParams->stage;
+    pRenderData->HDR3DLUT.is3DLutTableFilled          = HDR_STAGE::HDR_STAGE_VEBOX_3DLUT_UPDATE == hdrParams->stage ||
+                                                        HDR_STAGE::HDR_STAGE_VEBOX_3DLUT_NO_UPDATE == hdrParams->stage;
+    pRenderData->HDR3DLUT.is3DLutTableUpdatedByKernel = HDR_STAGE::HDR_STAGE_VEBOX_3DLUT_UPDATE == hdrParams->stage;
     pRenderData->HDR3DLUT.uiMaxDisplayLum      = hdrParams->uiMaxDisplayLum;
     pRenderData->HDR3DLUT.uiMaxContentLevelLum = hdrParams->uiMaxContentLevelLum;
     pRenderData->HDR3DLUT.hdrMode              = hdrParams->hdrMode;
@@ -1428,6 +1459,12 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetupDiIecpState(
         pVeboxDiIecpCmdParams->LaceOrAceOrRgbHistogramSurfCtrl.Value =
             m_surfMemCacheCtl->DnDi.LaceOrAceOrRgbHistogramSurfCtrl;
     }
+#if (_DEBUG || _RELEASE_INTERNAL)
+    if (m_hwInterface->m_renderHal)
+    {
+        m_hwInterface->m_renderHal->oldCacheSettingForTargetSurface = (uint8_t)((m_surfMemCacheCtl->DnDi.CurrentOutputSurfMemObjCtl >> 1) & 0x0000003f);
+    }
+#endif
 finish:
     return eStatus;
 }
@@ -1491,7 +1528,7 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SendVeboxCmd(MOS_COMMAND_BUFFER* commandBuffe
     MOS_STATUS                              eStatus;
     int32_t                                 iRemaining;
     MHW_VEBOX_DI_IECP_CMD_PARAMS            VeboxDiIecpCmdParams;
-    VPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS    VeboxSurfaceStateCmdParams;
+    VP_VEBOX_SURFACE_STATE_CMD_PARAMS    VeboxSurfaceStateCmdParams;
     MHW_VEBOX_SURFACE_STATE_CMD_PARAMS      MhwVeboxSurfaceStateCmdParams;
     MHW_VEBOX_STATE_CMD_PARAMS              VeboxStateCmdParams;
     MHW_MI_FLUSH_DW_PARAMS                  FlushDwParams;
@@ -1787,7 +1824,7 @@ MOS_STATUS VpVeboxCmdPacketLegacy::SetVeboxDiIecp(
 MOS_STATUS VpVeboxCmdPacketLegacy::RenderVeboxCmd(
     MOS_COMMAND_BUFFER                      *CmdBuffer,
     MHW_VEBOX_DI_IECP_CMD_PARAMS            &VeboxDiIecpCmdParams,
-    VPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS    &VeboxSurfaceStateCmdParams,
+    VP_VEBOX_SURFACE_STATE_CMD_PARAMS    &VeboxSurfaceStateCmdParams,
     MHW_VEBOX_SURFACE_STATE_CMD_PARAMS      &MhwVeboxSurfaceStateCmdParams,
     MHW_VEBOX_STATE_CMD_PARAMS              &VeboxStateCmdParams,
     MHW_MI_FLUSH_DW_PARAMS                  &FlushDwParams,
@@ -2123,7 +2160,7 @@ void VpVeboxCmdPacketLegacy::AddCommonOcaMessage(PMOS_COMMAND_BUFFER pCmdBufferI
 
 
 MOS_STATUS VpVeboxCmdPacketLegacy::InitVeboxSurfaceStateCmdParams(
-    PVPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS    pVpHalVeboxSurfaceStateCmdParams,
+    PVP_VEBOX_SURFACE_STATE_CMD_PARAMS    pVpHalVeboxSurfaceStateCmdParams,
     PMHW_VEBOX_SURFACE_STATE_CMD_PARAMS      pMhwVeboxSurfaceStateCmdParams)
 {
     VP_FUNC_CALL();
@@ -3021,7 +3058,7 @@ void VpVeboxCmdPacketLegacy::VeboxGetBeCSCMatrix(
 MOS_STATUS VpVeboxCmdPacketLegacy::IsCmdParamsValid(
     const MHW_VEBOX_STATE_CMD_PARAMS            &VeboxStateCmdParams,
     const MHW_VEBOX_DI_IECP_CMD_PARAMS          &VeboxDiIecpCmdParams,
-    const VPHAL_VEBOX_SURFACE_STATE_CMD_PARAMS  &VeboxSurfaceStateCmdParams)
+    const VP_VEBOX_SURFACE_STATE_CMD_PARAMS  &VeboxSurfaceStateCmdParams)
 {
     VP_FUNC_CALL();
 

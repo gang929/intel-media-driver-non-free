@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2021, Intel Corporation
+* Copyright (c) 2018-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -117,7 +117,6 @@ MOS_STATUS AvcPipelineM12::Initialize(void *settings)
     DECODE_CHK_STATUS(MediaPipeline::InitPlatform());
     DECODE_CHK_STATUS(MediaPipeline::CreateMediaCopyWrapper());
     DECODE_CHK_NULL(m_mediaCopyWrapper);
-    m_mediaCopyWrapper->CreateMediaCopyState();
 
     DECODE_CHK_NULL(m_waTable);
 
@@ -130,10 +129,12 @@ MOS_STATUS AvcPipelineM12::Initialize(void *settings)
         m_mediaCopyWrapper->SetMediaCopyState(m_hwInterface->CreateMediaCopy(m_osInterface));
     }
 
-#if USE_CODECHAL_DEBUG_TOOL
-    DECODE_CHK_NULL(m_debugInterface);
-    DECODE_CHK_STATUS(m_debugInterface->SetFastDumpConfig(m_mediaCopyWrapper->GetMediaCopyState()));
-#endif
+    CODECHAL_DEBUG_TOOL(
+        m_debugInterface = MOS_New(CodechalDebugInterface);
+        DECODE_CHK_NULL(m_debugInterface);
+        DECODE_CHK_STATUS(
+            m_debugInterface->Initialize(m_hwInterface, codecSettings->codecFunction, m_mediaCopyWrapper)););
+
     if (m_hwInterface->m_hwInterfaceNext)
     {
         m_hwInterface->m_hwInterfaceNext->legacyHwInterface = m_hwInterface;
@@ -269,6 +270,9 @@ MOS_STATUS AvcPipelineM12::InitContext()
     }
     DECODE_CHK_NULL(m_scalability);
 
+    if (scalPars.disableScalability)
+        m_osInterface->pfnSetMultiEngineEnabled(m_osInterface, COMPONENT_Decode, false);
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -309,6 +313,7 @@ MOS_STATUS AvcPipelineM12::Prepare(void *params)
             inputParameters.pictureCodingType          = m_basicFeature->m_pictureCodingType;
             inputParameters.currOriginalPic            = m_basicFeature->m_curRenderPic;
             inputParameters.currDecodedPicRes          = m_basicFeature->m_destSurface.OsResource;
+            inputParameters.isSecondField              = m_basicFeature->m_isSecondField;
             inputParameters.numUsedVdbox               = m_numVdbox;
 
 #ifdef _DECODE_PROCESSING_SUPPORTED
@@ -318,7 +323,7 @@ MOS_STATUS AvcPipelineM12::Prepare(void *params)
                 if (downSamplingFeature != nullptr)
                 {
                     auto frameIdx = m_basicFeature->m_curRenderPic.FrameIdx;
-                    inputParameters.sfcOutputPicRes = &downSamplingFeature->m_outputSurfaceList[frameIdx].OsResource;
+                    inputParameters.sfcOutputSurface = &downSamplingFeature->m_outputSurfaceList[frameIdx];
                     DumpDownSamplingParams(*downSamplingFeature);
                 });
 #endif
@@ -357,7 +362,8 @@ MOS_STATUS AvcPipelineM12::Execute()
             {
                 if (m_basicFeature->m_secondField || CodecHal_PictureIsFrame(m_basicFeature->m_avcPicParams->CurrPic))
                 {
-                    m_basicFeature->m_frameNum++;
+                    DecodeFrameIndex++;
+                    m_basicFeature->m_frameNum = DecodeFrameIndex;
                 }
             }
             DECODE_CHK_STATUS(m_statusReport->Reset());
@@ -421,21 +427,11 @@ MOS_STATUS AvcPipelineM12::DumpParams(AvcBasicFeature &basicFeature)
     m_debugInterface->m_bufferDumpFrameNum = m_basicFeature->m_frameNum;
 
     DECODE_CHK_STATUS(DumpPicParams(basicFeature.m_avcPicParams));
-
-    if (basicFeature.m_avcIqMatrixParams != nullptr)
-    {
-        DECODE_CHK_STATUS(DumpIQParams(basicFeature.m_avcIqMatrixParams));
-    }
-
-    if (basicFeature.m_avcSliceParams != nullptr)
-    {
-        DECODE_CHK_STATUS(DumpSliceParams(
-            basicFeature.m_avcSliceParams,
-            basicFeature.m_numSlices));
-    }
+    DECODE_CHK_STATUS(DumpSliceParams(basicFeature.m_avcSliceParams, basicFeature.m_numSlices, basicFeature.m_shortFormatInUse));
+    DECODE_CHK_STATUS(DumpIQParams(basicFeature.m_avcIqMatrixParams));
+    DECODE_CHK_STATUS(DumpBitstream(&basicFeature.m_resDataBuffer.OsResource, basicFeature.m_dataSize, 0));
 
     return MOS_STATUS_SUCCESS;
 }
-
 #endif
 }

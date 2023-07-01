@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, Intel Corporation
+* Copyright (c) 2022-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -84,19 +84,6 @@ VAStatus DdiDecodeAv1::ParseTileParams(
         tileParams++;
         pTileCtrl++;
     }
-
-#if MOS_EVENT_TRACE_DUMP_SUPPORTED
-    if (MOS_TraceKeyEnabled(TR_KEY_DECODE_TILEPARAM))
-    {
-        CodecAv1PicParams* picAV1Params = (CodecAv1PicParams*)(m_decodeCtx->DecodeParams.m_picParams);
-
-        DECODE_EVENTDATA_TILEPARAM_AV1 eventData;
-        DECODE_EVENTDATA_TILEINFO_AV1  *pEventTileData = (DECODE_EVENTDATA_TILEINFO_AV1 *)MOS_AllocMemory(numTiles * sizeof(DECODE_EVENTDATA_TILEINFO_AV1));
-        DecodeEventDataAV1TileParamInit(&eventData, pEventTileData, picAV1Params, (CodecAv1TileParams *)(m_decodeCtx->DecodeParams.m_sliceParams), numTiles);
-        MOS_TraceEvent(EVENT_DECODE_BUFFER_TILEPARAM_AV1, EVENT_TYPE_INFO, &eventData, sizeof(eventData), pEventTileData, numTiles * sizeof(DECODE_EVENTDATA_TILEINFO_AV1));
-        MOS_FreeMemory(pEventTileData);
-    }
-#endif
 
     return VA_STATUS_SUCCESS;
 }
@@ -226,7 +213,10 @@ VAStatus DdiDecodeAv1::ParsePicParams(
         if (picParam->ref_frame_map[i] < mediaCtx->uiNumSurfaces)
         {
             frameIdx = GetRenderTargetID(&m_decodeCtx->RTtbl, refSurface);
-            if (frameIdx == DDI_CODEC_INVALID_FRAME_INDEX) {
+            if ((frameIdx == DDI_CODEC_INVALID_FRAME_INDEX) &&
+                (picParam->pic_info_fields.bits.frame_type != keyFrame) &&
+                (picParam->pic_info_fields.bits.frame_type != intraOnlyFrame))
+            {
                 return VA_STATUS_ERROR_INVALID_PARAMETER;
             }
             picAV1Params->m_refFrameMap[i].FrameIdx = ((uint32_t)frameIdx >= CODECHAL_NUM_UNCOMPRESSED_SURFACE_AV1) ?
@@ -470,27 +460,6 @@ VAStatus DdiDecodeAv1::ParsePicParams(
     eventData.EnabledSegment                  = picAV1Params->m_av1SegData.m_enabled;
     eventData.EnabledFilmGrain                = picAV1Params->m_seqInfoFlags.m_fields.m_filmGrainParamsPresent;
     MOS_TraceEvent(EVENT_DECODE_INFO_PICTUREVA, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0);
-
-    if (MOS_TraceKeyEnabled(TR_KEY_DECODE_PICPARAM))
-    {
-        DECODE_EVENTDATA_PICPARAM_AV1 eventData;
-        DecodeEventDataAV1PicParamInit(&eventData, picAV1Params);
-        MOS_TraceEvent(EVENT_DECODE_BUFFER_PICPARAM_AV1, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0);
-
-        if (picAV1Params->m_av1SegData.m_enabled)
-        {
-            DECODE_EVENTDATA_SEGPARAM_AV1 segEventData;
-            DecodeEventDataAV1SegParamInit(&segEventData, picAV1Params);
-            MOS_TraceEvent(EVENT_DECODE_BUFFER_SEGPARAM_AV1, EVENT_TYPE_INFO, &segEventData, sizeof(segEventData), NULL, 0);
-        }
-
-        if (picAV1Params->m_filmGrainParams.m_filmGrainInfoFlags.m_fields.m_applyGrain)
-        {
-            DECODE_EVENTDATA_FILMGRAINPARAM_AV1 filmGrainEventData;
-            DecodeEventDataAV1FilmGrainParamInit(&filmGrainEventData, picAV1Params);
-            MOS_TraceEvent(EVENT_DECODE_BUFFER_FILMGRAINPARAM_AV1, EVENT_TYPE_INFO, &filmGrainEventData, sizeof(filmGrainEventData), NULL, 0);
-        }
-    }
 #endif
 
     return VA_STATUS_SUCCESS;
@@ -621,32 +590,6 @@ VAStatus DdiDecodeAv1::RenderPicture(
             MediaLibvaCommonNext::MediaBufferToMosResource(m_decodeCtx->BufMgr.pBitStreamBuffObject[index],
                                               &m_decodeCtx->BufMgr.resBitstreamBuffer);
             m_decodeCtx->DecodeParams.m_dataSize += dataSize;
-
-#if MOS_EVENT_TRACE_DUMP_SUPPORTED
-            uint8_t * pDataBuf = (uint8_t *)MediaLibvaUtilNext::LockBuffer(m_decodeCtx->BufMgr.pBitStreamBuffObject[index], MOS_LOCKFLAG_READONLY);            
-            DDI_CODEC_CHK_NULL(pDataBuf, "nullptr bitstream", VA_STATUS_ERROR_INVALID_BUFFER);
-
-            if (MOS_TraceKeyEnabled(TR_KEY_DECODE_BITSTREAM_INFO))
-            {
-                DECODE_EVENTDATA_BITSTREAM eventData;
-                for (int i = 0; i < 32; i++)
-                {
-                    eventData.Data[i] = pDataBuf[i];
-                }
-                MOS_TraceEvent(EVENT_DECODE_INFO_BITSTREAM, EVENT_TYPE_INFO, &eventData, sizeof(eventData), NULL, 0);
-            }
-
-            if (MOS_TraceKeyEnabled(TR_KEY_DECODE_BITSTREAM))
-            {
-                MOS_TraceDataDump(
-                "Decode_Bitstream",
-                0,
-                pDataBuf,
-                m_decodeCtx->DecodeParams.m_dataSize);
-            }
-                
-            MediaLibvaUtilNext::UnlockBuffer(m_decodeCtx->BufMgr.pBitStreamBuffObject[index]);
-#endif
 
             break;
         }
@@ -1027,53 +970,6 @@ void DdiDecodeAv1::ContextInit(
     m_decodeCtx->wMode = CODECHAL_DECODE_MODE_AV1VLD;
 
     return;
-}
-
-VAStatus DdiDecodeAv1::CheckDecodeResolution(
-    int32_t   codecMode,
-    VAProfile profile,
-    uint32_t  width,
-    uint32_t  height)
-{
-    DDI_CODEC_FUNC_ENTER;
-
-    uint32_t maxWidth = 0, maxHeight = 0;
-    switch (codecMode)
-    {
-    case CODECHAL_DECODE_MODE_AV1VLD:
-        maxWidth  = m_decAv1Max16kWidth;
-        maxHeight = m_decAv1Max16kHeight;
-        break;
-    default:
-        maxWidth  = m_decDefaultMaxWidth;
-        maxHeight = m_decDefaultMaxHeight;
-        break;
-    }
-
-    if (width > maxWidth || height > maxHeight)
-    {
-        return VA_STATUS_ERROR_RESOLUTION_NOT_SUPPORTED;
-    }
-    else
-    {
-        return VA_STATUS_SUCCESS;
-    }
-}
-
-CODECHAL_MODE DdiDecodeAv1::GetDecodeCodecMode(VAProfile profile)
-{
-    DDI_CODEC_FUNC_ENTER;
-
-    int8_t vaProfile = (int8_t)profile;
-    switch (vaProfile)
-    {
-    case VAProfileAV1Profile0:
-    case VAProfileAV1Profile1:
-        return CODECHAL_DECODE_MODE_AV1VLD;
-    default:
-        DDI_CODEC_ASSERTMESSAGE("Invalid Decode Mode");
-        return CODECHAL_UNSUPPORTED_MODE;
-    }
 }
 
 } // namespace decode

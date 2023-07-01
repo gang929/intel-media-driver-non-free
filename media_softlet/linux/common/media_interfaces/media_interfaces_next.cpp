@@ -58,7 +58,8 @@ typedef MediaFactory<uint32_t, MmdDeviceNext> MmdFactoryNext;
 VpBase *VphalDevice::CreateFactoryNext(
     PMOS_INTERFACE     osInterface,
     MOS_CONTEXT_HANDLE osDriverContext,
-    MOS_STATUS         *eStatus)
+    MOS_STATUS         *eStatus,
+    bool               clearViewMode)
 {
     VpBase                *vpBase            = nullptr;
     VphalDevice           *vphalDevice       = nullptr;
@@ -350,8 +351,15 @@ void MhwInterfacesNext::Destroy()
         return;
     }
 
-    Delete_MhwCpInterface(m_cpInterface);
-    m_cpInterface = nullptr;
+    if(m_osInterface)
+    {
+        m_osInterface->pfnDeleteMhwCpInterface(m_cpInterface);
+        m_cpInterface = nullptr;
+    }
+    else
+    {
+        MHW_ASSERTMESSAGE("Failed to destroy cpInterface.");
+    }
     MOS_Delete(m_stateHeapInterface);
 }
 

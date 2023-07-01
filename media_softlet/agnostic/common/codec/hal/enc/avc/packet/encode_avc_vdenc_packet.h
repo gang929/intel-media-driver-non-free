@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2022, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -349,6 +349,51 @@ protected:
     //!
     MOS_STATUS UnlockBatchBufferForPakSlices();
 
+    //!
+    //! \brief    Report Slice Size to MetaData buffer
+    //! \details  Report Slice Size to MetaData buffer.
+    //! \param    [in] cmdBuffer
+    //!               Pointer to primary cmd buffer
+    //!           [in] slcCount
+    //!               Current slice count
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS ReportSliceSizeMetaData(
+        PMOS_COMMAND_BUFFER cmdBuffer,
+        uint32_t            slcCount);
+
+    //! \brief    Get AVC VDenc frame level status extention
+    //!
+    //! \param    [in] cmdBuffer
+    //!           Point to MOS_COMMAND_BUFFER
+    //!           [in] StatusReportFeedbackNumber
+    //!           Status report number
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS GetAvcVdencFrameLevelStatusExt(uint32_t StatusReportFeedbackNumber, MOS_COMMAND_BUFFER *cmdBuffer)
+    {
+        return MOS_STATUS_SUCCESS;
+    };
+
+    //! \brief    Report extended statistics
+    //!
+    //! \param    [in] encodeStatusMfx
+    //!           Reference to encoder status for vdbox
+    //! \param    [in, out] statusReportData
+    //!           Reference to encoder status report data
+    //!
+    //! \return   MOS_STATUS
+    //!           MOS_STATUS_SUCCESS if success, else fail reason
+    //!
+    virtual MOS_STATUS ReportExtStatistics(
+        EncodeStatusMfx        &encodeStatusMfx,
+        EncodeStatusReportData &statusReportData)
+    {
+        return MOS_STATUS_SUCCESS;
+    };
+
     MHW_SETPAR_DECL_HDR(VDENC_PIPE_BUF_ADDR_STATE);
 
     MHW_SETPAR_DECL_HDR(VD_PIPELINE_FLUSH);
@@ -409,7 +454,6 @@ protected:
     // Interfaces
     EncodeAllocator          *m_allocator       = nullptr;
     CodechalHwInterfaceNext  *m_hwInterface     = nullptr;
-    CodechalHwInterfaceNext  *m_hwInterfaceNext = nullptr;
     AvcBasicFeature          *m_basicFeature    = nullptr;
     EncodeMemComp            *m_mmcState        = nullptr;
     EncodeCp                 *m_encodecp        = nullptr;
@@ -454,7 +498,6 @@ protected:
     PMOS_RESOURCE          m_resDeblockingFilterRowStoreScratchBuffer = nullptr;   //!< Handle of De-block row store surface
     PMOS_RESOURCE          m_intraRowStoreScratchBuffer = nullptr;                 //!< Handle of intra row store surface
     PMOS_RESOURCE          m_vdencIntraRowStoreScratch = nullptr;                  //!< Handle of intra row store surface
-    PMOS_RESOURCE          m_pakStatsBufferFull = nullptr;                         //!< Handle of PAK status buffer include PerMB and frame level.
     PMOS_RESOURCE          m_resMPCRowStoreScratchBuffer = nullptr;                //!< Handle of mpc row store surface
 
     bool                   m_vdencBrcImgStatAllocated = false;  //!< Vdenc bitrate control image state allocated flag

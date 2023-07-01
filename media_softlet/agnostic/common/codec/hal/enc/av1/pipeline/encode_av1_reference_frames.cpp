@@ -1,5 +1,5 @@
 ﻿/*
-* Copyright (c) 2019-2021, Intel Corporation
+* Copyright (c) 2019-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -154,15 +154,6 @@ MOS_STATUS Av1ReferenceFrames::Update()
     m_refCompressionFormat = MmcEnabled(m_refMmcState[intraFrame])? compressionFormat : m_refCompressionFormat;
     return MOS_STATUS_SUCCESS;
 
-}
-
-MOS_STATUS Av1ReferenceFrames::UpdateEncRefBufType(BufferType ref, BufferType ref4x, BufferType ref8x)
-{
-    m_encRefBufType   = ref;
-    m_enc4xRefBufType = ref4x;
-    m_enc8xRefBufType = ref8x;
-
-    return MOS_STATUS_SUCCESS;
 }
 
 MOS_STATUS Av1ReferenceFrames::UpdateRefFrameSize(uint32_t width, uint32_t height)
@@ -680,7 +671,7 @@ MHW_SETPAR_DECL_SRC(VDENC_PIPE_BUF_ADDR_STATE, Av1ReferenceFrames)
         return MOS_STATUS_INVALID_PARAMETER;
     }
 
-    if (m_basicFeature->m_pictureCodingType != I_TYPE)
+    if (m_basicFeature->m_pictureCodingType != I_TYPE && picParams->primary_ref_frame != av1PrimaryRefNone)
     {
         uint8_t frameIdx = picParams->RefFrameList[picParams->primary_ref_frame].FrameIdx;
         uint8_t idxForTempMV = m_refList[frameIdx]->ucScalingIdx;

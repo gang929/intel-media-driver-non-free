@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2021, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -27,6 +27,7 @@
 #define __ENCODE_AV1_VDENC_PIPELINE_XE_LPM_PLUS_BASE_H__
 
 #include "encode_av1_vdenc_pipeline.h"
+#include "media_sfc_interface.h"
 
 namespace encode
 {
@@ -54,13 +55,13 @@ public:
 
     virtual MOS_STATUS Destroy() override;
 
-    virtual MOS_STATUS InitMmcState();
+    virtual MOS_STATUS InitMmcState() override;
 
 protected:
+    std::shared_ptr<MediaSfcInterface> m_sfcItf = nullptr;
+
     virtual MOS_STATUS CreateFeatureManager() override;
-    virtual MOS_STATUS Initialize(void *settings) override;
     virtual MOS_STATUS ActivateVdencVideoPackets() override;
-    virtual MOS_STATUS Uninitialize() override;
     virtual MOS_STATUS ResetParams();
     virtual MOS_STATUS UserFeatureReport() override;
 

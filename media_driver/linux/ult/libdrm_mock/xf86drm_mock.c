@@ -278,6 +278,10 @@ mosdrmIoctl(int fd, unsigned long request, void *arg)
                     *(int *)(gp->value) = 1;
                     ret = 0;
                     break;
+                case I915_PARAM_MMAP_GTT_VERSION:
+                    *(int *)(gp->value) = 4;
+                    ret = 0;
+                    break;
                 default:
                     printf("drmIoctl:DRM_IOCTL_I915_GETPARAM with unsupport type\n");
                     do {
@@ -370,6 +374,21 @@ mosdrmIoctl(int fd, unsigned long request, void *arg)
         break;
         case DRM_IOCTL_I915_GEM_VM_DESTROY:
         {
+            ret = 0;
+        }
+        break;
+        case DRM_IOCTL_I915_GEM_WAIT:
+        {
+            ret = 0;
+        }
+        break;
+        case DRM_IOCTL_VERSION:
+        {
+            drm_version_t *version = (drm_version_t *)arg;
+            if(version)
+            {
+                strcpy(version->name, "i915");
+            }
             ret = 0;
         }
         break;

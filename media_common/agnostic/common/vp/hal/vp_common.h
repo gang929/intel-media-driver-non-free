@@ -141,7 +141,6 @@ struct VPHAL_SURFACE
     int32_t                  iLayerID                  = 0;                         //!<  Layer index (0-based index)
     VPHAL_SCALING_MODE       ScalingMode               = VPHAL_SCALING_NEAREST;     //!<  Scaling Mode
     VPHAL_SCALING_PREFERENCE ScalingPreference         = VPHAL_SCALING_PREFER_SFC;  //!<  Scaling preference
-    bool                     bForceToScalingPreference = false;                     //!<  Force to use engine specified by scaling preference
     bool                     bIEF                      = false;                     //!<  IEF flag
     uint32_t                 dwSlicePitch              = 0;                         //!<  SlicePitch of a 3D surface(GT-PIN support)
 
@@ -168,6 +167,12 @@ struct VPHAL_SURFACE
     bool                  bIsCompressed     = false;  // The surface is compressed, VEBox output can only support horizontal mode, but input can be horizontal / vertical
     MOS_RESOURCE_MMC_MODE CompressionMode   = MOS_MMC_DISABLED;
     uint32_t              CompressionFormat = 0;
+
+    //Surface cache Usage
+    uint32_t CacheSetting = 0;
+#if (_DEBUG || _RELEASE_INTERNAL)
+    uint32_t oldCacheSetting = 0;
+#endif
 
     bool bUseSampleUnorm    = false;  //!<  true: sample unorm is used, false: DScaler or AVS is used.
     bool bUseSamplerLumakey = false;  //!<  true: sampler lumakey is used, false: lumakey is disabled or EU computed lumakey is used.

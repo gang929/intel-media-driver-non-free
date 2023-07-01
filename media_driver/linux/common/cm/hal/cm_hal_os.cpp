@@ -30,6 +30,7 @@
 #include "cm_execution_adv.h"
 #include "mos_graphicsresource.h"
 #include "mos_utilities.h"
+#include "mos_bufmgr.h"
 
 #define Y_TILE_WIDTH  128
 #define Y_TILE_HEIGHT 32
@@ -284,7 +285,7 @@ MOS_STATUS HalCm_GetSurfaceAndRegister(
     }
 
     //Tag-based Sync on the Resource/surface
-    CM_CHK_MOSSTATUS_GOTOFINISH(HalCm_SyncOnResource(state, surface, true));
+    CM_CHK_MOSSTATUS_GOTOFINISH(state->pfnSyncOnResource(state, surface, true));
 
     eStatus = MOS_STATUS_SUCCESS;
 finish:
@@ -359,7 +360,7 @@ finish:
 //| Purpose:    Get 2D surface pitch and physical size for SURFACE2D_UP
 //| Returns:    Result of the operation.
 //*-----------------------------------------------------------------------------
-MOS_STATUS HalCm_GetSurface2DPitchAndSize_Linux(
+MOS_STATUS HalCm_GetSurface2DPitchAndSize(
     PCM_HAL_STATE                   state,                                             // [in]  Pointer to CM State
     PCM_HAL_SURFACE2D_UP_PARAM      param)                                             // [in]  Pointer to Buffer Param
 {
@@ -371,7 +372,7 @@ MOS_STATUS HalCm_GetSurface2DPitchAndSize_Linux(
 //| Purpose:    Register APP/Runtime-level created Event Handle as a UMD Object;
 //| Returns:    Result of the operation.
 //*-----------------------------------------------------------------------------
-MOS_STATUS HalCm_RegisterUMDNotifyEventHandle_Linux(
+MOS_STATUS HalCm_RegisterUMDNotifyEventHandle(
     PCM_HAL_STATE             state,
     PCM_HAL_OSSYNC_PARAM      syncParam)
 {
@@ -530,7 +531,7 @@ MOS_STATUS HalCm_AllocateBuffer_Linux(
             GMM_RESOURCE_INFO* tmpGmmResInfoPtr = pGmmClientContext->CreateResInfoObject(&gmmParams);
             osResource->pGmmResInfo = tmpGmmResInfoPtr;
 
-            MosUtilities::MosAtomicIncrement(&MosUtilities::m_mosMemAllocCounterGfx);
+            MosUtilities::MosAtomicIncrement(MosUtilities::m_mosMemAllocCounterGfx);
 
 #if defined(DRM_IOCTL_I915_GEM_USERPTR)
            bo =  mos_bo_alloc_userptr(osInterface->pOsContext->bufmgr,
@@ -679,7 +680,7 @@ finish:
 //| Purpose:    Get GPU current frequency
 //| Returns:    Result of the operation.
 //*-----------------------------------------------------------------------------
-MOS_STATUS HalCm_GetGPUCurrentFrequency_Linux(
+MOS_STATUS HalCm_GetGPUCurrentFrequency(
     PCM_HAL_STATE               state,                                         // [in]  Pointer to CM State
     uint32_t                    *currentFrequency)                                   // [out] Pointer to current frequency
 {
@@ -693,7 +694,7 @@ MOS_STATUS HalCm_GetGPUCurrentFrequency_Linux(
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS HalCm_GetGpuTime_Linux(PCM_HAL_STATE state, uint64_t *gpuTime)
+MOS_STATUS HalCm_GetGpuTime(PCM_HAL_STATE state, uint64_t *gpuTime)
 {
     UNUSED(state);
     *gpuTime = 0;
@@ -1119,19 +1120,11 @@ bool HalCm_IsWaSLMinL3Cache_Linux()
 //| Purpose:    Enable GPU frequency Turbo boost on Linux
 //| Returns:    MOS_STATUS_SUCCESS.
 //*-----------------------------------------------------------------------------
-#define I915_CONTEXT_PRIVATE_PARAM_BOOST 0x80000000
 MOS_STATUS HalCm_EnableTurboBoost_Linux(
     PCM_HAL_STATE             state)
 {
 #ifndef ANDROID
-    struct drm_i915_gem_context_param ctxParam;
-    int32_t retVal = 0;
-
-    MOS_ZeroMemory( &ctxParam, sizeof( ctxParam ) );
-    ctxParam.param = I915_CONTEXT_PRIVATE_PARAM_BOOST;
-    ctxParam.value = 1;
-    retVal = drmIoctl( state->osInterface->pOsContext->fd,
-                      DRM_IOCTL_I915_GEM_CONTEXT_SETPARAM, &ctxParam );
+    mos_enable_turbo_boost(state->osInterface->pOsContext->bufmgr);
 #endif
     //if drmIoctl fail, we will stay in normal mode.
     return MOS_STATUS_SUCCESS;
@@ -1186,12 +1179,12 @@ void HalCm_OsInitInterface(
 {
     CM_ASSERT(cmState);
 
-    cmState->pfnGetSurface2DPitchAndSize            = HalCm_GetSurface2DPitchAndSize_Linux;
-    cmState->pfnRegisterUMDNotifyEventHandle        = HalCm_RegisterUMDNotifyEventHandle_Linux;
+    cmState->pfnGetSurface2DPitchAndSize            = HalCm_GetSurface2DPitchAndSize;
+    cmState->pfnGetGPUCurrentFrequency              = HalCm_GetGPUCurrentFrequency;
+    cmState->pfnRegisterUMDNotifyEventHandle        = HalCm_RegisterUMDNotifyEventHandle;
     cmState->pfnAllocateBuffer                      = HalCm_AllocateBuffer_Linux;
     cmState->pfnAllocateSurface2DUP                 = HalCm_AllocateSurface2DUP_Linux;
-    cmState->pfnGetGPUCurrentFrequency              = HalCm_GetGPUCurrentFrequency_Linux;
-    cmState->pfnGetGpuTime                          = HalCm_GetGpuTime_Linux;
+    cmState->pfnGetGpuTime                          = HalCm_GetGpuTime;
     cmState->pfnGetPlatformInfo                     = HalCm_GetPlatformInfo_Linux;
     cmState->pfnGetGTSystemInfo                     = HalCm_GetGTSystemInfo_Linux;
     cmState->pfnReferenceCommandBuffer              = HalCm_ReferenceCommandBuf_Linux;
@@ -1201,6 +1194,14 @@ void HalCm_OsInitInterface(
     cmState->pfnEnableTurboBoost                    = HalCm_EnableTurboBoost_Linux;
     cmState->pfnUpdateTrackerResource               = HalCm_UpdateTrackerResource_Linux;
     cmState->pfnRegisterStream                      = HalCm_RegisterStream;
+
+    cmState->pfnGetGfxMapFilter                     = HalCm_GetGfxMapFilter;
+    cmState->pfnGetGfxTextAddress                   = HalCm_GetGfxTextAddress;
+    cmState->pfnDecompressSurface                   = HalCm_DecompressSurface;
+    cmState->pfnSetOsResourceFromDdi                = HalCm_SetOsResourceFromDdi;
+    cmState->pfnGetSipBinary                        = HalCm_GetSipBinary;
+    cmState->pfnSurfaceSync                         = HalCm_SurfaceSync;
+    cmState->pfnSyncKernel                          = HalCm_SyncKernel;
 
     HalCm_GetLibDrmVMapFnt(cmState);
     cmState->syncOnResource                         = false;
@@ -1595,6 +1596,30 @@ MOS_STATUS HalCm_SurfaceSync(
     UNUSED(pState);
     UNUSED(pSurface);
     UNUSED(bReadSync);
+
+    return MOS_STATUS_SUCCESS;
+}
+
+//!
+//! \brief    initialization os resource from DDI
+//! \details  initialization os resource from DDI
+//! \param    PMOS_RESOURCE pResource
+//!           [in] Pointer to OS Resource
+//! \param    PMOS_RESOURCE pOsResource
+//!           [out] Pointer to OS Resource
+//! \param    UINT MipSlice
+//!           [in] Slice info
+//! \return   MOS_STATUS
+//!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+//!
+MOS_STATUS HalCm_SetOsResourceFromDdi(
+    PMOS_RESOURCE     resource,
+    PMOS_RESOURCE     osResource,
+    uint32_t          mipSlice)
+{
+    UNUSED(resource);
+    UNUSED(osResource);
+    UNUSED(mipSlice);
 
     return MOS_STATUS_SUCCESS;
 }

@@ -83,7 +83,7 @@ MOS_STATUS VphalState::Allocate(
 
             // MhwInterfaces always create CP and MI interfaces, so we have to delete those we don't need.
             MOS_Delete(mhwInterfaces->m_miInterface);
-            Delete_MhwCpInterface(mhwInterfaces->m_cpInterface);
+            m_osInterface->pfnDeleteMhwCpInterface(mhwInterfaces->m_cpInterface);
             mhwInterfaces->m_cpInterface = nullptr;
             MOS_Delete(mhwInterfaces);
         }
@@ -251,7 +251,13 @@ static bool IsSurfNeedAvs(
 
         if (IS_YUV_FORMAT(pSurf->Format))
         {
-            return true;
+            // Not perform AVS for surface with VPHAL_SCALING_NEAREST
+            // or VPHAL_SCALING_BILINEAR scaling mode.
+            if (pSurf->ScalingMode == VPHAL_SCALING_AVS ||
+                pSurf->ScalingMode == VPHAL_SCALING_ADV_QUALITY)
+            {
+                return true;
+            }
         }
     }
 finish:
@@ -759,8 +765,15 @@ VphalState::~VphalState()
 
     if (m_cpInterface)
     {
-        Delete_MhwCpInterface(m_cpInterface);
-        m_cpInterface = nullptr;
+        if (m_osInterface)
+        {
+            m_osInterface->pfnDeleteMhwCpInterface(m_cpInterface);
+            m_cpInterface = nullptr;
+        }
+        else
+        {
+            VPHAL_PUBLIC_ASSERTMESSAGE("Failed to destroy cpInterface.");
+        }
     }
 
     if (m_sfcInterface)
@@ -1050,9 +1063,9 @@ MOS_STATUS VphalState::DestroyGpuContextWithInvalidHandle()
             m_osInterface->CurrentGpuContextHandle != curGpuEntry.gpuContextHandle) &&
             m_osInterface->pfnGetGpuContextbyHandle(m_osInterface, curGpuEntry.gpuContextHandle) == curGpuEntry.pGpuContext)
         {
-            MosInterface::WaitForCmdCompletion(m_osInterface->osStreamState, curGpuEntry.gpuContextHandle);
+            m_osInterface->pfnWaitForCmdCompletion(m_osInterface->osStreamState, curGpuEntry.gpuContextHandle);
 
-            MosInterface::DestroyGpuContext(m_osInterface->osStreamState, curGpuEntry.gpuContextHandle);
+            m_osInterface->pfnDestroyGpuContextByHandle(m_osInterface, curGpuEntry.gpuContextHandle);
         }
     }
     if (m_osInterface->CurrentGpuContextOrdinal != originalGpuCtxOrdinal)

@@ -665,6 +665,7 @@ static VAStatus DdiMedia_GetChromaPitchHeight(
         case VA_FOURCC_411P:
         case VA_FOURCC_422H:
         case VA_FOURCC_444P:
+        case VA_FOURCC_RGBP:
             *chromaHeight = height;
             *chromaPitch = pitch;
             break;
@@ -777,7 +778,7 @@ static void DdiMedia_FreeSurfaceHeapElements(PDDI_MEDIA_CONTEXT mediaCtx)
     for (int32_t elementId = 0; surfaceNums > 0 && elementId < surfaceHeap->uiAllocatedHeapElements; elementId++)
     {
         PDDI_MEDIA_SURFACE_HEAP_ELEMENT mediaSurfaceHeapElmt = &mediaSurfaceHeapBase[elementId];
-        if (nullptr != mediaSurfaceHeapElmt && nullptr == mediaSurfaceHeapElmt->pSurface)
+        if (nullptr == mediaSurfaceHeapElmt->pSurface)
             continue;
 
         DdiMediaUtil_FreeSurface(mediaSurfaceHeapElmt->pSurface);
@@ -813,7 +814,7 @@ static void DdiMedia_FreeBufferHeapElements(VADriverContextP    ctx)
     for (int32_t elementId = 0; bufNums > 0 && elementId < bufferHeap->uiAllocatedHeapElements; ++elementId)
     {
         PDDI_MEDIA_BUFFER_HEAP_ELEMENT mediaBufferHeapElmt = &mediaBufferHeapBase[elementId];
-        if (nullptr != mediaBufferHeapElmt && nullptr == mediaBufferHeapElmt->pBuffer)
+        if (nullptr == mediaBufferHeapElmt->pBuffer)
             continue;
         //Note: uiNumBufs will recount in DdiMedia_DestroyBuffer
         DdiMedia_DestroyBuffer(ctx,mediaBufferHeapElmt->uiVaBufferID);
@@ -847,7 +848,7 @@ static void DdiMedia_FreeImageHeapElements(VADriverContextP    ctx)
     for (int32_t elementId = 0; imageNums > 0 && elementId < imageHeap->uiAllocatedHeapElements; ++elementId)
     {
         PDDI_MEDIA_IMAGE_HEAP_ELEMENT mediaImageHeapElmt = &mediaImageHeapBase[elementId];
-        if (nullptr != mediaImageHeapElmt && nullptr == mediaImageHeapElmt->pImage)
+        if (nullptr == mediaImageHeapElmt->pImage)
             continue;
         //Note: uiNumImages will recount in DdiMedia_DestroyImage
         DdiMedia_DestroyImage(ctx,mediaImageHeapElmt->uiVaImageID);
@@ -872,7 +873,7 @@ static void DdiMedia_FreeContextHeap(VADriverContextP ctx, PDDI_MEDIA_HEAP conte
     for (int32_t elementId = 0; ctxNums > 0 && elementId < contextHeap->uiAllocatedHeapElements; ++elementId)
     {
         PDDI_MEDIA_VACONTEXT_HEAP_ELEMENT mediaContextHeapElmt = &mediaContextHeapBase[elementId];
-        if (nullptr != mediaContextHeapElmt && nullptr == mediaContextHeapElmt->pVaContext)
+        if (nullptr == mediaContextHeapElmt->pVaContext)
             continue;
         VAContextID vaCtxID = (VAContextID)(mediaContextHeapElmt->uiVaContextID + vaContextOffset);
         DdiMedia_DestroyContext(ctx,vaCtxID);
@@ -1836,10 +1837,10 @@ VAStatus DdiMedia_InitMediaContext (
             FreeForMediaContext(mediaCtx);
             return VA_STATUS_ERROR_INVALID_PARAMETER;
         }
-        mos_bufmgr_gem_enable_reuse(mediaCtx->pDrmBufMgr);
+        mos_bufmgr_enable_reuse(mediaCtx->pDrmBufMgr);
 
         //Latency reducation:replace HWGetDeviceID to get device using ioctl from drm.
-        mediaCtx->iDeviceId = mos_bufmgr_gem_get_devid(mediaCtx->pDrmBufMgr);
+        mediaCtx->iDeviceId = mos_bufmgr_get_devid(mediaCtx->pDrmBufMgr);
 
         //TO--DO, apo set it to FALSE by default, to remove the logic in apo mos controlled by it????
         mediaCtx->bIsAtomSOC = IS_ATOMSOC(mediaCtx->iDeviceId);
@@ -2575,7 +2576,7 @@ VAStatus DdiMedia_DestroySurfaces (
             while (1)
             {
                 uint32_t timeout_NS = 10;
-                int ret = mos_gem_bo_wait(surface->bo, timeout_NS);
+                int ret = mos_bo_wait(surface->bo, timeout_NS);
                 MosUtilities::MosQueryPerformanceCounter(&countCur);
                 if(ret == 0 || countCur - countStart > countTimeout)
                 {
@@ -3528,7 +3529,7 @@ VAStatus DdiMedia_MapBufferInternal (
             if(buf->bo)
             {
                  uint32_t timeout_NS = 100000000;
-                 while (0 != mos_gem_bo_wait(buf->bo, timeout_NS))
+                 while (0 != mos_bo_wait(buf->bo, timeout_NS))
                  {
                      // Just loop while gem_bo_wait times-out.
                  }
@@ -4196,7 +4197,7 @@ VAStatus DdiMedia_SyncSurface (
     // check the bo here?
     // zero is a expected return value
     uint32_t timeout_NS = 100000000;
-    while (0 != mos_gem_bo_wait(surface->bo, timeout_NS))
+    while (0 != mos_bo_wait(surface->bo, timeout_NS))
     {
         // Just loop while gem_bo_wait times-out.
     }
@@ -4237,7 +4238,7 @@ VAStatus DdiMedia_SyncSurface2 (
     if (timeout_ns == VA_TIMEOUT_INFINITE)
     {
         // zero is an expected return value when not hit timeout
-        auto ret = mos_gem_bo_wait(surface->bo, DDI_BO_INFINITE_TIMEOUT);
+        auto ret = mos_bo_wait(surface->bo, DDI_BO_INFINITE_TIMEOUT);
         if (0 != ret)
         {
             DDI_NORMALMESSAGE("vaSyncSurface2: surface is still used by HW\n\r");
@@ -4259,12 +4260,12 @@ VAStatus DdiMedia_SyncSurface2 (
         }
         
         // zero is an expected return value when not hit timeout
-        auto ret = mos_gem_bo_wait(surface->bo, timeoutBoWait1);
+        auto ret = mos_bo_wait(surface->bo, timeoutBoWait1);
         if (0 != ret)
         {
             if (timeoutBoWait2)
             {
-                ret = mos_gem_bo_wait(surface->bo, timeoutBoWait2); 
+                ret = mos_bo_wait(surface->bo, timeoutBoWait2); 
             }
             if (0 != ret)
             {
@@ -4303,7 +4304,7 @@ VAStatus DdiMedia_SyncBuffer (
     if (timeout_ns == VA_TIMEOUT_INFINITE)
     {
         // zero is a expected return value when not hit timeout
-        auto ret = mos_gem_bo_wait(buffer->bo, DDI_BO_INFINITE_TIMEOUT);
+        auto ret = mos_bo_wait(buffer->bo, DDI_BO_INFINITE_TIMEOUT);
         if (0 != ret)
         {
             DDI_NORMALMESSAGE("vaSyncBuffer: buffer is still used by HW\n\r");
@@ -4325,12 +4326,12 @@ VAStatus DdiMedia_SyncBuffer (
         }
 
         // zero is a expected return value when not hit timeout
-        auto ret = mos_gem_bo_wait(buffer->bo, timeoutBoWait1);
+        auto ret = mos_bo_wait(buffer->bo, timeoutBoWait1);
         if (0 != ret)
         {
             if (timeoutBoWait2)
             {
-                ret = mos_gem_bo_wait(buffer->bo, timeoutBoWait2);
+                ret = mos_bo_wait(buffer->bo, timeoutBoWait2);
             }
             if (0 != ret)
             {
@@ -4423,18 +4424,30 @@ VAStatus DdiMedia_QuerySurfaceError(
     DdiMediaUtil_LockMutex(&mediaCtx->SurfaceMutex);
     if (surface->curStatusReportQueryState == DDI_MEDIA_STATUS_REPORT_QUERY_STATE_COMPLETED)
     {
-        if (error_status != -1 && surface->curCtxType == DDI_MEDIA_CONTEXT_TYPE_DECODER &&
-            surface->curStatusReport.decode.status == CODECHAL_STATUS_ERROR)
+        if (error_status != -1 && surface->curCtxType == DDI_MEDIA_CONTEXT_TYPE_DECODER)
         {
-            surfaceErrors[1].status            = -1;
-            surfaceErrors[0].status            = 2;
-            surfaceErrors[0].start_mb          = 0;
-            surfaceErrors[0].end_mb            = 0;
-            surfaceErrors[0].num_mb            = surface->curStatusReport.decode.errMbNum;
-            surfaceErrors[0].decode_error_type = VADecodeMBError;
-            *error_info = surfaceErrors;
-            DdiMediaUtil_UnLockMutex(&mediaCtx->SurfaceMutex);
-            return VA_STATUS_SUCCESS;
+            if (surface->curStatusReport.decode.status == CODECHAL_STATUS_ERROR)
+            {
+                surfaceErrors[1].status            = -1;
+                surfaceErrors[0].status            = 2;
+                surfaceErrors[0].start_mb          = 0;
+                surfaceErrors[0].end_mb            = 0;
+                surfaceErrors[0].num_mb            = surface->curStatusReport.decode.errMbNum;
+                surfaceErrors[0].decode_error_type = VADecodeMBError;
+                *error_info = surfaceErrors;
+                DdiMediaUtil_UnLockMutex(&mediaCtx->SurfaceMutex);
+                return VA_STATUS_SUCCESS;
+            }
+            else if (surface->curStatusReport.decode.status == CODECHAL_STATUS_INCOMPLETE ||
+                surface->curStatusReport.decode.status == CODECHAL_STATUS_UNAVAILABLE)
+            {
+                MOS_ZeroMemory(&surfaceErrors[0], sizeof(VASurfaceDecodeMBErrors));
+                surfaceErrors[1].status            = -1;
+                surfaceErrors[0].status            = VA_STATUS_ERROR_HW_BUSY;
+                *error_info                        = surfaceErrors;
+                DdiMediaUtil_UnLockMutex(&mediaCtx->SurfaceMutex);
+                return VA_STATUS_SUCCESS;
+            }
         }
 
         if (error_status == -1 && surface->curCtxType == DDI_MEDIA_CONTEXT_TYPE_DECODER)
@@ -5673,9 +5686,6 @@ VAStatus DdiMedia_PutImage(
             {
                 DDI_MEDIA_SURFACE uPlane = *mediaSurface;
 
-                uPlane.iWidth              = src_width;
-                uPlane.iRealHeight         = src_height;
-                uPlane.iHeight             = src_height;
                 uint32_t chromaHeight      = 0;
                 uint32_t chromaPitch       = 0;
                 DdiMedia_GetChromaPitchHeight(DdiMedia_MediaFormatToOsFormat(uPlane.format), uPlane.iPitch, uPlane.iHeight, &chromaPitch, &chromaHeight);
@@ -6288,7 +6298,7 @@ DdiMedia_Copy(
     if ((option.bits.va_copy_sync == VA_EXEC_SYNC) && dst_surface)
     {
         uint32_t timeout_NS = 100000000;
-        while (0 != mos_gem_bo_wait(dst_surface->bo, timeout_NS))
+        while (0 != mos_bo_wait(dst_surface->bo, timeout_NS))
         {
             // Just loop while gem_bo_wait times-out.
         }
@@ -6815,7 +6825,7 @@ VAStatus DdiMedia_AcquireBufferHandle(
         }
         case VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME: {
             int32_t prime_fd = 0;
-            if (mos_bo_gem_export_to_prime(buf->bo, &prime_fd) != 0)
+            if (mos_bo_export_to_prime(buf->bo, &prime_fd) != 0)
             {
                 DdiMediaUtil_UnLockMutex(&mediaCtx->BufferMutex);
                 return VA_STATUS_ERROR_INVALID_BUFFER;
@@ -7179,7 +7189,7 @@ VAStatus DdiMedia_ExportSurfaceHandle(
         return VA_STATUS_ERROR_UNSUPPORTED_MEMORY_TYPE;
     }
 
-    if (mos_bo_gem_export_to_prime(mediaSurface->bo, (int32_t*)&mediaSurface->name))
+    if (mos_bo_export_to_prime(mediaSurface->bo, (int32_t*)&mediaSurface->name))
     {
         DDI_ASSERTMESSAGE("Failed drm_intel_gem_export_to_prime operation!!!\n");
         return VA_STATUS_ERROR_OPERATION_FAILED;
@@ -7189,6 +7199,8 @@ VAStatus DdiMedia_ExportSurfaceHandle(
     desc->fourcc = DdiMedia_MediaFormatToOsFormat(mediaSurface->format);
     if(desc->fourcc == VA_STATUS_ERROR_UNSUPPORTED_RT_FORMAT)
     {
+        // close the handle to avoid leak
+        close(mediaSurface->name);
         return VA_STATUS_ERROR_UNSUPPORTED_RT_FORMAT;
     }
     desc->width           = mediaSurface->iWidth;
@@ -7201,9 +7213,10 @@ VAStatus DdiMedia_ExportSurfaceHandle(
 
     if(VA_STATUS_SUCCESS != mediaCtx->m_caps->GetSurfaceModifier(mediaSurface, desc->objects[0].drm_format_modifier))
     {
+        close(mediaSurface->name);
         DDI_ASSERTMESSAGE("could not find related modifier values");
         return VA_STATUS_ERROR_UNSUPPORTED_RT_FORMAT;
-    }    
+    }
 
     int composite_object = flags & VA_EXPORT_SURFACE_COMPOSED_LAYERS;
 
@@ -7233,6 +7246,7 @@ VAStatus DdiMedia_ExportSurfaceHandle(
         formats[0] = DdiMedia_GetDrmFormatOfCompositeObject(desc->fourcc);
         if(!formats[0])
         {
+            close(mediaSurface->name);
             DDI_ASSERTMESSAGE("vaExportSurfaceHandle: fourcc %08x is not supported for export as a composite object.\n", desc->fourcc);
             return VA_STATUS_ERROR_INVALID_SURFACE;
         }
@@ -7244,6 +7258,7 @@ VAStatus DdiMedia_ExportSurfaceHandle(
             formats[i] = DdiMedia_GetDrmFormatOfSeparatePlane(desc->fourcc,i);
             if (!formats[i])
             {
+                close(mediaSurface->name);
                 DDI_ASSERTMESSAGE("vaExportSurfaceHandle: fourcc %08x is not supported for export as separate planes.\n", desc->fourcc);
                 return VA_STATUS_ERROR_INVALID_SURFACE;
             }
@@ -7502,7 +7517,7 @@ MEDIAAPI_EXPORT VAStatus DdiMedia_ExtGetSurfaceHandle(
     {
         if (mediaSurface->bo)
         {
-            int32_t ret = mos_bo_gem_export_to_prime(mediaSurface->bo, (int32_t*)&mediaSurface->name);
+            int32_t ret = mos_bo_export_to_prime(mediaSurface->bo, (int32_t*)&mediaSurface->name);
             if (ret)
             {
                 //LOGE("Failed drm_intel_gem_export_to_prime operation!!!\n");

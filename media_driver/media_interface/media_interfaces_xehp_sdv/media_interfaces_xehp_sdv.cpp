@@ -64,7 +64,8 @@ Register<VphalInterfacesXe_Xpm>((uint32_t)IGFX_XE_HP_SDV);
 MOS_STATUS VphalInterfacesXe_Xpm::Initialize(
     PMOS_INTERFACE  osInterface,
     bool            bInitVphalState,
-    MOS_STATUS      *eStatus)
+    MOS_STATUS      *eStatus,
+    bool            clearViewMode)
 {
     MOS_OS_CHK_NULL_RETURN(osInterface);
     bool bApogeiosEnable = true;
@@ -158,6 +159,7 @@ MOS_STATUS MhwInterfacesXehp_Sdv::Initialize(
         MHW_ASSERTMESSAGE("The OS interface is not valid!");
         return MOS_STATUS_INVALID_PARAMETER;
     }
+    m_osInterface = osInterface;
 
     auto gtSystemInfo = osInterface->pfnGetGtSystemInfo(osInterface);
     if (gtSystemInfo == nullptr)
@@ -174,7 +176,7 @@ MOS_STATUS MhwInterfacesXehp_Sdv::Initialize(
 
     // MHW_CP and MHW_MI must always be created
     MOS_STATUS status;
-    m_cpInterface = Create_MhwCpInterface(osInterface);
+    m_cpInterface = osInterface->pfnCreateMhwCpInterface(osInterface);
     m_miInterface = MOS_New(Mi, m_cpInterface, osInterface);
 
     if (params.Flags.m_render)

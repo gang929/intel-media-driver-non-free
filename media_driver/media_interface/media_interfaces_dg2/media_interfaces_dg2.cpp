@@ -78,7 +78,8 @@ Register<VphalInterfacesXe_Hpm>((uint32_t)IGFX_DG2);
 MOS_STATUS VphalInterfacesXe_Hpm::Initialize(
     PMOS_INTERFACE  osInterface,
     bool            bInitVphalState,
-    MOS_STATUS      *eStatus)
+    MOS_STATUS      *eStatus,
+    bool            clearViewMode)
 {
     bool bApogeiosEnable = true;
     MOS_USER_FEATURE_VALUE_DATA         UserFeatureData;
@@ -193,6 +194,7 @@ MOS_STATUS MhwInterfacesDg2::Initialize(
         MHW_ASSERTMESSAGE("The OS interface is not valid!");
         return MOS_STATUS_INVALID_PARAMETER;
     }
+    m_osInterface = osInterface;
 
     auto gtSystemInfo = osInterface->pfnGetGtSystemInfo(osInterface);
     if (gtSystemInfo == nullptr)
@@ -209,7 +211,7 @@ MOS_STATUS MhwInterfacesDg2::Initialize(
 
     // MHW_CP and MHW_MI must always be created
     MOS_STATUS status;
-    m_cpInterface = Create_MhwCpInterface(osInterface);
+    m_cpInterface = osInterface->pfnCreateMhwCpInterface(osInterface);
     MHW_MI_CHK_NULL(m_cpInterface);
     m_miInterface = MOS_New(Mi, m_cpInterface, osInterface);
 
@@ -433,6 +435,7 @@ MOS_STATUS MhwInterfacesDg2_Next::Initialize(
         MHW_ASSERTMESSAGE("The OS interface is not valid!");
         return MOS_STATUS_INVALID_PARAMETER;
     }
+    m_osInterface = osInterface;
 
     auto gtSystemInfo = osInterface->pfnGetGtSystemInfo(osInterface);
     if (gtSystemInfo == nullptr)
@@ -449,7 +452,7 @@ MOS_STATUS MhwInterfacesDg2_Next::Initialize(
 
     // MHW_CP and MHW_MI must always be created
     MOS_STATUS status;
-    m_cpInterface = Create_MhwCpInterface(osInterface);
+    m_cpInterface = osInterface->pfnCreateMhwCpInterface(osInterface);
     MHW_MI_CHK_NULL(m_cpInterface);
     m_miInterface = std::make_shared<Mi>(m_cpInterface, osInterface);
 

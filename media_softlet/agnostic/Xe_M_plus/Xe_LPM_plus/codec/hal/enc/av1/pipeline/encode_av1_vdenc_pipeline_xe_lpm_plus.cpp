@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, Intel Corporation
+* Copyright (c) 2020 - 2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -26,9 +26,7 @@
 
 #include "encode_av1_vdenc_pipeline_xe_lpm_plus.h"
 #if _MEDIA_RESERVED
-#define AV1_REVERVED_PACKET
-#include "encode_av1_packet_ext.h"
-#undef AV1_REVERVED_PACKET
+#include "encode_av1_vdenc_packet_xe_lpm_plus_ext.h"
 #endif // _MEDIA_RESERVED
 #include "encode_av1_vdenc_packet_xe_lpm_plus.h"
 #include "encode_av1_brc_init_packet.h"
@@ -36,6 +34,7 @@
 #include "codechal_debug.h"
 #include "encode_av1_vdenc_feature_manager_xe_lpm_plus_base.h"
 #include "encode_preenc_packet.h"
+#include "encode_av1_superres.h"
 
 namespace encode
 {
@@ -59,12 +58,6 @@ MOS_STATUS Av1VdencPipelineXe_LPM_Plus::Init(void *settings)
         ENCODE_CHK_STATUS_RETURN(av1PreEncPkt->Init());
     }
 
-    #if _MEDIA_RESERVED
-    auto av1ReservedPkt = MOS_New(Av1ReservedPkt, this, task, m_hwInterface);
-    RegisterPacket(Av1ReservedPktID, av1ReservedPkt);
-    av1ReservedPkt->Init();
-    #endif  // !(_MEDIA_RESERVED)
-
     Av1BrcInitPkt *brcInitpkt = MOS_New(Av1BrcInitPkt, this, task, m_hwInterface);
     ENCODE_CHK_STATUS_RETURN(RegisterPacket(Av1HucBrcInit, brcInitpkt));
     ENCODE_CHK_STATUS_RETURN(brcInitpkt->Init());
@@ -73,40 +66,22 @@ MOS_STATUS Av1VdencPipelineXe_LPM_Plus::Init(void *settings)
     ENCODE_CHK_STATUS_RETURN(RegisterPacket(Av1HucBrcUpdate, brcUpdatepkt));
     ENCODE_CHK_STATUS_RETURN(brcUpdatepkt->Init());
 
+#if _MEDIA_RESERVED
+    auto av1Vdencpkt = MOS_New(Av1VdencPktXe_Lpm_PlusExt, this, task, m_hwInterface);
+#else
     auto av1Vdencpkt = MOS_New(Av1VdencPktXe_Lpm_Plus, this, task, m_hwInterface);
+#endif  // !(_MEDIA_RESERVED)
     RegisterPacket(Av1VdencPacket, av1Vdencpkt);
-    av1Vdencpkt->Init();
+    ENCODE_CHK_STATUS_RETURN(av1Vdencpkt->Init());
 
     auto av1BackAnnotationpkt = MOS_New(Av1BackAnnotationPkt, this, task, m_hwInterface);
     RegisterPacket(Av1BackAnnotation, av1BackAnnotationpkt);
-    av1BackAnnotationpkt->Init();
+    ENCODE_CHK_STATUS_RETURN(av1BackAnnotationpkt->Init());
+
+    m_sfcItf = m_hwInterface->GetMediaSfcInterface();
+    ENCODE_CHK_NULL_RETURN(m_sfcItf);
 
     return MOS_STATUS_SUCCESS;
 }
 
-MOS_STATUS Av1VdencPipelineXe_LPM_Plus::Initialize(void *settings)
-{
-    ENCODE_FUNC_CALL();
-
-    CodechalSetting *codecSettings = (CodechalSetting *)settings;
-    ENCODE_CHK_NULL_RETURN(m_hwInterface);
-    ENCODE_CHK_STATUS_RETURN(m_hwInterface->Initialize(codecSettings));
-    ENCODE_CHK_STATUS_RETURN(Av1VdencPipelineXe_Lpm_Plus_Base::Initialize(settings));
-
-    CODECHAL_DEBUG_TOOL(
-        if (m_debugInterface != nullptr) {
-            MOS_Delete(m_debugInterface);
-        } m_debugInterface = MOS_New(CodechalDebugInterface);
-        ENCODE_CHK_NULL_RETURN(m_debugInterface);
-        ENCODE_CHK_NULL_RETURN(m_mediaCopyWrapper);
-        ENCODE_CHK_STATUS_RETURN(m_debugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper->GetMediaCopyState()));
-
-        if (m_statusReportDebugInterface != nullptr) {
-            MOS_Delete(m_statusReportDebugInterface);
-        } m_statusReportDebugInterface = MOS_New(CodechalDebugInterface);
-        ENCODE_CHK_NULL_RETURN(m_statusReportDebugInterface);
-        ENCODE_CHK_STATUS_RETURN(m_statusReportDebugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper->GetMediaCopyState())););
-
-    return MOS_STATUS_SUCCESS;
-}
 }  // namespace encode

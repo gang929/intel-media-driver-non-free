@@ -66,6 +66,9 @@
 #include "mos_util_debug.h"
 #include "mos_bufmgr_prelim.h"
 #include "mos_oca_defs_specific.h"
+#include "intel_hwconfig_types.h"
+#include "mos_utilities.h"
+#include "linux_system_info.h"
 
 #ifdef HAVE_VALGRIND
 #include <valgrind.h>
@@ -146,6 +149,7 @@ typedef struct mos_bufmgr_gem {
     int available_fences;
     int pci_device;
     unsigned int has_bsd : 1;
+    unsigned int has_bsd2 : 1;
     unsigned int has_blt : 1;
     unsigned int has_relaxed_fencing : 1;
     unsigned int has_llc : 1;
@@ -177,6 +181,10 @@ typedef struct mos_bufmgr_gem {
     char mem_profiler_buffer[MEM_PROFILER_BUFFER_SIZE];
     char* mem_profiler_path;
     int mem_profiler_fd;
+
+    int device_type;
+
+    uint32_t ts_freq;
 } mos_bufmgr_gem;
 
 #define DRM_INTEL_RELOC_FENCE (1<<0)
@@ -381,6 +389,9 @@ static void mos_gem_bo_unreference_locked_timed(struct mos_linux_bo *bo,
                               time_t time);
 
 static void mos_gem_bo_unreference(struct mos_linux_bo *bo);
+static bool mos_gem_bo_is_softpin(struct mos_linux_bo *bo);
+static void mos_gem_bo_start_gtt_access(struct mos_linux_bo *bo, int write_enable);
+static void mos_gem_bo_free(struct mos_linux_bo *bo);
 
 static inline struct mos_bo_gem *to_bo_gem(struct mos_linux_bo *bo)
 {
@@ -1043,8 +1054,12 @@ mos_gem_bo_alloc_internal(struct mos_bufmgr *bufmgr,
                 uint32_t tiling_mode,
                 unsigned long stride,
                 unsigned int alignment,
-                int mem_type)
+                int mem_type,
+                unsigned int pat_index,
+                bool cpu_cacheable)
 {
+    MOS_UNUSED(pat_index);
+    MOS_UNUSED(cpu_cacheable);
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bufmgr;
     struct mos_bo_gem *bo_gem;
     unsigned int page_size = getpagesize();
@@ -1226,12 +1241,14 @@ mos_gem_bo_alloc_for_render(struct mos_bufmgr *bufmgr,
                   const char *name,
                   unsigned long size,
                   unsigned int alignment,
-                  int mem_type)
+                  int mem_type,
+                  unsigned int pat_index,
+                  bool cpu_cacheable)
 {
     return mos_gem_bo_alloc_internal(bufmgr, name, size,
                            I915_TILING_NONE, 0,
                            BO_ALLOC_FOR_RENDER,
-                           alignment, mem_type);
+                           alignment, mem_type, pat_index, cpu_cacheable);
 }
 
 static struct mos_linux_bo *
@@ -1239,17 +1256,19 @@ mos_gem_bo_alloc(struct mos_bufmgr *bufmgr,
                const char *name,
                unsigned long size,
                unsigned int alignment,
-               int mem_type)
+               int mem_type,
+               unsigned int pat_index,
+               bool cpu_cacheable)
 {
     return mos_gem_bo_alloc_internal(bufmgr, name, size, 0,
-                           I915_TILING_NONE, 0, 0, mem_type);
+                           I915_TILING_NONE, 0, 0, mem_type, pat_index, cpu_cacheable);
 }
 
 static struct mos_linux_bo *
 mos_gem_bo_alloc_tiled(struct mos_bufmgr *bufmgr, const char *name,
                  int x, int y, int cpp, uint32_t *tiling_mode,
                  unsigned long *pitch, unsigned long flags,
-                 int mem_type)
+                 int mem_type, unsigned int pat_index, bool cpu_cacheable)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
     unsigned long size, stride;
@@ -1293,7 +1312,7 @@ mos_gem_bo_alloc_tiled(struct mos_bufmgr *bufmgr, const char *name,
         stride = 0;
 
     return mos_gem_bo_alloc_internal(bufmgr, name, size, flags,
-                           tiling, stride, 0, mem_type);
+                           tiling, stride, 0, mem_type, pat_index, cpu_cacheable);
 }
 
 static struct mos_linux_bo *
@@ -1448,8 +1467,8 @@ check_bo_alloc_userptr(struct mos_bufmgr *bufmgr,
  * This can be used when one application needs to pass a buffer object
  * to another.
  */
-struct mos_linux_bo *
-mos_bo_gem_create_from_name(struct mos_bufmgr *bufmgr,
+static struct mos_linux_bo *
+mos_bufmgr_bo_gem_create_from_name(struct mos_bufmgr *bufmgr,
                   const char *name,
                   unsigned int handle)
 {
@@ -1559,7 +1578,7 @@ mos_bo_gem_create_from_name(struct mos_bufmgr *bufmgr,
     return &bo_gem->bo;
 }
 
-drm_export void
+static void
 mos_gem_bo_free(struct mos_linux_bo *bo)
 {
     struct mos_bufmgr_gem *bufmgr_gem = nullptr;
@@ -1915,27 +1934,6 @@ mos_gem_bo_map_wc(struct mos_linux_bo *bo) {
     return 0;
 }
 
-int
-mos_gem_bo_map_wc_unsynchronized(struct mos_linux_bo *bo) {
-    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
-#ifdef HAVE_VALGRIND
-    struct mos_bo_gem *bo_gem = (struct mos_bo_gem *) bo;
-#endif
-    int ret;
-
-    pthread_mutex_lock(&bufmgr_gem->lock);
-
-    ret = map_wc(bo);
-    if (ret == 0) {
-        mos_gem_bo_mark_mmaps_incoherent(bo);
-        VG(VALGRIND_MAKE_MEM_DEFINED(bo_gem->mem_wc_virtual, bo->size));
-    }
-
-    pthread_mutex_unlock(&bufmgr_gem->lock);
-
-    return ret;
-}
-
 drm_export int mos_gem_bo_map(struct mos_linux_bo *bo, int write_enable)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
@@ -2152,7 +2150,7 @@ map_gtt(struct mos_linux_bo *bo)
     return 0;
 }
 
-int
+static int
 mos_gem_bo_map_gtt(struct mos_linux_bo *bo)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
@@ -2223,7 +2221,7 @@ mos_gem_bo_map_gtt(struct mos_linux_bo *bo)
  * undefined).
  */
 
-int
+static int
 mos_gem_bo_map_unsynchronized(struct mos_linux_bo *bo)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
@@ -2255,7 +2253,7 @@ mos_gem_bo_map_unsynchronized(struct mos_linux_bo *bo)
     return ret;
 }
 
-drm_export int mos_gem_bo_unmap(struct mos_linux_bo *bo)
+static int mos_gem_bo_unmap(struct mos_linux_bo *bo)
 {
     struct mos_bufmgr_gem *bufmgr_gem;
     struct mos_bo_gem *bo_gem = (struct mos_bo_gem *) bo;
@@ -2315,88 +2313,16 @@ drm_export int mos_gem_bo_unmap(struct mos_linux_bo *bo)
     return ret;
 }
 
-int
+static int
 mos_gem_bo_unmap_wc(struct mos_linux_bo *bo)
 {
     return mos_gem_bo_unmap(bo);
 }
 
-int
+static int
 mos_gem_bo_unmap_gtt(struct mos_linux_bo *bo)
 {
     return mos_gem_bo_unmap(bo);
-}
-
-int mos_gem_bo_get_fake_offset(struct mos_linux_bo *bo)
-{
-    int ret;
-    __u64  offset = 0;
-    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
-    struct mos_bo_gem *bo_gem = (struct mos_bo_gem *) bo;
-
-    if (bufmgr_gem->has_lmem) {
-        struct drm_i915_gem_mmap_offset mmap_arg;
-
-        memclear(mmap_arg);
-        mmap_arg.handle = bo_gem->gem_handle;
-
-        if (BufmgrPrelim::IsPrelimSupported()) {
-            bufmgr_gem->prelim->SetMmapOffset(bo_gem->mem_region, mmap_arg);
-        } else {
-            mmap_arg.flags = I915_MMAP_OFFSET_FIXED;
-        }
-
-        ret = drmIoctl(bufmgr_gem->fd,
-                   DRM_IOCTL_I915_GEM_MMAP_OFFSET,
-                   &mmap_arg);
-        offset = mmap_arg.offset;
-    } else {
-        struct drm_i915_gem_mmap_gtt mmap_arg;
-
-        memclear(mmap_arg);
-        mmap_arg.handle = bo_gem->gem_handle;
-
-        ret = drmIoctl(bufmgr_gem->fd,
-                DRM_IOCTL_I915_GEM_MMAP_GTT,
-                &mmap_arg);
-        offset = mmap_arg.offset;
-    }
-    if (ret != 0) {
-        ret = -errno;
-        MOS_DBG("%s:%d: Error to get buffer fake offset %d (%s): %s .\n",
-            __FILE__, __LINE__,
-            bo_gem->gem_handle, bo_gem->name,
-            strerror(errno));
-    }
-    else {
-        bo->offset64 = offset;
-    }
-    return ret;
-}
-
-static int
-mos_gem_get_pipe_from_crtc_id(struct mos_bufmgr *bufmgr, int crtc_id)
-{
-    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bufmgr;
-    struct drm_i915_get_pipe_from_crtc_id get_pipe_from_crtc_id;
-    int ret;
-
-    memclear(get_pipe_from_crtc_id);
-    get_pipe_from_crtc_id.crtc_id = crtc_id;
-    ret = drmIoctl(bufmgr_gem->fd,
-               DRM_IOCTL_I915_GET_PIPE_FROM_CRTC_ID,
-               &get_pipe_from_crtc_id);
-    if (ret != 0) {
-        /* We return -1 here to signal that we don't
-         * know which pipe is associated with this crtc.
-         * This lets the caller know that this information
-         * isn't available; using the wrong pipe for
-         * vblank waiting can cause the chipset to lock up
-         */
-        return -1;
-    }
-
-    return get_pipe_from_crtc_id.pipe;
 }
 
 /** Waits for all GPU rendering with the object to have completed. */
@@ -2470,7 +2396,7 @@ mos_gem_bo_wait(struct mos_linux_bo *bo, int64_t timeout_ns)
  * In combination with drm_intel_gem_bo_pin() and manual fence management, we
  * can do tiled pixmaps this way.
  */
-void
+static void
 mos_gem_bo_start_gtt_access(struct mos_linux_bo *bo, int write_enable)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
@@ -2562,98 +2488,8 @@ mos_bufmgr_gem_destroy(struct mos_bufmgr *bufmgr)
     free(bufmgr);
 }
 
-/**
- * Adds the target buffer to the validation list and adds the relocation
- * to the reloc_buffer's relocation list.
- *
- * The relocation entry at the given offset must already contain the
- * precomputed relocation value, because the kernel will optimize out
- * the relocation entry write when the buffer hasn't moved from the
- * last known offset in target_bo.
- */
 static int
 do_bo_emit_reloc(struct mos_linux_bo *bo, uint32_t offset,
-         struct mos_linux_bo *target_bo, uint32_t target_offset,
-         uint32_t read_domains, uint32_t write_domain,
-         bool need_fence)
-{
-    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
-    struct mos_bo_gem *bo_gem = (struct mos_bo_gem *) bo;
-    struct mos_bo_gem *target_bo_gem = (struct mos_bo_gem *) target_bo;
-    bool fenced_command;
-
-    if (bo_gem->has_error)
-        return -ENOMEM;
-
-    if (target_bo_gem->has_error) {
-        bo_gem->has_error = true;
-        return -ENOMEM;
-    }
-
-    /* We never use HW fences for rendering on 965+ */
-    need_fence = false;
-
-    fenced_command = need_fence;
-    if (target_bo_gem->tiling_mode == I915_TILING_NONE)
-        need_fence = false;
-
-    /* Create a new relocation list if needed */
-    if (bo_gem->relocs == nullptr && mos_setup_reloc_list(bo))
-        return -ENOMEM;
-
-    /* Check overflow */
-    assert(bo_gem->reloc_count < bufmgr_gem->max_relocs);
-
-    /* Check args */
-    assert(offset <= bo->size - 4);
-    assert((write_domain & (write_domain - 1)) == 0);
-
-    /* An object needing a fence is a tiled buffer, so it won't have
-     * relocs to other buffers.
-     */
-    if (need_fence) {
-        assert(target_bo_gem->reloc_count == 0);
-        target_bo_gem->reloc_tree_fences = 1;
-    }
-
-    /* Make sure that we're not adding a reloc to something whose size has
-     * already been accounted for.
-     */
-    assert(!bo_gem->used_as_reloc_target);
-    if (target_bo_gem != bo_gem) {
-        target_bo_gem->used_as_reloc_target = true;
-        bo_gem->reloc_tree_size += target_bo_gem->reloc_tree_size;
-        bo_gem->reloc_tree_fences += target_bo_gem->reloc_tree_fences;
-    }
-
-    bo_gem->reloc_target_info[bo_gem->reloc_count].bo = target_bo;
-    if (target_bo != bo)
-        mos_gem_bo_reference(target_bo);
-    if (fenced_command)
-        bo_gem->reloc_target_info[bo_gem->reloc_count].flags =
-            DRM_INTEL_RELOC_FENCE;
-    else
-        bo_gem->reloc_target_info[bo_gem->reloc_count].flags = 0;
-
-    bo_gem->relocs[bo_gem->reloc_count].offset = offset;
-    bo_gem->relocs[bo_gem->reloc_count].delta = target_offset;
-    bo_gem->relocs[bo_gem->reloc_count].target_handle =
-        target_bo_gem->gem_handle;
-    bo_gem->relocs[bo_gem->reloc_count].read_domains = read_domains;
-    if (BufmgrPrelim::IsPrelimSupported()) {
-        // if reloc handle is batch buffer itself, cannot set write domain
-        bo_gem->relocs[bo_gem->reloc_count].write_domain = (bo_gem->bo.handle == target_bo_gem->gem_handle ? 0 : write_domain);
-    } else {
-        bo_gem->relocs[bo_gem->reloc_count].write_domain = write_domain;
-    }
-    bo_gem->relocs[bo_gem->reloc_count].presumed_offset = target_bo->offset64;
-    bo_gem->reloc_count++;
-
-    return 0;
-}
-
-static int
-do_bo_emit_reloc2(struct mos_linux_bo *bo, uint32_t offset,
          struct mos_linux_bo *target_bo, uint32_t target_offset,
          uint32_t read_domains, uint32_t write_domain,
          bool need_fence, uint64_t presumed_offset)
@@ -2844,8 +2680,8 @@ mos_gem_bo_add_softpin_target(struct mos_linux_bo *bo, struct mos_linux_bo *targ
     return 0;
 }
 
-mos_oca_exec_list_info*
-mos_bo_get_softpin_targets_info(struct mos_linux_bo *bo, int *count)
+static mos_oca_exec_list_info*
+mos_bufmgr_bo_get_softpin_targets_info(struct mos_linux_bo *bo, int *count)
 {
     if(bo == nullptr || count == nullptr)
     {
@@ -2931,45 +2767,15 @@ mos_gem_bo_pad_to_size(struct mos_linux_bo *bo, uint64_t pad_to_size)
 static int
 mos_gem_bo_emit_reloc(struct mos_linux_bo *bo, uint32_t offset,
                 struct mos_linux_bo *target_bo, uint32_t target_offset,
-                uint32_t read_domains, uint32_t write_domain)
-{
-    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bo->bufmgr;
-
-    return do_bo_emit_reloc(bo, offset, target_bo, target_offset,
-                read_domains, write_domain,
-                !bufmgr_gem->fenced_relocs);
-}
-
-static int
-mos_gem_bo_emit_reloc2(struct mos_linux_bo *bo, uint32_t offset,
-                struct mos_linux_bo *target_bo, uint32_t target_offset,
                 uint32_t read_domains, uint32_t write_domain,
                 uint64_t presumed_offset)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bo->bufmgr;
 
-    return do_bo_emit_reloc2(bo, offset, target_bo, target_offset,
+    return do_bo_emit_reloc(bo, offset, target_bo, target_offset,
                 read_domains, write_domain,
                 false,
                 presumed_offset);
-}
-
-static int
-mos_gem_bo_emit_reloc_fence(struct mos_linux_bo *bo, uint32_t offset,
-                  struct mos_linux_bo *target_bo,
-                  uint32_t target_offset,
-                  uint32_t read_domains, uint32_t write_domain)
-{
-    return do_bo_emit_reloc(bo, offset, target_bo, target_offset,
-                read_domains, write_domain, true);
-}
-
-int
-mos_gem_bo_get_reloc_count(struct mos_linux_bo *bo)
-{
-    struct mos_bo_gem *bo_gem = (struct mos_bo_gem *) bo;
-
-    return bo_gem->reloc_count;
 }
 
 /**
@@ -2987,7 +2793,7 @@ mos_gem_bo_get_reloc_count(struct mos_linux_bo *bo)
  *
  * This also removes all softpinned targets being referenced by the BO.
  */
-drm_export void
+static void
 mos_gem_bo_clear_relocs(struct mos_linux_bo *bo, int start)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
@@ -3160,72 +2966,6 @@ mos_update_buffer_offsets2 (struct mos_bufmgr_gem *bufmgr_gem, mos_linux_context
 }
 
 drm_export int
-mos_gem_bo_exec(struct mos_linux_bo *bo, int used,
-              drm_clip_rect_t * cliprects, int num_cliprects, int DR4)
-{
-    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
-    struct drm_i915_gem_execbuffer execbuf;
-    int ret, i;
-
-    if (to_bo_gem(bo)->has_error)
-        return -ENOMEM;
-
-    pthread_mutex_lock(&bufmgr_gem->lock);
-    /* Update indices and set up the validate list. */
-    mos_gem_bo_process_reloc(bo);
-
-    /* Add the batch buffer to the validation list.  There are no
-     * relocations pointing to it.
-     */
-    mos_add_validate_buffer(bo);
-
-    memclear(execbuf);
-    execbuf.buffers_ptr = (uintptr_t) bufmgr_gem->exec_objects;
-    execbuf.buffer_count = bufmgr_gem->exec_count;
-    execbuf.batch_start_offset = 0;
-    execbuf.batch_len = used;
-    execbuf.cliprects_ptr = (uintptr_t) cliprects;
-    execbuf.num_cliprects = num_cliprects;
-    execbuf.DR1 = 0;
-    execbuf.DR4 = DR4;
-
-    ret = drmIoctl(bufmgr_gem->fd,
-               DRM_IOCTL_I915_GEM_EXECBUFFER,
-               &execbuf);
-    if (ret != 0) {
-        ret = -errno;
-        if (errno == ENOSPC) {
-            MOS_DBG("Execbuffer fails to pin. "
-                "Estimate: %u. Actual: %u. Available: %u\n",
-                mos_gem_estimate_batch_space(bufmgr_gem->exec_bos,
-                                   bufmgr_gem->
-                                   exec_count),
-                mos_gem_compute_batch_space(bufmgr_gem->exec_bos,
-                                  bufmgr_gem->
-                                  exec_count),
-                (unsigned int)bufmgr_gem->gtt_size);
-        }
-    }
-    mos_update_buffer_offsets(bufmgr_gem);
-
-    if (bufmgr_gem->bufmgr.debug)
-        mos_gem_dump_validation_list(bufmgr_gem);
-
-    for (i = 0; i < bufmgr_gem->exec_count; i++) {
-        struct mos_bo_gem *bo_gem = to_bo_gem(bufmgr_gem->exec_bos[i]);
-        bo_gem->idle = false;
-
-        /* Disconnect the buffer from the validate list */
-        bo_gem->validate_index = -1;
-        bufmgr_gem->exec_bos[i] = nullptr;
-    }
-    bufmgr_gem->exec_count = 0;
-    pthread_mutex_unlock(&bufmgr_gem->lock);
-
-    return ret;
-}
-
-drm_export int
 do_exec2(struct mos_linux_bo *bo, int used, struct mos_linux_context *ctx,
      drm_clip_rect_t *cliprects, int num_cliprects, int DR4,
      unsigned int flags, int *fence
@@ -3341,7 +3081,7 @@ skip_execution:
     return ret;
 }
 
-drm_export int
+static int
 do_exec3(struct mos_linux_bo **bo, int _num_bo, struct mos_linux_context *ctx,
      drm_clip_rect_t *cliprects, int num_cliprects, int DR4,
      unsigned int _flags, int *fence
@@ -3572,14 +3312,7 @@ mos_gem_bo_mrb_exec2(struct mos_linux_bo *bo, int used,
             flags, nullptr);
 }
 
-int
-mos_gem_bo_context_exec(struct mos_linux_bo *bo, struct mos_linux_context *ctx,
-                  int used, unsigned int flags)
-{
-    return do_exec2(bo, used, ctx, nullptr, 0, 0, flags, nullptr);
-}
-
-int
+static int
 mos_gem_bo_context_exec2(struct mos_linux_bo *bo, int used, struct mos_linux_context *ctx,
                            drm_clip_rect_t *cliprects, int num_cliprects, int DR4,
                            unsigned int flags, int *fence)
@@ -3588,54 +3321,13 @@ mos_gem_bo_context_exec2(struct mos_linux_bo *bo, int used, struct mos_linux_con
                         flags, fence);
 }
 
-int
+static int
 mos_gem_bo_context_exec3(struct mos_linux_bo **bo, int num_bo, struct mos_linux_context *ctx,
                                struct drm_clip_rect *cliprects, int num_cliprects, int DR4,
                                unsigned int flags, int *fence)
 {
     return do_exec3(bo, num_bo, ctx, cliprects, num_cliprects, DR4,
                         flags, fence);
-}
-
-static int
-mos_gem_bo_pin(struct mos_linux_bo *bo, uint32_t alignment)
-{
-    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
-    struct mos_bo_gem *bo_gem = (struct mos_bo_gem *) bo;
-    struct drm_i915_gem_pin pin;
-    int ret;
-
-    memclear(pin);
-    pin.handle = bo_gem->gem_handle;
-    pin.alignment = alignment;
-
-    ret = drmIoctl(bufmgr_gem->fd,
-               DRM_IOCTL_I915_GEM_PIN,
-               &pin);
-    if (ret != 0)
-        return -errno;
-
-    bo->offset64 = pin.offset;
-    bo->offset = pin.offset;
-    return 0;
-}
-
-static int
-mos_gem_bo_unpin(struct mos_linux_bo *bo)
-{
-    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
-    struct mos_bo_gem *bo_gem = (struct mos_bo_gem *) bo;
-    struct drm_i915_gem_unpin unpin;
-    int ret;
-
-    memclear(unpin);
-    unpin.handle = bo_gem->gem_handle;
-
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GEM_UNPIN, &unpin);
-    if (ret != 0)
-        return -errno;
-
-    return 0;
 }
 
 static int
@@ -3778,8 +3470,8 @@ mos_gem_bo_set_softpin(MOS_LINUX_BO *bo)
     return ret;
 }
 
-struct mos_linux_bo *
-mos_bo_gem_create_from_prime(struct mos_bufmgr *bufmgr, int prime_fd, int size)
+static struct mos_linux_bo *
+mos_gem_bo_create_from_prime(struct mos_bufmgr *bufmgr, int prime_fd, int size)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bufmgr;
     int ret;
@@ -3873,8 +3565,8 @@ mos_bo_gem_create_from_prime(struct mos_bufmgr *bufmgr, int prime_fd, int size)
     return &bo_gem->bo;
 }
 
-int
-mos_bo_gem_export_to_prime(struct mos_linux_bo *bo, int *prime_fd)
+static int
+mos_gem_bo_export_to_prime(struct mos_linux_bo *bo, int *prime_fd)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bo->bufmgr;
     struct mos_bo_gem *bo_gem = (struct mos_bo_gem *) bo;
@@ -3933,28 +3625,12 @@ mos_gem_bo_flink(struct mos_linux_bo *bo, uint32_t * name)
  * size is only bounded by how many buffers of that size we've managed to have
  * in flight at once.
  */
-void
-mos_bufmgr_gem_enable_reuse(struct mos_bufmgr *bufmgr)
+static void
+mos_gem_enable_reuse(struct mos_bufmgr *bufmgr)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bufmgr;
 
     bufmgr_gem->bo_reuse = true;
-}
-
-/**
- * Enable use of fenced reloc type.
- *
- * New code should enable this to avoid unnecessary fence register
- * allocation.  If this option is not enabled, all relocs will have fence
- * register allocated.
- */
-void
-mos_bufmgr_gem_enable_fenced_relocs(struct mos_bufmgr *bufmgr)
-{
-    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
-
-    if (bufmgr_gem->bufmgr.bo_exec == mos_gem_bo_exec2)
-        bufmgr_gem->fenced_relocs = true;
 }
 
 /**
@@ -4258,30 +3934,12 @@ get_pci_device_id(struct mos_bufmgr_gem *bufmgr_gem)
     return devid;
 }
 
-int
-mos_bufmgr_gem_get_devid(struct mos_bufmgr *bufmgr)
+static int
+mos_gem_get_devid(struct mos_bufmgr *bufmgr)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
 
     return bufmgr_gem->pci_device;
-}
-
-/**
- * Sets up AUB dumping.
- *
- * This is a trace file format that can be used with the simulator.
- * Packets are emitted in a format somewhat like GPU command packets.
- * You can set up a GTT and upload your objects into the referenced
- * space, then send off batchbuffers and get BMPs out the other end.
- */
-void
-mos_bufmgr_gem_set_aub_dump(struct mos_bufmgr *bufmgr, int enable)
-{
-    fprintf(stderr, "libdrm aub dumping is deprecated.\n\n"
-        "Use intel_aubdump from intel-gpu-tools instead.  Install intel-gpu-tools,\n"
-        "then run (for example)\n\n"
-        "\t$ intel_aubdump --output=trace.aub glxgears -geometry 500x500\n\n"
-        "See the intel_aubdump man page for more details.\n");
 }
 
 int mos_gem_ctx_set_user_ctx_params(struct mos_linux_context *context)
@@ -4362,7 +4020,7 @@ int mos_gem_ctx_set_user_ctx_params(struct mos_linux_context *context)
     return ret;
 }
 
-struct mos_linux_context *
+static struct mos_linux_context *
 mos_gem_context_create(struct mos_bufmgr *bufmgr)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
@@ -4391,7 +4049,7 @@ mos_gem_context_create(struct mos_bufmgr *bufmgr)
     return context;
 }
 
-void
+static void
 mos_gem_context_destroy(struct mos_linux_context *ctx)
 {
     struct mos_bufmgr_gem *bufmgr_gem;
@@ -4414,8 +4072,8 @@ mos_gem_context_destroy(struct mos_linux_context *ctx)
     free(ctx);
 }
 
-int
-mos_get_reset_stats(struct mos_linux_context *ctx,
+static int
+mos_bufmg_get_reset_stats(struct mos_linux_context *ctx,
               uint32_t *reset_count,
               uint32_t *active,
               uint32_t *pending)
@@ -4448,7 +4106,7 @@ mos_get_reset_stats(struct mos_linux_context *ctx,
     return ret;
 }
 
-unsigned int mos_hweight8(uint8_t w)
+static unsigned int mos_bufmgr_hweight8(struct mos_linux_context *ctx, uint8_t w)
 {
     uint32_t i, weight = 0;
 
@@ -4459,7 +4117,7 @@ unsigned int mos_hweight8(uint8_t w)
     return weight;
 }
 
-uint8_t mos_switch_off_n_bits(uint8_t in_mask, int n)
+static uint8_t mos_bufmgr_switch_off_n_bits(struct mos_linux_context *ctx, uint8_t in_mask, int n)
 {
     int i,count;
     uint8_t bi,out_mask;
@@ -4484,8 +4142,8 @@ uint8_t mos_switch_off_n_bits(uint8_t in_mask, int n)
     return out_mask;
 }
 
-int
-mos_get_context_param_sseu(struct mos_linux_context *ctx,
+static int
+mos_bufmgr_get_context_param_sseu(struct mos_linux_context *ctx,
                 struct drm_i915_gem_context_param_sseu *sseu)
 {
     struct mos_bufmgr_gem *bufmgr_gem;
@@ -4509,8 +4167,8 @@ mos_get_context_param_sseu(struct mos_linux_context *ctx,
     return ret;
 }
 
-int
-mos_set_context_param_sseu(struct mos_linux_context *ctx,
+static int
+mos_bufmgr_set_context_param_sseu(struct mos_linux_context *ctx,
                 struct drm_i915_gem_context_param_sseu sseu)
 {
     struct mos_bufmgr_gem *bufmgr_gem;
@@ -4534,40 +4192,8 @@ mos_set_context_param_sseu(struct mos_linux_context *ctx,
     return ret;
 }
 
-int
-mos_get_subslice_mask(int fd, unsigned int *subslice_mask)
-{
-    drm_i915_getparam_t gp;
-    int ret;
-
-    memclear(gp);
-    gp.value = (int*)subslice_mask;
-    gp.param = I915_PARAM_SUBSLICE_MASK;
-    ret = drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    if (ret)
-        return -errno;
-
-    return 0;
-}
-
-int
-mos_get_slice_mask(int fd, unsigned int *slice_mask)
-{
-    drm_i915_getparam_t gp;
-    int ret;
-
-    memclear(gp);
-    gp.value = (int*)slice_mask;
-    gp.param = I915_PARAM_SLICE_MASK;
-    ret = drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    if (ret)
-        return -errno;
-
-    return 0;
-}
-
-int
-mos_get_context_param(struct mos_linux_context *ctx,
+static int
+mos_gem_get_context_param(struct mos_linux_context *ctx,
                 uint32_t size,
                 uint64_t param,
                 uint64_t *value)
@@ -4593,8 +4219,8 @@ mos_get_context_param(struct mos_linux_context *ctx,
     return ret;
 }
 
-int
-mos_set_context_param(struct mos_linux_context *ctx,
+static int
+mos_gem_set_context_param(struct mos_linux_context *ctx,
                 uint32_t size,
                 uint64_t param,
                 uint64_t value)
@@ -4619,8 +4245,8 @@ mos_set_context_param(struct mos_linux_context *ctx,
     return ret;
 }
 
-int
-mos_reg_read(struct mos_bufmgr *bufmgr,
+static int
+mos_bufmg_reg_read(struct mos_bufmgr *bufmgr,
            uint32_t offset,
            uint64_t *result)
 {
@@ -4635,38 +4261,6 @@ mos_reg_read(struct mos_bufmgr *bufmgr,
 
     *result = reg_read.val;
     return ret;
-}
-
-int
-mos_get_subslice_total(int fd, unsigned int *subslice_total)
-{
-    drm_i915_getparam_t gp;
-    int ret;
-
-    memclear(gp);
-    gp.value = (int*)subslice_total;
-    gp.param = I915_PARAM_SUBSLICE_TOTAL;
-    ret = drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    if (ret)
-        return -errno;
-
-    return 0;
-}
-
-int
-mos_get_eu_total(int fd, unsigned int *eu_total)
-{
-    drm_i915_getparam_t gp;
-    int ret;
-
-    memclear(gp);
-    gp.value = (int*)eu_total;
-    gp.param = I915_PARAM_EU_TOTAL;
-    ret = drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    if (ret)
-        return -errno;
-
-    return 0;
 }
 
 static pthread_mutex_t bufmgr_list_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -4704,8 +4298,8 @@ mos_bufmgr_gem_unref(struct mos_bufmgr *bufmgr)
     }
 }
 
-int
-mos_bufmgr_gem_get_memory_info(struct mos_bufmgr *bufmgr, char *info, uint32_t length)
+static int
+mos_gem_get_memory_info(struct mos_bufmgr *bufmgr, char *info, uint32_t length)
 {
 #if (_DEBUG || _RELEASE_INTERNAL)
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
@@ -4724,18 +4318,18 @@ mos_bufmgr_gem_get_memory_info(struct mos_bufmgr *bufmgr, char *info, uint32_t l
     return 0;
 }
 
-void mos_bufmgr_gem_enable_softpin(struct mos_bufmgr *bufmgr, bool va1m_align)
+static void mos_gem_enable_softpin(struct mos_bufmgr *bufmgr, bool va1m_align)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
     bufmgr_gem->use_softpin           = true;
     bufmgr_gem->softpin_va1Malign     = va1m_align;
 }
 
-void mos_bufmgr_gem_enable_vmbind(struct mos_bufmgr *bufmgr)
+static void mos_gem_enable_vmbind(struct mos_bufmgr *bufmgr)
 {
 }
 
-void mos_bufmgr_gem_disable_object_capture(struct mos_bufmgr *bufmgr)
+static void mos_gem_disable_object_capture(struct mos_bufmgr *bufmgr)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
     if (bufmgr_gem != nullptr)
@@ -4744,252 +4338,7 @@ void mos_bufmgr_gem_disable_object_capture(struct mos_bufmgr *bufmgr)
     }
 }
 
-/**
- * Initializes the GEM buffer manager, which uses the kernel to allocate, map,
- * and manage map buffer objections.
- *
- * \param fd File descriptor of the opened DRM device.
- */
-struct mos_bufmgr *
-mos_bufmgr_gem_init(int fd, int batch_size)
-{
-    struct mos_bufmgr_gem *bufmgr_gem;
-    struct drm_i915_gem_get_aperture aperture;
-    drm_i915_getparam_t gp;
-    int ret, tmp;
-    bool exec2 = false;
-
-    pthread_mutex_lock(&bufmgr_list_mutex);
-
-    bufmgr_gem = mos_bufmgr_gem_find(fd);
-    if (bufmgr_gem)
-        goto exit;
-
-    bufmgr_gem = (struct mos_bufmgr_gem *)calloc(1, sizeof(*bufmgr_gem));
-    if (bufmgr_gem == nullptr)
-        goto exit;
-
-    bufmgr_gem->fd = fd;
-    atomic_set(&bufmgr_gem->refcount, 1);
-
-    if (pthread_mutex_init(&bufmgr_gem->lock, nullptr) != 0) {
-        free(bufmgr_gem);
-        bufmgr_gem = nullptr;
-        goto exit;
-    }
-
-    bufmgr_gem->mem_profiler_path = getenv("MEDIA_MEMORY_PROFILER_LOG");
-    if (bufmgr_gem->mem_profiler_path != nullptr)
-    {
-        if (strcmp(bufmgr_gem->mem_profiler_path, "/sys/kernel/debug/tracing/trace_marker") == 0)
-        {
-            ret = bufmgr_gem->mem_profiler_fd = open(bufmgr_gem->mem_profiler_path, O_WRONLY );
-        }
-        else
-        {
-            ret = bufmgr_gem->mem_profiler_fd = open(bufmgr_gem->mem_profiler_path, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-        }
-
-        if (ret == -1)
-        {
-            MOS_DBG("Failed to open %s: %s\n", bufmgr_gem->mem_profiler_path, strerror(errno));
-        }
-    }
-    else
-    {
-        bufmgr_gem->mem_profiler_fd = -1;
-    }
-
-    memclear(aperture);
-    ret = drmIoctl(bufmgr_gem->fd,
-               DRM_IOCTL_I915_GEM_GET_APERTURE,
-               &aperture);
-
-    if (ret == 0)
-        bufmgr_gem->gtt_size = aperture.aper_available_size;
-    else {
-        fprintf(stderr, "DRM_IOCTL_I915_GEM_APERTURE failed: %s\n",
-            strerror(errno));
-        bufmgr_gem->gtt_size = 128 * 1024 * 1024;
-        fprintf(stderr, "Assuming %dkB available aperture size.\n"
-            "May lead to reduced performance or incorrect "
-            "rendering.\n",
-            (int)bufmgr_gem->gtt_size / 1024);
-    }
-
-    /* support Gen 8+ */
-    bufmgr_gem->pci_device = get_pci_device_id(bufmgr_gem);
-
-    if (bufmgr_gem->pci_device == 0) {
-        pthread_mutex_destroy(&bufmgr_gem->lock);
-        if (bufmgr_gem->mem_profiler_fd != -1)
-        {
-            close(bufmgr_gem->mem_profiler_fd);
-        }
-        free(bufmgr_gem);
-        bufmgr_gem = nullptr;
-        goto exit;
-    }
-
-    memclear(gp);
-    gp.value = &tmp;
-
-    gp.param = I915_PARAM_HAS_EXECBUF2;
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    if (!ret)
-        exec2 = true;
-
-    gp.param = I915_PARAM_HAS_BSD;
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    bufmgr_gem->has_bsd = ret == 0;
-
-    gp.param = I915_PARAM_HAS_BLT;
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    bufmgr_gem->has_blt = ret == 0;
-
-    gp.param = I915_PARAM_HAS_RELAXED_FENCING;
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    bufmgr_gem->has_relaxed_fencing = ret == 0;
-
-    bufmgr_gem->bufmgr.bo_alloc_userptr = check_bo_alloc_userptr;
-
-    gp.param = I915_PARAM_HAS_WAIT_TIMEOUT;
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    bufmgr_gem->has_wait_timeout = ret == 0;
-
-    gp.param = I915_PARAM_HAS_LLC;
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    bufmgr_gem->has_llc = *gp.value;
-
-    gp.param = I915_PARAM_HAS_VEBOX;
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    bufmgr_gem->has_vebox = (ret == 0) & (*gp.value > 0);
-
-    gp.param = I915_PARAM_MMAP_VERSION;
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    bufmgr_gem->has_ext_mmap = (ret == 0) & (*gp.value > 0);
-
-    gp.param = I915_PARAM_NUM_FENCES_AVAIL;
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    bufmgr_gem->has_fence_reg = (ret == 0) & (*gp.value > 0);
-
-    gp.param = I915_PARAM_HAS_EXEC_SOFTPIN;
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    if (ret == 0 && *gp.value > 0) {
-        bufmgr_gem->bufmgr.bo_set_softpin        = mos_gem_bo_set_softpin;
-        bufmgr_gem->bufmgr.bo_add_softpin_target = mos_gem_bo_add_softpin_target;
-    }
-
-    gp.param = I915_PARAM_HAS_EXEC_ASYNC;
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    if (ret == 0 && *gp.value > 0) {
-        bufmgr_gem->bufmgr.set_object_async      = mos_gem_bo_set_object_async;
-        bufmgr_gem->bufmgr.set_exec_object_async = mos_gem_bo_set_exec_object_async;
-    }
-
-    gp.param = I915_PARAM_HAS_EXEC_CAPTURE;
-    ret      = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    if (ret == 0 && *gp.value > 0)
-    {
-        bufmgr_gem->bufmgr.set_object_capture      = mos_gem_bo_set_object_capture;
-    }
-    else
-    {
-        bufmgr_gem->object_capture_disabled = true;
-    }
-
-    gp.param = I915_PARAM_MMAP_GTT_VERSION;
-    ret =  drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp);
-    bufmgr_gem->has_mmap_offset  =  (ret == 0) && (*gp.value >= 4);
-
-    struct drm_i915_gem_context_param context_param;
-    memset(&context_param, 0, sizeof(context_param));
-    context_param.param = I915_CONTEXT_PARAM_GTT_SIZE;
-    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GEM_CONTEXT_GETPARAM, &context_param);
-    if (ret == 0){
-        uint64_t gtt_size_4g = (uint64_t)1 << 32;
-        if (context_param.value > gtt_size_4g)
-        {
-            bufmgr_gem->bufmgr.bo_use_48b_address_range = mos_gem_bo_use_48b_address_range;
-        }
-    }
-
-    bufmgr_gem->prelim = BufmgrPrelim::CreatePrelim(bufmgr_gem->fd);
-
-    bufmgr_gem->has_lmem = mos_gem_has_lmem(bufmgr_gem);
-
-    if (nullptr != bufmgr_gem->prelim) {
-        bufmgr_gem->prelim->Init(bufmgr_gem->bufmgr, bufmgr_gem->has_lmem);
-    }
-
-    if (!BufmgrPrelim::IsPrelimSupported()) {
-        bufmgr_gem->bufmgr.has_full_vd = true;
-    }
-
-    /* Let's go with one relocation per every 2 dwords (but round down a bit
-     * since a power of two will mean an extra page allocation for the reloc
-     * buffer).
-     *
-     * Every 4 was too few for the blender benchmark.
-     */
-    bufmgr_gem->max_relocs = batch_size / sizeof(uint32_t) / 2 - 2;
-
-    bufmgr_gem->bufmgr.bo_alloc = mos_gem_bo_alloc;
-    bufmgr_gem->bufmgr.bo_alloc_for_render =
-        mos_gem_bo_alloc_for_render;
-    bufmgr_gem->bufmgr.bo_alloc_tiled = mos_gem_bo_alloc_tiled;
-    bufmgr_gem->bufmgr.bo_reference = mos_gem_bo_reference;
-    bufmgr_gem->bufmgr.bo_unreference = mos_gem_bo_unreference;
-    bufmgr_gem->bufmgr.bo_map = mos_gem_bo_map;
-    bufmgr_gem->bufmgr.bo_unmap = mos_gem_bo_unmap;
-    bufmgr_gem->bufmgr.bo_wait_rendering = mos_gem_bo_wait_rendering;
-    bufmgr_gem->bufmgr.bo_pad_to_size = mos_gem_bo_pad_to_size;
-    bufmgr_gem->bufmgr.bo_emit_reloc = mos_gem_bo_emit_reloc;
-    bufmgr_gem->bufmgr.bo_emit_reloc2 = mos_gem_bo_emit_reloc2;
-    bufmgr_gem->bufmgr.bo_emit_reloc_fence = mos_gem_bo_emit_reloc_fence;
-    bufmgr_gem->bufmgr.bo_pin = mos_gem_bo_pin;
-    bufmgr_gem->bufmgr.bo_unpin = mos_gem_bo_unpin;
-    bufmgr_gem->bufmgr.bo_get_tiling = mos_gem_bo_get_tiling;
-    bufmgr_gem->bufmgr.bo_set_tiling = mos_gem_bo_set_tiling;
-
-    bufmgr_gem->bufmgr.bo_flink = mos_gem_bo_flink;
-    /* Use the new one if available */
-    if (exec2) {
-        bufmgr_gem->bufmgr.bo_exec = mos_gem_bo_exec2;
-        bufmgr_gem->bufmgr.bo_mrb_exec = mos_gem_bo_mrb_exec2;
-    } else
-        bufmgr_gem->bufmgr.bo_exec = mos_gem_bo_exec;
-    bufmgr_gem->bufmgr.bo_busy = mos_gem_bo_busy;
-    bufmgr_gem->bufmgr.bo_madvise = mos_gem_bo_madvise;
-    bufmgr_gem->bufmgr.destroy = mos_bufmgr_gem_unref;
-    bufmgr_gem->bufmgr.debug = 0;
-    bufmgr_gem->bufmgr.check_aperture_space =
-        mos_gem_check_aperture_space;
-    bufmgr_gem->bufmgr.bo_disable_reuse = mos_gem_bo_disable_reuse;
-    bufmgr_gem->bufmgr.bo_is_reusable = mos_gem_bo_is_reusable;
-    bufmgr_gem->bufmgr.get_pipe_from_crtc_id =
-        mos_gem_get_pipe_from_crtc_id;
-    bufmgr_gem->bufmgr.bo_references = mos_gem_bo_references;
-
-    DRMINITLISTHEAD(&bufmgr_gem->named);
-    init_cache_buckets(bufmgr_gem);
-
-    DRMLISTADD(&bufmgr_gem->managers, &bufmgr_list);
-
-    bufmgr_gem->use_softpin = false;
-    mos_vma_heap_init(&bufmgr_gem->vma_heap[MEMZONE_SYS], MEMZONE_SYS_START, MEMZONE_SYS_SIZE);
-    mos_vma_heap_init(&bufmgr_gem->vma_heap[MEMZONE_DEVICE], MEMZONE_DEVICE_START, MEMZONE_DEVICE_SIZE);
-    if (BufmgrPrelim::IsPrelimSupported()) {
-        bufmgr_gem->prelim->InitVmaHeap(&bufmgr_gem->vma_heap[MEMZONE_PRIME]);
-    }
-
-exit:
-    pthread_mutex_unlock(&bufmgr_list_mutex);
-
-    return bufmgr_gem != nullptr ? &bufmgr_gem->bufmgr : nullptr;
-}
-
-struct mos_linux_context *
+static struct mos_linux_context *
 mos_gem_context_create_ext(struct mos_bufmgr *bufmgr, __u32 flags, bool bContextProtected)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
@@ -5041,17 +4390,20 @@ mos_gem_context_create_ext(struct mos_bufmgr *bufmgr, __u32 flags, bool bContext
     return context;
 }
 
-struct drm_i915_gem_vm_control* mos_gem_vm_create(struct mos_bufmgr *bufmgr)
+static __u32 mos_gem_vm_create(struct mos_bufmgr *bufmgr)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
     struct drm_i915_gem_vm_control *vm = nullptr;
+    __u32 vm_id;
     int ret;
 
-    vm = (struct drm_i915_gem_vm_control *)calloc(1, sizeof(*vm));
+    vm = (struct drm_i915_gem_vm_control *)calloc(1, sizeof(struct drm_i915_gem_vm_control));
     if (nullptr == vm)
     {
-        return nullptr;
+        MOS_DBG("vm calloc failed\n" );
+        return INVALID_VM;
     }
+
     memset(vm, 0, sizeof(*vm));
 
     ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GEM_VM_CREATE, vm);
@@ -5059,29 +4411,61 @@ struct drm_i915_gem_vm_control* mos_gem_vm_create(struct mos_bufmgr *bufmgr)
         MOS_DBG("DRM_IOCTL_I915_GEM_VM_CREATE failed: %s\n",
             strerror(errno));
         free(vm);
-        return nullptr;
+        return INVALID_VM;
     }
 
-    return vm;
+    vm_id = vm->vm_id;
+    free(vm);
+
+    return vm_id;
 }
 
-void mos_gem_vm_destroy(struct mos_bufmgr *bufmgr, struct drm_i915_gem_vm_control* vm)
+static void mos_gem_vm_destroy(struct mos_bufmgr *bufmgr, __u32 vm_id)
 {
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
-    assert(vm);
+    struct drm_i915_gem_vm_control *vm = nullptr;
     int ret;
 
+    if (vm_id == INVALID_VM)
+    {
+        MOS_DBG("input invalid param\n" );
+        return;
+    }
+
+    vm = (struct drm_i915_gem_vm_control *)calloc(1, sizeof(struct drm_i915_gem_vm_control));
+
+    if (nullptr == vm)
+    {
+        MOS_DBG("vm calloc failed\n" );
+        return;
+    }
+
+    vm->vm_id = vm_id;
     ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GEM_VM_DESTROY, vm);
     if (ret != 0) {
         MOS_DBG("DRM_IOCTL_I915_GEM_VM_DESTROY failed: %s\n",
             strerror(errno));
     }
+
     free(vm);
 }
 
-struct mos_linux_context *
-mos_gem_context_create_shared(struct mos_bufmgr *bufmgr, mos_linux_context* ctx, __u32 flags, bool bContextProtected)
+
+static struct mos_linux_context *
+mos_gem_context_create_shared(struct mos_bufmgr *bufmgr,
+            mos_linux_context* ctx,
+            __u32 flags,
+            bool bContextProtected,
+            void *engine_map,
+            uint8_t ctx_width,
+            uint8_t num_placements,
+            uint32_t ctx_type)
 {
+    MOS_UNUSED(engine_map);
+    MOS_UNUSED(ctx_width);
+    MOS_UNUSED(num_placements);
+    MOS_UNUSED(ctx_type);
+
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
     struct drm_i915_gem_context_create_ext create;
     struct mos_linux_context *context = nullptr;
@@ -5089,7 +4473,7 @@ mos_gem_context_create_shared(struct mos_bufmgr *bufmgr, mos_linux_context* ctx,
     struct drm_i915_gem_context_create_ext_setparam p_norecover;
     int ret;
 
-    if (ctx == nullptr || ctx->vm == nullptr)
+    if (ctx == nullptr || ctx->vm_id == INVALID_VM)
         return nullptr;
 
     if (BufmgrPrelim::IsPrelimSupported()) {
@@ -5134,7 +4518,7 @@ mos_gem_context_create_shared(struct mos_bufmgr *bufmgr, mos_linux_context* ctx,
     ret = mos_set_context_param(context,
                 0,
                 I915_CONTEXT_PARAM_VM,
-                ctx->vm->vm_id);
+                ctx->vm_id);
     if(ret != 0) {
         MOS_DBG("I915_CONTEXT_PARAM_VM failed: %s\n",
             strerror(errno));
@@ -5147,7 +4531,7 @@ mos_gem_context_create_shared(struct mos_bufmgr *bufmgr, mos_linux_context* ctx,
     return context;
 }
 
-int mos_query_engines_count(struct mos_bufmgr *bufmgr,
+static int mos_bufmgr_query_engines_count(struct mos_bufmgr *bufmgr,
                       unsigned int *nengine)
 {
     assert(bufmgr);
@@ -5206,17 +4590,22 @@ int mos_query_engines_count(struct mos_bufmgr *bufmgr,
     return ret;
 }
 
-int mos_query_engines(struct mos_bufmgr *bufmgr,
+static int mos_bufmgr_query_engines(struct mos_bufmgr *bufmgr,
                       __u16 engine_class,
                       __u64 caps,
                       unsigned int *nengine,
-                      struct i915_engine_class_instance *ci)
+                      void *engine_map)
 {
+    struct i915_engine_class_instance *ci = (struct i915_engine_class_instance *)engine_map;
+    if((bufmgr == nullptr) || (nengine == nullptr) || (ci == nullptr))
+    {
+        return -EINVAL;
+    }
+
     struct drm_i915_query query;
     struct drm_i915_query_item query_item;
     struct drm_i915_query_engine_info *engines = nullptr;
     int ret, len;
-    assert(bufmgr);
     struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
     if (BufmgrPrelim::IsPrelimSupported()) {
         return bufmgr_gem->prelim->QueryEngines(bufmgr_gem->has_lmem,
@@ -5296,7 +4685,86 @@ fini:
     return ret;
 }
 
-int mos_set_context_param_parallel(struct mos_linux_context *ctx,
+static int
+mos_bufmgr_query_sys_engines(struct mos_bufmgr *bufmgr, MEDIA_SYSTEM_INFO* gfx_info)
+{
+    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
+    int ret;
+
+    if (nullptr == gfx_info)
+    {
+        return -EINVAL;
+    }
+
+    unsigned int maxNengine = 0;
+    if((gfx_info->VDBoxInfo.NumberOfVDBoxEnabled == 0)
+        || (gfx_info->VEBoxInfo.NumberOfVEBoxEnabled == 0))
+    {
+        if (mos_query_engines_count(bufmgr, &maxNengine) || (maxNengine == 0))
+        {
+            MOS_OS_ASSERTMESSAGE("Failed to query engines count.\n");
+            return -ENODEV;
+        }
+    }
+
+    if (gfx_info->VDBoxInfo.NumberOfVDBoxEnabled == 0)
+    {
+        unsigned int nengine = maxNengine;
+        struct i915_engine_class_instance *uengines = nullptr;
+        uengines = (struct i915_engine_class_instance *)MOS_AllocAndZeroMemory(nengine * sizeof(struct i915_engine_class_instance));
+        if (nullptr == uengines)
+        {
+            return -ENOMEM;
+        }
+        ret = mos_bufmgr_query_engines(bufmgr, I915_ENGINE_CLASS_VIDEO, 0, &nengine, (void *)uengines);
+        if (ret)
+        {
+            MOS_OS_ASSERTMESSAGE("Failed to query vdbox engine\n");
+            MOS_SafeFreeMemory(uengines);
+            return -ENODEV;
+        }
+        else
+        {
+            gfx_info->VDBoxInfo.NumberOfVDBoxEnabled = nengine;
+        }
+
+        for (int i=0; i<nengine; i++)
+        {
+            gfx_info->VDBoxInfo.Instances.VDBoxEnableMask |= 1<<uengines[i].engine_instance;
+        }
+
+        MOS_SafeFreeMemory(uengines);
+    }
+
+    if (gfx_info->VEBoxInfo.NumberOfVEBoxEnabled == 0)
+    {
+        unsigned int nengine = maxNengine;
+        struct i915_engine_class_instance *uengines = nullptr;
+        uengines = (struct i915_engine_class_instance *)MOS_AllocAndZeroMemory(nengine * sizeof(struct i915_engine_class_instance));
+        if (nullptr == uengines)
+        {
+            return -ENOMEM;
+        }
+        ret = mos_bufmgr_query_engines(bufmgr, I915_ENGINE_CLASS_VIDEO_ENHANCE, 0, &nengine, (void *)uengines);
+        if (ret)
+        {
+            MOS_OS_ASSERTMESSAGE("Failed to query vebox engine\n");
+            MOS_SafeFreeMemory(uengines);
+            return -ENODEV;
+        }
+        else
+        {
+            MOS_OS_ASSERT(nengine <= maxNengine);
+            gfx_info->VEBoxInfo.NumberOfVEBoxEnabled = nengine;
+        }
+
+        MOS_SafeFreeMemory(uengines);
+    }
+
+    return 0;
+}
+
+static int mos_gem_set_context_param_parallel(struct mos_linux_context *ctx,
                      struct i915_engine_class_instance *ci,
                      unsigned int count)
 {
@@ -5360,7 +4828,7 @@ fini:
     return ret;
 }
 
-int mos_set_context_param_load_balance(struct mos_linux_context *ctx,
+static int mos_gem_set_context_param_load_balance(struct mos_linux_context *ctx,
                      struct i915_engine_class_instance *ci,
                      unsigned int count)
 {
@@ -5409,7 +4877,7 @@ fini:
     return ret;
 }
 
-int mos_set_context_param_bond(struct mos_linux_context *ctx,
+static int mos_gem_set_context_param_bond(struct mos_linux_context *ctx,
                         struct i915_engine_class_instance master_ci,
                         struct i915_engine_class_instance *bond_ci,
                         unsigned int bond_count)
@@ -5476,7 +4944,7 @@ fini:
     return ret;
 }
 
-drm_export bool mos_gem_bo_is_softpin(struct mos_linux_bo *bo)
+static bool mos_gem_bo_is_softpin(struct mos_linux_bo *bo)
 {
     struct mos_bo_gem *bo_gem = (struct mos_bo_gem *) bo;
     if (bo_gem == nullptr)
@@ -5487,7 +4955,7 @@ drm_export bool mos_gem_bo_is_softpin(struct mos_linux_bo *bo)
     return bo_gem->is_softpin;
 }
 
-drm_export bool
+static bool
 mos_gem_bo_is_exec_object_async(struct mos_linux_bo *bo)
 {
     struct mos_bo_gem *bo_gem = (struct mos_bo_gem *)bo;
@@ -5495,28 +4963,600 @@ mos_gem_bo_is_exec_object_async(struct mos_linux_bo *bo)
     return bo_gem->exec_async;
 }
 
-
-int mos_query_device_blob(int fd, MEDIA_SYSTEM_INFO* gfx_info)
+static int mos_bufmgr_query_device_blob(struct mos_bufmgr *bufmgr, MEDIA_SYSTEM_INFO* gfx_info)
 {
-    if (BufmgrPrelim::IsPrelimSupported()) {
-        return BufmgrPrelim::QueryDeviceBlob(fd, gfx_info);
+    if ((bufmgr == nullptr) || (gfx_info == nullptr))
+    {
+        return -EINVAL;
     }
-    return -1;
+
+    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem*)bufmgr;
+    if (bufmgr_gem == nullptr)
+    {
+        return -EINVAL;
+    }
+    int fd = bufmgr_gem->fd;
+    uint32_t *hw_info = nullptr;
+    uint32_t  ulength= 0;
+    int ret, i;
+    struct drm_i915_query_item query_item;
+
+    memclear(query_item);
+    query_item.length = 0;
+    query_item.query_id = DRM_I915_QUERY_HWCONFIG_BLOB;
+    ret = mos_gem_query_items(fd, &query_item, 1);
+    if (ret != 0 || query_item.length <= 0)
+    {
+        mos_safe_free(hw_info);
+        return (ret != 0) ? ret : -1;
+    }
+
+    hw_info = (uint32_t*) malloc(query_item.length);
+    if (hw_info != nullptr)
+    {
+        memset(hw_info, 0, query_item.length);
+    }
+    else
+    {
+        mos_safe_free(hw_info);
+        return -ENOMEM;
+    }
+    query_item.data_ptr = (uintptr_t) hw_info;
+    ret = mos_gem_query_items(fd, &query_item, 1);
+    if (ret != 0 || query_item.length <= 0)
+    {
+        mos_safe_free(hw_info);
+        return (ret != 0) ? ret : -1;
+    }
+    ulength = query_item.length / sizeof(uint32_t);
+    i = 0;
+    while (i < ulength) {
+        /* Attribute ID starts with 1 */
+        if (hw_info[i] <= 0)
+        {
+            mos_safe_free(hw_info);
+            return -EINVAL;
+        }
+        
+        #if DEBUG_BLOB_QUERY
+        fprintf("%s: %d\n", key_string[hw_info[i]], hw_info[i+2]);
+        #endif
+        if (INTEL_HWCONFIG_MAX_SLICES_SUPPORTED == hw_info[i])
+        {
+            if (hw_info[i+1] != 1)
+            {
+                mos_safe_free(hw_info);
+                return -EINVAL;
+            }
+            gfx_info->SliceCount = hw_info[i+2];
+            gfx_info->MaxSlicesSupported = hw_info[i+2];
+        }
+
+        if (INTEL_HWCONFIG_MAX_DUAL_SUBSLICES_SUPPORTED == hw_info[i])
+        {
+            if (hw_info[i+1] != 1)
+            {
+                mos_safe_free(hw_info);
+                return -EINVAL;
+            }
+            gfx_info->SubSliceCount = hw_info[i+2];
+            gfx_info->MaxSubSlicesSupported = hw_info[i+2];
+        }
+
+        if (INTEL_HWCONFIG_MAX_NUM_EU_PER_DSS == hw_info[i])
+        {
+            if (hw_info[i+1] != 1)
+            {
+                mos_safe_free(hw_info);
+                return -EINVAL;
+            }
+            gfx_info->MaxEuPerSubSlice = hw_info[i+2];
+        }
+
+        if (INTEL_HWCONFIG_L3_CACHE_SIZE_IN_KB == hw_info[i])
+        {
+            if (hw_info[i+1] != 1)
+            {
+                mos_safe_free(hw_info);
+                return -EINVAL;
+            }
+            gfx_info->L3CacheSizeInKb = hw_info[i+2];
+        }
+
+        if (INTEL_HWCONFIG_NUM_THREADS_PER_EU == hw_info[i])
+        {
+            if (hw_info[i+1] != 1)
+            {
+                mos_safe_free(hw_info);
+                return -EINVAL;
+            }
+            gfx_info->NumThreadsPerEu = hw_info[i+2];
+        }
+
+        if (INTEL_HWCONFIG_MAX_VECS == hw_info[i])
+        {
+            if (hw_info[i+1] != 1)
+            {
+                mos_safe_free(hw_info);
+                return -EINVAL;
+            }
+            gfx_info->MaxVECS = hw_info[i+2];
+        }
+
+        /* Advance to next key */
+        i += hw_info[i + 1];  // value size
+        i += 2;// KL size
+    }
+
+    if (hw_info != nullptr)
+    {
+        mos_safe_free(hw_info);
+        hw_info = nullptr;
+    }
+
+    return ret;
 }
 
-int mos_query_hw_ip_version(int fd, struct i915_engine_class_instance engine, void *ip_ver_info)
+static int mos_bufmgr_query_hw_ip_version(struct mos_bufmgr *bufmgr, __u16 engine_class, void *ip_ver_info)
 {
     return -1;
 }
 
-uint64_t mos_get_platform_information(struct mos_bufmgr *bufmgr)
+static uint64_t mos_bufmgr_get_platform_information(struct mos_bufmgr *bufmgr)
 {
     assert(bufmgr);
     return bufmgr->platform_information;
 }
 
-void mos_set_platform_information(struct mos_bufmgr *bufmgr, uint64_t p)
+static void mos_bufmgr_set_platform_information(struct mos_bufmgr *bufmgr, uint64_t p)
 {
     assert(bufmgr);
     bufmgr->platform_information |= p;
 }
+
+static int
+mos_bufmgr_get_ts_frequency(struct mos_bufmgr *bufmgr, uint32_t *ts_freq)
+{
+    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem*)bufmgr;
+
+    *ts_freq = bufmgr_gem->ts_freq;
+
+    return 0;
+}
+
+static bool
+mos_bufmgr_has_bsd2(struct mos_bufmgr *bufmgr)
+{
+    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem*)bufmgr;
+
+    return bufmgr_gem->has_bsd2;
+}
+
+#define I915_CONTEXT_PRIVATE_PARAM_BOOST 0x80000000
+void
+mos_bufmgr_enable_turbo_boost(struct mos_bufmgr *bufmgr)
+{
+    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem*)bufmgr;
+    struct drm_i915_gem_context_param ctxParam;
+    int32_t retVal = 0;
+
+    MOS_ZeroMemory( &ctxParam, sizeof( ctxParam ) );
+    ctxParam.param = I915_CONTEXT_PRIVATE_PARAM_BOOST;
+    ctxParam.value = 1;
+    retVal = drmIoctl(bufmgr_gem->fd,
+                      DRM_IOCTL_I915_GEM_CONTEXT_SETPARAM, &ctxParam );
+}
+
+/**
+ * Initializes the GEM buffer manager, which uses the kernel to allocate, map,
+ * and manage map buffer objections.
+ *
+ * \param fd File descriptor of the opened DRM device.
+ */
+static struct mos_bufmgr *
+mos_bufmgr_gem_init_i915(int fd, int batch_size)
+{
+    struct mos_bufmgr_gem *bufmgr_gem;
+    struct drm_i915_gem_get_aperture aperture;
+    drm_i915_getparam_t gp;
+    int ret, tmp;
+    bool exec2 = false;
+
+    pthread_mutex_lock(&bufmgr_list_mutex);
+
+    bufmgr_gem = mos_bufmgr_gem_find(fd);
+    if (bufmgr_gem)
+        goto exit;
+
+    bufmgr_gem = (struct mos_bufmgr_gem *)calloc(1, sizeof(*bufmgr_gem));
+    if (bufmgr_gem == nullptr)
+        goto exit;
+
+    bufmgr_gem->fd = fd;
+    atomic_set(&bufmgr_gem->refcount, 1);
+
+    if (pthread_mutex_init(&bufmgr_gem->lock, nullptr) != 0) {
+        free(bufmgr_gem);
+        bufmgr_gem = nullptr;
+        goto exit;
+    }
+
+    bufmgr_gem->bufmgr.bo_alloc = mos_gem_bo_alloc;
+    bufmgr_gem->bufmgr.bo_alloc_for_render =
+        mos_gem_bo_alloc_for_render;
+    bufmgr_gem->bufmgr.bo_alloc_tiled = mos_gem_bo_alloc_tiled;
+    bufmgr_gem->bufmgr.bo_reference = mos_gem_bo_reference;
+    bufmgr_gem->bufmgr.bo_unreference = mos_gem_bo_unreference;
+    bufmgr_gem->bufmgr.bo_map = mos_gem_bo_map;
+    bufmgr_gem->bufmgr.bo_unmap = mos_gem_bo_unmap;
+    bufmgr_gem->bufmgr.bo_wait_rendering = mos_gem_bo_wait_rendering;
+    bufmgr_gem->bufmgr.bo_pad_to_size = mos_gem_bo_pad_to_size;
+    bufmgr_gem->bufmgr.bo_emit_reloc = mos_gem_bo_emit_reloc;
+    bufmgr_gem->bufmgr.bo_get_tiling = mos_gem_bo_get_tiling;
+    bufmgr_gem->bufmgr.bo_set_tiling = mos_gem_bo_set_tiling;
+    bufmgr_gem->bufmgr.bo_flink = mos_gem_bo_flink;
+    bufmgr_gem->bufmgr.bo_exec = mos_gem_bo_exec2;
+    bufmgr_gem->bufmgr.bo_mrb_exec = mos_gem_bo_mrb_exec2;
+    bufmgr_gem->bufmgr.bo_busy = mos_gem_bo_busy;
+    bufmgr_gem->bufmgr.bo_madvise = mos_gem_bo_madvise;
+    bufmgr_gem->bufmgr.destroy = mos_bufmgr_gem_unref;
+    bufmgr_gem->bufmgr.debug = 0;
+    bufmgr_gem->bufmgr.check_aperture_space =
+        mos_gem_check_aperture_space;
+    bufmgr_gem->bufmgr.bo_disable_reuse = mos_gem_bo_disable_reuse;
+    bufmgr_gem->bufmgr.bo_is_reusable = mos_gem_bo_is_reusable;
+    bufmgr_gem->bufmgr.bo_references = mos_gem_bo_references;
+
+    bufmgr_gem->bufmgr.bo_wait = mos_gem_bo_wait;
+    bufmgr_gem->bufmgr.bo_clear_relocs = mos_gem_bo_clear_relocs;
+    bufmgr_gem->bufmgr.context_create = mos_gem_context_create;
+    bufmgr_gem->bufmgr.context_create_ext = mos_gem_context_create_ext;
+    bufmgr_gem->bufmgr.context_create_shared = mos_gem_context_create_shared;
+    bufmgr_gem->bufmgr.context_destroy = mos_gem_context_destroy;
+    bufmgr_gem->bufmgr.vm_create = mos_gem_vm_create;
+    bufmgr_gem->bufmgr.vm_destroy = mos_gem_vm_destroy;
+    bufmgr_gem->bufmgr.bo_context_exec2 = mos_gem_bo_context_exec2;
+    bufmgr_gem->bufmgr.bo_context_exec3 = mos_gem_bo_context_exec3;
+    bufmgr_gem->bufmgr.bo_is_exec_object_async = mos_gem_bo_is_exec_object_async;
+    bufmgr_gem->bufmgr.bo_is_softpin = mos_gem_bo_is_softpin;
+    bufmgr_gem->bufmgr.bo_map_gtt = mos_gem_bo_map_gtt;
+    bufmgr_gem->bufmgr.bo_unmap_gtt = mos_gem_bo_unmap_gtt;
+    bufmgr_gem->bufmgr.bo_map_wc = mos_gem_bo_map_wc;
+    bufmgr_gem->bufmgr.bo_unmap_wc = mos_gem_bo_unmap_wc;
+    bufmgr_gem->bufmgr.bo_map_unsynchronized = mos_gem_bo_map_unsynchronized;
+    bufmgr_gem->bufmgr.bo_start_gtt_access = mos_gem_bo_start_gtt_access;
+    bufmgr_gem->bufmgr.bo_get_softpin_targets_info = mos_bufmgr_bo_get_softpin_targets_info;
+    bufmgr_gem->bufmgr.bo_create_from_name = mos_bufmgr_bo_gem_create_from_name;
+    bufmgr_gem->bufmgr.enable_reuse = mos_gem_enable_reuse;
+    bufmgr_gem->bufmgr.enable_softpin = mos_gem_enable_softpin;
+    bufmgr_gem->bufmgr.enable_vmbind = mos_gem_enable_vmbind;
+    bufmgr_gem->bufmgr.disable_object_capture = mos_gem_disable_object_capture;
+    bufmgr_gem->bufmgr.get_memory_info = mos_gem_get_memory_info;
+    bufmgr_gem->bufmgr.get_devid = mos_gem_get_devid;
+    bufmgr_gem->bufmgr.set_context_param = mos_gem_set_context_param;
+    bufmgr_gem->bufmgr.set_context_param_parallel = mos_gem_set_context_param_parallel;
+    bufmgr_gem->bufmgr.set_context_param_load_balance = mos_gem_set_context_param_load_balance;
+    bufmgr_gem->bufmgr.set_context_param_bond = mos_gem_set_context_param_bond;
+    bufmgr_gem->bufmgr.get_context_param = mos_gem_get_context_param;
+    bufmgr_gem->bufmgr.bo_create_from_prime = mos_gem_bo_create_from_prime;
+    bufmgr_gem->bufmgr.bo_export_to_prime = mos_gem_bo_export_to_prime;
+    bufmgr_gem->bufmgr.reg_read = mos_bufmg_reg_read;
+    bufmgr_gem->bufmgr.get_reset_stats = mos_bufmg_get_reset_stats;
+    bufmgr_gem->bufmgr.get_context_param_sseu = mos_bufmgr_get_context_param_sseu;
+    bufmgr_gem->bufmgr.set_context_param_sseu = mos_bufmgr_set_context_param_sseu;
+    bufmgr_gem->bufmgr.query_sys_engines = mos_bufmgr_query_sys_engines;
+    bufmgr_gem->bufmgr.query_device_blob = mos_bufmgr_query_device_blob;
+    bufmgr_gem->bufmgr.query_hw_ip_version = mos_bufmgr_query_hw_ip_version;
+    bufmgr_gem->bufmgr.get_platform_information = mos_bufmgr_get_platform_information;
+    bufmgr_gem->bufmgr.set_platform_information = mos_bufmgr_set_platform_information;
+    bufmgr_gem->bufmgr.query_engines_count = mos_bufmgr_query_engines_count;
+    bufmgr_gem->bufmgr.query_engines = mos_bufmgr_query_engines;
+    bufmgr_gem->bufmgr.switch_off_n_bits = mos_bufmgr_switch_off_n_bits;
+    bufmgr_gem->bufmgr.hweight8 = mos_bufmgr_hweight8;
+    bufmgr_gem->bufmgr.get_ts_frequency = mos_bufmgr_get_ts_frequency;
+    bufmgr_gem->bufmgr.has_bsd2 = mos_bufmgr_has_bsd2;
+    bufmgr_gem->bufmgr.enable_turbo_boost = mos_bufmgr_enable_turbo_boost;
+
+    bufmgr_gem->mem_profiler_path = getenv("MEDIA_MEMORY_PROFILER_LOG");
+    if (bufmgr_gem->mem_profiler_path != nullptr)
+    {
+        if (strcmp(bufmgr_gem->mem_profiler_path, "/sys/kernel/debug/tracing/trace_marker") == 0)
+        {
+            ret = bufmgr_gem->mem_profiler_fd = open(bufmgr_gem->mem_profiler_path, O_WRONLY );
+        }
+        else
+        {
+            ret = bufmgr_gem->mem_profiler_fd = open(bufmgr_gem->mem_profiler_path, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+        }
+
+        if (ret == -1)
+        {
+            MOS_DBG("Failed to open %s: %s\n", bufmgr_gem->mem_profiler_path, strerror(errno));
+        }
+    }
+    else
+    {
+        bufmgr_gem->mem_profiler_fd = -1;
+    }
+
+    memclear(aperture);
+    ret = drmIoctl(bufmgr_gem->fd,
+               DRM_IOCTL_I915_GEM_GET_APERTURE,
+               &aperture);
+
+    if (ret == 0)
+        bufmgr_gem->gtt_size = aperture.aper_available_size;
+    else {
+        fprintf(stderr, "DRM_IOCTL_I915_GEM_APERTURE failed: %s\n",
+            strerror(errno));
+        bufmgr_gem->gtt_size = 128 * 1024 * 1024;
+        fprintf(stderr, "Assuming %dkB available aperture size.\n"
+            "May lead to reduced performance or incorrect "
+            "rendering.\n",
+            (int)bufmgr_gem->gtt_size / 1024);
+    }
+
+    /* support Gen 8+ */
+    bufmgr_gem->pci_device = get_pci_device_id(bufmgr_gem);
+
+    if (bufmgr_gem->pci_device == 0) {
+        pthread_mutex_destroy(&bufmgr_gem->lock);
+        if (bufmgr_gem->mem_profiler_fd != -1)
+        {
+            close(bufmgr_gem->mem_profiler_fd);
+        }
+        free(bufmgr_gem);
+        bufmgr_gem = nullptr;
+        goto exit;
+    }
+
+    memclear(gp);
+    gp.value = &tmp;
+
+    gp.param = I915_PARAM_HAS_EXECBUF2;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    if (!ret)
+        exec2 = true;
+
+    gp.param = I915_PARAM_HAS_BSD;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    bufmgr_gem->has_bsd = ret == 0;
+
+    gp.param = I915_PARAM_HAS_BSD2;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    bufmgr_gem->has_bsd2 = (ret == 0 && *gp.value != 0);
+
+    gp.param = I915_PARAM_HAS_BLT;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    bufmgr_gem->has_blt = ret == 0;
+
+    gp.param = I915_PARAM_HAS_RELAXED_FENCING;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    bufmgr_gem->has_relaxed_fencing = ret == 0;
+
+    bufmgr_gem->bufmgr.bo_alloc_userptr = check_bo_alloc_userptr;
+
+    gp.param = I915_PARAM_HAS_WAIT_TIMEOUT;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    bufmgr_gem->has_wait_timeout = ret == 0;
+
+    gp.param = I915_PARAM_HAS_LLC;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    bufmgr_gem->has_llc = *gp.value;
+
+    gp.param = I915_PARAM_HAS_VEBOX;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    bufmgr_gem->has_vebox = (ret == 0) & (*gp.value > 0);
+
+    gp.param = I915_PARAM_MMAP_VERSION;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    bufmgr_gem->has_ext_mmap = (ret == 0) & (*gp.value > 0);
+
+    gp.param = I915_PARAM_NUM_FENCES_AVAIL;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    bufmgr_gem->has_fence_reg = (ret == 0) & (*gp.value > 0);
+
+    gp.param = I915_PARAM_HAS_EXEC_SOFTPIN;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    if (ret == 0 && *gp.value > 0) {
+        bufmgr_gem->bufmgr.bo_set_softpin        = mos_gem_bo_set_softpin;
+        bufmgr_gem->bufmgr.bo_add_softpin_target = mos_gem_bo_add_softpin_target;
+    }
+
+    gp.param = I915_PARAM_HAS_EXEC_ASYNC;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    if (ret == 0 && *gp.value > 0) {
+        bufmgr_gem->bufmgr.set_object_async      = mos_gem_bo_set_object_async;
+        bufmgr_gem->bufmgr.set_exec_object_async = mos_gem_bo_set_exec_object_async;
+    }
+
+    gp.param = I915_PARAM_HAS_EXEC_CAPTURE;
+    ret      = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    if (ret == 0 && *gp.value > 0)
+    {
+        bufmgr_gem->bufmgr.set_object_capture      = mos_gem_bo_set_object_capture;
+    }
+    else
+    {
+        bufmgr_gem->object_capture_disabled = true;
+    }
+
+    gp.param = I915_PARAM_MMAP_GTT_VERSION;
+    ret =  drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    bufmgr_gem->has_mmap_offset  =  (ret == 0) && (*gp.value >= 4);
+
+    gp.param = I915_PARAM_CS_TIMESTAMP_FREQUENCY;
+    ret =  drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    bufmgr_gem->ts_freq   =  (ret == 0) ? *gp.value : 0;
+
+    struct drm_i915_gem_context_param context_param;
+    memset(&context_param, 0, sizeof(context_param));
+    context_param.param = I915_CONTEXT_PARAM_GTT_SIZE;
+    ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GEM_CONTEXT_GETPARAM, &context_param);
+    if (ret == 0){
+        uint64_t gtt_size_4g = (uint64_t)1 << 32;
+        if (context_param.value > gtt_size_4g)
+        {
+            bufmgr_gem->bufmgr.bo_use_48b_address_range = mos_gem_bo_use_48b_address_range;
+        }
+    }
+
+    bufmgr_gem->prelim = BufmgrPrelim::CreatePrelim(bufmgr_gem->fd);
+
+    bufmgr_gem->has_lmem = mos_gem_has_lmem(bufmgr_gem);
+
+    bufmgr_gem->device_type = DEVICE_TYPE_I915;
+
+    if (nullptr != bufmgr_gem->prelim) {
+        bufmgr_gem->prelim->Init(bufmgr_gem->bufmgr, bufmgr_gem->has_lmem);
+    }
+
+    if (!BufmgrPrelim::IsPrelimSupported()) {
+        bufmgr_gem->bufmgr.has_full_vd = true;
+    }
+
+    /* Let's go with one relocation per every 2 dwords (but round down a bit
+     * since a power of two will mean an extra page allocation for the reloc
+     * buffer).
+     *
+     * Every 4 was too few for the blender benchmark.
+     */
+    bufmgr_gem->max_relocs = batch_size / sizeof(uint32_t) / 2 - 2;
+
+    DRMINITLISTHEAD(&bufmgr_gem->named);
+    init_cache_buckets(bufmgr_gem);
+
+    DRMLISTADD(&bufmgr_gem->managers, &bufmgr_list);
+
+    bufmgr_gem->use_softpin = false;
+    mos_vma_heap_init(&bufmgr_gem->vma_heap[MEMZONE_SYS], MEMZONE_SYS_START, MEMZONE_SYS_SIZE);
+    mos_vma_heap_init(&bufmgr_gem->vma_heap[MEMZONE_DEVICE], MEMZONE_DEVICE_START, MEMZONE_DEVICE_SIZE);
+    if (BufmgrPrelim::IsPrelimSupported()) {
+        bufmgr_gem->prelim->InitVmaHeap(&bufmgr_gem->vma_heap[MEMZONE_PRIME]);
+    }
+
+exit:
+    pthread_mutex_unlock(&bufmgr_list_mutex);
+
+    return bufmgr_gem != nullptr ? &bufmgr_gem->bufmgr : nullptr;
+}
+
+struct mos_bufmgr *
+mos_bufmgr_gem_init(int fd, int batch_size)
+{
+    if(DEVICE_TYPE_I915 == mos_query_device_type(fd))
+    {
+        return mos_bufmgr_gem_init_i915(fd, batch_size);
+    }
+
+    return nullptr;
+}
+
+int mos_get_param(int fd, int32_t param, uint32_t *param_value)
+{
+    if((fd < 0) || (param_value == nullptr))
+    {
+        return -EINVAL;
+    }
+
+    struct drm_i915_getparam gp;
+    gp.param = param;
+    gp.value = (int32_t *)param_value;
+
+    return drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp) == 0;
+}
+
+static int mos_get_drvinfo_i915(int fd, struct LinuxDriverInfo *drvInfo)
+{
+    if ((fd < 0) || (drvInfo == nullptr))
+    {
+        return -EINVAL;
+    }
+
+    uint32_t retValue = 0;
+
+    drvInfo->hasBsd = 0;
+    if (mos_get_param(fd, I915_PARAM_HAS_BSD, &retValue))
+    {
+        drvInfo->hasBsd = !!retValue;
+    }
+
+    drvInfo->hasBsd2 = 0;
+    retValue = 0;
+    if (mos_get_param(fd, I915_PARAM_HAS_BSD2, &retValue))
+    {
+        drvInfo->hasBsd2 = !!retValue;
+    }
+
+    drvInfo->hasVebox = 0;
+    retValue = 0;
+    if (mos_get_param(fd, I915_PARAM_HAS_VEBOX, &retValue))
+    {
+        drvInfo->hasVebox = !!retValue;
+    }
+
+    drvInfo->hasPpgtt = 1;
+    retValue = 0;
+    if (mos_get_param(fd, I915_PARAM_HAS_ALIASING_PPGTT, &retValue))
+    {
+        drvInfo->hasPpgtt = !!retValue;
+    }
+
+    drvInfo->hasHuc = 0;
+    retValue = 0;
+    if (mos_get_param(fd, I915_PARAM_HUC_STATUS, &retValue))
+    {
+        drvInfo->hasHuc = !!retValue;
+        if (retValue == 1)
+        {
+            drvInfo->hasProtectedHuc = 1;
+        }
+    }
+
+    drvInfo->devId = 0;
+    retValue = 0;
+    if (mos_get_param(fd, I915_PARAM_CHIPSET_ID, &retValue))
+    {
+        drvInfo->devId = retValue;
+    }
+    drvInfo->devRev = 0;
+    retValue = 0;
+    if (mos_get_param(fd, I915_PARAM_REVISION, &retValue))
+    {
+        drvInfo->devRev = retValue;
+    }
+
+    drvInfo->euCount = 0;
+    retValue = 0;
+    if (mos_get_param(fd, I915_PARAM_EU_TOTAL, &retValue))
+    {
+        drvInfo->euCount = retValue;
+    }
+
+    drvInfo->subSliceCount = 0;
+    retValue = 0;
+    if (mos_get_param(fd, I915_PARAM_SUBSLICE_TOTAL, &retValue))
+    {
+        drvInfo->subSliceCount = retValue;
+    }
+
+    // There is no interface to read total slice count from drm/i915, so we
+    // will set the slice count in InitMediaSysInfo accordint to Device ID.
+    drvInfo->sliceCount = 0;
+
+    return 0;
+}
+
+int
+mos_get_drvinfo(int fd, struct LinuxDriverInfo *drvInfo)
+{
+    int device_type = mos_query_device_type(fd);
+
+    if(DEVICE_TYPE_I915 == device_type)
+    {
+        return mos_get_drvinfo_i915(fd, drvInfo);
+    }
+
+    return -ENODEV;
+}
+

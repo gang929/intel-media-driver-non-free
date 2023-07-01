@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2022, Intel Corporation
+* Copyright (c) 2021-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -99,11 +99,11 @@ const VAImageFormat m_supportedImageformatsXe_Lpm_Plus_Base[] =
     (fourcc_mod_code(INTEL, (val)) | INTEL_PRELIM_ID_FLAG)
 
 /* this definition is to avoid duplicate drm_fourcc.h this file is updated seldom */
-#ifndef PRELIM_I915_FORMAT_MOD_4_TILED_MTL_MC_CCS
-#define PRELIM_I915_FORMAT_MOD_4_TILED_MTL_MC_CCS    intel_prelim_fourcc_mod_code(17)
+#ifndef I915_FORMAT_MOD_4_TILED_MTL_MC_CCS
+#define I915_FORMAT_MOD_4_TILED_MTL_MC_CCS    fourcc_mod_code(INTEL, 14)
 #endif
-#ifndef PRELIM_I915_FORMAT_MOD_4_TILED_MTL_RC_CCS
-#define PRELIM_I915_FORMAT_MOD_4_TILED_MTL_RC_CCS    intel_prelim_fourcc_mod_code(16)
+#ifndef I915_FORMAT_MOD_4_TILED_MTL_RC_CCS_CC
+#define I915_FORMAT_MOD_4_TILED_MTL_RC_CCS_CC    fourcc_mod_code(INTEL, 15)
 #endif
 
 extern template class MediaLibvaCapsFactory<MediaLibvaCaps, DDI_MEDIA_CONTEXT>;
@@ -202,6 +202,8 @@ VAStatus MediaLibvaCapsMtlBase::LoadAv1EncProfileEntrypoints()
         VAConfigAttribValEncAV1Ext2 attribValAV1ToolsExt2;
         memset(&attribValAV1ToolsExt2, 0, sizeof(attribValAV1ToolsExt2));
         attribValAV1ToolsExt2.bits.tile_size_bytes_minus1 = 3;
+        attribValAV1ToolsExt2.bits.obu_size_bytes_minus1  = 3;
+        attribValAV1ToolsExt2.bits.max_tile_num_minus1    = 511;
         attribValAV1ToolsExt2.bits.tx_mode_support        = 2;
 
         attrib.value = attribValAV1ToolsExt2.value;
@@ -807,6 +809,10 @@ VAStatus MediaLibvaCapsMtlBase::GetPlatformSpecificAttrib(VAProfile profile,
             {
                 *value = CODEC_8K_MAX_PIC_WIDTH;
             }
+            else if(profile == IsMpeg2Profile(profile))
+            {
+                *value = CODEC_2K_MAX_PIC_WIDTH;
+            }
             else
             {
                 *value = CODEC_MAX_PIC_WIDTH;
@@ -834,6 +840,10 @@ VAStatus MediaLibvaCapsMtlBase::GetPlatformSpecificAttrib(VAProfile profile,
             else if(profile == VAProfileAV1Profile0)
             {
                 *value = CODEC_8K_MAX_PIC_HEIGHT;
+            }
+            else if(profile == IsMpeg2Profile(profile))
+            {
+                *value = CODEC_2K_MAX_PIC_HEIGHT;
             }
             else
             {
@@ -1179,7 +1189,7 @@ VAStatus MediaLibvaCapsMtlBase::CreateDecAttributes(
     {
         attrib.value = ENCODE_JPEG_MAX_PIC_WIDTH;
     }
-    if(IsVc1Profile(profile))
+    if(IsVc1Profile(profile) || IsMpeg2Profile(profile))
     {
         attrib.value = CODEC_2K_MAX_PIC_WIDTH;
     }
@@ -1189,7 +1199,7 @@ VAStatus MediaLibvaCapsMtlBase::CreateDecAttributes(
     }
     if(IsAvcProfile(profile))
     {
-        attrib.value = CODEC_8K_MAX_PIC_WIDTH;
+        attrib.value = CODEC_4K_MAX_PIC_WIDTH;
     }
     if(IsHevcProfile(profile) || IsVp9Profile(profile) || IsAV1Profile(profile))
     {
@@ -1203,7 +1213,7 @@ VAStatus MediaLibvaCapsMtlBase::CreateDecAttributes(
     {
         attrib.value = ENCODE_JPEG_MAX_PIC_HEIGHT;
     }
-    if(IsVc1Profile(profile))
+    if(IsVc1Profile(profile) || IsMpeg2Profile(profile))
     {
         attrib.value = CODEC_2K_MAX_PIC_HEIGHT;
     }
@@ -1213,7 +1223,7 @@ VAStatus MediaLibvaCapsMtlBase::CreateDecAttributes(
     }
     if(IsAvcProfile(profile))
     {
-        attrib.value = CODEC_8K_MAX_PIC_HEIGHT;
+        attrib.value = CODEC_4K_MAX_PIC_HEIGHT;
     }
     if(IsHevcProfile(profile) || IsVp9Profile(profile) || IsAV1Profile(profile))
     {
@@ -2387,6 +2397,10 @@ VAStatus MediaLibvaCapsMtlBase::CreateEncAttributes(
     if (entrypoint == VAEntrypointEncSliceLP)
     {
         attrib.value = DDI_CODEC_VDENC_MAX_L0_REF_FRAMES | (DDI_CODEC_VDENC_MAX_L1_REF_FRAMES << DDI_CODEC_LEFT_SHIFT_FOR_REFLIST1);
+        if (IsAvcProfile(profile))
+        {
+            attrib.value = DDI_CODEC_VDENC_MAX_L0_REF_FRAMES | (DDI_CODEC_VDENC_MAX_L1_REF_FRAMES_RAB_AVC << DDI_CODEC_LEFT_SHIFT_FOR_REFLIST1);
+        }
         if (IsHevcProfile(profile))
         {
             attrib.value = DDI_CODEC_VDENC_MAX_L0_REF_FRAMES_LDB | (DDI_CODEC_VDENC_MAX_L1_REF_FRAMES_LDB << DDI_CODEC_LEFT_SHIFT_FOR_REFLIST1);
@@ -2660,8 +2674,8 @@ VAStatus MediaLibvaCapsMtlBase::GetSurfaceModifier(DDI_MEDIA_SURFACE* mediaSurfa
     {
         if(m_mediaCtx->m_auxTableMgr && bMmcEnabled)
         {
-            modifier = GmmFlags.Info.MediaCompressed ? PRELIM_I915_FORMAT_MOD_4_TILED_MTL_MC_CCS :
-                (GmmFlags.Info.RenderCompressed ? PRELIM_I915_FORMAT_MOD_4_TILED_MTL_RC_CCS : I915_FORMAT_MOD_4_TILED);
+            modifier = GmmFlags.Info.MediaCompressed ? I915_FORMAT_MOD_4_TILED_MTL_MC_CCS :
+                (GmmFlags.Info.RenderCompressed ? I915_FORMAT_MOD_4_TILED_MTL_RC_CCS_CC : I915_FORMAT_MOD_4_TILED);
         }
         else
         {
@@ -2686,12 +2700,12 @@ VAStatus MediaLibvaCapsMtlBase::SetExternalSurfaceTileFormat(DDI_MEDIA_SURFACE* 
             tileformat = I915_TILING_Y;
             bMemCompEnable = false;
             break;
-        case PRELIM_I915_FORMAT_MOD_4_TILED_MTL_RC_CCS:
+        case I915_FORMAT_MOD_4_TILED_MTL_RC_CCS_CC:
             tileformat = I915_TILING_Y;
             bMemCompEnable = true;
             bMemCompRC = true;
             break;
-        case PRELIM_I915_FORMAT_MOD_4_TILED_MTL_MC_CCS:
+        case I915_FORMAT_MOD_4_TILED_MTL_MC_CCS:
             tileformat = I915_TILING_Y;
             bMemCompEnable = true;
             bMemCompRC = false;

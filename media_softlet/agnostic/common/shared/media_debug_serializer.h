@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, Intel Corporation
+* Copyright (c) 2022-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -42,8 +42,59 @@ class MediaDebugSerializer
 public:
     void operator()(std::ostream &os, const void *data, size_t size)
     {
-        size_t num = size / sizeof(T);
-        size_t idx = 0;
+        const size_t num = size / sizeof(T);
+        size_t       idx = 0;
+
+        if (num > 1)
+        {
+            os << "Total Num: " << num << std::endl;
+            os << std::endl;
+        }
+
+        while (idx < num)
+        {
+            if (num > 1)
+            {
+                os << "---------"
+                   << "Index = " << idx << "---------" << std::endl;
+            }
+
+            os << reinterpret_cast<const T *>(data)[idx++] << std::endl;
+        }
+
+        size_t numTrailingBytes = size - num * sizeof(T);
+        if (numTrailingBytes)
+        {
+            os << numTrailingBytes << " trailing bytes cannot be reinterpreted as "
+               << typeid(T).name() << " whose size is " << sizeof(T) << ":"
+               << std::endl;
+            for (size_t i = size - numTrailingBytes; i < size; ++i)
+            {
+                os << std::setfill('0') << std::setw(2) << std::hex << std::nouppercase
+                   << static_cast<uint32_t>(reinterpret_cast<const uint8_t *>(data)[i])
+                   << std::endl;
+            }
+        }
+    }
+
+    MEDIA_CLASS_DEFINE_END(MediaDebugSerializer)
+};
+
+template <typename T>
+class MediaDebugSerializer<
+    T,
+#if __cplusplus < 201703L
+    typename std::enable_if<std::is_fundamental<T>::value && !std::is_unsigned<T>::value>::type>
+#else
+    std::enable_if_t<std::is_fundamental_v<T> && !std::is_unsigned_v<T> > >
+#endif
+{
+public:
+    void operator()(std::ostream &os, const void *data, size_t size)
+    {
+        const size_t num = size / sizeof(T);
+        size_t       idx = 0;
+
         while (idx < num)
         {
             os << reinterpret_cast<const T *>(data)[idx++] << std::endl;
@@ -57,7 +108,7 @@ public:
                << std::endl;
             for (size_t i = size - numTrailingBytes; i < size; ++i)
             {
-                os << std::setfill('0') << std::setw(2) << std::hex << std::uppercase
+                os << std::setfill('0') << std::setw(2) << std::hex << std::nouppercase
                    << static_cast<uint32_t>(reinterpret_cast<const uint8_t *>(data)[i])
                    << std::endl;
             }
@@ -79,15 +130,15 @@ class MediaDebugSerializer<
 public:
     void operator()(std::ostream &os, const void *data, size_t size)
     {
-        constexpr size_t LINE_WIDTH = 32 / sizeof(T);
+        constexpr size_t LINE_WIDTH = 16 / sizeof(T);
         constexpr size_t ELEM_WIDTH = sizeof(T) << 1;
 
-        size_t num = size / sizeof(T);
-        size_t idx = 0;
+        const size_t num = size / sizeof(T);
+        size_t       idx = 0;
         while (idx < num)
         {
             os << std::setfill('0') << std::setw(ELEM_WIDTH) << std::hex
-               << std::uppercase << reinterpret_cast<const T *>(data)[idx]
+               << std::nouppercase << reinterpret_cast<const T *>(data)[idx]
                << ((idx + 1) % LINE_WIDTH == 0 ? "\n" : " ");
             ++idx;
         }
@@ -103,7 +154,7 @@ public:
 
             std::stringstream ss;
             ss << std::setfill('?') << std::setw(ELEM_WIDTH) << std::hex
-               << std::uppercase << last;
+               << std::nouppercase << last;
 
             std::string str(ss.str());
             if (str[0] == '?')  // little endian
@@ -137,7 +188,7 @@ public:
         size_t idx = 0;
         while (idx < size)
         {
-            os << std::setfill('0') << std::setw(2) << std::hex << std::uppercase
+            os << std::setfill('0') << std::setw(2) << std::hex << std::nouppercase
                << static_cast<uint32_t>(reinterpret_cast<const uint8_t *>(data)[idx])
                << ((idx + 1) % 32 == 0 ? "\n" : " ");
             ++idx;
@@ -158,6 +209,25 @@ public:
         {
             os << static_cast<int32_t>(reinterpret_cast<const int8_t *>(data)[idx++])
                << std::endl;
+        }
+    }
+
+    MEDIA_CLASS_DEFINE_END(MediaDebugSerializer)
+};
+
+template <>
+class MediaDebugSerializer<void>
+{
+public:
+    void operator()(std::ostream &os, const void *data, size_t size)
+    {
+        size_t idx = 0;
+        while (idx < size)
+        {
+            os << std::setfill('0') << std::setw(2) << std::hex << std::nouppercase
+               << static_cast<uint32_t>(reinterpret_cast<const uint8_t *>(data)[idx])
+               << ((idx + 1) % 32 == 0 ? "\n" : " ");
+            ++idx;
         }
     }
 

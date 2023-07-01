@@ -109,6 +109,9 @@ namespace decode
         m_passNum = basicFeature->m_tileCoding.GetNumPass();
         m_scalability->SetPassNumber(m_passNum);
 
+        if (scalPars.disableScalability)
+            m_osInterface->pfnSetMultiEngineEnabled(m_osInterface, COMPONENT_Decode, false);
+
         return MOS_STATUS_SUCCESS;
     }
 
@@ -209,13 +212,6 @@ namespace decode
                             "AV1_DEC_Secondary"));
                     })
 
-#if MOS_EVENT_TRACE_DUMP_SUPPORTED
-                if (MOS_TraceKeyEnabled(TR_KEY_DECODE_COMMAND))
-                {
-                    TraceDataDump2ndLevelBB(m_av1DecodePkt->GetSecondLvlBB());
-                }
-#endif
-
 #if (_DEBUG || _RELEASE_INTERNAL)
                 DECODE_CHK_STATUS(StatusCheck());
 #endif
@@ -224,7 +220,9 @@ namespace decode
                 {
                     DECODE_CHK_STATUS(UserFeatureReport());
                 }
-                basicFeature->m_frameNum++;
+
+                DecodeFrameIndex++;
+                basicFeature->m_frameNum = DecodeFrameIndex;
 
                 DECODE_CHK_STATUS(m_statusReport->Reset());
             }
@@ -307,10 +305,12 @@ namespace decode
             pair.second->Destroy();
         }
 
+#ifdef _MMC_SUPPORTED
         if (m_mmcState != nullptr)
         {
             MOS_Delete(m_mmcState);
         }
+#endif
 
         return Av1PipelineG12_Base::Uninitialize();
     }

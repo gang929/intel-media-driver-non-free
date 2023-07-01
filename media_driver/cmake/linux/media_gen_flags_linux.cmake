@@ -22,9 +22,9 @@
 #       driver code.
 # Status:
 #   GEN8:  Done
-#   GEN9:  TODO
-#   GEN10: TODO (Remove)
-#   GEN11: TODO
+#   GEN9:  Done
+#   GEN10: Done (TODO: Gen10-specific code)
+#   GEN11: Done
 #   GEN12: TODO
 option(ENABLE_REQUIRED_GEN_CODE "Make per-Gen options disable only media-kernels (not driver code) if driver code is known to be required for a successful build"
     ON)

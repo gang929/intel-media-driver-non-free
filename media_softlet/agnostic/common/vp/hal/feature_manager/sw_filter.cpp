@@ -615,10 +615,7 @@ MOS_STATUS SwFilterScaling::Update(VP_SURFACE *inputSurf, VP_SURFACE *outputSurf
     m_Params.csc.colorSpaceOutput   = outputSurf->ColorSpace;
 
     if (rotMir &&
-        (rotMir->GetSwFilterParams().rotation == VPHAL_ROTATION_90 ||
-        rotMir->GetSwFilterParams().rotation == VPHAL_ROTATION_270 ||
-        rotMir->GetSwFilterParams().rotation == VPHAL_ROTATE_90_MIRROR_VERTICAL ||
-        rotMir->GetSwFilterParams().rotation == VPHAL_ROTATE_90_MIRROR_HORIZONTAL))
+        VpUtils::IsVerticalRotation(rotMir->GetSwFilterParams().rotation))
     {
         m_Params.rotation.rotationNeeded = true;
 
@@ -1338,7 +1335,7 @@ MOS_STATUS SwFilterHdr::Configure(VP_PIPELINE_PARAMS &params, bool isInputSurf, 
     }
     else
     {
-        CurrentLUTMode = VPHAL_HDR_LUT_MODE_2D;
+        CurrentLUTMode = VPHAL_HDR_LUT_MODE_3D;
     }
 
     // Neither 1D nor 3D LUT is needed in linear output case.
@@ -1527,6 +1524,12 @@ bool vp::SwFilterHdr::operator==(SwFilter &swFilter)
 MOS_STATUS vp::SwFilterHdr::Update(VP_SURFACE *inputSurf, VP_SURFACE *outputSurf, SwFilterSubPipe &pipe)
 {
     VP_FUNC_CALL();
+
+    if (m_Params.stage == HDR_STAGE_VEBOX_3DLUT_UPDATE)
+    {
+        VP_PUBLIC_NORMALMESSAGE("HDR 3DLUT Kernel path already update format, skip further update.");
+        return MOS_STATUS_SUCCESS;
+    }
 
     VP_PUBLIC_CHK_NULL_RETURN(inputSurf);
     VP_PUBLIC_CHK_NULL_RETURN(inputSurf->osSurface);
@@ -2189,6 +2192,20 @@ MOS_STATUS SwFilterSet::Update(VP_SURFACE *inputSurf, VP_SURFACE *outputSurf, Sw
     {
         VP_PUBLIC_CHK_NULL_RETURN(swFilter.second);
         VP_PUBLIC_CHK_STATUS_RETURN(swFilter.second->Update(inputSurf, outputSurf, pipe));
+    }
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS SwFilterSet::AddFeatureGraphRTLog()
+{
+    VP_FUNC_CALL();
+
+    for (auto swFilter : m_swFilters)
+    {
+        if (swFilter.second)
+        {
+            swFilter.second->AddFeatureGraphRTLog();
+        }
     }
     return MOS_STATUS_SUCCESS;
 }

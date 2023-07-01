@@ -327,7 +327,7 @@ MOS_STATUS HevcVdencPipelineXe_Lpm_Plus_Base::Initialize(void *settings)
     ENCODE_CHK_NULL_RETURN(m_hwInterface);
     ENCODE_CHK_STATUS_RETURN(m_hwInterface->Initialize(codecSettings));
     ENCODE_CHK_STATUS_RETURN(InitMmcState());
-    codecSettings ->isMmcEnabled = m_mmcState->IsMmcEnabled();
+    codecSettings ->isMmcEnabled = m_mmcState ? m_mmcState->IsMmcEnabled() : false;
     ENCODE_CHK_STATUS_RETURN(HevcVdencPipeline::Initialize(settings));
 
     CODECHAL_DEBUG_TOOL(
@@ -338,7 +338,7 @@ MOS_STATUS HevcVdencPipelineXe_Lpm_Plus_Base::Initialize(void *settings)
         ENCODE_CHK_NULL_RETURN(m_debugInterface);
         ENCODE_CHK_NULL_RETURN(m_mediaCopyWrapper);
         ENCODE_CHK_STATUS_RETURN(
-            m_debugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper->GetMediaCopyState()));
+            m_debugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper));
 
         if (m_statusReportDebugInterface != nullptr) {
             MOS_Delete(m_statusReportDebugInterface);
@@ -346,7 +346,7 @@ MOS_STATUS HevcVdencPipelineXe_Lpm_Plus_Base::Initialize(void *settings)
         m_statusReportDebugInterface = MOS_New(CodechalDebugInterface);
         ENCODE_CHK_NULL_RETURN(m_statusReportDebugInterface);
         ENCODE_CHK_STATUS_RETURN(
-            m_statusReportDebugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper->GetMediaCopyState())););
+            m_statusReportDebugInterface->Initialize(m_hwInterface, m_codecFunction, m_mediaCopyWrapper)););
         ENCODE_CHK_STATUS_RETURN(GetSystemVdboxNumber());
 
     return MOS_STATUS_SUCCESS;

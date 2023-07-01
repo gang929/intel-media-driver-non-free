@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2022, Intel Corporation
+* Copyright (c) 2021-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -78,10 +78,12 @@ CodechalHwInterfaceNext::~CodechalHwInterfaceNext()
         m_osInterface->pfnFreeResource(m_osInterface, &m_dummyStreamOut);
 
         m_osInterface->pfnFreeResource(m_osInterface, &m_conditionalBbEndDummy);
+        if (m_cpInterface)
+        {
+            m_osInterface->pfnDeleteMhwCpInterface(m_cpInterface);
+            m_cpInterface = nullptr;
+        }
     }
-
-    Delete_MhwCpInterface(m_cpInterface);
-    m_cpInterface = nullptr;
 
     if (m_veboxInterface)
     {
@@ -95,6 +97,19 @@ CodechalHwInterfaceNext::~CodechalHwInterfaceNext()
         MOS_Delete(m_sfcInterface);
         m_sfcInterface = nullptr;
     }
+}
+
+CodechalHwInterfaceNext* CodechalHwInterfaceNext::Create(
+    PMOS_INTERFACE     osInterface,
+    CODECHAL_FUNCTION  codecFunction,
+    MhwInterfacesNext* mhwInterfacesNext,
+    bool               disableScalability)
+{
+    return MOS_New(CodechalHwInterfaceNext,
+        osInterface,
+        codecFunction,
+        mhwInterfacesNext,
+        disableScalability);
 }
 
 MOS_STATUS CodechalHwInterfaceNext::Initialize(
@@ -980,7 +995,13 @@ MOS_STATUS CodechalHwInterfaceNext::SetRowstoreCachingOffsets(
     }
     if (m_avpItf)
     {
-        CODEC_HW_CHK_STATUS_RETURN(m_avpItf->GetRowstoreCachingAddrs());
+        mhw::vdbox::avp::AvpVdboxRowStorePar rowstoreParamsAVP = {};
+        rowstoreParamsAVP.picWidth       = rowstoreParams->dwPicWidth;
+        rowstoreParamsAVP.mbaff          = rowstoreParams->bMbaff;
+        rowstoreParamsAVP.mode           = rowstoreParams->Mode;
+        rowstoreParamsAVP.bitDepthMinus8 = rowstoreParams->ucBitDepthMinus8;
+        rowstoreParamsAVP.chromaFormat   = rowstoreParams->ucChromaFormat;
+        CODEC_HW_CHK_STATUS_RETURN(m_avpItf->GetRowstoreCachingAddrs(rowstoreParamsAVP));
     }
 
     return eStatus;

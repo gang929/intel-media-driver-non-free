@@ -332,6 +332,12 @@ public:
         MhwInterfaces     *mhwInterfaces,
         bool              disableScalability = false);
 
+    static CodechalHwInterface *Create(
+        PMOS_INTERFACE    osInterface,
+        CODECHAL_FUNCTION codecFunction,
+        MhwInterfaces     *mhwInterfaces,
+        bool              disableScalability);
+
     //!
     //! \brief    Get avp interface
     //! \details  Get avp interface in codechal hw interface next
@@ -487,7 +493,7 @@ public:
 
         m_osInterface->pfnFreeResource(m_osInterface, &m_conditionalBbEndDummy);
 
-        Delete_MhwCpInterface(m_cpInterface); 
+        m_osInterface->pfnDeleteMhwCpInterface(m_cpInterface);
         m_cpInterface = nullptr;
 
         if (m_miInterface)
@@ -1236,7 +1242,7 @@ public:
     //! \return   MOS_STATUS
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
-    MOS_STATUS AddHucDummyStreamOut(
+    virtual MOS_STATUS AddHucDummyStreamOut(
         PMOS_COMMAND_BUFFER cmdBuffer);
 
     //!

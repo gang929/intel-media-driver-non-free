@@ -109,6 +109,7 @@ namespace decode
         MOS_STATUS SetRefPicStateParam() const;
         MOS_STATUS RefAddrErrorConcel() const;
         MOS_STATUS GetSurfaceMmcInfo(PMOS_SURFACE surface, MOS_MEMCOMP_STATE& mmcState, uint32_t& compressionFormat) const;
+        virtual MOS_STATUS GetChromaFormat();
 
         MHW_SETPAR_DECL_HDR(AVP_PIPE_MODE_SELECT);
         MHW_SETPAR_DECL_HDR(AVP_PIC_STATE);
@@ -137,7 +138,7 @@ namespace decode
         //! \return MOS_STATUS
         //!         MOS_STATUS_SUCCESS if success, else fail reason
         //!
-        MOS_STATUS DumpResources() const;
+        MOS_STATUS DumpResources(uint32_t refSize) const;
 #endif
 
         //Interfaces

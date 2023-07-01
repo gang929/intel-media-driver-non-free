@@ -32,6 +32,7 @@
 #include "media_copy.h"
 #include "mhw_mi.h"
 #include "mos_utilities.h"
+#include "media_perf_profiler.h"
 #define BIT( n )                            ( 1 << (n) )
 
 //!
@@ -94,28 +95,6 @@ BltState::~BltState()
 //!
 MOS_STATUS BltState::Initialize()
 {
-    MOS_GPU_NODE            BltGpuNode;
-    MOS_GPU_CONTEXT         BltGpuContext;
-    MOS_GPUCTX_CREATOPTIONS_ENHANCED createOption = {};
-
-    BltGpuContext = MOS_GPU_CONTEXT_BLT;
-    BltGpuNode    = MOS_GPU_NODE_BLT;
-
-    BLT_CHK_NULL_RETURN(m_osInterface);
-    BLT_CHK_NULL_RETURN(m_bltInterface);
-
-    // Create BLT Context
-    BLT_CHK_STATUS_RETURN(m_osInterface->pfnCreateGpuContext(
-        m_osInterface,
-        BltGpuContext,
-        BltGpuNode,
-        &createOption));
-
-    // Register context with the Batch Buffer completion event
-    BLT_CHK_STATUS_RETURN(m_osInterface->pfnRegisterBBCompleteNotifyEvent(
-        m_osInterface,
-        MOS_GPU_CONTEXT_BLT));
-
     return MOS_STATUS_SUCCESS;
 }
 
@@ -263,6 +242,12 @@ MOS_STATUS BltState::SetupBltCopyParam(
            pMhwBltParams->dwDstRight   = std::min(inputPitch, outputPitch) / 4;  // Regard as 32 bit per pixel format, i.e. 4 byte per pixel.
            pMhwBltParams->dwColorDepth = 3;  //0:8bit 1:16bit 3:32bit 4:64bit
        }
+       else
+       {
+           // Block copy
+           pMhwBltParams->dwDstRight = std::min(inputPitch, outputPitch) / 4;  // Regard as 32 bit per pixel format, i.e. 4 byte per pixel.
+           pMhwBltParams->dwColorDepth = 2;  //0:8bit 1:16bit 2:32bit
+       }
     }
     else
     {
@@ -283,9 +268,9 @@ MOS_STATUS BltState::SetupBltCopyParam(
     }
     pMhwBltParams->pSrcOsResource = inputSurface;
     pMhwBltParams->pDstOsResource = outputSurface;
-    MCPY_NORMALMESSAGE("BLT params: this %p  format %d, planeNum %d, planeIndex %d, dwColorDepth %d, dwSrcTop %d, dwSrcLeft %d, dwSrcPitch %d,"
-                       "dwDstTop %d, dwDstLeft %d, dwDstRight %d, dwDstBottom %d, dwDstPitch %d",
-                       this, ResDetails.Format, planeNum, planeIndex, pMhwBltParams->dwColorDepth, pMhwBltParams->dwSrcTop, pMhwBltParams->dwSrcLeft,
+    MCPY_NORMALMESSAGE("BLT params: m_blokCopyon = %d, format %d, planeNum %d, planeIndex %d, dwColorDepth %d, dwSrcTop %d, dwSrcLeft %d, dwSrcPitch %d,"
+                       "dwDstTop %d, dwDstLeft %d, dwDstRight %d, dwDstBottom %d, dwDstPitch %d", m_blokCopyon,
+                       ResDetails.Format, planeNum, planeIndex, pMhwBltParams->dwColorDepth, pMhwBltParams->dwSrcTop, pMhwBltParams->dwSrcLeft,
                        pMhwBltParams->dwSrcPitch, pMhwBltParams->dwDstTop, pMhwBltParams->dwDstLeft, pMhwBltParams->dwDstRight, 
                        pMhwBltParams->dwDstBottom, pMhwBltParams->dwDstPitch);
 
@@ -318,6 +303,11 @@ MOS_STATUS BltState::SubmitCMD(
     // Set GPU context
     BLT_CHK_STATUS_RETURN(m_osInterface->pfnSetGpuContext(m_osInterface, MOS_GPU_CONTEXT_BLT));
 
+    // Register context with the Batch Buffer completion event
+    BLT_CHK_STATUS_RETURN(m_osInterface->pfnRegisterBBCompleteNotifyEvent(
+        m_osInterface,
+        MOS_GPU_CONTEXT_BLT));
+
     // Initialize the command buffer struct
     MOS_ZeroMemory(&cmdBuffer, sizeof(MOS_COMMAND_BUFFER));
     BLT_CHK_STATUS_RETURN(m_osInterface->pfnGetCommandBuffer(m_osInterface, &cmdBuffer, 0));
@@ -340,6 +330,10 @@ MOS_STATUS BltState::SubmitCMD(
         return MOS_STATUS_INVALID_PARAMETER;
     }
     planeNum = GetPlaneNum(dstResDetails.Format);
+
+    MediaPerfProfiler* perfProfiler = MediaPerfProfiler::Instance();
+    BLT_CHK_NULL_RETURN(perfProfiler);
+    BLT_CHK_STATUS_RETURN(perfProfiler->AddPerfCollectStartCmd((void*)this, m_osInterface, m_miInterface, &cmdBuffer));
 
     if (pBltStateParam->bCopyMainSurface)
     {
@@ -408,6 +402,8 @@ MOS_STATUS BltState::SubmitCMD(
               }
          }
     }
+
+    BLT_CHK_STATUS_RETURN(perfProfiler->AddPerfCollectEndCmd((void*)this, m_osInterface, m_miInterface, &cmdBuffer));
     // Add flush DW
     BLT_CHK_STATUS_RETURN(m_miInterface->AddMiFlushDwCmd(&cmdBuffer, &FlushDwParams));
 

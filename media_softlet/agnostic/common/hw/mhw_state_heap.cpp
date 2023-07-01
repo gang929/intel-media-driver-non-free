@@ -808,7 +808,7 @@ MOS_STATUS Mhw_StateHeapInterface_InitInterface(
             }
             pCommonStateHeapInterface->pStateHeapInterface = mhwInterfaces->m_stateHeapInterface;
             // MhwInterfaces always create CP interfaces, so we have to delete those we don't need.
-            Delete_MhwCpInterface(mhwInterfaces->m_cpInterface);
+            pOsInterface->pfnDeleteMhwCpInterface(mhwInterfaces->m_cpInterface);
             mhwInterfaces->m_cpInterface = NULL;
             MOS_Delete(mhwInterfaces);
         }
@@ -1528,8 +1528,8 @@ MOS_STATUS XMHW_STATE_HEAP_INTERFACE::ExtendStateHeapDyn(
             MHW_ASSERTMESSAGE("Allocate resource fail");
             break;
         }
-        // RegisterResource will be called in AddResourceToHWCmd. It is not allowed to be called by hal explicitly for Async mode
-        if (MosInterface::IsAsyncDevice(m_pOsInterface->osStreamState) == false)
+        // RegisterResource will be called in AddResourceToHWCmd. It is not allowed to be called by hal explicitly
+        if (!m_pOsInterface->apoMosEnabled)
         {
             eStatus = m_pOsInterface->pfnRegisterResource(m_pOsInterface, &pNewStateHeap->resHeap, true, true);
             if (eStatus != MOS_STATUS_SUCCESS)

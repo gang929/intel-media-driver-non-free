@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2022, Intel Corporation
+* Copyright (c) 2021-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -75,6 +75,11 @@ MOS_STATUS HevcPipelineXe_Lpm_Plus_Base::Init(void *settings)
     DECODE_CHK_NULL(hevcDecodePktRealTile);
     DECODE_CHK_STATUS(RegisterPacket(DecodePacketId(this, hevcRealTilePacketId), hevcDecodePktRealTile));
     DECODE_CHK_STATUS(hevcDecodePktRealTile->Init());
+
+    if (m_numVdbox == 2)
+    {
+        m_allowVirtualNodeReassign = true;
+    }
 
     return MOS_STATUS_SUCCESS;
 }
@@ -235,7 +240,7 @@ MOS_STATUS HevcPipelineXe_Lpm_Plus_Base::Prepare(void *params)
 
             CODECHAL_DEBUG_TOOL(
                 m_debugInterface->m_bufferDumpFrameNum = m_basicFeature->m_frameNum;
-            DECODE_CHK_STATUS(DumpParams(*m_basicFeature))
+                DECODE_CHK_STATUS(DumpParams(*m_basicFeature))
                 );
 
             DecodeStatusParameters inputParameters = {};
@@ -255,7 +260,7 @@ MOS_STATUS HevcPipelineXe_Lpm_Plus_Base::Prepare(void *params)
             if (downSamplingFeature != nullptr)
             {
                 auto frameIdx = m_basicFeature->m_curRenderPic.FrameIdx;
-                inputParameters.sfcOutputPicRes = &downSamplingFeature->m_outputSurfaceList[frameIdx].OsResource;
+                inputParameters.sfcOutputSurface = &downSamplingFeature->m_outputSurfaceList[frameIdx];
                 if (downSamplingFeature->m_histogramBuffer != nullptr)
                 {
                     inputParameters.histogramOutputBuf = &downSamplingFeature->m_histogramBuffer->OsResource;
@@ -308,7 +313,9 @@ MOS_STATUS HevcPipelineXe_Lpm_Plus_Base::Execute()
             {
                 DECODE_CHK_STATUS(UserFeatureReport());
             }
-            m_basicFeature->m_frameNum++;
+            
+            DecodeFrameIndex++;
+            m_basicFeature->m_frameNum = DecodeFrameIndex;
 
             DECODE_CHK_STATUS(m_statusReport->Reset());
 
@@ -456,30 +463,22 @@ MOS_STATUS HevcPipelineXe_Lpm_Plus_Base::DumpParams(HevcBasicFeature &basicFeatu
     m_debugInterface->m_secondField        = basicFeature.m_secondField;
     m_debugInterface->m_frameType          = basicFeature.m_pictureCodingType;
 
-    DECODE_CHK_STATUS(m_debugInterface->DumpBuffer(
-        &basicFeature.m_resDataBuffer.OsResource, CodechalDbgAttr::attrDecodeBitstream, "_DEC",
-        basicFeature.m_dataSize, 0, CODECHAL_NUM_MEDIA_STATES));
-
     DECODE_CHK_STATUS(DumpPicParams(
         basicFeature.m_hevcPicParams,
         basicFeature.m_hevcRextPicParams,
         basicFeature.m_hevcSccPicParams));
 
-    if (basicFeature.m_hevcIqMatrixParams != nullptr)
-    {
-        DECODE_CHK_STATUS(DumpIQParams(basicFeature.m_hevcIqMatrixParams));
-    }
+    DECODE_CHK_STATUS(DumpSliceParams(
+        basicFeature.m_hevcSliceParams,
+        basicFeature.m_hevcRextSliceParams,
+        basicFeature.m_numSlices,
+        basicFeature.m_shortFormatInUse));
 
-    if (basicFeature.m_hevcSliceParams != nullptr)
-    {
-        DECODE_CHK_STATUS(DumpSliceParams(
-            basicFeature.m_hevcSliceParams,
-            basicFeature.m_hevcRextSliceParams,
-            basicFeature.m_numSlices,
-            basicFeature.m_shortFormatInUse));
-    }
+    DECODE_CHK_STATUS(DumpIQParams(basicFeature.m_hevcIqMatrixParams));
 
-    if(basicFeature.m_hevcSubsetParams != nullptr)
+    DECODE_CHK_STATUS(DumpBitstream(&basicFeature.m_resDataBuffer.OsResource, basicFeature.m_dataSize, 0));
+
+    if (!basicFeature.m_shortFormatInUse)
     {
         DECODE_CHK_STATUS(DumpSubsetsParams(basicFeature.m_hevcSubsetParams));
     }

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2022, Intel Corporation
+* Copyright (c) 2019-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -216,7 +216,10 @@ namespace encode{
         ENCODE_FUNC_CALL();
 
         m_prevFrameType  = m_av1PicParams->PicFlags.fields.frame_type;
-        m_basicFeature->m_encodedFrameNum++;
+        if(m_pipeline->IsLastPass() && m_pipeline->IsFirstPipe())
+        {
+            m_basicFeature->m_encodedFrameNum++;
+        }
     }
 
     MOS_STATUS Av1VdencPkt::SetPipeBufAddr(
@@ -225,10 +228,11 @@ namespace encode{
         MHW_VDBOX_SURFACE_PARAMS &      reconSurfaceParams)
     {
         ENCODE_FUNC_CALL();
-        ENCODE_CHK_NULL_RETURN(m_mmcState);
         ENCODE_CHK_NULL_RETURN(srcSurfaceParams.psSurface);
         ENCODE_CHK_NULL_RETURN(reconSurfaceParams.psSurface);
 
+#ifdef _MMC_SUPPORTED
+        ENCODE_CHK_NULL_RETURN(m_mmcState);
         if (m_mmcState->IsMmcEnabled())
         {
             ENCODE_CHK_STATUS_RETURN(m_mmcState->GetSurfaceMmcState(&m_basicFeature->m_reconSurface, &pipeBufAddrParams->PreDeblockSurfMmcState));
@@ -241,6 +245,7 @@ namespace encode{
             pipeBufAddrParams->PreDeblockSurfMmcState = MOS_MEMCOMP_DISABLED;
             pipeBufAddrParams->RawSurfMmcState        = MOS_MEMCOMP_DISABLED;
         }
+#endif
 
         CODECHAL_DEBUG_TOOL(
             m_basicFeature->m_reconSurface.MmcState = pipeBufAddrParams->PreDeblockSurfMmcState;)
@@ -255,10 +260,11 @@ namespace encode{
 
         ENCODE_CHK_NULL_RETURN(surfaceStateParams);
         ENCODE_CHK_NULL_RETURN(surfaceStateParams->psSurface);
-        ENCODE_CHK_NULL_RETURN(m_mmcState);
 
         ENCODE_FUNC_CALL();
 
+#ifdef _MMC_SUPPORTED
+        ENCODE_CHK_NULL_RETURN(m_mmcState);
         if (m_mmcState->IsMmcEnabled())
         {
             ENCODE_CHK_STATUS_RETURN(m_mmcState->GetSurfaceMmcState(surfaceStateParams->psSurface, &surfaceStateParams->mmcState));
@@ -268,6 +274,7 @@ namespace encode{
         {
             surfaceStateParams->mmcState = MOS_MEMCOMP_DISABLED;
         }
+#endif
         return eStatus;
     }
 
@@ -590,6 +597,44 @@ namespace encode{
         return MOS_STATUS_SUCCESS;
     }
 
+    MOS_STATUS Av1VdencPkt::ReadPakMmioRegistersAtomic(PMOS_COMMAND_BUFFER cmdBuf)
+    {
+        ENCODE_FUNC_CALL();
+
+        ENCODE_CHK_NULL_RETURN(cmdBuf);
+
+        auto mmioRegs = m_miItf->GetMmioRegisters();
+        auto mmioRegsAvp = m_avpItf->GetMmioRegisters(MHW_VDBOX_NODE_1);
+        ENCODE_CHK_NULL_RETURN(mmioRegs);
+
+        PMOS_RESOURCE bsSizeBuf = m_basicFeature->m_recycleBuf->GetBuffer(PakInfo, 0);
+        ENCODE_CHK_NULL_RETURN(bsSizeBuf);
+        ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSkipResourceSync(bsSizeBuf));
+
+        // load current tile size to VCS_GPR0_Lo
+        auto &miLoadRegaParams         = m_miItf->MHW_GETPAR_F(MI_LOAD_REGISTER_REG)();
+        miLoadRegaParams               = {};
+        miLoadRegaParams.dwSrcRegister = mmioRegsAvp->avpAv1BitstreamByteCountTileRegOffset;
+        miLoadRegaParams.dwDstRegister = mmioRegs->generalPurposeRegister0LoOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_REG)(cmdBuf));
+
+        // clear VCS_GPR0_Hi for sanity
+        auto &miLoadRegImmParams         = m_miItf->MHW_GETPAR_F(MI_LOAD_REGISTER_IMM)();
+        miLoadRegImmParams               = {};
+        miLoadRegImmParams.dwData        = 0;
+        miLoadRegImmParams.dwRegister    = mmioRegs->generalPurposeRegister0HiOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_LOAD_REGISTER_IMM)(cmdBuf));
+
+        m_hwInterface->SendMiAtomicDwordIndirectDataCmd(bsSizeBuf, MHW_MI_ATOMIC_ADD, cmdBuf);
+
+        // Make Flush DW call to make sure all previous work is done
+        auto &flushDwParams              = m_miItf->MHW_GETPAR_F(MI_FLUSH_DW)();
+        flushDwParams                    = {};
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_FLUSH_DW)(cmdBuf));
+
+        return MOS_STATUS_SUCCESS;
+    }
+
     MOS_STATUS Av1VdencPkt::CalculateCommandSize(uint32_t &commandBufferSize, uint32_t &requestedPatchListSize)
     {
         commandBufferSize = CalculateCommandBufferSize();
@@ -662,9 +707,15 @@ namespace encode{
 
     MOS_STATUS Av1VdencPkt::CalculateAvpPictureStateCommandSize(uint32_t * commandsSize, uint32_t * patchListSize)
     {
-        // there are no picture level AVP commands for encode
-        commandsSize  = 0;
-        patchListSize = 0;
+        *commandsSize = m_miItf->MHW_GETSIZE_F(MI_FLUSH_DW)() * 10                +  //8 for UpdateStatusReport, 2 for profiler
+                        m_miItf->MHW_GETSIZE_F(MI_STORE_DATA_IMM)() * 10          +  //4 For UpdateStatusReport, 6 for profiler
+                        m_miItf->MHW_GETSIZE_F(MI_STORE_REGISTER_MEM)() * 16      +  //16 for profiler
+                        m_miItf->MHW_GETSIZE_F(MI_ATOMIC)() * 4;                     //For UpdateStatusReport
+
+        *patchListSize = PATCH_LIST_COMMAND(mhw::mi::Itf::MI_FLUSH_DW_CMD) * 10            +
+                         PATCH_LIST_COMMAND(mhw::mi::Itf::MI_STORE_DATA_IMM_CMD) * 10      +
+                         PATCH_LIST_COMMAND(mhw::mi::Itf::MI_STORE_REGISTER_MEM_CMD) * 16  +
+                         PATCH_LIST_COMMAND(mhw::mi::Itf::MI_ATOMIC_CMD) * 4;
 
         return MOS_STATUS_SUCCESS;
     }
@@ -769,29 +820,9 @@ namespace encode{
 
     MHW_SETPAR_DECL_SRC(AVP_PIPE_MODE_SELECT, Av1VdencPkt)
     {
-        if (m_pipeline->GetPipeNum() > 1)
-        {
-            // Running in the multiple VDBOX mode
-            if (m_pipeline->IsFirstPipe())
-            {
-                params.multiEngineMode = MHW_VDBOX_HCP_MULTI_ENGINE_MODE_LEFT;
-            }
-            else if (m_pipeline->IsLastPipe())
-            {
-                params.multiEngineMode = MHW_VDBOX_HCP_MULTI_ENGINE_MODE_RIGHT;
-            }
-            else
-            {
-                params.multiEngineMode = MHW_VDBOX_HCP_MULTI_ENGINE_MODE_MIDDLE;
-            }
-            params.pipeWorkingMode = MHW_VDBOX_HCP_PIPE_WORK_MODE_CODEC_BE;
-        }
-        else
-        {
-            params.multiEngineMode = MHW_VDBOX_HCP_MULTI_ENGINE_MODE_FE_LEGACY;
-            params.pipeWorkingMode = MHW_VDBOX_HCP_PIPE_WORK_MODE_LEGACY;
-        }
-
+        params.multiEngineMode = MHW_VDBOX_HCP_MULTI_ENGINE_MODE_FE_LEGACY;
+        params.pipeWorkingMode = MHW_VDBOX_HCP_PIPE_WORK_MODE_LEGACY;
+        
         return MOS_STATUS_SUCCESS;
     }
 
@@ -1121,32 +1152,35 @@ namespace encode{
         uint32_t maxSize          = 0;
         uint32_t patchListMaxSize = 0;
 
-        maxSize = m_miItf->MHW_GETSIZE_F(MI_BATCH_BUFFER_START)() * 5 +
-            m_miItf->MHW_GETSIZE_F(VD_CONTROL_STATE)()                +
-            m_avpItf->MHW_GETSIZE_F(AVP_PIPE_MODE_SELECT)() * 2       +
-            m_avpItf->MHW_GETSIZE_F(AVP_SURFACE_STATE)() * 11         +
-            m_avpItf->MHW_GETSIZE_F(AVP_PIPE_BUF_ADDR_STATE)()        +
-            m_avpItf->MHW_GETSIZE_F(AVP_IND_OBJ_BASE_ADDR_STATE)()    +
-            m_avpItf->MHW_GETSIZE_F(AVP_PIC_STATE)()                  +
-            m_avpItf->MHW_GETSIZE_F(AVP_INTER_PRED_STATE)()           +
-            m_avpItf->MHW_GETSIZE_F(AVP_SEGMENT_STATE)() * 8          +
-            m_avpItf->MHW_GETSIZE_F(AVP_INLOOP_FILTER_STATE)()        +
-            m_avpItf->MHW_GETSIZE_F(AVP_TILE_CODING)()                +
-            m_avpItf->MHW_GETSIZE_F(AVP_PAK_INSERT_OBJECT)() * 9      +
+        maxSize = m_miItf->MHW_GETSIZE_F(MI_BATCH_BUFFER_START)() * AV1_MAX_NUM_OF_BATCH_BUFFER +
+            m_miItf->MHW_GETSIZE_F(VD_CONTROL_STATE)()                                          +
+            m_miItf->MHW_GETSIZE_F(MFX_WAIT)()                                                  +
+            m_avpItf->MHW_GETSIZE_F(AVP_PIPE_MODE_SELECT)()                                     +
+            m_miItf->MHW_GETSIZE_F(MFX_WAIT)()                                                  +
+            m_avpItf->MHW_GETSIZE_F(AVP_SURFACE_STATE)() * av1SurfaceNums                       +
+            m_avpItf->MHW_GETSIZE_F(AVP_PIPE_BUF_ADDR_STATE)()                                  +
+            m_avpItf->MHW_GETSIZE_F(AVP_IND_OBJ_BASE_ADDR_STATE)()                              +
+            m_avpItf->MHW_GETSIZE_F(AVP_PIC_STATE)()                                            +
+            m_avpItf->MHW_GETSIZE_F(AVP_INTER_PRED_STATE)()                                     +
+            m_avpItf->MHW_GETSIZE_F(AVP_SEGMENT_STATE)() * AV1_MAX_NUM_OF_SEGMENTS              +
+            m_avpItf->MHW_GETSIZE_F(AVP_INLOOP_FILTER_STATE)()                                  +
+            m_avpItf->MHW_GETSIZE_F(AVP_TILE_CODING)()                                          +
+            m_avpItf->MHW_GETSIZE_F(AVP_PAK_INSERT_OBJECT)() * MAX_NUM_OBU_TYPES                +
             m_miItf->MHW_GETSIZE_F(MI_BATCH_BUFFER_END)();
 
         patchListMaxSize =
-            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::VD_PIPELINE_FLUSH_CMD)           +
-            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_PIPE_MODE_SELECT_CMD)        +
-            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_SURFACE_STATE_CMD) * 11      +
-            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_PIPE_BUF_ADDR_STATE_CMD)     +
-            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_IND_OBJ_BASE_ADDR_STATE_CMD) +
-            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_PIC_STATE_CMD)               +
-            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_INTER_PRED_STATE_CMD)        +
-            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_SEGMENT_STATE_CMD) * 8       +
-            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_INLOOP_FILTER_STATE_CMD)     +
-            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_TILE_CODING_CMD)             +
-            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_PAK_INSERT_OBJECT_CMD) * 9;
+            PATCH_LIST_COMMAND(mhw::mi::Itf::MI_BATCH_BUFFER_START_CMD) * AV1_MAX_NUM_OF_BATCH_BUFFER +
+            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::VD_PIPELINE_FLUSH_CMD)                           +
+            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_PIPE_MODE_SELECT_CMD)                        +
+            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_SURFACE_STATE_CMD) * av1SurfaceNums          +
+            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_PIPE_BUF_ADDR_STATE_CMD)                     +
+            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_IND_OBJ_BASE_ADDR_STATE_CMD)                 +
+            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_PIC_STATE_CMD)                               +
+            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_INTER_PRED_STATE_CMD)                        +
+            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_SEGMENT_STATE_CMD) * AV1_MAX_NUM_OF_SEGMENTS +
+            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_INLOOP_FILTER_STATE_CMD)                     +
+            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_TILE_CODING_CMD)                             +
+            PATCH_LIST_COMMAND(mhw::vdbox::avp::Itf::AVP_PAK_INSERT_OBJECT_CMD) * MAX_NUM_OBU_TYPES;
 
         ENCODE_CHK_NULL_RETURN(commandsSize);
         ENCODE_CHK_NULL_RETURN(patchListSize);

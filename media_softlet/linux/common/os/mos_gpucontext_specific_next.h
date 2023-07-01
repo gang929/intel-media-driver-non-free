@@ -68,7 +68,7 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
     //!
-    MOS_STATUS Init(OsContextNext *osContext,
+    virtual MOS_STATUS Init(OsContextNext *osContext,
                     MOS_STREAM_HANDLE streamState,
                     PMOS_GPUCTX_CREATOPTIONS createOption);
 
@@ -204,7 +204,7 @@ public:
     //!             priority to set for current workload.
     //! \return void
     //!
-    void UpdatePriority(int32_t priority);
+    virtual void UpdatePriority(int32_t priority);
 
     //!
     //! \brief    Allocate gpu status buffer for gpu sync
@@ -219,12 +219,41 @@ public:
     //!
     void StoreCreateOptions(PMOS_GPUCTX_CREATOPTIONS createoption);
 
+    //!
+    //! \brief    Get Oca RTLog resource instance on GPU Context.
+    //! \return   PMOS_RESOURCE
+    //!
+    PMOS_RESOURCE GetOcaRTLogResource(PMOS_RESOURCE globalInst);
+
 #if MOS_COMMAND_RESINFO_DUMP_SUPPORTED
     void                PushCmdResPtr(const void *p) { m_cmdResPtrs.push_back(p); }
     void                ClearCmdResPtrs() { m_cmdResPtrs.clear(); }
     const std::vector<const void *> &GetCmdResPtrs() const { return m_cmdResPtrs; }
 #endif // MOS_COMMAND_RESINFO_DUMP_SUPPORTED
 protected:
+    virtual MOS_STATUS Init3DCtx(PMOS_CONTEXT osParameters,
+                PMOS_GPUCTX_CREATOPTIONS createOption,
+                unsigned int *nengine,
+                void *engine_map);
+
+    virtual MOS_STATUS InitComputeCtx(PMOS_CONTEXT osParameters,
+                unsigned int *nengine,
+                void *engine_map,
+                MOS_GPU_NODE gpuNode,
+                bool *isEngineSelectEnable);
+
+    virtual MOS_STATUS InitVdVeCtx(PMOS_CONTEXT osParameters,
+                MOS_STREAM_HANDLE streamState,
+                PMOS_GPUCTX_CREATOPTIONS createOption,
+                unsigned int *nengine,
+                void *engine_map,
+                MOS_GPU_NODE gpuNode,
+                bool *isEngineSelectEnable);
+
+    virtual MOS_STATUS InitBltCtx(PMOS_CONTEXT osParameters,
+                unsigned int *nengine,
+                void *engine_map);
+
     //!
     //! \brief    Map resources with aux plane to aux table
     //! \return   MOS_STATUS
@@ -256,7 +285,7 @@ protected:
     //! \return   int32_t
     //!           Return 0 if successful, otherwise error code
     //!
-    int32_t ParallelSubmitCommands(std::map<uint32_t, PMOS_COMMAND_BUFFER> secondaryCmdBufs,
+    virtual int32_t ParallelSubmitCommands(std::map<uint32_t, PMOS_COMMAND_BUFFER> secondaryCmdBufs,
                                    PMOS_CONTEXT osContext,
                                    uint32_t execFlag,
                                    int32_t dr4);
@@ -269,8 +298,8 @@ protected:
         PMOS_GPUCTX_CREATOPTIONS option,
         __u64 &caps);
 
-    MOS_STATUS ReportEngineInfo(
-        struct i915_engine_class_instance *engineMap,
+    virtual MOS_STATUS ReportEngineInfo(
+        void *engine_map,
         int engineNum, bool engineSelectEnable = false);
 
     MOS_STATUS ReportMemoryInfo(
@@ -280,13 +309,13 @@ protected:
     MOS_LINUX_BO* GetNopCommandBuffer(
         MOS_STREAM_HANDLE streamState);
 
-    bool SelectEngineInstanceByUser(struct i915_engine_class_instance *engineMap,
+    virtual bool SelectEngineInstanceByUser(void *engine_map,
         uint32_t *engineNum, uint32_t userEngineInstance, MOS_GPU_NODE gpuNode);
 #endif // _DEBUG || _RELEASE_INTERNAL
 
     void UnlockPendingOcaBuffers(PMOS_COMMAND_BUFFER cmdBuffer, PMOS_CONTEXT mosContext);
 
-private:
+protected:
     //! \brief    internal command buffer pool per gpu context
     std::vector<CommandBufferNext *> m_cmdBufPool;
 
@@ -344,6 +373,14 @@ private:
     int32_t      m_currCtxPriority = 0;
     bool m_ocaLogSectionSupported = true;
     // bool m_ocaSizeIncreaseDone = false;
+
+    bool m_ocaRtLogResInited = false;
+    MOS_RESOURCE m_ocaRtLogResource = {};
+    //! \brief Recreate GEM Context
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise error code
+    //!
+    MOS_STATUS RecreateContext(bool bIsProtected, MOS_STREAM_HANDLE streamState);
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     /*!\brief bits(23...16), (15...8), (7...0) are for Compute, VEbox and VDbox ;

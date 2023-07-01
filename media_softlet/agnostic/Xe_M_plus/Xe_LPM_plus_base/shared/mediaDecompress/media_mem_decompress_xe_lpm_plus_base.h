@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, Intel Corporation
+* Copyright (c) 2022-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -28,6 +28,7 @@
 #define __MEDIA_MEM_DECOMPRESS_XE_LPM_PLUS_BASE_H__
 
 #include "media_mem_decompression_next.h"
+#include "media_perf_profiler.h"
 
 class MediaMemDeCompNext_Xe_Lpm_Plus_Base: virtual public MediaMemDeCompNext
 {
@@ -45,6 +46,17 @@ public:
     virtual ~MediaMemDeCompNext_Xe_Lpm_Plus_Base()
     {
         m_osInterface->pfnFreeResource(m_osInterface, &m_tempLinearSurface.OsResource);
+
+        MediaPerfProfiler *perfProfiler = MediaPerfProfiler::Instance();
+
+        if (!perfProfiler)
+        {
+            MOS_OS_ASSERTMESSAGE("Destroy MediaPerfProfiler failed!");
+        }
+        else
+        {
+            MediaPerfProfiler::Destroy(perfProfiler, (void *)this, m_osInterface);
+        }
     }
 
     //!
@@ -111,6 +123,7 @@ public:
 
 protected:
     MOS_SURFACE m_tempLinearSurface = {};
+    int32_t     m_multiprocesssinglebin = 0;   //!< multi process single binary flag
 MEDIA_CLASS_DEFINE_END(MediaMemDeCompNext_Xe_Lpm_Plus_Base)
 };
 

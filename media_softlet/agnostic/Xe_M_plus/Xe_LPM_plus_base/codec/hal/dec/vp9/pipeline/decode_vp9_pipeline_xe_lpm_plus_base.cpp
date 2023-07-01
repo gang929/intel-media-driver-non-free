@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2022, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -111,7 +111,7 @@ MOS_STATUS Vp9PipelineXe_Lpm_Plus_Base::Prepare(void *params)
             if (downSamplingFeature != nullptr)
             {
                 auto frameIdx                   = m_basicFeature->m_curRenderPic.FrameIdx;
-                inputParameters.sfcOutputPicRes = &downSamplingFeature->m_outputSurfaceList[frameIdx].OsResource;
+                inputParameters.sfcOutputSurface = &downSamplingFeature->m_outputSurfaceList[frameIdx];
                 if (downSamplingFeature->m_histogramBuffer != nullptr)
                 {
                     inputParameters.histogramOutputBuf = &downSamplingFeature->m_histogramBuffer->OsResource;
@@ -152,7 +152,9 @@ MOS_STATUS Vp9PipelineXe_Lpm_Plus_Base::Execute()
             {
                 DECODE_CHK_STATUS(UserFeatureReport());
             }
-            m_basicFeature->m_frameNum++;
+            
+            DecodeFrameIndex++;
+            m_basicFeature->m_frameNum = DecodeFrameIndex;
 
             DECODE_CHK_STATUS(m_statusReport->Reset());
 
@@ -361,13 +363,12 @@ MOS_STATUS Vp9PipelineXe_Lpm_Plus_Base::DumpParams(Vp9BasicFeature &basicFeature
     m_debugInterface->m_secondField               = basicFeature.m_secondField;
     m_debugInterface->m_bufferDumpFrameNum        = basicFeature.m_frameNum;
 
-    DECODE_CHK_STATUS(DumpPicParams(
-        basicFeature.m_vp9PicParams));
+    DECODE_CHK_STATUS(DumpPicParams(basicFeature.m_vp9PicParams));
+    DECODE_CHK_STATUS(DumpSliceParams(basicFeature.m_vp9SliceParams));
+    DECODE_CHK_STATUS(DumpSegmentParams(basicFeature.m_vp9SegmentParams));
+    DECODE_CHK_STATUS(DumpBitstream(&basicFeature.m_resDataBuffer.OsResource, basicFeature.m_dataSize, 0));
 
-    DECODE_CHK_STATUS(DumpSegmentParams(
-        basicFeature.m_vp9SegmentParams));
-
-     DECODE_CHK_STATUS(m_debugInterface->DumpBuffer(
+    DECODE_CHK_STATUS(m_debugInterface->DumpBuffer(
         &(basicFeature.m_resVp9SegmentIdBuffer->OsResource),
         CodechalDbgAttr::attrSegId,
         "SegId_beforeHCP",
@@ -378,13 +379,6 @@ MOS_STATUS Vp9PipelineXe_Lpm_Plus_Base::DumpParams(Vp9BasicFeature &basicFeature
         CodechalDbgAttr::attrCoefProb,
         "PakHwCoeffProbs_beforeHCP",
         CODEC_VP9_PROB_MAX_NUM_ELEM));
-
-    //dump bitstream
-    DECODE_CHK_STATUS(m_debugInterface->DumpBuffer(
-        &basicFeature.m_resDataBuffer.OsResource, 
-        CodechalDbgAttr::attrDecodeBitstream, 
-        "_DEC", 
-        basicFeature.m_dataSize, 0, CODECHAL_NUM_MEDIA_STATES));
 
     return MOS_STATUS_SUCCESS;
 }

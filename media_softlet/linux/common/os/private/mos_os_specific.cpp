@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, Intel Corporation
+* Copyright (c) 2022-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -561,11 +561,6 @@ void Linux_IncGpuCtxBufferTag(
     }
 }
 
-MosOcaInterface* Linux_GetOcaInterface()
-{
-    return nullptr;
-}
-
 //!
 //! \brief    Get Buffer Type
 //! \details  Returns the type of buffer, 1D, 2D or volume
@@ -949,12 +944,12 @@ MOS_STATUS Mos_DestroyInterface(PMOS_INTERFACE osInterface)
         }
         if (perStreamParameters->intel_context)
         {
-            if (perStreamParameters->intel_context->vm)
+            if (perStreamParameters->intel_context->vm_id != INVALID_VM)
             {
-                mos_gem_vm_destroy(perStreamParameters->intel_context->bufmgr, perStreamParameters->intel_context->vm);
-                perStreamParameters->intel_context->vm = nullptr;
+                mos_vm_destroy(perStreamParameters->intel_context->bufmgr, perStreamParameters->intel_context->vm_id);
+                perStreamParameters->intel_context->vm_id = INVALID_VM;
             }
-            mos_gem_context_destroy(perStreamParameters->intel_context);
+            mos_context_destroy(perStreamParameters->intel_context);
             perStreamParameters->intel_context = nullptr;
         }
         MOS_Delete(perStreamParameters);
@@ -1351,13 +1346,13 @@ void  *Mos_Specific_LockResource(
             }
             else
             {
-                mos_gem_bo_map_gtt(bo);
+                mos_bo_map_gtt(bo);
                 osResource->MmapOperation = MOS_MMAP_OPERATION_MMAP_GTT;
             }
         }
         else if (lockFlags->Uncached)
         {
-            mos_gem_bo_map_wc(bo);
+            mos_bo_map_wc(bo);
             osResource->MmapOperation = MOS_MMAP_OPERATION_MMAP_WC;
         }
         else
@@ -1414,10 +1409,10 @@ MOS_STATUS Mos_Specific_UnlockResource(
         switch(osResource->MmapOperation)
         {
             case MOS_MMAP_OPERATION_MMAP_GTT:
-                mos_gem_bo_unmap_gtt(osResource->bo);
+                mos_bo_unmap_gtt(osResource->bo);
                 break;
             case MOS_MMAP_OPERATION_MMAP_WC:
-                mos_gem_bo_unmap_wc(osResource->bo);
+                mos_bo_unmap_wc(osResource->bo);
                 break;
             case MOS_MMAP_OPERATION_MMAP:
                 mos_bo_unmap(osResource->bo);
@@ -2082,10 +2077,10 @@ MOS_STATUS Mos_Specific_CreateGpuContext(
                 return MOS_STATUS_UNKNOWN;
             };
 
-            if (mos_hweight8(sseu.subslice_mask) > createOption->packed.SubSliceCount)
+            if (mos_hweight8(osInterface->pOsContext->intel_context, sseu.subslice_mask) > createOption->packed.SubSliceCount)
             {
-                sseu.subslice_mask = mos_switch_off_n_bits(sseu.subslice_mask,
-                        mos_hweight8(sseu.subslice_mask)-createOption->packed.SubSliceCount);
+                sseu.subslice_mask = mos_switch_off_n_bits(osInterface->pOsContext->intel_context, sseu.subslice_mask,
+                        mos_hweight8(osInterface->pOsContext->intel_context, sseu.subslice_mask)-createOption->packed.SubSliceCount);
             }
 
             if (mos_set_context_param_sseu(osInterface->pOsContext->intel_context, sseu))
@@ -3383,6 +3378,11 @@ bool Mos_Specific_pfnIsMultipleCodecDevicesInUse(
     return false;
 }
 
+bool Mos_Specific_IsAsyncDevice(PMOS_INTERFACE osInterface)
+{
+    return false;
+}
+
 MOS_STATUS Mos_Specific_LoadFunction(
     PMOS_INTERFACE osInterface)
 {
@@ -3498,6 +3498,7 @@ MOS_STATUS Mos_Specific_LoadFunction(
     osInterface->pfnIsMismatchOrderProgrammingSupported = Mos_Specific_IsMismatchOrderProgrammingSupported;
 
     osInterface->pfnIsMultipleCodecDevicesInUse = Mos_Specific_pfnIsMultipleCodecDevicesInUse;
+    osInterface->pfnIsAsynDevice               = Mos_Specific_IsAsyncDevice;
 
     return MOS_STATUS_SUCCESS;
 }
@@ -3580,7 +3581,7 @@ MOS_STATUS Mos_Specific_InitInterface(
 
         //Added by Ben for video memory allocation
         osContext->bufmgr = osDriverContext->bufmgr;
-        mos_bufmgr_gem_enable_reuse(osDriverContext->bufmgr);
+        mos_bufmgr_enable_reuse(osDriverContext->bufmgr);
     }
 #endif
     osInterface->pOsContext = osContext;
@@ -3783,12 +3784,8 @@ PMOS_RESOURCE Mos_Specific_GetMarkerResource(
 //!
 uint32_t Mos_Specific_GetTsFrequency(PMOS_INTERFACE osInterface)
 {
-    int32_t freq = 0;
-    drm_i915_getparam_t gp;
-    MOS_ZeroMemory(&gp, sizeof(gp));
-    gp.param = I915_PARAM_CS_TIMESTAMP_FREQUENCY;
-    gp.value = &freq;
-    int ret = drmIoctl(osInterface->pOsContext->fd, DRM_IOCTL_I915_GETPARAM, &gp);
+    uint32_t freq = 0;
+    int ret = mos_get_ts_frequency(osInterface->pOsContext->bufmgr, &freq);
     if(ret == 0)
     {
         return freq;

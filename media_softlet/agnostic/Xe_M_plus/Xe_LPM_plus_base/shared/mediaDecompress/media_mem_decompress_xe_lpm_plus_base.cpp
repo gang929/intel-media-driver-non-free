@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, Intel Corporation
+* Copyright (c) 2022-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -45,9 +45,12 @@ MOS_STATUS MediaMemDeCompNext_Xe_Lpm_Plus_Base::RenderDecompCMD(PMOS_SURFACE sur
     MHW_VEBOX_SURFACE_STATE_CMD_PARAMS  mhwVeboxSurfaceStateCmdParams;
     MHW_MI_FLUSH_DW_PARAMS              flushDwParams;
     uint32_t                            streamID = 0;
-    const MHW_VEBOX_HEAP* veboxHeap = nullptr;
-    MOS_CONTEXT* pOsContext = nullptr;
+    const MHW_VEBOX_HEAP*               veboxHeap = nullptr;
+    MOS_CONTEXT*                        pOsContext = nullptr;
     PMHW_MI_MMIOREGISTERS               pMmioRegisters = nullptr;
+    bool                                isPerfCollected = false;
+    MediaPerfProfiler*                  perfProfiler = nullptr;
+    uint32_t                            perfTag = 0;
 
     VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(surface);
     VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(m_osInterface);
@@ -107,6 +110,23 @@ MOS_STATUS MediaMemDeCompNext_Xe_Lpm_Plus_Base::RenderDecompCMD(PMOS_SURFACE sur
 
     VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(InitCommandBuffer(&cmdBuffer));
 
+    if (m_multiprocesssinglebin)
+    {
+        perfTag = m_osInterface->pfnGetPerfTag(m_osInterface);
+        // check the decompress was called from whether media driver or apps
+        if (perfTag != VPHAL_NONE)
+        {
+            isPerfCollected = true;
+
+            perfProfiler = MediaPerfProfiler::Instance();
+            VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(perfProfiler);
+            // clear the decompress tag to separate the vpblt perf tag
+            m_osInterface->pfnSetPerfTag(m_osInterface, VPHAL_NONE);
+            VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(perfProfiler->Initialize((void *)this, m_osInterface));
+            VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(perfProfiler->AddPerfCollectStartCmd((void *)this, m_osInterface, m_miItf, &cmdBuffer));
+        }
+    }
+
     // Prepare Vebox_Surface_State, surface input/and output are the same but the compressed status.
     VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(SetupVeboxSurfaceState(&mhwVeboxSurfaceStateCmdParams, surface, nullptr));
 
@@ -146,6 +166,12 @@ MOS_STATUS MediaMemDeCompNext_Xe_Lpm_Plus_Base::RenderDecompCMD(PMOS_SURFACE sur
 
     HalOcaInterfaceNext::On1stLevelBBEnd(cmdBuffer, *m_osInterface);
 
+    if (isPerfCollected)
+    {
+        VPHAL_MEMORY_DECOMP_CHK_NULL_RETURN(perfProfiler);
+        VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(perfProfiler->AddPerfCollectEndCmd((void *)this, m_osInterface, m_miItf, &cmdBuffer));
+    }
+
     VPHAL_MEMORY_DECOMP_CHK_STATUS_RETURN(m_miItf->AddMiBatchBufferEnd(
         &cmdBuffer,
         nullptr));
@@ -163,6 +189,12 @@ MOS_STATUS MediaMemDeCompNext_Xe_Lpm_Plus_Base::RenderDecompCMD(PMOS_SURFACE sur
         false));
 
     m_veboxItf->UpdateVeboxSync();
+
+    // Restore the perf tag
+    if (isPerfCollected)
+    {
+        m_osInterface->pfnSetPerfTag(m_osInterface, perfTag);
+    }
 
     return eStatus;
 }
@@ -185,6 +217,13 @@ MOS_STATUS MediaMemDeCompNext_Xe_Lpm_Plus_Base::IsVeboxDecompressionEnabled()
         MediaUserSetting::Group::Device,
         customValue,
         true);
+
+    // Read multi processes single binary flag
+    ReadUserSetting(
+        m_userSettingPtr,
+        m_multiprocesssinglebin,
+        __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_MUL_PROC_SINGLE_BIN,
+        MediaUserSetting::Group::Device);
 
     return eStatus;
 }

@@ -49,7 +49,8 @@ Register<VphalInterfacesG12Tgllp>((uint32_t)IGFX_TIGERLAKE_LP);
 MOS_STATUS VphalInterfacesG12Tgllp::Initialize(
     PMOS_INTERFACE  osInterface,
     bool            bInitVphalState,
-    MOS_STATUS      *eStatus)
+    MOS_STATUS      *eStatus,
+    bool            clearViewMode)
 {
     MOS_OS_CHK_NULL_RETURN(eStatus);
     MOS_OS_CHK_NULL_RETURN(osInterface);
@@ -159,6 +160,7 @@ MOS_STATUS MhwInterfacesG12Tgllp::Initialize(
         MHW_ASSERTMESSAGE("The OS interface is not valid!");
         return MOS_STATUS_INVALID_PARAMETER;
     }
+    m_osInterface = osInterface;
 
     auto gtSystemInfo = osInterface->pfnGetGtSystemInfo(osInterface);
     if (gtSystemInfo == nullptr)
@@ -175,7 +177,7 @@ MOS_STATUS MhwInterfacesG12Tgllp::Initialize(
 
     // MHW_CP and MHW_MI must always be created
     MOS_STATUS status = MOS_STATUS_SUCCESS;
-    m_cpInterface = Create_MhwCpInterface(osInterface);
+    m_cpInterface = osInterface->pfnCreateMhwCpInterface(osInterface);
     if(m_cpInterface == nullptr)
     {
         MOS_OS_ASSERTMESSAGE("new osInterface failed");

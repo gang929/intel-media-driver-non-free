@@ -317,6 +317,7 @@ MOS_STATUS MosUtilDebug::MosHLTInit(MediaUserSettingSharedPtr userSettingPtr)
     char                                        hltFileName[MOS_MAX_HLT_FILENAME_LEN] = {0};
     char                                        fileNamePrefix[MOS_MAX_HLT_FILENAME_LEN];
     int32_t                                     bUseHybridLogTrace = false;
+    int32_t                                     bEnableFlush = false;
     MOS_STATUS                                  eStatus = MOS_STATUS_SUCCESS;
 
     if (m_mosMsgParams.uiCounter != 0 )
@@ -325,9 +326,29 @@ MOS_STATUS MosUtilDebug::MosHLTInit(MediaUserSettingSharedPtr userSettingPtr)
         return MOS_STATUS_UNKNOWN;
     }
 
+    
+    eStatus = ReadUserSetting(
+        userSettingPtr,
+        bEnableFlush,
+        __MOS_USER_FEATURE_KEY_FLUSH_LOG_FILE_BEFORE_SUBMISSION,
+        MediaUserSetting::Group::Device);
+
+
+    ReportUserSetting(
+        userSettingPtr,
+        __MOS_USER_FEATURE_KEY_FLUSH_LOG_FILE_BEFORE_SUBMISSION,
+        bEnableFlush,
+        MediaUserSetting::Group::Device);
+
+    if (!bEnableFlush)
+    {
+        MOS_OS_NORMALMESSAGE("HLT flush is not enabled.");
+    }
+
     m_mosMsgParams.bUseHybridLogTrace = false;
     m_mosMsgParams.pLogFile           = nullptr;
     m_mosMsgParams.pTraceFile         = nullptr;
+    m_mosMsgParams.bEnableFlush       = bEnableFlush;
 
     // Check if HLT should be enabled.
     eStatus = ReadUserSetting(
@@ -345,7 +366,7 @@ MOS_STATUS MosUtilDebug::MosHLTInit(MediaUserSettingSharedPtr userSettingPtr)
             MediaUserSetting::Group::Device);
     }
 
-    bUseHybridLogTrace = MosUtilities::m_mosUltFlag ? 1 : bUseHybridLogTrace;
+    bUseHybridLogTrace = (MosUtilities::m_mosUltFlag && *MosUtilities::m_mosUltFlag) ? 1 : bUseHybridLogTrace;
 
     // Dumping memory mapped regions to trace file disabled for now
     // Need to add new user feature key or derive from the above key.
@@ -357,7 +378,7 @@ MOS_STATUS MosUtilDebug::MosHLTInit(MediaUserSettingSharedPtr userSettingPtr)
         return MOS_STATUS_SUCCESS;               //[SH]: Check this.
     }
 
-    nPID = MosUtilities::m_mosUltFlag ? 0 : MosUtilities::MosGetPid();
+    nPID = (MosUtilities::m_mosUltFlag && *MosUtilities::m_mosUltFlag) ? 0 : MosUtilities::MosGetPid();
 
     // Get logfile directory.
     MosLogFileNamePrefix(fileNamePrefix, userSettingPtr);
@@ -452,7 +473,7 @@ void MosUtilDebug::MosMessageInit(MediaUserSettingSharedPtr userSettingPtr)
                 MediaUserSetting::Group::Device);
         }
 
-        if (MosUtilities::m_mosUltFlag)
+        if (MosUtilities::m_mosUltFlag && (*MosUtilities::m_mosUltFlag))
         {
             MosSetCompMessageLevelAll(MOS_MESSAGE_LVL_DISABLED);
             MosSetCompMessageLevel(MOS_COMPONENT_OS, MOS_MESSAGE_LVL_CRITICAL);
@@ -466,9 +487,19 @@ void MosUtilDebug::MosMessageInit(MediaUserSettingSharedPtr userSettingPtr)
         MosHLTInit(userSettingPtr);
 
         // all above action should not be covered by memninja since its destroy is behind memninja counter report to test result.
-        MosUtilities::m_mosMemAllocCounter     = 0;
-        MosUtilities::m_mosMemAllocFakeCounter = 0;
-        MosUtilities::m_mosMemAllocCounterGfx  = 0;
+        if (MosUtilities::m_mosMemAllocCounter &&
+            MosUtilities::m_mosMemAllocCounterGfx &&
+            MosUtilities::m_mosMemAllocFakeCounter)
+        {
+            *MosUtilities::m_mosMemAllocCounter     = 0;
+            *MosUtilities::m_mosMemAllocFakeCounter = 0;
+            *MosUtilities::m_mosMemAllocCounterGfx  = 0;
+        }
+        else
+        {
+            MOS_OS_ASSERTMESSAGE("MemNinja count pointers are nullptr");
+        }
+
         MOS_OS_VERBOSEMESSAGE("MemNinja leak detection begin");
     }
 
@@ -508,6 +539,38 @@ void MosUtilDebug::MosMessageClose()
     else
     {
         m_mosMsgParams.uiCounter--;
+    }
+}
+
+void MosUtilDebug::MosHLTFlush()
+{
+    if (!m_mosMsgParams.bEnableFlush)
+    {
+        return;
+    }
+
+    MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
+    if (m_mosMsgParams.pLogFile != nullptr)
+    {
+#if COMMON_DLL_SEPARATION_SUPPORT
+        // Every DLL has its own C Runtime (CRT),
+        // and fflush is not safe across dlls.
+        // When common dll separation is enabled, We should call back into common dll for all DDI dlls.
+        MosUtilities::MosFlushToFileInCommon(m_mosMsgParams.pLogFile);
+#else
+        fflush(m_mosMsgParams.pLogFile);
+#endif
+    }
+    if (m_mosMsgParams.pTraceFile != nullptr)
+    {
+#if COMMON_DLL_SEPARATION_SUPPORT
+        // Every DLL has its own C Runtime (CRT),
+        // and fflush is not safe across dlls.
+        // When common dll separation is enabled, We should call back into common dll for all DDI dlls.
+        MosUtilities::MosFlushToFileInCommon(m_mosMsgParams.pTraceFile);
+#else
+        fflush(m_mosMsgParams.pTraceFile);
+#endif
     }
 }
 

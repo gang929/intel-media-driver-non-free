@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2022, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -25,9 +25,24 @@
 //!
 #include "encode_av1_vdenc_packet_xe_lpm_plus_base.h"
 #include "mos_solo_generic.h"
+#include "encode_av1_superres.h"
 
 namespace encode
 {
+
+MOS_STATUS Av1VdencPktXe_Lpm_Plus_Base::Init()
+{
+    ENCODE_FUNC_CALL();
+    ENCODE_CHK_STATUS_RETURN(Av1VdencPkt::Init());
+    auto superResFeature = dynamic_cast<Av1SuperRes *>(m_featureManager->GetFeature(Av1FeatureIDs::av1SuperRes));
+    ENCODE_CHK_NULL_RETURN(superResFeature);
+    m_mmcState = m_pipeline->GetMmcState();
+    ENCODE_CHK_NULL_RETURN(m_mmcState);
+    ENCODE_CHK_STATUS_RETURN(superResFeature->InitMMCState(m_mmcState));
+
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS Av1VdencPktXe_Lpm_Plus_Base::AllocateResources()
 {
     ENCODE_FUNC_CALL();
@@ -389,11 +404,14 @@ MOS_STATUS Av1VdencPktXe_Lpm_Plus_Base::RegisterPostCdef()
     allocParamsForBuffer2D.Format   = Format_NV12;
     allocParamsForBuffer2D.dwWidth  = MOS_ALIGN_CEIL(m_basicFeature->m_frameWidth, av1SuperBlockWidth);
     allocParamsForBuffer2D.dwHeight = MOS_ALIGN_CEIL(m_basicFeature->m_frameHeight, av1SuperBlockHeight);
+#ifdef _MMC_SUPPORTED     
+    ENCODE_CHK_NULL_RETURN(m_mmcState);
     if (m_mmcState->IsMmcEnabled())
     {
         allocParamsForBuffer2D.CompressionMode = MOS_MMC_MC;
         allocParamsForBuffer2D.bIsCompressible = true;
     }
+#endif   
     if (m_basicFeature->m_is10Bit)
     {
         // This is temporary fix for Sim specific ( Grits Utility) issue, HW has no restriction for current platform
@@ -602,6 +620,9 @@ MOS_STATUS Av1VdencPktXe_Lpm_Plus_Base::AddOneTileCommands(
     m_basicFeature->m_flushCmd = Av1BasicFeature::waitVdenc;
     SETPAR_AND_ADDCMD(VD_PIPELINE_FLUSH, m_vdencItf, tempCmdBuffer);
 
+#if _MEDIA_RESERVED
+    AddCommandsExt(*tempCmdBuffer);
+#endif  // !(_MEDIA_RESERVED)
     ENCODE_CHK_STATUS_RETURN(EnsureAllCommandsExecuted(*tempCmdBuffer));
 
     if (!m_osInterface->bUsesPatchList)
@@ -614,13 +635,14 @@ MOS_STATUS Av1VdencPktXe_Lpm_Plus_Base::AddOneTileCommands(
     }
 
 #if USE_CODECHAL_DEBUG_TOOL
+    std::string             name           = std::to_string(tileRow) + std::to_string(tileCol) + std::to_string(tileRowPass) + "_TILE_CMD_BUFFER";
     CodechalDebugInterface *debugInterface = m_pipeline->GetDebugInterface();
     ENCODE_CHK_NULL_RETURN(debugInterface);
 
     ENCODE_CHK_STATUS_RETURN(debugInterface->DumpCmdBuffer(
         &constructTileBatchBuf,
         CODECHAL_NUM_MEDIA_STATES,
-        "_TILE_CMD_BUFFER"));
+        name.c_str()));
 #endif
 
     // End patching tile level batch cmds

@@ -52,26 +52,6 @@ bool FrameTrackerTokenFlat_IsExpired(const FrameTrackerTokenFlat *self)
     return true;
 }
 
-bool FrameTrackerToken::IsExpired()
-{
-    if (m_producer == nullptr)
-    {
-        return true;
-    }
-
-    for (auto ite = m_holdTrackers.begin(); ite != m_holdTrackers.end(); ite ++)
-    {
-        uint32_t index = ite->first;
-        volatile uint32_t latestTracker = *(m_producer->GetLatestTrackerAddress(index));
-        uint32_t holdTracker = ite->second;
-        if ((int)(holdTracker - latestTracker) > 0)
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
 void FrameTrackerToken::Merge(const FrameTrackerToken *token)
 {
     m_producer = token->m_producer;
@@ -88,7 +68,7 @@ FrameTrackerProducer::FrameTrackerProducer():
     m_resourceData(nullptr),
     m_osInterface(nullptr)
 {
-    Mos_ResetResource(&m_resource);
+    MOS_ZeroMemory(&m_resource, sizeof(MOS_RESOURCE));
     MOS_ZeroMemory(m_trackerInUse, sizeof(m_trackerInUse));
     MOS_ZeroMemory(m_counters, sizeof(m_counters));
 }
@@ -116,7 +96,8 @@ MOS_STATUS FrameTrackerProducer::Initialize(MOS_INTERFACE *osInterface)
 {
     m_osInterface = osInterface;
     MHW_CHK_NULL_RETURN(m_osInterface);
-    
+
+    m_osInterface->pfnResetResource(&m_resource);
     // allocate the resource
     MOS_ALLOC_GFXRES_PARAMS allocParamsLinearBuffer;
     uint32_t size = MOS_ALIGN_CEIL(MAX_TRACKER_NUMBER * m_trackerSize, MHW_CACHELINE_SIZE);
@@ -132,8 +113,8 @@ MOS_STATUS FrameTrackerProducer::Initialize(MOS_INTERFACE *osInterface)
         &allocParamsLinearBuffer,
         &m_resource));
 
-    // RegisterResource will be called in AddResourceToHWCmd. It is not allowed to be called by hal explicitly for Async mode
-    if (MosInterface::IsAsyncDevice(m_osInterface->osStreamState) == false)
+    // RegisterResource will be called in AddResourceToHWCmd. It is not allowed to be called by hal explicitly
+    if (!m_osInterface->apoMosEnabled)
     {
         MHW_CHK_STATUS_RETURN(
             m_osInterface->pfnRegisterResource(m_osInterface, &m_resource, true, true));
