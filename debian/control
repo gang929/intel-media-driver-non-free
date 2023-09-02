@@ -12,6 +12,7 @@ Build-Depends:
  libigdgmm-dev (>= 21.1.1),
  libva-dev (>= 2.12),
  libx11-dev,
+ ninja-build,
  pkg-config,
 Standards-Version: 4.6.2
 Homepage: https://github.com/intel/media-driver
