@@ -34,6 +34,10 @@
 #include "mos_os_virtualengine_next.h"
 #include "mos_interface.h"
 #include "mos_os_cp_interface_specific.h"
+#ifdef ENABLE_NEW_KMD
+// This header file is in close source temporarily. Could not find this header file in open source repo.
+#include "mos_gpucontext_specific_next_xe.h"
+#endif
 
 #define MI_BATCHBUFFER_END 0x05000000
 static pthread_mutex_t command_dump_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -94,6 +98,35 @@ GpuContextSpecificNext::~GpuContextSpecificNext()
     MOS_OS_FUNCTION_ENTER;
 
     Clear();
+}
+
+GpuContextNext *GpuContextSpecificNext::Create(
+    const MOS_GPU_NODE    gpuNode,
+    CmdBufMgrNext         *cmdBufMgr,
+    GpuContextNext        *reusedContext)
+{
+    MOS_OS_FUNCTION_ENTER;
+    if (nullptr == cmdBufMgr)
+    {
+        return nullptr;
+    }
+    OsContextSpecificNext *osDeviceContext = dynamic_cast<OsContextSpecificNext*>(cmdBufMgr->m_osContext);
+    if (nullptr == osDeviceContext)
+    {
+        return nullptr;
+    }
+    int type = osDeviceContext->GetDeviceType();
+    if (DEVICE_TYPE_I915 == type)
+    {
+        return MOS_New(GpuContextSpecificNext, gpuNode, cmdBufMgr, reusedContext);
+    }
+#ifdef ENABLE_NEW_KMD
+    else if (DEVICE_TYPE_XE == type)
+    {
+        return MOS_New(GpuContextSpecificNextXe, gpuNode, cmdBufMgr, reusedContext);
+    }
+#endif
+    return nullptr;
 }
 
 MOS_STATUS GpuContextSpecificNext::RecreateContext(bool bIsProtected, MOS_STREAM_HANDLE streamState)
@@ -403,11 +436,11 @@ MOS_STATUS GpuContextSpecificNext::InitVdVeCtx(PMOS_CONTEXT osParameters,
         }
         if (i == *nengine)
         {
-            streamState->bGucSubmission = false;
+            streamState->bParallelSubmission = false;
         }
         else
         {
-            streamState->bGucSubmission = true;
+            streamState->bParallelSubmission = true;
             //create context with different width
             for(i = 1; i < *nengine; i++)
             {
@@ -561,7 +594,8 @@ MOS_STATUS GpuContextSpecificNext::Init(OsContextNext *osContext,
     {
         bool         isEngineSelectEnable = false;
         unsigned int nengine              = 0;
-        struct i915_engine_class_instance *engine_map = nullptr;
+        size_t       engine_class_size    = 0;
+        void         *engine_map          = nullptr;
 
         MOS_TraceEventExt(EVENT_GPU_CONTEXT_CREATE, EVENT_TYPE_START,
                           &gpuNode, sizeof(gpuNode), nullptr, 0);
@@ -573,25 +607,31 @@ MOS_STATUS GpuContextSpecificNext::Init(OsContextNext *osContext,
             MOS_OS_ASSERTMESSAGE("Failed to query engines count.\n");
             return MOS_STATUS_UNKNOWN;
         }
-        engine_map = (struct i915_engine_class_instance *)MOS_AllocAndZeroMemory(nengine * sizeof(struct i915_engine_class_instance));
+        engine_class_size = mos_get_engine_class_size(osParameters->bufmgr);
+        if (!engine_class_size)
+        {
+            MOS_OS_ASSERTMESSAGE("Failed to get engine class instance size.\n");
+            return MOS_STATUS_UNKNOWN;
+        }
+        engine_map = MOS_AllocAndZeroMemory(nengine * engine_class_size);
         MOS_OS_CHK_NULL_RETURN(engine_map);
 
         if (gpuNode == MOS_GPU_NODE_3D)
         {
-            eStatus = Init3DCtx(osParameters, createOption, &nengine, (void *)engine_map);
+            eStatus = Init3DCtx(osParameters, createOption, &nengine, engine_map);
         }
         else if (gpuNode == MOS_GPU_NODE_COMPUTE)
         {
-            eStatus = InitComputeCtx(osParameters, &nengine, (void *)engine_map, gpuNode, &isEngineSelectEnable);
+            eStatus = InitComputeCtx(osParameters, &nengine, engine_map, gpuNode, &isEngineSelectEnable);
         }
         else if (gpuNode == MOS_GPU_NODE_VIDEO || gpuNode == MOS_GPU_NODE_VIDEO2
                 || gpuNode == MOS_GPU_NODE_VE)
         {
-            eStatus = InitVdVeCtx(osParameters, streamState, createOption, &nengine, (void *)engine_map, gpuNode, &isEngineSelectEnable);
+            eStatus = InitVdVeCtx(osParameters, streamState, createOption, &nengine, engine_map, gpuNode, &isEngineSelectEnable);
         }
         else if (gpuNode == MOS_GPU_NODE_BLT)
         {
-            eStatus = InitBltCtx(osParameters, &nengine, (void *)engine_map);
+            eStatus = InitBltCtx(osParameters, &nengine, engine_map);
         }
         else
         {
@@ -1505,7 +1545,7 @@ MOS_STATUS GpuContextSpecificNext::SubmitCommandBuffer(
         {
             if (cmdBuffer->iSubmissionType & SUBMISSION_TYPE_MULTI_PIPE_MASK)
             {
-                if (scalaEnabled && !streamState->bGucSubmission)
+                if (scalaEnabled && !streamState->bParallelSubmission)
                 {
                     uint32_t secondaryIndex = 0;
                     it = m_secondaryCmdBufs.begin();
@@ -1529,7 +1569,7 @@ MOS_STATUS GpuContextSpecificNext::SubmitCommandBuffer(
                         it++;
                     }
                 }
-                else if(scalaEnabled && streamState->bGucSubmission)
+                else if(scalaEnabled && streamState->bParallelSubmission)
                 {
                     ret = ParallelSubmitCommands(m_secondaryCmdBufs,
                                          perStreamParameters,
@@ -1724,15 +1764,10 @@ int32_t GpuContextSpecificNext::SubmitPipeCommands(
         }
     }
 
-    //Keep FE and BE0 running on same engine for VT decode
-    if((cmdBuffer->iSubmissionType & SUBMISSION_TYPE_MULTI_PIPE_ALONE)
-        || (cmdBuffer->iSubmissionType & SUBMISSION_TYPE_MULTI_PIPE_MASTER))
+    if(cmdBuffer->iSubmissionType & SUBMISSION_TYPE_MULTI_PIPE_MASTER)
     {
-        if(cmdBuffer->iSubmissionType & SUBMISSION_TYPE_MULTI_PIPE_MASTER)
-        {
-            //Only master pipe needs fence out flag
-            fence_flag = I915_EXEC_FENCE_OUT;
-        }
+        //Only master pipe needs fence out flag
+        fence_flag = I915_EXEC_FENCE_OUT;
         queue = m_i915Context[1];
     }
 

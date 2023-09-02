@@ -321,6 +321,15 @@ void KernelDll_UpdateCscCoefficients(Kdll_State *pState,
             {
                 csctype = CSC_YUV_RGB;
             }
+            else if (KernelDll_IsCspace(src, CSpace_BT2020_RGB) && KernelDll_IsCspace(dst, CSpace_BT2020_RGB))
+            {
+                csctype = CSC_RGB_RGB;
+
+                // Kernel params didn't support 10bit, it need transformation from 10bit to 8bit.
+                m[3]  = ROUND_FLOAT(m[3], 0.25f);   // 10bit to 8bit (value/4)
+                m[7]  = ROUND_FLOAT(m[7], 0.25f);   // 10bit to 8bit (value/4)
+                m[11] = ROUND_FLOAT(m[11], 0.25f);  // 10bit to 8bit (value/4)
+            }
             else
             {
                 csctype = CSC_YUV_YUV;
@@ -803,7 +812,7 @@ void KernelDll_3x3MatrixProduct(
 | Return    : true if success else false
 \---------------------------------------------------------------------------*/
 bool KernelDll_CalcYuvToYuvMatrix(
-    Kdll_CSpace src,    // [in] RGB Color space
+    Kdll_CSpace src,    // [in] YUV Color space
     Kdll_CSpace dst,    // [in] YUV Color space
     float *     pOutMatrix)  // [out] Conversion matrix (3x4)
 {
@@ -818,6 +827,21 @@ bool KernelDll_CalcYuvToYuvMatrix(
     {
         res = KernelDll_CalcYuvToRgbMatrix(src, CSpace_sRGB, (float *)g_cCSC_BT601_YUV_RGB, fYuvToRgb);
     }
+    else if(IS_COLOR_SPACE_BT2020_YUV(src))
+    {
+        switch (src)
+        {
+            case CSpace_BT2020:
+                res = KernelDll_CalcYuvToRgbMatrix(CSpace_BT2020, CSpace_sRGB, (float *)g_cCSC_BT2020_LimitedYUV_RGB, fYuvToRgb);
+                break;
+            case CSpace_BT2020_FullRange:
+                res = KernelDll_CalcYuvToRgbMatrix(CSpace_BT2020_FullRange, CSpace_sRGB, (float *)g_cCSC_BT2020_YUV_RGB, fYuvToRgb);
+                break;
+            default:
+                res = false;
+                break;
+        }
+    }
     else
     {
         res = KernelDll_CalcYuvToRgbMatrix(src, CSpace_sRGB, (float *)g_cCSC_BT709_YUV_RGB, fYuvToRgb);
@@ -831,6 +855,21 @@ bool KernelDll_CalcYuvToYuvMatrix(
     if (IS_BT601_CSPACE(dst))
     {
         res = KernelDll_CalcRgbToYuvMatrix(CSpace_sRGB, dst, (float *)g_cCSC_BT601_RGB_YUV, fRgbToYuv);
+    }
+    else if (IS_COLOR_SPACE_BT2020_YUV(dst))
+    {
+        switch (dst)
+        {
+            case CSpace_BT2020_FullRange:
+                res = KernelDll_CalcRgbToYuvMatrix(CSpace_sRGB, dst, (float *)g_cCSC_BT2020_RGB_YUV, fRgbToYuv);
+                break;
+            case CSpace_BT2020:
+                res = KernelDll_CalcRgbToYuvMatrix(CSpace_sRGB, dst, (float *)g_cCSC_BT2020_RGB_LimitedYUV, fRgbToYuv);
+                break;
+            default:
+                res = false;
+                break;
+        }
     }
     else
     {
@@ -963,6 +1002,21 @@ void KernelDll_GetCSCMatrix(
         {
             KernelDll_CalcYuvToYuvMatrix(temp, dst, pCSC_Matrix);
         }
+        else if (KernelDll_IsCspace(temp, CSpace_BT2020_RGB))
+        {
+            if (temp == CSpace_BT2020_RGB)  //BT2020_RGB to BT2020_limited_RGB conversions
+            {
+                MOS_SecureMemcpy(pCSC_Matrix, sizeof(g_cCSC_BT2020RGB_BT2020stRGB), (void *)g_cCSC_BT2020RGB_BT2020stRGB, sizeof(g_cCSC_BT2020RGB_BT2020stRGB));
+            }
+            else if (temp == CSpace_BT2020_stRGB)  //BT2020_limited_RGB to BT2020_RGB conversions
+            {
+                MOS_SecureMemcpy(pCSC_Matrix, sizeof(g_cCSC_BT2020stRGB_BT2020RGB), (void *)g_cCSC_BT2020stRGB_BT2020RGB, sizeof(g_cCSC_BT2020stRGB_BT2020RGB));
+            }
+        }
+        else if (KernelDll_IsCspace(temp, CSpace_BT2020))  // BT2020 limited_YUV to BT2020_FullRange_YUV conversions
+        {
+            KernelDll_CalcYuvToYuvMatrix(temp, dst, pCSC_Matrix);
+        }
         else
         {
             VP_RENDER_ASSERTMESSAGE("Not supported color space conversion(from %d to %d)", src, dst);
@@ -1048,17 +1102,17 @@ bool KernelDll_MapCSCMatrix(
 
     default:
         //CSC_RGB_RGB
-        coeff[2]  = FLOAT_TO_SHORT(matrix[0]);   // M0   --> C2
         coeff[0]  = FLOAT_TO_SHORT(matrix[1]);   // M1   --> C0
         coeff[1]  = FLOAT_TO_SHORT(matrix[2]);   // M2   --> C1
+        coeff[2]  = FLOAT_TO_SHORT(matrix[0]);   // M0   --> C2
         coeff[3]  = FLOAT_TO_SHORT(matrix[3]);   // M3   --> C3
-        coeff[6]  = FLOAT_TO_SHORT(matrix[4]);   // M4   --> C6
         coeff[4]  = FLOAT_TO_SHORT(matrix[5]);   // M5   --> C4
         coeff[5]  = FLOAT_TO_SHORT(matrix[6]);   // M6   --> C5
+        coeff[6]  = FLOAT_TO_SHORT(matrix[4]);   // M4   --> C6
         coeff[7]  = FLOAT_TO_SHORT(matrix[7]);   // M7   --> C7
-        coeff[10] = FLOAT_TO_SHORT(matrix[8]);   // M8   --> C10
         coeff[8]  = FLOAT_TO_SHORT(matrix[9]);   // M9   --> C8
         coeff[9]  = FLOAT_TO_SHORT(matrix[10]);  // M10  --> C9
+        coeff[10] = FLOAT_TO_SHORT(matrix[8]);   // M8   --> C10
         coeff[11] = FLOAT_TO_SHORT(matrix[11]);  // M11  --> C11
         break;
     }

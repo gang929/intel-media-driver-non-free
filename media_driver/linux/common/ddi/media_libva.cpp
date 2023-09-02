@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2009-2022, Intel Corporation
+* Copyright (c) 2009-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -1891,7 +1891,7 @@ VAStatus DdiMedia_InitMediaContext (
         GMM_ADAPTER_BDF gmmAdapterBDF;
         memset(&gmmAdapterBDF, 0, sizeof(gmmAdapterBDF));
 
-        eStatus = HWInfo_GetGmmInfo(mediaCtx->fd, &gmmSkuTable, &gmmWaTable, &gmmGtInfo);
+        eStatus = HWInfo_GetGmmInfo(mediaCtx->pDrmBufMgr, &gmmSkuTable, &gmmWaTable, &gmmGtInfo);
         if (MOS_STATUS_SUCCESS != eStatus)
         {
             DDI_ASSERTMESSAGE("Fatal error - unsuccesfull Gmm Sku/Wa/GtSystemInfo initialization");
@@ -2939,7 +2939,7 @@ VAStatus DdiMedia_CreateSurfaces2(
 
                 if( surfIsUserPtr )
                 {
-                    surfDesc->uiTile = I915_TILING_NONE;
+                    surfDesc->uiTile = TILING_NONE;
                     if (surfDesc->ulBuffer % 4096 != 0)
                     {
                         MOS_FreeMemory(surfDesc);
@@ -4426,28 +4426,36 @@ VAStatus DdiMedia_QuerySurfaceError(
     {
         if (error_status != -1 && surface->curCtxType == DDI_MEDIA_CONTEXT_TYPE_DECODER)
         {
-            if (surface->curStatusReport.decode.status == CODECHAL_STATUS_ERROR)
+            if (surface->curStatusReport.decode.status == CODECHAL_STATUS_ERROR ||
+                surface->curStatusReport.decode.status == CODECHAL_STATUS_RESET)
             {
                 surfaceErrors[1].status            = -1;
-                surfaceErrors[0].status            = 2;
+                surfaceErrors[0].status            = 1;
                 surfaceErrors[0].start_mb          = 0;
                 surfaceErrors[0].end_mb            = 0;
                 surfaceErrors[0].num_mb            = surface->curStatusReport.decode.errMbNum;
+#if VA_CHECK_VERSION(1, 20, 0)
+                surfaceErrors[0].decode_error_type = (surface->curStatusReport.decode.status == CODECHAL_STATUS_RESET) ? VADecodeReset : VADecodeMBError;
+#else
                 surfaceErrors[0].decode_error_type = VADecodeMBError;
+#endif
                 *error_info = surfaceErrors;
                 DdiMediaUtil_UnLockMutex(&mediaCtx->SurfaceMutex);
                 return VA_STATUS_SUCCESS;
             }
-            else if (surface->curStatusReport.decode.status == CODECHAL_STATUS_INCOMPLETE ||
-                surface->curStatusReport.decode.status == CODECHAL_STATUS_UNAVAILABLE)
+#if VA_CHECK_VERSION(1, 20, 0)
+            else if (surface->curStatusReport.decode.status == CODECHAL_STATUS_INCOMPLETE  ||
+                     surface->curStatusReport.decode.status == CODECHAL_STATUS_UNAVAILABLE)
             {
                 MOS_ZeroMemory(&surfaceErrors[0], sizeof(VASurfaceDecodeMBErrors));
                 surfaceErrors[1].status            = -1;
-                surfaceErrors[0].status            = VA_STATUS_ERROR_HW_BUSY;
+                surfaceErrors[0].status            = 1;
+                surfaceErrors[0].decode_error_type = VADecodeReset;
                 *error_info                        = surfaceErrors;
                 DdiMediaUtil_UnLockMutex(&mediaCtx->SurfaceMutex);
                 return VA_STATUS_SUCCESS;
             }
+#endif
         }
 
         if (error_status == -1 && surface->curCtxType == DDI_MEDIA_CONTEXT_TYPE_DECODER)
@@ -4755,7 +4763,7 @@ VAStatus DdiMedia_CreateImage(
         MOS_FreeMemory(buf);
         return status;
     }
-    buf->TileType     = I915_TILING_NONE;
+    buf->TileType     = TILING_NONE;
 
     DdiMediaUtil_LockMutex(&mediaCtx->BufferMutex);
     PDDI_MEDIA_BUFFER_HEAP_ELEMENT bufferHeapElement  = DdiMediaUtil_AllocPMediaBufferFromHeap(mediaCtx->pBufferHeap);
@@ -5184,7 +5192,7 @@ VAStatus SwizzleSurface(PDDI_MEDIA_CONTEXT mediaCtx, PGMM_RESOURCE_INFO pGmmResI
 
     memset(&gmmResCopyBlt, 0x0, sizeof(GMM_RES_COPY_BLT));
     uiPicHeight = pGmmResInfo->GetBaseHeight();
-    uiSize = pGmmResInfo->GetSizeSurface();
+    uiSize = pGmmResInfo->GetSizeMainSurface();
     uiPitch = pGmmResInfo->GetRenderPitch();
     gmmResCopyBlt.Gpu.pData = pLockedAddr;
     gmmResCopyBlt.Sys.pData = pResourceBase;

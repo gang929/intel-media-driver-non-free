@@ -154,7 +154,12 @@ MOS_STATUS VeboxCopyStateNext::CopyMainSurface(PMOS_RESOURCE src, PMOS_RESOURCE 
     m_osInterface->pfnSyncOnResource(
         m_osInterface,
         src,
-        MOS_GPU_CONTEXT_VEBOX,
+        VeboxGpuContext,
+        false);
+    m_osInterface->pfnSyncOnResource(
+        m_osInterface,
+        dst,
+        VeboxGpuContext,
         false);
 
     // Reset allocation list and house keeping
@@ -204,7 +209,6 @@ MOS_STATUS VeboxCopyStateNext::CopyMainSurface(PMOS_RESOURCE src, PMOS_RESOURCE 
 
     auto& flushDwParams = m_miItf->MHW_GETPAR_F(MI_FLUSH_DW)();
     flushDwParams = {};
-    flushDwParams.pOsResource = (PMOS_RESOURCE)&veboxHeap->DriverResource;
     VEBOX_COPY_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_FLUSH_DW)(&cmdBuffer));
 
     if (!m_osInterface->bEnableKmdMediaFrameTracking && veboxHeap)
@@ -340,8 +344,10 @@ MOS_STATUS VeboxCopyStateNext::SetupVeboxSurfaceState(
 
     mhwVeboxSurfaceStateCmdParams->SurfInput.bActive    = mhwVeboxSurfaceStateCmdParams->SurfOutput.bActive    = true;
     mhwVeboxSurfaceStateCmdParams->SurfInput.dwBitDepth = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwBitDepth = inputSurface->dwDepth;
-    mhwVeboxSurfaceStateCmdParams->SurfInput.dwHeight   = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwHeight   = inputSurface->dwHeight;
-    mhwVeboxSurfaceStateCmdParams->SurfInput.dwWidth    = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwWidth    = inputSurface->dwWidth;
+    mhwVeboxSurfaceStateCmdParams->SurfInput.dwHeight   = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwHeight   = 
+        MOS_MIN(inputSurface->dwHeight, ((outputSurface!= nullptr) ? outputSurface->dwHeight : inputSurface->dwHeight));
+    mhwVeboxSurfaceStateCmdParams->SurfInput.dwWidth    = mhwVeboxSurfaceStateCmdParams->SurfOutput.dwWidth    = 
+        MOS_MIN(inputSurface->dwWidth, ((outputSurface != nullptr) ? outputSurface->dwWidth : inputSurface->dwWidth));
     mhwVeboxSurfaceStateCmdParams->SurfInput.Format     = mhwVeboxSurfaceStateCmdParams->SurfOutput.Format     = inputSurface->Format;
 
     MOS_SURFACE inputDetails, outputDetails;

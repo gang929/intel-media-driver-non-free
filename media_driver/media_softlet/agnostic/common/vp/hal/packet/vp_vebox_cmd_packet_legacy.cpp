@@ -64,6 +64,14 @@ void VpVeboxCmdPacketLegacy::SetupSurfaceStates(
     pVeboxSurfaceStateCmdParams->bDIEnable     = m_PacketCaps.bDI;
     pVeboxSurfaceStateCmdParams->b3DlutEnable  = m_PacketCaps.bHDR3DLUT;  // Need to consider cappipe
 
+    if (pVeboxSurfaceStateCmdParams->pSurfOutput &&
+        pVeboxSurfaceStateCmdParams->pSurfOutput->osSurface &&
+        pVeboxSurfaceStateCmdParams->pSurfOutput->osSurface->OsResource.bUncompressedWriteNeeded)
+    {
+        VP_RENDER_NORMALMESSAGE("Force compression as RC for bUncompressedWriteNeeded being true");
+        pVeboxSurfaceStateCmdParams->pSurfOutput->osSurface->CompressionMode = MOS_MMC_RC;
+    }
+
     UpdateCpPrepareResources();
 }
 
@@ -2156,6 +2164,11 @@ void VpVeboxCmdPacketLegacy::AddCommonOcaMessage(PMOS_COMMAND_BUFFER pCmdBufferI
 
     // Add vphal param to log.
     HalOcaInterface::DumpVphalParam(*pCmdBufferInUse, (MOS_CONTEXT_HANDLE)pOsContext, pRenderHal->pVphalOcaDumper);
+
+    if (m_vpUserFeatureControl)
+    {
+        HalOcaInterfaceNext::DumpVpUserFeautreControlInfo(*pCmdBufferInUse, pOsContext, m_vpUserFeatureControl->GetOcaFeautreControlInfo());
+    }
 }
 
 
@@ -2351,13 +2364,15 @@ MOS_STATUS VpVeboxCmdPacketLegacy::DumpVeboxStateHeap()
         &kernelResource,
         counter,
         0,
-        VPHAL_DUMP_TYPE_VEBOX_DRIVERHEAP);
+        VPHAL_DUMP_TYPE_VEBOX_DRIVERHEAP,
+        VPHAL_SURF_DUMP_DDI_VP_BLT);
 
     VP_SURFACE_DUMP(debuginterface,
         &kernelResource,
         counter,
         0,
-        VPHAL_DUMP_TYPE_VEBOX_KERNELHEAP);
+        VPHAL_DUMP_TYPE_VEBOX_KERNELHEAP,
+        VPHAL_SURF_DUMP_DDI_VP_BLT);
 
     counter++;
 #endif
@@ -2706,6 +2721,10 @@ VpVeboxCmdPacketLegacy::VpVeboxCmdPacketLegacy(
     VpCmdPacket(task, hwInterface, allocator, mmc, VP_PIPELINE_PACKET_VEBOX),
     VpVeboxCmdPacketBase(task, hwInterface, allocator, mmc)
 {
+    if (hwInterface)
+    {
+        m_vpUserFeatureControl = hwInterface->m_userFeatureControl;
+    }
 }
 
 VpVeboxCmdPacketLegacy:: ~VpVeboxCmdPacketLegacy()

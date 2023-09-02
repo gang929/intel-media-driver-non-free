@@ -202,7 +202,7 @@ MOS_STATUS MosInterface::CreateOsStreamState(
     MOS_OS_CHK_NULL_RETURN(skuTable);
     if (MEDIA_IS_SKU(skuTable, FtrGucSubmission))
     {
-        (*streamState)->bGucSubmission = true;
+        (*streamState)->bParallelSubmission = true;
     }
 
 #if (_DEBUG || _RELEASE_INTERNAL)
@@ -245,7 +245,7 @@ MOS_STATUS MosInterface::CreateOsStreamState(
         regValue,
         __MEDIA_USER_FEATURE_VALUE_ENABLE_GUC_SUBMISSION,
         MediaUserSetting::Group::Device);
-    (*streamState)->bGucSubmission = (*streamState)->bGucSubmission && regValue;
+    (*streamState)->bParallelSubmission = (*streamState)->bParallelSubmission && regValue;
 
     //KMD Virtual Engine DebugOverride
     // 0: not Override
@@ -357,7 +357,7 @@ MOS_STATUS MosInterface::InitStreamParameters(
 
     osDeviceContext = (OsContextSpecificNext *)streamState->osDeviceContext;
     fd              = osDeviceContext->GetFd();
-    if (0 >= fd)
+    if (0 > fd)
     {
         MOS_OS_ASSERTMESSAGE("Invalid fd");
         return MOS_STATUS_INVALID_HANDLE;
@@ -1601,6 +1601,8 @@ MOS_STATUS MosInterface::ConvertResourceFromDdi(
         resource->iWidth   = mediaSurface->iWidth;
         resource->iHeight  = mediaSurface->iHeight;
         resource->iPitch   = mediaSurface->iPitch;
+        // Use surface bo size as resource size since we need real bounds checking when fill padding for the surface.
+        resource->iSize    = mediaSurface->bo->size;
         resource->iCount   = mediaSurface->iRefCount;
         resource->isTiled  = mediaSurface->isTiled;
         resource->TileType = LinuxToMosTileType(mediaSurface->TileType);
@@ -1655,6 +1657,7 @@ MOS_STATUS MosInterface::ConvertResourceFromDdi(
             MOS_OS_ASSERTMESSAGE("MOS: unsupported media format for surface.");
             break;
         }
+        resource->iSize    = mediaBuffer->bo->size;
         resource->iCount   = mediaBuffer->iRefCount;
         resource->isTiled  = 0;
         resource->TileType = LinuxToMosTileType(mediaBuffer->TileType);
@@ -2461,6 +2464,35 @@ MOS_STATUS MosInterface::DoubleBufferCopyResource(
     return status;
 }
 
+MOS_STATUS MosInterface::VerifyMosSurface(
+    PMOS_SURFACE mosSurface,
+    bool        &bIsValid)
+{
+    MOS_OS_FUNCTION_ENTER;
+
+    MOS_OS_CHK_NULL_RETURN(mosSurface);
+    MOS_OS_CHK_NULL_RETURN(mosSurface->OsResource.pGmmResInfo);
+
+    if ((mosSurface->dwPitch * mosSurface->dwHeight > mosSurface->OsResource.pGmmResInfo->GetSizeMainSurface() && (mosSurface->Type != MOS_GFXRES_BUFFER)) ||
+        (mosSurface->dwPitch > mosSurface->OsResource.pGmmResInfo->GetSizeMainSurface() && (mosSurface->Type == MOS_GFXRES_BUFFER)) ||
+        mosSurface->dwHeight == 0 ||
+        mosSurface->dwPitch == 0)
+    {
+        bIsValid = false;
+        MOS_OS_ASSERTMESSAGE("Invalid arguments for mos surface copy: dwPitch %lu, dwHeight %lu, gmmMainSurfaceSize %llu, GFXRES Type %d",
+            mosSurface->dwPitch,
+            mosSurface->dwHeight,
+            mosSurface->OsResource.pGmmResInfo->GetSizeMainSurface(),
+            mosSurface->Type);
+    }
+    else
+    {
+        bIsValid = true;
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS MosInterface::MediaCopyResource2D(
     MOS_STREAM_HANDLE   streamState,
     MOS_RESOURCE_HANDLE inputResource,
@@ -2677,7 +2709,7 @@ void MosInterface::GetGpuPriority(MOS_STREAM_HANDLE streamState, int32_t* pPrior
     }
 
     uint64_t priority = 0;
-    mos_get_context_param(pOsContext->intel_context, 0, I915_CONTEXT_PARAM_PRIORITY, &priority);
+    mos_get_context_param(pOsContext->intel_context, 0, DRM_CONTEXT_PARAM_PRIORITY, &priority);
     *pPriority = (int32_t)priority;
 }
 
@@ -2701,7 +2733,7 @@ void MosInterface::SetGpuPriority(MOS_STREAM_HANDLE streamState, int32_t priorit
         return;
     }
 
-    int32_t ret = mos_set_context_param(pOsContext->intel_context, 0, I915_CONTEXT_PARAM_PRIORITY,(uint64_t)priority);
+    int32_t ret = mos_set_context_param(pOsContext->intel_context, 0, DRM_CONTEXT_PARAM_PRIORITY,(uint64_t)priority);
     if (ret != 0)
     {
         MOS_OS_ASSERTMESSAGE("failed to set the gpu priority, error is %d", ret);
@@ -2849,6 +2881,13 @@ uint8_t MosInterface::GetEngineLogicId(
 {
     return streamState && streamState->virtualEngineInterface ?
         streamState->virtualEngineInterface->GetEngineLogicId(instanceIdx) : 0;
+}
+
+MOS_STATUS MosInterface::SetGpuVirtualAddress(
+    PMOS_RESOURCE          pResource,
+    uint64_t               address)
+{
+    return MOS_STATUS_SUCCESS;
 }
 
 #endif  // _DEBUG || _RELEASE_INTERNAL
@@ -3766,19 +3805,19 @@ MOS_STATUS MosInterface::RegisterBBCompleteNotifyEvent(
 }
 
 void MosInterface::GetRtLogResourceInfo(
-    MOS_STREAM_HANDLE streamState,
+    PMOS_INTERFACE osInterface,
     PMOS_RESOURCE &osResource,
     uint32_t &size)
 {
     osResource = nullptr;
     size = 0;
-    if (streamState && streamState->osDeviceContext)
+    if (osInterface->osStreamState && osInterface->osStreamState->osDeviceContext)
     {
         MosOcaRTLogMgr &ocaRTLogMgr = MosOcaRTLogMgr::GetInstance();
-        GpuContextSpecificNext *gpuContext = dynamic_cast<GpuContextSpecificNext*>(streamState->osDeviceContext->GetGpuContextMgr()->GetGpuContext(streamState->currentGpuContextHandle));
+        GpuContextSpecificNext *gpuContext = dynamic_cast<GpuContextSpecificNext*>(osInterface->osStreamState->osDeviceContext->GetGpuContextMgr()->GetGpuContext(osInterface->osStreamState->currentGpuContextHandle));
         if (gpuContext != nullptr)
         {
-            osResource = gpuContext->GetOcaRTLogResource(streamState->osDeviceContext->GetOcaRTLogResource());
+            osResource = gpuContext->GetOcaRTLogResource(osInterface->osStreamState->osDeviceContext->GetOcaRTLogResource());
             size       = ocaRTLogMgr.GetRtlogHeapSize();
         }
     }

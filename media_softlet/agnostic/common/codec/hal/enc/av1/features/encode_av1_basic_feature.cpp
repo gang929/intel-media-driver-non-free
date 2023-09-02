@@ -186,9 +186,10 @@ MOS_STATUS Av1BasicFeature::Update(void *params)
     m_picWidthInSb = m_miCols >> mibSizeLog2;
     m_picHeightInSb = m_miRows >> mibSizeLog2;
 
+    // EnableFrameOBU thread safety
     if (m_av1PicParams->PicFlags.fields.EnableFrameOBU)
     {
-        m_frameHdrOBUSizeByteOffset[m_av1PicParams->CurrOriginalPic.FrameIdx % ASYNC_NUM] = m_av1PicParams->FrameHdrOBUSizeByteOffset;
+        m_frameHdrOBUSizeByteOffset = m_av1PicParams->FrameHdrOBUSizeByteOffset;
     }
 
     // Only for first frame
@@ -944,6 +945,12 @@ MHW_SETPAR_DECL_SRC(AVP_PIC_STATE, Av1BasicFeature)
     params.minFramSizeUnits = 3;
     params.minFramSize      = MOS_ALIGN_CEIL(minFrameBytes, 16) / 16;
 
+    auto waTable = m_osInterface->pfnGetWaTable(m_osInterface);
+    if (MEDIA_IS_WA(waTable, Wa_15013355402))
+    {
+        params.minFramSize = MOS_ALIGN_CEIL(13 * 64, 16) / 16;
+    }
+
     params.bitOffsetForFirstPartitionSize = 0;
 
     params.class0_SSE_Threshold0 = 0;
@@ -955,14 +962,12 @@ MHW_SETPAR_DECL_SRC(AVP_PIC_STATE, Av1BasicFeature)
     params.autoBistreamStitchingInHardware = !m_enableSWStitching && !m_dualEncEnable;
 
     // special fix to avoid zero padding for low resolution/bitrates and restore up to 20% BdRate quality
-    if ((m_av1PicParams->tile_cols * m_av1PicParams->tile_rows == 1) || m_dualEncEnable)
+    if ((m_av1PicParams->tile_cols * m_av1PicParams->tile_rows == 1) || m_dualEncEnable || m_enableSWStitching)
     {
         params.minFramSize = 0;
         params.minFramSizeUnits                = 0;
         params.autoBistreamStitchingInHardware = false;
     }
-
-    params.postCdefReconPixelStreamoutEn = true;  // Always needed, since this is recon for VDENC
 
     MHW_CHK_STATUS_RETURN(m_ref.MHW_SETPAR_F(AVP_PIC_STATE)(params));
 
@@ -1006,7 +1011,8 @@ MHW_SETPAR_DECL_SRC(AVP_INLOOP_FILTER_STATE, Av1BasicFeature)
         params.LoopRestorationType[1] == 0 &&
         params.LoopRestorationType[2] == 0)
     {
-        params.LoopRestorationSizeLuma = 0;
+        params.LoopRestorationSizeLuma             = 0;
+        params.UseSameLoopRestorationSizeForChroma = false;
     }
     else
     {
@@ -1020,7 +1026,6 @@ MHW_SETPAR_DECL_SRC(AVP_INLOOP_FILTER_STATE, Av1BasicFeature)
 MHW_SETPAR_DECL_SRC(AVP_PIPE_BUF_ADDR_STATE, Av1BasicFeature)
 {
     params.bsLineRowstoreBuffer            = m_bitstreamDecoderEncoderLineRowstoreReadWriteBuffer;
-    params.bsTileLineRowstoreBuffer        = m_bitstreamDecoderEncoderTileLineRowstoreReadWriteBuffer;
     params.intraPredLineRowstoreBuffer     = m_resMfdIntraRowStoreScratchBuffer;
     params.intraPredTileLineRowstoreBuffer = m_intraPredictionTileLineRowstoreReadWriteBuffer;
     params.spatialMVLineBuffer             = m_spatialMotionVectorLineReadWriteBuffer;
@@ -1036,18 +1041,6 @@ MHW_SETPAR_DECL_SRC(AVP_PIPE_BUF_ADDR_STATE, Av1BasicFeature)
     params.deblockLineYBuffer              = m_deblockerFilterLineReadWriteYBuffer;
     params.deblockLineUBuffer              = m_deblockerFilterLineReadWriteUBuffer;
     params.deblockLineVBuffer              = m_deblockerFilterLineReadWriteVBuffer;
-    params.deblockTileLineYBuffer          = m_deblockerFilterTileLineReadWriteYBuffer;
-    params.deblockTileLineUBuffer          = m_deblockerFilterTileLineReadWriteUBuffer;
-    params.deblockTileLineVBuffer          = m_deblockerFilterTileLineReadWriteVBuffer;
-    params.deblockTileColumnYBuffer        = m_deblockerFilterTileColumnReadWriteYBuffer;
-    params.deblockTileColumnUBuffer        = m_deblockerFilterTileColumnReadWriteUBuffer;
-    params.deblockTileColumnVBuffer        = m_deblockerFilterTileColumnReadWriteVBuffer;
-    params.cdefLineBuffer                  = m_cdefFilterLineReadWriteBuffer;
-    params.cdefTileLineBuffer              = m_cdefFilterTileLineReadWriteBuffer;
-    params.cdefTileColumnBuffer            = m_cdefFilterTileColumnReadWriteBuffer;
-    params.cdefMetaTileLineBuffer          = m_cdefFilterMetaTileLineReadWriteBuffer;
-    params.cdefMetaTileColumnBuffer        = m_cdefFilterMetaTileColumnReadWriteBuffer;
-    params.cdefTopLeftCornerBuffer         = m_cdefFilterTopLeftCornerReadWriteBuffer;
     params.superResTileColumnYBuffer       = m_superResTileColumnReadWriteYBuffer;
     params.superResTileColumnUBuffer       = m_superResTileColumnReadWriteUBuffer;
     params.superResTileColumnVBuffer       = m_superResTileColumnReadWriteVBuffer;
