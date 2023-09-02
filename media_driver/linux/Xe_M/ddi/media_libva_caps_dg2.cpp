@@ -49,8 +49,7 @@ VAStatus MediaLibvaCapsDG2::LoadAv1EncProfileEntrypoints()
         (*attributeList)[VAConfigAttribEncDynamicScaling] = 0;
         (*attributeList)[VAConfigAttribEncTileSupport]    = 1;
         (*attributeList)[VAConfigAttribEncDirtyRect]      = 0;
-        (*attributeList)[VAConfigAttribEncMaxRefFrames]   = CODEC_AV1_NUM_REFL0P_FRAMES |
-            CODEC_AV1_NUM_REFL0B_FRAMES<<8 | CODEC_AV1_NUM_REFL1B_FRAMES<<16;
+        (*attributeList)[VAConfigAttribEncMaxRefFrames]   = CODEC_AV1_NUM_REFL0P_FRAMES | CODEC_AV1_NUM_REFL1B_FRAMES<<16;
 
         VAConfigAttrib attrib;
         attrib.type = (VAConfigAttribType) VAConfigAttribEncAV1;
@@ -76,7 +75,7 @@ VAStatus MediaLibvaCapsDG2::LoadAv1EncProfileEntrypoints()
         attribValAV1ToolsExt2.bits.tile_size_bytes_minus1 = 3;
         attribValAV1ToolsExt2.bits.obu_size_bytes_minus1  = 3;
         attribValAV1ToolsExt2.bits.max_tile_num_minus1    = 511;
-        attribValAV1ToolsExt2.bits.tx_mode_support        = 2;
+        attribValAV1ToolsExt2.bits.tx_mode_support        = 4;
 
         attrib.value = attribValAV1ToolsExt2.value;
         (*attributeList)[attrib.type] = attrib.value;
@@ -178,6 +177,7 @@ std::string MediaLibvaCapsDG2::GetEncodeCodecKey(VAProfile profile, VAEntrypoint
         case VAProfileHEVCMain:
         case VAProfileHEVCMain10:
         case VAProfileHEVCMain12:
+        case VAProfileHEVCMain422_10:
         case VAProfileHEVCMain444:
         case VAProfileHEVCMain444_10:
         case VAProfileHEVCSccMain:
@@ -226,6 +226,7 @@ CODECHAL_MODE MediaLibvaCapsDG2::GetEncodeCodecMode(VAProfile profile, VAEntrypo
         case VAProfileHEVCMain:
         case VAProfileHEVCMain10:
         case VAProfileHEVCMain12:
+        case VAProfileHEVCMain422_10:
         case VAProfileHEVCMain444:
         case VAProfileHEVCMain444_10:
         case VAProfileHEVCSccMain:
@@ -271,6 +272,7 @@ VAStatus MediaLibvaCapsDG2::CheckEncodeResolution(
         case VAProfileHEVCMain:
         case VAProfileHEVCMain10:
         case VAProfileHEVCMain12:
+        case VAProfileHEVCMain422_10:
         case VAProfileHEVCMain444:
         case VAProfileHEVCMain444_10:
         case VAProfileHEVCSccMain:
@@ -338,6 +340,10 @@ VAStatus MediaLibvaCapsDG2::CheckEncRTFormat(
     else if(profile == VAProfileHEVCMain12)
     {
         attrib->value = VA_RT_FORMAT_YUV420_12;
+    }
+    else if(profile == VAProfileHEVCMain422_10)
+    {
+        attrib->value = VA_RT_FORMAT_YUV422 | VA_RT_FORMAT_YUV422_10;
     }
     else if(profile == VAProfileHEVCMain444 || profile == VAProfileHEVCSccMain444)
     {

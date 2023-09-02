@@ -657,6 +657,7 @@ MOS_STATUS Mos_InitOsInterface(
     pOsInterface->pfnGetResourceHandle                  = Mos_GetResourceHandle;
     pOsInterface->pfnGetRtLogResourceInfo               = Mos_GetRtLogResourceInfo;
     pOsInterface->pfnResetResource                      = Mos_ResetMosResource;
+    pOsInterface->pfnVerifyMosSurface                   = Mos_VerifyMosSurface;
 
     pOsInterface->pfnCreateMhwCpInterface               = Create_MhwCpInterface;
     pOsInterface->pfnDeleteMhwCpInterface               = Delete_MhwCpInterface;
@@ -670,6 +671,7 @@ MOS_STATUS Mos_InitOsInterface(
 #if (_DEBUG || _RELEASE_INTERNAL)
     pOsInterface->pfnGetVeEngineCount                   = Mos_GetVeEngineCount;
     pOsInterface->pfnGetEngineLogicIdByIdx              = Mos_GetEngineLogicId;
+    pOsInterface->pfnSetGpuVirtualAddress               = MOS_SetGpuVirtualAddress;
 #endif
 
     pOsInterface->Component                 = component;
@@ -1119,12 +1121,19 @@ uint64_t Mos_GetResourceHandle(
     return MosInterface::GetResourceHandle(streamState, osResource);
 }
 
+MOS_STATUS Mos_VerifyMosSurface(
+    PMOS_SURFACE            mosSurface,
+    bool&                   bIsValid)
+{
+    return MosInterface::VerifyMosSurface(mosSurface, bIsValid);
+}
+
 void Mos_GetRtLogResourceInfo(
-    MOS_STREAM_HANDLE       streamState,
+    PMOS_INTERFACE          osInterface,
     PMOS_RESOURCE           &osResource,
     uint32_t                &size)
 {
-    return MosInterface::GetRtLogResourceInfo(streamState, osResource, size);
+    return MosInterface::GetRtLogResourceInfo(osInterface, osResource, size);
 }
 
 void Mos_ResetMosResource(
@@ -1146,6 +1155,14 @@ uint8_t Mos_GetEngineLogicId(
 {
     return MosInterface::GetEngineLogicId(streamState, instanceIdx);
 }
+
+MOS_STATUS MOS_SetGpuVirtualAddress(
+    PMOS_RESOURCE          pResource,
+    uint64_t               address)
+{
+    return MosInterface::SetGpuVirtualAddress(pResource, address);
+}
+
 #endif
 
 void *MosStreamState::pvSoloContext = nullptr; 

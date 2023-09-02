@@ -63,13 +63,15 @@ MOS_STATUS Av1VdencPipelineXe_Lpm_Plus_Base::Prepare(void *params)
     PCODEC_AV1_ENCODE_SEQUENCE_PARAMS av1SeqParams = static_cast<PCODEC_AV1_ENCODE_SEQUENCE_PARAMS>(encodeParams->pSeqParams);
     ENCODE_CHK_NULL_RETURN(av1SeqParams);
 
+    auto feature = dynamic_cast<Av1BasicFeature *>(m_featureManager->GetFeature(Av1FeatureIDs::basicFeature));
+    ENCODE_CHK_NULL_RETURN(feature);
+
+    feature->m_dualEncEnable = m_dualEncEnable;
+
     ENCODE_CHK_STATUS_RETURN(Av1VdencPipeline::Prepare(params));
 
     PCODEC_AV1_ENCODE_PICTURE_PARAMS picParams = static_cast<PCODEC_AV1_ENCODE_PICTURE_PARAMS>(encodeParams->pPicParams);
     ENCODE_CHK_NULL_RETURN(picParams);
-
-    auto feature = dynamic_cast<Av1BasicFeature *>(m_featureManager->GetFeature(Av1FeatureIDs::basicFeature));
-    ENCODE_CHK_NULL_RETURN(feature);
 
     uint16_t numTileRows    = 0;
     uint16_t numTileColumns = 0;
@@ -92,6 +94,11 @@ MOS_STATUS Av1VdencPipelineXe_Lpm_Plus_Base::Prepare(void *params)
     inputParameters.maxNumSlicesAllowed        = 0;
 
     inputParameters.numberTilesInFrame = numTileRows * numTileColumns;
+
+    inputParameters.av1EnableFrameObu            = feature->m_av1PicParams->PicFlags.fields.EnableFrameOBU;
+    inputParameters.av1FrameHdrOBUSizeByteOffset = feature->m_frameHdrOBUSizeByteOffset;
+    inputParameters.frameWidth                   = feature->m_frameWidth;
+    inputParameters.frameHeight                  = feature->m_frameHeight;
 
     ENCODE_CHK_STATUS_RETURN(m_statusReport->Init(&inputParameters));
 
@@ -173,7 +180,13 @@ MOS_STATUS Av1VdencPipelineXe_Lpm_Plus_Base::ActivateVdencVideoPackets()
 
         for (uint8_t curPipe = 0; curPipe < GetPipeNum(); curPipe++)
         {
-            ENCODE_CHK_STATUS_RETURN(ActivatePacket(Av1VdencPacket, immediateSubmit, curPass, curPipe, GetPipeNum()));
+            // force immediate submit to false irrespective of single/multi task phase at pipe 0 when dual enc enabled
+            ENCODE_CHK_STATUS_RETURN(ActivatePacket(Av1VdencPacket, m_dualEncEnable && curPipe == 0 ? false : immediateSubmit, curPass, curPipe, GetPipeNum()));
+        }
+
+        if ((basicFeature->m_enableTileStitchByHW || !basicFeature->m_enableSWStitching || brcFeature->IsBRCEnabled()) && m_dualEncEnable)
+        {
+            ENCODE_CHK_STATUS_RETURN(ActivatePacket(Av1PakIntegrate, immediateSubmit, curPass, 0));
         }
 
         if (!basicFeature->m_enableSWBackAnnotation)

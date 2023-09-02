@@ -1981,6 +1981,24 @@ uint64_t Mos_Specific_GetResourceGfxAddress(
 }
 
 //!
+//! \brief    Get Clear Color Address
+//! \details  The clear color address
+//! \param    PMOS_INTERFACE pOsInterface
+//!           [in] OS Interface
+//! \param    PMOS_RESOURCE pResource
+//!           [in] OS resource structure
+//! \return   uint64_t
+//!           The clear color address
+//!
+uint64_t Mos_Specific_GetResourceClearAddress(
+    PMOS_INTERFACE pOsInterface,
+    PMOS_RESOURCE  pResource)
+{
+    uint64_t ui64ClearColorAddress = 0;
+    return ui64ClearColorAddress;
+}
+
+//!
 //! \brief    Resizes the buffer to be used for rendering GPU commands
 //! \details  return true if succeeded - command buffer will be large enough to hold dwMaxSize
 //!           return false if failed or invalid parameters
@@ -2091,6 +2109,7 @@ MOS_STATUS Mos_Specific_CreateGpuContext(
         }
 
         createOption->gpuNode = gpuNode;
+        MOS_OS_CHK_NULL_RETURN(osInterface->osStreamState);
         // Update ctxBasedScheduling from legacy OsInterface
         osInterface->osStreamState->ctxBasedScheduling = osInterface->ctxBasedScheduling;
         if (osInterface->m_GpuContextHandleMap[mosGpuCxt] == MOS_GPU_CONTEXT_INVALID_HANDLE)
@@ -3265,7 +3284,7 @@ static MOS_STATUS Mos_Specific_InitInterface_Ve(
         MOS_OS_CHK_NULL_RETURN(skuTable);
         if (MEDIA_IS_SKU(skuTable, FtrGucSubmission))
         {
-            osInterface->bGucSubmission = true;
+            osInterface->bParallelSubmission = true;
         }
 
         //Read Scalable/Legacy Decode mode on Gen11+
@@ -3300,7 +3319,7 @@ static MOS_STATUS Mos_Specific_InitInterface_Ve(
             regValue,
             __MEDIA_USER_FEATURE_VALUE_ENABLE_GUC_SUBMISSION,
             MediaUserSetting::Group::Device);
-        osInterface->bGucSubmission = osInterface->bGucSubmission && regValue;
+        osInterface->bParallelSubmission = osInterface->bParallelSubmission && regValue;
 
         // read the "Force VEBOX" user feature key
         // 0: not force
@@ -3418,6 +3437,7 @@ MOS_STATUS Mos_Specific_LoadFunction(
     osInterface->pfnResetResourceAllocationIndex    = Mos_Specific_ResetResourceAllocationIndex;
     osInterface->pfnGetResourceAllocationIndex      = Mos_Specific_GetResourceAllocationIndex;
     osInterface->pfnGetResourceGfxAddress           = Mos_Specific_GetResourceGfxAddress;
+    osInterface->pfnGetResourceClearAddress         = Mos_Specific_GetResourceClearAddress;
     osInterface->pfnGetCommandBuffer                = Mos_Specific_GetCommandBuffer;
     osInterface->pfnResetCommandBuffer              = Mos_Specific_ResetCommandBuffer;
     osInterface->pfnReturnCommandBuffer             = Mos_Specific_ReturnCommandBuffer;
@@ -3615,7 +3635,8 @@ MOS_STATUS Mos_Specific_InitInterface(
     osInterface->dwGPUPendingBatch  = 0;
 
     // enable it on Linux
-    osInterface->bMediaReset          = true;
+    osInterface->bMediaReset         = true;
+    osInterface->trinityPath         = TRINITY_DISABLED;
     osInterface->umdMediaResetEnable = true;
 
     pMediaWatchdog = getenv("INTEL_MEDIA_RESET_WATCHDOG");
@@ -3690,11 +3711,11 @@ MOS_STATUS Mos_Specific_InitInterface(
 MOS_TILE_TYPE LinuxToMosTileType(uint32_t type)
 {
     switch (type) {
-        case I915_TILING_NONE:
+        case TILING_NONE:
             return MOS_TILE_LINEAR;
-        case I915_TILING_X:
+        case TILING_X:
             return MOS_TILE_X;
-        case I915_TILING_Y:
+        case TILING_Y:
             return MOS_TILE_Y;
         default:
             return MOS_TILE_INVALID;

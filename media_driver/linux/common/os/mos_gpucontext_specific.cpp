@@ -347,11 +347,11 @@ MOS_STATUS GpuContextSpecific::Init(OsContext *osContext,
                 }
                 if (i == nengine)
                 {
-                    osInterface->bGucSubmission = false;
+                    osInterface->bParallelSubmission = false;
                 }
                 else
                 {
-                    osInterface->bGucSubmission = true;
+                    osInterface->bParallelSubmission = true;
                     //create context with different width
                     for(i = 1; i < nengine; i++)
                     {
@@ -1248,7 +1248,7 @@ MOS_STATUS GpuContextSpecific::SubmitCommandBuffer(
         {
             if (cmdBuffer->iSubmissionType & SUBMISSION_TYPE_MULTI_PIPE_MASK)
             {
-                if (scalaEnabled && !osInterface->bGucSubmission)
+                if (scalaEnabled && !osInterface->bParallelSubmission)
                 {
                     uint32_t secondaryIndex = 0;
                     it = m_secondaryCmdBufs.begin();
@@ -1273,7 +1273,7 @@ MOS_STATUS GpuContextSpecific::SubmitCommandBuffer(
                         it++;
                     }
                 }
-                else if(scalaEnabled && osInterface->bGucSubmission)
+                else if(scalaEnabled && osInterface->bParallelSubmission)
                 {
                     ret = ParallelSubmitCommands(m_secondaryCmdBufs,
                                          osContext,
@@ -1465,15 +1465,10 @@ int32_t GpuContextSpecific::SubmitPipeCommands(
         }
     }
 
-    //Keep FE and BE0 running on same engine for VT decode
-    if((cmdBuffer->iSubmissionType & SUBMISSION_TYPE_MULTI_PIPE_ALONE)
-        || (cmdBuffer->iSubmissionType & SUBMISSION_TYPE_MULTI_PIPE_MASTER))
+    if(cmdBuffer->iSubmissionType & SUBMISSION_TYPE_MULTI_PIPE_MASTER)
     {
-        if(cmdBuffer->iSubmissionType & SUBMISSION_TYPE_MULTI_PIPE_MASTER)
-        {
-            //Only master pipe needs fence out flag
-            fenceFlag = I915_EXEC_FENCE_OUT;
-        }
+        //Only master pipe needs fence out flag
+        fenceFlag = I915_EXEC_FENCE_OUT;
         queue = m_i915Context[1];
     }
 

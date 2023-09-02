@@ -481,6 +481,29 @@ MOS_STATUS VpAllocator::DestroyVpSurface(VP_SURFACE* &surface, bool deferredDest
 
     if (surface->isResourceOwner)
     {
+#if !EMUL
+    MT_LOG5(MT_VP_HAL_DESTROY_SURF, MT_NORMAL,
+        MT_VP_HAL_SURF_ALLOC_PARAM_PTR, *(int64_t *)(&surface),
+        MT_VP_HAL_SURF_ALLOC_PARAM_MOS_SURF_PTR, *(int64_t *)(&surface->osSurface),
+        MT_VP_HAL_SURF_ALLOC_PARAM_IS_RES_OWNER, surface->isResourceOwner,
+        MT_VP_HAL_SURF_ALLOC_PARAM_HANDLE, static_cast<int64_t>(surface->GetAllocationHandle(m_osInterface)),
+        MT_VP_HAL_SURF_ALLOC_PARAM_SIZE, static_cast<int64_t>(surface->osSurface->OsResource.pGmmResInfo ? surface->osSurface->OsResource.pGmmResInfo->GetSizeAllocation() : 0));
+    VP_PUBLIC_NORMALMESSAGE(
+        "VP_HAL_DESTROY_SURF. "
+        "VP_HAL_Surface: 0x%x, "
+        "VP_HAL_OsSurface: 0x%x, "
+        "VP_HAL_isResourceOwner: %d, "
+        "VP_HAL_Surface_Handle: 0x%x, "
+        "VP_HAL_Surface_Size: %d",
+        surface,
+        surface->osSurface,
+        surface->isResourceOwner,
+        surface->GetAllocationHandle(m_osInterface),
+        surface->osSurface->OsResource.pGmmResInfo ? surface->osSurface->OsResource.pGmmResInfo->GetSizeAllocation() : 0);
+
+        int64_t currentSize = static_cast<int64_t>(surface->osSurface->OsResource.pGmmResInfo ? surface->osSurface->OsResource.pGmmResInfo->GetSizeAllocation() : 0);
+        m_totalSize         = m_totalSize - currentSize;
+#endif 
         status = DestroySurface(surface->osSurface, flags);
     }
     else
@@ -863,13 +886,55 @@ MOS_STATUS VpAllocator::ReAllocateSurface(
 
     if (!surfInfoCheck(surface))
     {
-        VP_PUBLIC_ASSERTMESSAGE("Incorrect surface parameters.");
+        VP_PUBLIC_ASSERTMESSAGE("Allocated surface is not matched with allocating parameter.");
+        VP_PUBLIC_ASSERTMESSAGE("Allocated surface : format %d, compressible %d, compressionMode %d, tileType %d, bufferWidth %d, bufferHeight %d, width %d, height %d",
+            surface->osSurface->Format,
+            surface->osSurface->bCompressible,
+            surface->osSurface->CompressionMode,
+            surface->osSurface->TileType,
+            surface->bufferWidth,
+            surface->bufferHeight,
+            surface->osSurface->dwWidth,
+            surface->osSurface->dwHeight);
+        VP_PUBLIC_ASSERTMESSAGE("Parameter to allocate : format %d, compressible %d, compressionMode %d, tileType %d, width %d, height %d",
+            format,
+            compressible,
+            compressionMode,
+            defaultTileType,
+            width,
+            height);
     }
 
     MT_LOG7(MT_VP_HAL_REALLOC_SURF, MT_NORMAL, MT_VP_HAL_INTER_SURF_TYPE, surfaceName ? *((int64_t*)surfaceName) : 0,
         MT_SURF_WIDTH, width, MT_SURF_HEIGHT, height, MT_SURF_MOS_FORMAT, format, MT_SURF_TILE_MODE, surface->osSurface->TileModeGMM,
         MT_SURF_COMP_ABLE, surface->osSurface->bCompressible, MT_SURF_COMP_MODE, surface->osSurface->CompressionMode);
 
+#if !EMUL
+    MT_LOG6(MT_VP_HAL_REALLOC_SURF, MT_NORMAL,
+        MT_VP_HAL_SURF_ALLOC_PARAM_PTR, *(int64_t *)(&surface),
+        MT_VP_HAL_SURF_ALLOC_PARAM_MOS_SURF_PTR, *(int64_t *)(&surface->osSurface),
+        MT_VP_HAL_SURF_ALLOC_PARAM_IS_RES_OWNER, surface->isResourceOwner,
+        MT_VP_HAL_SURF_ALLOC_PARAM_HANDLE, static_cast<int64_t>(surface->GetAllocationHandle(m_osInterface)),
+        MT_VP_HAL_SURF_ALLOC_PARAM_SIZE, static_cast<int64_t>(surface->osSurface->OsResource.pGmmResInfo ? surface->osSurface->OsResource.pGmmResInfo->GetSizeAllocation() : 0),
+        MT_VP_HAL_SURF_ALLOC_PARAM_NAME, surfaceName ? *((int64_t *)surfaceName) : 0);
+    VP_PUBLIC_NORMALMESSAGE(
+        "VP_HAL_REALLOC_SURF. "
+        "VP_HAL_Surface: 0x%x, "
+        "VP_HAL_OsSurface: 0x%x, "
+        "VP_HAL_isResourceOwner: %d, "
+        "VP_HAL_Surface_Handle: 0x%x, "
+        "VP_HAL_Surface_Size: %d, "
+        "VP_HAL_Surface_Name: %s ",
+        surface,
+        surface->osSurface,
+        surface->isResourceOwner,
+        surface->GetAllocationHandle(m_osInterface),
+        surface->osSurface->OsResource.pGmmResInfo ? surface->osSurface->OsResource.pGmmResInfo->GetSizeAllocation() : 0,
+        surfaceName);
+    int64_t currentSize  = static_cast<int64_t>(surface->osSurface->OsResource.pGmmResInfo ? surface->osSurface->OsResource.pGmmResInfo->GetSizeAllocation() : 0);
+    m_totalSize          = m_totalSize + currentSize;
+    m_peakSize           = m_peakSize > m_totalSize ? m_peakSize : m_totalSize;
+#endif
     allocated = true;
     return MOS_STATUS_SUCCESS;
 }

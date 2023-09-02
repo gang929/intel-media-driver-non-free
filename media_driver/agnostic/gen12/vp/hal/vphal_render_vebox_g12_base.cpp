@@ -1054,6 +1054,12 @@ MOS_STATUS VPHAL_VEBOX_STATE_G12_BASE::AllocateResources()
 #if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
                 PRENDERHAL_INTERFACE pRenderHal = pVeboxState->m_pRenderHal;
                 m_hdr3DLutGenerator             = MOS_New(Hdr3DLutGeneratorG12, pRenderHal, m_hdr3DLutKernelBinary, m_hdr3DLutKernelBinarySize);
+                if (!m_hdr3DLutGenerator->IsObjectVaild())
+                {
+                    eStatus = MOS_STATUS_NULL_POINTER;
+                    MOS_Delete(m_hdr3DLutGenerator);
+                    VPHAL_RENDER_ASSERTMESSAGE("Failed to creat Hdr3DLutGeneratorG12");
+                }
 #endif
             }
         }
@@ -1927,6 +1933,7 @@ void VPHAL_VEBOX_STATE_G12_BASE::SetupSurfaceStates(
     pVeboxSurfaceStateCmdParams->pSurfSTMM     = &pVeboxState->STMMSurfaces[pRenderData->iCurHistIn];
     pVeboxSurfaceStateCmdParams->pSurfDNOutput = pVeboxState->FFDNSurfaces[pRenderData->iCurDNOut];
     pVeboxSurfaceStateCmdParams->bDIEnable     = bDiVarianceEnable;
+    pVeboxSurfaceStateCmdParams->b3DlutEnable  = pRenderData->bHdr3DLut;
 
 }
 

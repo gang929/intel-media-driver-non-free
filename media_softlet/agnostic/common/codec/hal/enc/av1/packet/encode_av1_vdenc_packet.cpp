@@ -82,6 +82,20 @@ namespace encode{
         return MOS_STATUS_SUCCESS;
     }
 
+    MOS_STATUS Av1VdencPkt::AddPictureVdencCommands(MOS_COMMAND_BUFFER &cmdBuffer)
+    {
+        ENCODE_FUNC_CALL();
+
+        SETPAR_AND_ADDCMD(VDENC_CONTROL_STATE, m_vdencItf, &cmdBuffer);
+        SETPAR_AND_ADDCMD(VDENC_PIPE_MODE_SELECT, m_vdencItf, &cmdBuffer);
+        SETPAR_AND_ADDCMD(VDENC_SRC_SURFACE_STATE, m_vdencItf, &cmdBuffer);
+        SETPAR_AND_ADDCMD(VDENC_REF_SURFACE_STATE, m_vdencItf, &cmdBuffer);
+        SETPAR_AND_ADDCMD(VDENC_DS_REF_SURFACE_STATE, m_vdencItf, &cmdBuffer);
+        SETPAR_AND_ADDCMD(VDENC_PIPE_BUF_ADDR_STATE, m_vdencItf, &cmdBuffer);
+
+        return MOS_STATUS_SUCCESS;
+    }
+
     MOS_STATUS Av1VdencPkt::EndStatusReport(uint32_t srType, MOS_COMMAND_BUFFER *cmdBuffer)
     {
         ENCODE_FUNC_CALL();
@@ -101,8 +115,71 @@ namespace encode{
     MOS_STATUS Av1VdencPkt::ReadAvpStatus(MHW_VDBOX_NODE_IND vdboxIndex, MediaStatusReport *statusReport, MOS_COMMAND_BUFFER &cmdBuffer)
     {
         ENCODE_FUNC_CALL();
+        MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
         CODEC_HW_FUNCTION_ENTER;
+
+        ENCODE_CHK_NULL_RETURN(statusReport);
+        ENCODE_CHK_NULL_RETURN(m_hwInterface);
+
+        MOS_RESOURCE *osResource = nullptr;
+        uint32_t      offset     = 0;
+
+        EncodeStatusReadParams params;
+        MOS_ZeroMemory(&params, sizeof(params));
+
+        ENCODE_CHK_STATUS_RETURN(statusReport->GetAddress(encode::statusReportMfxBitstreamByteCountPerFrame, osResource, offset));
+        params.resBitstreamByteCountPerFrame    = osResource;
+        params.bitstreamByteCountPerFrameOffset = offset;
+
+        ENCODE_CHK_STATUS_RETURN(statusReport->GetAddress(encode::statusReportQPStatusCount, osResource, offset));
+        params.resQpStatusCount    = osResource;
+        params.qpStatusCountOffset = offset;
+
+        ENCODE_CHK_STATUS_RETURN(statusReport->GetAddress(encode::statusReportImageStatusMask, osResource, offset));
+        params.resImageStatusMask    = osResource;
+        params.imageStatusMaskOffset = offset;
+
+        ENCODE_CHK_STATUS_RETURN(statusReport->GetAddress(encode::statusReportImageStatusCtrl, osResource, offset));
+        params.resImageStatusCtrl    = osResource;
+        params.imageStatusCtrlOffset = offset;
+
+        CODEC_HW_CHK_COND_RETURN((vdboxIndex > m_hwInterface->GetMaxVdboxIndex()), "ERROR - vdbox index exceed the maximum");
+
+        auto &flushDwParams = m_miItf->MHW_GETPAR_F(MI_FLUSH_DW)();
+        flushDwParams       = {};
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_FLUSH_DW)(&cmdBuffer));
+
+        ENCODE_CHK_NULL_RETURN(m_avpItf);
+        auto mmioRegisters = m_avpItf->GetMmioRegisters(vdboxIndex);
+
+        auto &miStoreRegMemParams           = m_miItf->MHW_GETPAR_F(MI_STORE_REGISTER_MEM)();
+        miStoreRegMemParams                 = {};
+        miStoreRegMemParams.presStoreBuffer = params.resBitstreamByteCountPerFrame;
+        miStoreRegMemParams.dwOffset        = params.bitstreamByteCountPerFrameOffset;
+        miStoreRegMemParams.dwRegister      = mmioRegisters->avpAv1BitstreamByteCountTileRegOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_REGISTER_MEM)(&cmdBuffer));
+
+        miStoreRegMemParams                 = {};
+        miStoreRegMemParams.presStoreBuffer = params.resQpStatusCount;
+        miStoreRegMemParams.dwOffset        = params.qpStatusCountOffset;
+        miStoreRegMemParams.dwRegister      = mmioRegisters->avpAv1QpStatusCountRegOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_REGISTER_MEM)(&cmdBuffer));
+
+        miStoreRegMemParams                 = {};
+        miStoreRegMemParams.presStoreBuffer = params.resImageStatusMask;
+        miStoreRegMemParams.dwOffset        = params.imageStatusMaskOffset;
+        miStoreRegMemParams.dwRegister      = mmioRegisters->avpAv1ImageStatusMaskRegOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_REGISTER_MEM)(&cmdBuffer));
+
+        miStoreRegMemParams                 = {};
+        miStoreRegMemParams.presStoreBuffer = params.resImageStatusCtrl;
+        miStoreRegMemParams.dwOffset        = params.imageStatusCtrlOffset;
+        miStoreRegMemParams.dwRegister      = mmioRegisters->avpAv1ImageStatusControlRegOffset;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_REGISTER_MEM)(&cmdBuffer));
+
+        flushDwParams = {};
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_FLUSH_DW)(&cmdBuffer));
 
         return MOS_STATUS_SUCCESS;
     }
@@ -364,8 +441,8 @@ namespace encode{
         ENCODE_VERBOSEMESSAGE("statusReportData->numberPasses: %d\n", statusReportData->numberPasses);
 
         uint32_t log2MaxSbSize   = av1MiSizeLog2 + av1MinMibSizeLog2;
-        uint32_t frameWidthInSb  = MOS_ALIGN_CEIL(m_basicFeature->m_frameWidth, (1 << log2MaxSbSize)) >> log2MaxSbSize;
-        uint32_t frameHeightInSb = MOS_ALIGN_CEIL(m_basicFeature->m_frameHeight, (1 << log2MaxSbSize)) >> log2MaxSbSize;
+        uint32_t frameWidthInSb  = MOS_ALIGN_CEIL(statusReportData->frameWidth, (1 << log2MaxSbSize)) >> log2MaxSbSize;
+        uint32_t frameHeightInSb = MOS_ALIGN_CEIL(statusReportData->frameHeight, (1 << log2MaxSbSize)) >> log2MaxSbSize;
         if (frameWidthInSb != 0 && frameHeightInSb != 0)
         {
             ENCODE_CHK_NULL_RETURN(m_basicFeature->m_av1SeqParams);
@@ -445,6 +522,7 @@ namespace encode{
         ENCODE_FUNC_CALL();
 
         ENCODE_CHK_NULL_RETURN(m_allocator);
+        ENCODE_CHK_NULL_RETURN(m_pipeline);
         MOS_ALLOC_GFXRES_PARAMS allocParamsForBufferLinear;
         MOS_ZeroMemory(&allocParamsForBufferLinear, sizeof(MOS_ALLOC_GFXRES_PARAMS));
         allocParamsForBufferLinear.Type               = MOS_GFXRES_BUFFER;
@@ -507,6 +585,109 @@ namespace encode{
             m_atomicScratchBuf.operandSetSize    = MHW_CACHELINE_SIZE * 4;
 
             ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnUnlockResource(m_osInterface, m_atomicScratchBuf.resAtomicScratchBuffer));
+        }
+
+        mhw::vdbox::avp::AvpBufferSizePar avpBufSizeParam;
+        memset(&avpBufSizeParam, 0, sizeof(avpBufSizeParam));
+        avpBufSizeParam.bitDepthIdc      = (m_basicFeature->m_bitDepth - 8) >> 1;
+        avpBufSizeParam.height           = CODECHAL_GET_HEIGHT_IN_BLOCKS(m_basicFeature->m_frameHeight, av1SuperBlockHeight);
+        avpBufSizeParam.width            = CODECHAL_GET_WIDTH_IN_BLOCKS(m_basicFeature->m_frameWidth, av1SuperBlockWidth);
+        avpBufSizeParam.tileWidth        = CODECHAL_GET_HEIGHT_IN_BLOCKS(av1MaxTileWidth, av1SuperBlockWidth);
+        avpBufSizeParam.isSb128x128      = 0;
+        avpBufSizeParam.curFrameTileNum  = av1MaxTileNum;
+        avpBufSizeParam.numTileCol       = av1MaxTileColumn;
+        avpBufSizeParam.numOfActivePipes = 1;
+        avpBufSizeParam.chromaFormat     = m_basicFeature->m_chromaFormat;
+
+        MOS_ALLOC_GFXRES_PARAMS allocParams;
+        MOS_ZeroMemory(&allocParams, sizeof(MOS_ALLOC_GFXRES_PARAMS));
+        allocParams.Type               = MOS_GFXRES_BUFFER;
+        allocParams.TileType           = MOS_TILE_LINEAR;
+        allocParams.Format             = Format_Buffer;
+        allocParams.Flags.bNotLockable = false;
+        uint32_t numResources          = m_pipeline->IsDualEncEnabled() ? AV1_NUM_OF_DUAL_CTX : 1;
+        for (auto i = 0; i < AV1_NUM_OF_DUAL_CTX; i++)
+        {
+            // Bistream decode Tile Line rowstore buffer
+            if (!m_avpItf->IsBufferRowstoreCacheEnabled(mhw::vdbox::avp::bsdTileLineBuffer))
+            {
+                ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::bsdTileLineBuffer, &avpBufSizeParam));
+                allocParams.dwBytes                                      = avpBufSizeParam.bufferSize;
+                allocParams.pBufName                                     = "Bitstream Decoder Encoder Tile Line Rowstore Read Write buffer";
+                m_basicFeature->m_bitstreamDecoderEncoderTileLineRowstoreReadWriteBuffer[i] = m_allocator->AllocateResource(allocParams, false);
+            }
+
+            // Deblocker Filter Tile Line Read/Write Y Buffer
+            ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::deblockTileLineYBuffer, &avpBufSizeParam));
+            allocParams.dwBytes = avpBufSizeParam.bufferSize;
+            allocParams.pBufName = "Deblocker Filter Tile Line Read Write Y Buffer";
+            m_basicFeature->m_deblockerFilterTileLineReadWriteYBuffer[i] = m_allocator->AllocateResource(allocParams, false);
+
+            // Deblocker Filter Tile Line Read/Write U Buffer
+            ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::deblockTileLineUBuffer, &avpBufSizeParam));
+            allocParams.dwBytes = avpBufSizeParam.bufferSize;
+            allocParams.pBufName = "Deblocker Filter Tile Line Read Write U Buffer";
+            m_basicFeature->m_deblockerFilterTileLineReadWriteUBuffer[i] = m_allocator->AllocateResource(allocParams, false);
+
+            // Deblocker Filter Tile Line Read/Write V Buffer
+            ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::deblockTileLineVBuffer, &avpBufSizeParam));
+            allocParams.dwBytes = avpBufSizeParam.bufferSize;
+            allocParams.pBufName = "Deblocker Filter Tile Line Read Write V Buffer";
+            m_basicFeature->m_deblockerFilterTileLineReadWriteVBuffer[i] = m_allocator->AllocateResource(allocParams, false);
+
+            // Deblocker Filter Tile Column Read/Write Y Buffer
+            ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::deblockTileColYBuffer, &avpBufSizeParam));
+            allocParams.dwBytes = avpBufSizeParam.bufferSize;
+            allocParams.pBufName = "Deblocker Filter Tile Column Read Write Y Buffer";
+            m_basicFeature->m_deblockerFilterTileColumnReadWriteYBuffer[i]  = m_allocator->AllocateResource(allocParams, false);
+
+            // Deblocker Filter Tile Column Read/Write U Buffer
+            ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::deblockTileColUBuffer, &avpBufSizeParam));
+            allocParams.dwBytes = avpBufSizeParam.bufferSize;
+            allocParams.pBufName = "Deblocker Filter Tile Column Read Write U Buffer";
+            m_basicFeature->m_deblockerFilterTileColumnReadWriteUBuffer[i]  = m_allocator->AllocateResource(allocParams, false);
+
+            // Deblocker Filter Tile Column Read/Write V Buffer
+            ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::deblockTileColVBuffer, &avpBufSizeParam));
+            allocParams.dwBytes = avpBufSizeParam.bufferSize;
+            allocParams.pBufName = "Deblocker Filter Tile Column Read Write V Buffer";
+            m_basicFeature->m_deblockerFilterTileColumnReadWriteVBuffer[i]  = m_allocator->AllocateResource(allocParams, false);
+
+            // CDEF Filter Line Read/Write Buffer
+            ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::cdefLineBuffer, &avpBufSizeParam));
+            allocParams.dwBytes                             = avpBufSizeParam.bufferSize;
+            allocParams.pBufName                            = "CDEF Filter Line Read Write Buffer";
+            m_basicFeature->m_cdefFilterLineReadWriteBuffer[i] = m_allocator->AllocateResource(allocParams, false);
+
+            // CDEF Filter Tile Line Read/Write Buffer
+            ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::cdefTileLineBuffer, &avpBufSizeParam));
+            allocParams.dwBytes                                 = avpBufSizeParam.bufferSize;
+            allocParams.pBufName                                = "CDEF Filter Tile Line Read Write Buffer";
+            m_basicFeature->m_cdefFilterTileLineReadWriteBuffer[i] = m_allocator->AllocateResource(allocParams, false);
+
+            // CDEF Filter Tile Column Read/Write Buffer
+            ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::cdefTileColBuffer, &avpBufSizeParam));
+            allocParams.dwBytes                                   = avpBufSizeParam.bufferSize;
+            allocParams.pBufName                                  = "CDEF Filter Tile Column Read Write Buffer";
+            m_basicFeature->m_cdefFilterTileColumnReadWriteBuffer[i] = m_allocator->AllocateResource(allocParams, false);
+
+            // CDEF Filter Meta Tile Line Read Write Buffer
+            ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::cdefMetaTileLineBuffer, &avpBufSizeParam));
+            allocParams.dwBytes                                     = avpBufSizeParam.bufferSize;
+            allocParams.pBufName                                    = "CDEF Filter Meta Tile Line Read Write Buffer";
+            m_basicFeature->m_cdefFilterMetaTileLineReadWriteBuffer[i] = m_allocator->AllocateResource(allocParams, false);
+
+            // CDEF Filter Meta Tile Column Read Write Buffer
+            ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::cdefMetaTileColBuffer, &avpBufSizeParam));
+            allocParams.dwBytes                                       = avpBufSizeParam.bufferSize;
+            allocParams.pBufName                                      = "CDEF Filter Meta Tile Column Read Write Buffer";
+            m_basicFeature->m_cdefFilterMetaTileColumnReadWriteBuffer[i] = m_allocator->AllocateResource(allocParams, false);
+
+            // CDEF Filter Top Left Corner Read Write Buffer
+            ENCODE_CHK_STATUS_RETURN(m_avpItf->GetAvpBufSize(mhw::vdbox::avp::cdefTopLeftCornerBuffer, &avpBufSizeParam));
+            allocParams.dwBytes                                      = avpBufSizeParam.bufferSize;
+            allocParams.pBufName                                     = "CDEF Filter Top Left Corner Read Write Buffer";
+            m_basicFeature->m_cdefFilterTopLeftCornerReadWriteBuffer[i] = m_allocator->AllocateResource(allocParams, false);
         }
 
         return MOS_STATUS_SUCCESS;
@@ -823,6 +1004,27 @@ namespace encode{
         params.multiEngineMode = MHW_VDBOX_HCP_MULTI_ENGINE_MODE_FE_LEGACY;
         params.pipeWorkingMode = MHW_VDBOX_HCP_PIPE_WORK_MODE_LEGACY;
         
+        return MOS_STATUS_SUCCESS;
+    }
+
+    MHW_SETPAR_DECL_SRC(AVP_PIPE_BUF_ADDR_STATE, Av1VdencPkt)
+    {
+
+        uint32_t idx                             = m_pipeline->IsDualEncEnabled() ? m_pipeline->GetCurrentPipe() : 0;
+        params.bsTileLineRowstoreBuffer          = m_basicFeature->m_bitstreamDecoderEncoderTileLineRowstoreReadWriteBuffer[idx];
+        params.deblockTileLineYBuffer            = m_basicFeature->m_deblockerFilterTileLineReadWriteYBuffer[idx];
+        params.deblockTileLineUBuffer            = m_basicFeature->m_deblockerFilterTileLineReadWriteUBuffer[idx];
+        params.deblockTileLineVBuffer            = m_basicFeature->m_deblockerFilterTileLineReadWriteVBuffer[idx];
+        params.deblockTileColumnYBuffer          = m_basicFeature->m_deblockerFilterTileColumnReadWriteYBuffer[idx];
+        params.deblockTileColumnUBuffer          = m_basicFeature->m_deblockerFilterTileColumnReadWriteUBuffer[idx];
+        params.deblockTileColumnVBuffer          = m_basicFeature->m_deblockerFilterTileColumnReadWriteVBuffer[idx];
+        params.cdefLineBuffer                    = m_basicFeature->m_cdefFilterLineReadWriteBuffer[idx];
+        params.cdefTileLineBuffer                = m_basicFeature->m_cdefFilterTileLineReadWriteBuffer[idx];
+        params.cdefTileColumnBuffer              = m_basicFeature->m_cdefFilterTileColumnReadWriteBuffer[idx];
+        params.cdefMetaTileLineBuffer            = m_basicFeature->m_cdefFilterMetaTileLineReadWriteBuffer[idx];
+        params.cdefMetaTileColumnBuffer          = m_basicFeature->m_cdefFilterMetaTileColumnReadWriteBuffer[idx];
+        params.cdefTopLeftCornerBuffer           = m_basicFeature->m_cdefFilterTopLeftCornerReadWriteBuffer[idx];
+
         return MOS_STATUS_SUCCESS;
     }
 

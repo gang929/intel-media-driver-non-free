@@ -62,9 +62,6 @@ namespace encode
 
         virtual ~Av1VdencPktXe_M_Base() {}
 
-        MOS_STATUS Prepare() override;
-
-
         //!
         //! \brief  Add the command sequence into the commandBuffer and
         //!         and return to the caller task
@@ -92,14 +89,11 @@ namespace encode
         MOS_STATUS EnsureAllCommandsExecuted(MOS_COMMAND_BUFFER &cmdBuffer);
         MOS_STATUS PatchPictureLevelCommands(const uint8_t &packetPhase, MOS_COMMAND_BUFFER  &cmdBuffer);
 
-        MOS_STATUS AddPictureVdencCommands(MOS_COMMAND_BUFFER &cmdBuffer);
-
         virtual MOS_STATUS AllocateResources() override;
 
         virtual MOS_STATUS CalculateAvpPictureStateCommandSize(uint32_t * commandsSize, uint32_t * patchListSize) override;
         virtual MOS_STATUS CalculateAvpCommandsSize() override;
 
-        MOS_STATUS ReadAvpStatus(MHW_VDBOX_NODE_IND vdboxIndex, MediaStatusReport *statusReport, MOS_COMMAND_BUFFER &cmdBuffer) override;
         MOS_STATUS RegisterPostCdef();
         MOS_STATUS UpdateUserFeatureKey(PMOS_SURFACE surface);
 

@@ -20,33 +20,22 @@
 * OTHER DEALINGS IN THE SOFTWARE.
 */
 //!
-//! \file     encode_hevc_vdenc_packet_xe_lpm_plus.h
-//! \brief    Defines the interface to adapt to hevc vdenc xe_lpm_plus encode pipeline
+//! \file     mos_oca_rtlog_mgr_base.cpp
+//! \brief    OCA buffer manager class
 //!
 
-#ifndef __CODECHAL_HEVC_VDENC_PACKET_XE_LPM_PLUS_H__
-#define __CODECHAL_HEVC_VDENC_PACKET_XE_LPM_PLUS_H__
+#include "mos_oca_rtlog_mgr_base.h"
+#include "oca_rtlog_section_mgr.h"
+#include "mos_context_specific_next.h"
 
-#include "encode_hevc_vdenc_packet.h"
+bool MosOcaRTLogMgrBase::m_enableOcaRTLog = true;
+MosMutex MosOcaRTLogMgrBase::s_ocaMutex;
 
-namespace encode
+/****************************************************************************************************/
+/*                                      MosOcaRTLogMgrBase                                          */
+/****************************************************************************************************/
+
+int32_t MosOcaRTLogMgrBase::GetGlobleIndex()
 {
-class HevcVdencPktXe_Lpm_Plus : public HevcVdencPkt
-{
-public:
-    HevcVdencPktXe_Lpm_Plus(MediaPipeline *pipeline, MediaTask *task, CodechalHwInterfaceNext *hwInterface) : HevcVdencPkt(pipeline, task, hwInterface)
-    {
-    }
-
-    virtual ~HevcVdencPktXe_Lpm_Plus(){};
-
-protected:
-    MOS_STATUS SendHwSliceEncodeCommand(const PCODEC_ENCODER_SLCDATA slcData, const uint32_t currSlcIdx, MOS_COMMAND_BUFFER &cmdBuffer) override;
-    MOS_STATUS AddAllCmds_HCP_PAK_INSERT_OBJECT_BRC(PMOS_COMMAND_BUFFER cmdBuffer) const;
-
-    MEDIA_CLASS_DEFINE_END(encode__HevcVdencPktXe_Lpm_Plus)
-};
-
-}  // namespace encode
-
-#endif
+    return MosUtilities::MosAtomicIncrement(&m_globleIndex);
+}

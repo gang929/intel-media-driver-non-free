@@ -225,6 +225,7 @@ protected:
     //!           MOS_STATUS_SUCCESS if success, else fail reason
     //!
     virtual MOS_STATUS CalculateAvpCommandsSize();
+    virtual MOS_STATUS AddPictureVdencCommands(MOS_COMMAND_BUFFER &cmdBuffer);
 
 #if USE_CODECHAL_DEBUG_TOOL
     //! \brief    Dump the output resources in status report callback function
@@ -310,6 +311,8 @@ protected:
     MHW_SETPAR_DECL_HDR(AVP_SURFACE_STATE);
 
     MHW_SETPAR_DECL_HDR(AVP_PIPE_MODE_SELECT);
+
+    MHW_SETPAR_DECL_HDR(AVP_PIPE_BUF_ADDR_STATE);
 
     virtual MOS_STATUS AddAllCmds_AVP_SURFACE_STATE(PMOS_COMMAND_BUFFER cmdBuffer) const;
 

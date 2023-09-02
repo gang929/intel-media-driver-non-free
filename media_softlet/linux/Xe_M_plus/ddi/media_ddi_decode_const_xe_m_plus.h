@@ -1,5 +1,5 @@
-﻿/*
-* Copyright (c) 2019, Intel Corporation
+/*
+* Copyright (c) 2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -20,25 +20,19 @@
 * OTHER DEALINGS IN THE SOFTWARE.
 */
 //!
-//! \file    mos_gpucontext_next.cpp
-//! \brief   Container class for the basic gpu context
+//! \file     media_ddi_decode_const_xe_m_plus.h
+//! \brief    Add some const string definition for media_libva_decoder
 //!
 
-#include "mos_gpucontext_specific_next.h"
+// The defined const string is used as the Key for supported decoding codec list. And
+// it is included by each decoding codec.
+// And it is also included in media_libva_decoder.c. The corresponding string is used
+// as the key to search and create one instance from the supported decoding list.
 
-GpuContextNext *GpuContextNext::Create(
-    const MOS_GPU_NODE gpuNode,
-    CmdBufMgrNext         *cmdBufMgr,
-    GpuContextNext        *reusedContext,
-    OsContextNext         *osContext)
-{
-    MOS_OS_FUNCTION_ENTER;
-    MOS_UNUSED(osContext);
+#ifndef _MEDIA_LIBVA_DECODE_CONST_XE_M_PLUS_H_
+#define _MEDIA_LIBVA_DECODE_CONST_XE_M_PLUS_H_
 
-    GpuContextNext* gpuContextNext = nullptr;
+#define DECODE_ID_HEVC_REXT     "DECODE_ID_HEVC_REXT"
+#define DECODE_ID_AV1           "VIDEO_DEC_AV1"
 
-    gpuContextNext = MOS_New( GpuContextSpecificNext, gpuNode, cmdBufMgr,  reusedContext );
-
-    return gpuContextNext;
-}
-
+#endif /*  _MEDIA_LIBVA_DECODE_CONST_XE_M_PLUS_H_ */

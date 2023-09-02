@@ -3991,23 +3991,21 @@ VAStatus DdiVpFunctions::DdiSetProcPipelineParams(
     }
 #endif  //(_DEBUG || _RELEASE_INTERNAL)
 
-    // Set stream type using pipeline_flags VA_PROC_PIPELINE_FAST flag
     // Currently we only support 1 primary surface in VP
-    if (pipelineParam->pipeline_flags & VA_PROC_PIPELINE_FAST)
+    if (vpCtx->iPriSurfs < VP_MAX_PRIMARY_SURFS)
     {
-        vpHalSrcSurf->SurfType = SURF_IN_SUBSTREAM;
+        vpHalSrcSurf->SurfType = SURF_IN_PRIMARY;
+        vpCtx->iPriSurfs++;
     }
     else
     {
-        if (vpCtx->iPriSurfs < VP_MAX_PRIMARY_SURFS)
-        {
-            vpHalSrcSurf->SurfType = SURF_IN_PRIMARY;
-            vpCtx->iPriSurfs++;
-        }
-        else
-        {
-            vpHalSrcSurf->SurfType = SURF_IN_SUBSTREAM;
-        }
+        vpHalSrcSurf->SurfType = SURF_IN_SUBSTREAM;
+    }
+
+    // Set workload path using pipeline_flags VA_PROC_PIPELINE_FAST flag
+    if (pipelineParam->pipeline_flags & VA_PROC_PIPELINE_FAST)
+    {
+        vpHalRenderParams->bForceToRender = true;
     }
 
     // Set src rect
@@ -4619,19 +4617,19 @@ VAStatus DdiVpFunctions::PutSurfaceLinuxHW(
     {
         switch (drawableTilingMode)
         {
-            case I915_TILING_Y:
+            case TILING_Y:
                 tileType = MOS_TILE_Y;
                 break;
-            case I915_TILING_X:
+            case TILING_X:
                 tileType = MOS_TILE_X;
                 gmmParams.Flags.Info.TiledX    = true;
                 break;
-            case I915_TILING_NONE:
+            case TILING_NONE:
                tileType = MOS_TILE_LINEAR;
                gmmParams.Flags.Info.Linear    = true;
                break;
             default:
-                drawableTilingMode          = I915_TILING_NONE;
+                drawableTilingMode          = TILING_NONE;
                 tileType = MOS_TILE_LINEAR;
                 gmmParams.Flags.Info.Linear    = true;
                 break;
@@ -4640,7 +4638,7 @@ VAStatus DdiVpFunctions::PutSurfaceLinuxHW(
     }
     else
     {
-        target.OsResource.TileType = (MOS_TILE_TYPE)I915_TILING_NONE;
+        target.OsResource.TileType = (MOS_TILE_TYPE)TILING_NONE;
         tileType = MOS_TILE_LINEAR;
         gmmParams.Flags.Info.Linear    = true;
     }

@@ -66,6 +66,7 @@ public:
         bool               disableAutoMode    = false;
         bool               clearVideoViewMode = false;
         uint32_t           splitFramePortions = 1;
+        bool               decompForInterlacedSurfWaEnabled = false;
     };
 
 #if (_DEBUG || _RELEASE_INTERNAL)
@@ -84,7 +85,8 @@ public:
         return m_ctrlVal.enabledSFCRGBPRGB24Output;
     }
 
-    bool EnableIFNCC() {
+    bool EnableIFNCC() 
+    {
         return m_ctrlVal.enableIFNCC;
     }
 #endif
@@ -158,6 +160,11 @@ public:
         return m_ctrlVal.clearVideoViewMode;
     }
 
+    bool IsDecompForInterlacedSurfWaEnabled()
+    {
+        return m_ctrlVal.decompForInterlacedSurfWaEnabled;
+    }
+
     MOS_STATUS SetClearVideoViewMode(bool mode)
     {
         m_ctrlVal.clearVideoViewMode = mode;
@@ -179,6 +186,8 @@ public:
         return MOS_STATUS_SUCCESS;
     }
 
+    virtual PMOS_OCA_LOG_USER_FEATURE_CONTROL_INFO GetOcaFeautreControlInfo();
+
     const void *m_owner = nullptr; // The object who create current instance.
 
 protected:
@@ -188,6 +197,7 @@ protected:
     CONTROL_VALUES m_ctrlValDefault = {};
     CONTROL_VALUES m_ctrlVal        = {};
     MediaUserSettingSharedPtr m_userSettingPtr = nullptr;  //!< usersettingInstance
+    PMOS_OCA_LOG_USER_FEATURE_CONTROL_INFO m_pOcaFeatureControlInfo = nullptr;
 
     MEDIA_CLASS_DEFINE_END(vp__VpUserFeatureControl)
 };

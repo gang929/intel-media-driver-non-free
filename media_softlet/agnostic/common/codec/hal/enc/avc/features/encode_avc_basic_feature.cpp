@@ -69,6 +69,9 @@ MOS_STATUS AvcBasicFeature::Init(void *setting)
     m_adaptiveRoundingInterEnable = (outValue.Get<int32_t>()) ? true : false;
 
     m_targetUsageOverride = (uint8_t)0;
+
+    m_brcAdaptiveRegionBoostSupported = true;
+
 #if (_DEBUG || _RELEASE_INTERNAL)
 
     outValue = 0;
@@ -91,13 +94,16 @@ MOS_STATUS AvcBasicFeature::Init(void *setting)
 
     m_perMBStreamOutEnable = (outValue.Get<int32_t>()) ? true : false;
 
+    outValue = 0;
+
     ReadUserSettingForDebug(
         m_userSettingPtr,
         outValue,
         "AVC VDEnc TCBRC ARB Disable",
         MediaUserSetting::Group::Sequence);
 
-    m_brcAdaptiveRegionBoostSupported = (outValue.Get<int32_t>()) ? false : true;
+    m_brcAdaptiveRegionBoostSupported = (outValue.Get<int32_t>()) ? false : m_brcAdaptiveRegionBoostSupported;
+
 #endif  // _DEBUG || _RELEASE_INTERNAL
 
     return MOS_STATUS_SUCCESS;
@@ -517,12 +523,6 @@ MOS_STATUS AvcBasicFeature::SetSliceStructs()
         }
         else  // SLICE_STRUCT_ARBITRARYMBSLICE
         {
-            uint8_t ppsIdx          = m_sliceParams->pic_parameter_set_id;
-            uint8_t refPicListIdx   = m_sliceParams[ppsIdx].RefPicList[0][0].FrameIdx;
-            uint8_t refFrameListIdx = m_picParam[ppsIdx].RefFrameList[refPicListIdx].FrameIdx;
-
-            bool dirtyRoiEnabled = (m_pictureCodingType == P_TYPE && m_picParams[ppsIdx]->NumDirtyROI > 0 && m_prevReconFrameIdx == refFrameListIdx);
-
             if ((slcParams->NumMbsForSlice % m_picWidthInMb) ||                                          // If slice is partial MB row,
                 ((sliceCount < m_numSlices - 1) && (numMbsInPrevSlice != slcParams->NumMbsForSlice)) ||  // OR not the last slice and num mbs is not same as prev slice
                 ((sliceCount == m_numSlices - 1) && ((numMbsInPrevSlice < slcParams->NumMbsForSlice))))  // OR it is the last slice and num mbs is not less than prev slice
