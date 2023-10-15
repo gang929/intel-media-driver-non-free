@@ -9,10 +9,10 @@ Subject: Integrate unit tests in cmake's test framework
  3 files changed, 5 insertions(+), 15 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 72b5120..ea1e6e9 100755
+index a4e8a41..6b69f90 100755
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -78,6 +78,7 @@ if (BUILD_KERNELS)
+@@ -82,6 +82,7 @@ if (BUILD_KERNELS)
      add_subdirectory(Tools/MediaDriverTools)
  endif()
  
@@ -36,10 +36,10 @@ index 9fb5b39..4f54575 100644
 -set_tests_properties(test_devult
 -    PROPERTIES FAIL_REGULAR_EXPRESSION "FAIL")
 diff --git a/media_driver/linux/ult/ult_app/CMakeLists.txt b/media_driver/linux/ult/ult_app/CMakeLists.txt
-index 6ffb61d..825c1ac 100644
+index a232ee3..c8df9db 100644
 --- a/media_driver/linux/ult/ult_app/CMakeLists.txt
 +++ b/media_driver/linux/ult/ult_app/CMakeLists.txt
-@@ -74,13 +74,9 @@ if (DEFINED BYPASS_MEDIA_ULT AND "${BYPASS_MEDIA_ULT}" STREQUAL "yes")
+@@ -75,13 +75,9 @@ if (DEFINED BYPASS_MEDIA_ULT AND "${BYPASS_MEDIA_ULT}" STREQUAL "yes")
      message("-- media -- BYPASS_MEDIA_ULT = ${BYPASS_MEDIA_ULT}")
  else ()
      if (ENABLE_NONFREE_KERNELS)
@@ -48,7 +48,7 @@ index 6ffb61d..825c1ac 100644
 -        add_custom_command(
 -            TARGET RunULT
 -            POST_BUILD
--            COMMAND LD_PRELOAD=../libdrm_mock/libdrm_mock.so ./devult ../../../${LIB_NAME}.so
+-            COMMAND LD_PRELOAD=${MEDIA_MISC_LIB}:../libdrm_mock/libdrm_mock.so ./devult ../../../${LIB_NAME}.so
 -            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 -            COMMENT "Running devult...")
 +        add_test(
