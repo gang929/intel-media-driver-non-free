@@ -4059,6 +4059,7 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
                       PlaneDefinition == RENDERHAL_PLANES_PL3                             ||
                       PlaneDefinition == RENDERHAL_PLANES_YV12                            ||
                       PlaneDefinition == RENDERHAL_PLANES_R16_UNORM                       ||
+                      PlaneDefinition == RENDERHAL_PLANES_R8                              ||
                       PlaneDefinition == RENDERHAL_PLANES_A8))
             {
                 dwSurfaceWidth = dwSurfaceWidth / OutputSurfaceWidthRatio;
@@ -6439,7 +6440,7 @@ MOS_STATUS RenderHal_GetSamplerOffsetAndPtr(
     MHW_RENDERHAL_CHK_NULL_RETURN(pSamplerParams);
 
     ElementType = pSamplerParams->ElementType;
-    SamplerType = (pSamplerParams) ? pSamplerParams->SamplerType : MHW_SAMPLER_TYPE_3D;
+    SamplerType = pSamplerParams->SamplerType;
 
     if (SamplerType == MHW_SAMPLER_TYPE_VME)
     {

@@ -693,7 +693,8 @@ MHW_SETPAR_DECL_SRC(VDENC_PIPE_BUF_ADDR_STATE, Av1ReferenceFrames)
 
     if (m_basicFeature->m_pictureCodingType != I_TYPE && picParams->primary_ref_frame != av1PrimaryRefNone)
     {
-        uint8_t frameIdx = picParams->RefFrameList[picParams->primary_ref_frame].FrameIdx;
+        uint8_t frameIdx = picParams->RefFrameList[picParams->ref_frame_idx[picParams->primary_ref_frame]].FrameIdx;
+
         uint8_t idxForTempMV = m_refList[frameIdx]->ucScalingIdx;
 
         params.colMvTempBuffer[0] = trackedBuf->GetBuffer(BufferType::mvTemporalBuffer, idxForTempMV);
@@ -727,7 +728,8 @@ MHW_SETPAR_DECL_SRC(VDENC_CMD2, Av1ReferenceFrames)
     ENCODE_CHK_NULL_RETURN(picParams);
 
     const auto frame_type = static_cast<Av1FrameType>(picParams->PicFlags.fields.frame_type);
-    params.pictureType = (frame_type == keyFrame) ? 0 : (m_lowDelay ? (m_PFrame ? 1 : 3) : 2);
+    params.pictureType = (frame_type == keyFrame)
+        ? AV1_I_FRAME : (m_lowDelay ? (m_PFrame ? AV1_P_FRAME : AV1_GPB_FRAME) : AV1_B_FRAME);
 
     if (AV1_KEY_OR_INRA_FRAME(frame_type))
     {
@@ -773,6 +775,72 @@ MHW_SETPAR_DECL_SRC(VDENC_CMD2, Av1ReferenceFrames)
     params.frameIdxL0Ref1 = frameIdxForL0L1[1];
     params.frameIdxL0Ref2 = frameIdxForL0L1[2];
     params.frameIdxL1Ref0 = frameIdxForL0L1[3];
+
+    if (params.pictureType == AV1_P_FRAME)
+    {
+        if (params.numRefL0 == 1)
+        {
+            params.av1RefId[0][0] = lastFrame;
+        }
+        else if (params.numRefL0 == 2)
+        {
+            params.av1RefId[0][0] = lastFrame;
+            params.av1RefId[0][1] = goldenFrame;
+        }
+        else
+        {
+            params.av1RefId[0][0] = lastFrame;
+            params.av1RefId[0][1] = goldenFrame;
+            params.av1RefId[0][2] = altRefFrame;
+        }
+    }
+    else if (params.pictureType == AV1_GPB_FRAME)
+    {
+        params.numRefL1 = params.numRefL0;
+
+        if (params.numRefL0 == 1)
+        {
+            params.av1RefId[0][0] = bwdRefFrame;
+            params.av1RefId[1][0] = altRefFrame;
+        }
+        else if (params.numRefL0 == 2)
+        {
+            params.av1RefId[0][0] = lastFrame;
+            params.av1RefId[0][1] = last2Frame;
+            params.av1RefId[1][0] = bwdRefFrame;
+            params.av1RefId[1][1] = altRef2Frame;
+        }
+        else
+        {
+            params.av1RefId[0][0] = lastFrame;
+            params.av1RefId[0][1] = last2Frame;
+            params.av1RefId[0][2] = last3Frame;
+            params.av1RefId[1][0] = bwdRefFrame;
+            params.av1RefId[1][1] = altRef2Frame;
+            params.av1RefId[1][2] = altRefFrame;
+        }
+    }
+    else if (params.pictureType == AV1_B_FRAME)
+    {
+        if (params.numRefL0 == 1)
+        {
+            params.av1RefId[0][0] = lastFrame;
+            params.av1RefId[1][0] = bwdRefFrame;
+        }
+        else if (params.numRefL0 == 2)
+        {
+            params.av1RefId[0][0] = lastFrame;
+            params.av1RefId[0][1] = last2Frame;
+            params.av1RefId[1][0] = bwdRefFrame;
+        }
+        else
+        {
+            params.av1RefId[0][0] = lastFrame;
+            params.av1RefId[0][1] = last2Frame;
+            params.av1RefId[0][2] = last3Frame;
+            params.av1RefId[1][0] = bwdRefFrame;
+        }
+    }
 
     CODEC_Ref_Frame_Ctrl_AV1 refCtrlL0 = m_basicFeature->m_av1PicParams->ref_frame_ctrl_l0;
     CODEC_Ref_Frame_Ctrl_AV1 refCtrlL1 = m_basicFeature->m_av1PicParams->ref_frame_ctrl_l1;

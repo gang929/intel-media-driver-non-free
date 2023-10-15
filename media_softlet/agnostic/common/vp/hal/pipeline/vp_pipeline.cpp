@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2022, Intel Corporation
+* Copyright (c) 2018-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -98,6 +98,10 @@ VpPipeline::~VpPipeline()
     {
         MOS_Delete(m_userFeatureControl);
         m_vpMhwInterface.m_userFeatureControl = nullptr;
+    }
+    if (m_pipelineParamFactory)
+    {
+        MOS_Delete(m_pipelineParamFactory);
     }
 }
 
@@ -203,26 +207,11 @@ MOS_STATUS VpPipeline::UserFeatureReport()
             }
 #endif
         }
-    }
 
+        m_reporting->GetFeatures().VPApogeios = m_currentFrameAPGEnabled;
+    }
     MediaPipeline::UserFeatureReport();
 
-    if (m_currentFrameAPGEnabled)
-    {
-        ReportUserSetting(
-            m_userSettingPtr,
-            __MEDIA_USER_FEATURE_VALUE_VPP_APOGEIOS_ENABLE,
-            uint32_t(1),
-            MediaUserSetting::Group::Sequence);
-    }
-    else
-    {
-        ReportUserSetting(
-            m_userSettingPtr,
-            __MEDIA_USER_FEATURE_VALUE_VPP_APOGEIOS_ENABLE,
-            uint32_t(0),
-            MediaUserSetting::Group::Sequence);
-    }
 
 #if (_DEBUG || _RELEASE_INTERNAL)
     //INTER_FRAME_MEMORY_NINJA_START_COUNTER will be reported in ReportIFNCC(true) function which runs in VpPipeline::Prepare()
@@ -396,6 +385,8 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
         VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
     }
 
+    MT_LOG2(MT_VP_FEATURE_GRAPH_EXECUTE_VPPIPELINE_START, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_SWFILTERPIPE_COUNT, (int64_t)swFilterPipes.size(), MT_VP_FEATURE_GRAPH_FILTER_FRAMEID,m_vpPipeContexts[0]->GetFrameCounter());
+
     if (PIPELINE_PARAM_TYPE_LEGACY == m_pvpParams.type)
     {
         params = m_pvpParams.renderParams;
@@ -425,9 +416,10 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
         VP_PUBLIC_CHK_STATUS_RETURN(eStatus);
         if (isBypassNeeded)
         {
+            MT_LOG3(MT_VP_FEATURE_GRAPH_EXECUTE_VPPIPELINE_END, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_SWFILTERPIPE_COUNT, (int64_t)swFilterPipes.size(),
+                    MT_VP_FEATURE_GRAPH_FILTER_FRAMEID, m_vpPipeContexts[0]->GetFrameCounter(), MT_VP_FEATURE_GRAPH_FILTER_PIPELINEBYPASS, isBypassNeeded);
             return MOS_STATUS_SUCCESS;
         }
-
     }
 
     VP_PUBLIC_CHK_STATUS_RETURN(CreateSwFilterPipe(m_pvpParams, swFilterPipes));
@@ -435,10 +427,10 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
     // Increment frame ID for performance measurement
     m_osInterface->pfnIncPerfFrameID(m_osInterface);
 
-    MT_LOG1(MT_VP_FEATURE_GRAPH_CREATESWFILTERPIPE_START, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_SWFILTERPIPE_COUNT, (int64_t)swFilterPipes.size());
-
     for (uint32_t pipeIdx = 0; pipeIdx < swFilterPipes.size(); pipeIdx++)
     {
+        MT_LOG3(MT_VP_FEATURE_GRAPH_EXECUTE_SINGLE_VPPIPELINE_START, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_SWFILTERPIPE_COUNT, (int64_t)swFilterPipes.size(),
+                MT_VP_FEATURE_GRAPH_FILTER_FRAMEID, m_vpPipeContexts[0]->GetFrameCounter(), MT_VP_FEATURE_GRAPH_FILTER_PIPEID, pipeIdx);
         auto &pipe = swFilterPipes[pipeIdx];
         if (pipe)
         {
@@ -454,9 +446,12 @@ MOS_STATUS VpPipeline::ExecuteVpPipeline()
         VP_PUBLIC_CHK_STATUS_RETURN(m_vpInterface->SwitchResourceManager(singlePipeCtx->GetVpResourceManager()));
 
         VP_PUBLIC_CHK_STATUS_RETURN(ExecuteSingleswFilterPipe(singlePipeCtx, pipe, pPacketPipe, featureManagerNext));
+        MT_LOG3(MT_VP_FEATURE_GRAPH_EXECUTE_SINGLE_VPPIPELINE_END, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_SWFILTERPIPE_COUNT, (int64_t)swFilterPipes.size(),
+                MT_VP_FEATURE_GRAPH_FILTER_FRAMEID, m_vpPipeContexts[0]->GetFrameCounter(), MT_VP_FEATURE_GRAPH_FILTER_PIPEID, pipeIdx);
     }
 
-    MT_LOG1(MT_VP_FEATURE_GRAPH_CREATESWFILTERPIPE_END, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_SWFILTERPIPE_COUNT, (int64_t)swFilterPipes.size());
+    MT_LOG3(MT_VP_FEATURE_GRAPH_EXECUTE_VPPIPELINE_END, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_SWFILTERPIPE_COUNT, (int64_t)swFilterPipes.size(),
+            MT_VP_FEATURE_GRAPH_FILTER_FRAMEID, m_vpPipeContexts[0]->GetFrameCounter(), MT_VP_FEATURE_GRAPH_FILTER_PIPELINEBYPASS, isBypassNeeded);
     return eStatus;
 }
 
@@ -508,7 +503,7 @@ MOS_STATUS VpPipeline::ExecuteSingleswFilterPipe(VpSinglePipeContext *singlePipe
     if (isPacketPipeReused)
     {
         VP_PUBLIC_NORMALMESSAGE("Packet reused.");
-
+        MT_LOG(MT_VP_FEATURE_GRAPH_FEATUREPIPE_REUSE, MT_NORMAL);
         singlePipeCtx->SetPacketReused(true);
 
         PacketPipe *pipeReused = packetReuseMgr->GetPacketPipeReused();
@@ -517,7 +512,6 @@ MOS_STATUS VpPipeline::ExecuteSingleswFilterPipe(VpSinglePipeContext *singlePipe
         // Update output pipe mode.
         singlePipeCtx->SetOutputPipeMode(pipeReused->GetOutputPipeMode());
         singlePipeCtx->SetIsVeboxFeatureInuse(pipeReused->IsVeboxFeatureInuse());
-
         // MediaPipeline::m_statusReport is always nullptr in VP APO path right now.
         eStatus = pipeReused->Execute(MediaPipeline::m_statusReport, m_scalability, m_mediaContext, MOS_VE_SUPPORTED(m_osInterface), m_numVebox);
         MT_LOG1(MT_VP_HAL_VEBOXNUM_CHECK, MT_NORMAL, MT_VP_HAL_VEBOX_NUMBER, m_numVebox)
@@ -604,18 +598,16 @@ finish:
 MOS_STATUS VpPipeline::CreateSwFilterPipe(VP_PARAMS &params, std::vector<SwFilterPipe*> &swFilterPipe)
 {
     VP_FUNC_CALL();
-
     switch (m_pvpParams.type)
     {
     case PIPELINE_PARAM_TYPE_LEGACY:
-        VP_PUBLIC_CHK_STATUS_RETURN(m_vpInterface->GetSwFilterPipeFactory().Create(m_pvpParams.renderParams, swFilterPipe));
+        VP_PUBLIC_CHK_STATUS_RETURN(m_vpInterface->GetSwFilterPipeFactory().Create(m_pvpParams.renderParams, swFilterPipe, m_pipelineParamFactory));
         break;
     case PIPELINE_PARAM_TYPE_MEDIA_SFC_INTERFACE:
         VP_PUBLIC_CHK_STATUS_RETURN(m_vpInterface->GetSwFilterPipeFactory().Create(m_pvpParams.sfcParams, swFilterPipe));
         break;
     default:
         VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_INVALID_PARAMETER);
-        break;
     }
 
     if (swFilterPipe.size() == 0)
@@ -752,6 +744,9 @@ MOS_STATUS VpPipeline::CreateFeatureManager(VpResourceManager *vpResourceManager
     VP_PUBLIC_CHK_NULL_RETURN(m_featureManager);
 
     VP_PUBLIC_CHK_STATUS_RETURN(((VpFeatureManagerNext *)m_featureManager)->Init(nullptr));
+
+    m_pipelineParamFactory = MOS_New(VpPipelineParamFactory);
+    VP_PUBLIC_CHK_NULL_RETURN(m_pipelineParamFactory);
 
     return MOS_STATUS_SUCCESS;
 }

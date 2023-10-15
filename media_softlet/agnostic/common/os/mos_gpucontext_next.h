@@ -233,7 +233,7 @@ public:
 
 protected:
     //! \brief    Hardware node for current gpu context
-    MOS_GPU_NODE m_nodeOrdinal;
+    MOS_GPU_NODE m_nodeOrdinal = {};
 
     //! \brief    Indirect heap size (SSH area in DMA buffer)
     uint32_t m_IndirectHeapSize = 0;
@@ -251,7 +251,7 @@ protected:
     MOS_RESOURCE_HANDLE m_statusBufferResource = nullptr;
 
     //! \brief    Track the GPU Context Client Info
-    MOS_GPU_CONTEXT m_gpuContext;
+    MOS_GPU_CONTEXT m_gpuContext = MOS_GPU_CONTEXT_INVALID_HANDLE;
 
     //! \brief    VE attribute buffer
     MOS_CMD_BUF_ATTRI_VE m_bufAttriVe = {};

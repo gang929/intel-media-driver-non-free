@@ -282,7 +282,7 @@ MOS_STATUS Policy::CreateHwFilter(SwFilterPipe &subSwFilterPipe, HwFilter *&pFil
 
     HW_FILTER_PARAMS param = {};
 
-    MT_LOG1(MT_VP_FEATURE_GRAPH_SETUPEXECUTESWFILTER_START, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_LAYERINDEXES_COUNT, 1);
+    MT_LOG(MT_VP_FEATURE_GRAPH_SETUPEXECUTESWFILTER_START, MT_NORMAL);
     MOS_STATUS status = GetHwFilterParam(subSwFilterPipe, param);
 
     if (MOS_FAILED(status))
@@ -302,7 +302,7 @@ MOS_STATUS Policy::CreateHwFilter(SwFilterPipe &subSwFilterPipe, HwFilter *&pFil
         MT_ERR2(MT_VP_HAL_POLICY, MT_ERROR_CODE, MOS_STATUS_UNIMPLEMENTED, MT_CODE_LINE, __LINE__);
         return MOS_STATUS_UNIMPLEMENTED;
     }
-    MT_LOG1(MT_VP_FEATURE_GRAPH_SETUPEXECUTESWFILTER_END, MT_NORMAL, MT_VP_FEATURE_GRAPH_FILTER_LAYERINDEXES_COUNT, 1);
+    MT_LOG(MT_VP_FEATURE_GRAPH_SETUPEXECUTESWFILTER_END, MT_NORMAL);
     return MOS_STATUS_SUCCESS;
 }
 
@@ -1856,6 +1856,7 @@ MOS_STATUS Policy::GetHdrExecutionCaps(SwFilter *feature)
     VP_PUBLIC_CHK_NULL_RETURN(m_vpInterface.GetHwInterface()->m_userFeatureControl);
 
     SwFilterHdr *hdrFilter = dynamic_cast<SwFilterHdr *>(feature);
+    VP_PUBLIC_CHK_NULL_RETURN(hdrFilter);
 
     FeatureParamHdr *hdrParams = &hdrFilter->GetSwFilterParams();
 
@@ -3106,6 +3107,7 @@ MOS_STATUS Policy::LayerSelectForProcess(std::vector<int> &layerIndexes, SwFilte
     VP_PUBLIC_NORMALMESSAGE("target, gpuVa = 0x%llx", gpuVa);
 
     PolicyFcHandler *fcHandler = dynamic_cast<PolicyFcHandler *>(it->second);
+    VP_PUBLIC_CHK_NULL_RETURN(fcHandler);
     VP_PUBLIC_CHK_STATUS_RETURN(fcHandler->LayerSelectForProcess(layerIndexes, featurePipe, caps));
 
     if (layerIndexes.size() < featurePipe.GetSurfaceCount(true))
@@ -3381,7 +3383,11 @@ MOS_STATUS Policy::SetupFilterResource(SwFilterPipe& featurePipe, std::vector<in
 
             // For FC, also reuse first pipe for the composition layer in previous steps.
             auto originInput = featurePipe.GetSurface(true, layerIndexes[0]);
-            VP_PUBLIC_CHK_NULL_RETURN(originInput);
+            if (originInput == nullptr)
+            {
+                m_vpInterface.GetAllocator().DestroyVpSurface(input);
+                VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_NULL_POINTER);
+            }
 
             input->SurfType = originInput->SurfType;
             featurePipe.ReplaceSurface(input, true, layerIndexes[0]);
@@ -3412,6 +3418,7 @@ MOS_STATUS Policy::AddCommonFilters(SwFilterSubPipe &swFilterSubPipe, VP_SURFACE
     VP_PUBLIC_CHK_NULL_RETURN(input);
     VP_PUBLIC_CHK_NULL_RETURN(output);
 
+    MOS_STATUS      status        = MOS_STATUS_SUCCESS;
     FeatureType featureList[] = { FeatureTypeScaling };
     int32_t featureCount = sizeof(featureList) / sizeof(featureList[0]);
     VP_EXECUTE_CAPS caps = {};
@@ -3435,9 +3442,18 @@ MOS_STATUS Policy::AddCommonFilters(SwFilterSubPipe &swFilterSubPipe, VP_SURFACE
         swFilter = handler->CreateSwFilter();
         VP_PUBLIC_CHK_NULL_RETURN(swFilter);
 
-        VP_PUBLIC_CHK_STATUS_RETURN(swFilter->Configure(input, output, caps));
-
-        VP_PUBLIC_CHK_STATUS_RETURN(swFilterSubPipe.AddSwFilterUnordered(swFilter));
+        status = swFilter->Configure(input, output, caps);
+        if (MOS_FAILED(status))
+        {
+            handler->Destory(swFilter);
+            VP_PUBLIC_CHK_STATUS_RETURN(status);
+        }
+        status = swFilterSubPipe.AddSwFilterUnordered(swFilter);
+        if (MOS_FAILED(status))
+        {
+            handler->Destory(swFilter);
+            VP_PUBLIC_CHK_STATUS_RETURN(status);
+        }
     }
 
     return MOS_STATUS_SUCCESS;
@@ -3767,17 +3783,31 @@ MOS_STATUS Policy::AddNewFilterOnVebox(
     {
         SwFilterCsc *csc = (SwFilterCsc *)swfilter;
         FeatureParamCsc cscParams = csc->GetSwFilterParams();
-        VP_PUBLIC_CHK_STATUS_RETURN(GetCscParamsOnCaps(pSurfInput, pSurfOutput, caps, cscParams));
-
-        status = csc->Configure(cscParams);
+        status                    = GetCscParamsOnCaps(pSurfInput, pSurfOutput, caps, cscParams);
+        if (MOS_FAILED(status))
+        {
+            handler->Destory(swfilter);
+            VP_PUBLIC_CHK_STATUS_RETURN(status);
+        }
+        else
+        {
+            status = csc->Configure(cscParams);
+        }
     }
     else if (featureType == FeatureTypeDn)
     {
         SwFilterDenoise *dn        = (SwFilterDenoise *)swfilter;
         FeatureParamDenoise dnParams = dn->GetSwFilterParams();
-        VP_PUBLIC_CHK_STATUS_RETURN(GetDnParamsOnCaps(pSurfInput, pSurfOutput, caps, dnParams));
-
-        status = dn->Configure(dnParams);
+        status                        = GetDnParamsOnCaps(pSurfInput, pSurfOutput, caps, dnParams);
+        if (MOS_FAILED(status))
+        {
+            handler->Destory(swfilter);
+            VP_PUBLIC_CHK_STATUS_RETURN(status);
+        }
+        else
+        {
+            status = dn->Configure(dnParams);
+        }
     }
     else
     {

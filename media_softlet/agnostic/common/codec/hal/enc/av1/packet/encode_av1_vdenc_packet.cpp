@@ -53,7 +53,7 @@ namespace encode{
 
             par.mode = mhw::vdbox::vdenc::RowStorePar::AV1;
 
-            m_vdencItf->SetRowstoreCachingOffsets(par);
+            ENCODE_CHK_STATUS_NO_STATUS_RETURN(m_vdencItf->SetRowstoreCachingOffsets(par));
         }
         if(m_osInterface)
         {
@@ -245,7 +245,7 @@ namespace encode{
         perfTag.Value             = 0;
         perfTag.Mode              = (uint16_t)m_basicFeature->m_mode & CODECHAL_ENCODE_MODE_BIT_MASK;
         perfTag.CallType          = callType;
-        perfTag.PictureCodingType = picType > 3 ? 0 : picType;
+        perfTag.PictureCodingType = picType;
         m_osInterface->pfnSetPerfTag(m_osInterface, perfTag.Value);
         m_osInterface->pfnIncPerfBufferID(m_osInterface);
     }
