@@ -378,8 +378,7 @@ namespace encode
 
         ENCODE_CHK_STATUS_RETURN(m_miItf->SetWatchdogTimerThreshold(m_basicFeature->m_frameWidth, m_basicFeature->m_frameHeight, true));
 
-        uint16_t perfTag = m_pipeline->IsFirstPass() ? CODECHAL_ENCODE_PERFTAG_CALL_PAK_ENGINE : CODECHAL_ENCODE_PERFTAG_CALL_PAK_ENGINE_SECOND_PASS;
-        SetPerfTag(perfTag, (uint16_t)m_basicFeature->m_mode, m_basicFeature->m_pictureCodingType);
+        SetPerfTag();
 
         auto feature = dynamic_cast<HEVCEncodeBRC*>(m_featureManager->GetFeature(HevcFeatureIDs::hevcBrcFeature));
         ENCODE_CHK_NULL_RETURN(feature);
@@ -651,6 +650,7 @@ namespace encode
         PMOS_COMMAND_BUFFER tempCmdBuffer         = &cmdBuffer;
         PMHW_BATCH_BUFFER   tileLevelBatchBuffer  = nullptr;
         auto                eStatus               = MOS_STATUS_SUCCESS;
+        MOS_COMMAND_BUFFER constructTileBatchBuf = {};
 
         RUN_FEATURE_INTERFACE_RETURN(HevcEncodeTile, HevcFeatureIDs::encodeTile, SetCurrentTile, tileRow, tileCol, m_pipeline);
 
@@ -661,8 +661,6 @@ namespace encode
 
         if (!m_osInterface->bUsesPatchList)
         {
-            MOS_COMMAND_BUFFER constructTileBatchBuf = {};
-
             // Begin patching tile level batch cmds
             RUN_FEATURE_INTERFACE_RETURN(HevcEncodeTile, HevcFeatureIDs::encodeTile, BeginPatchTileLevelBatch, tileRowPass, constructTileBatchBuf);
 
@@ -1312,8 +1310,8 @@ namespace encode
         auto cpInterface = m_hwInterface->GetCpInterface();
         cpInterface->GetCpStateLevelCmdSize(cpCmdsize, cpPatchListSize);
 
-        m_hwInterface->GetHucStateCommandSize(
-            m_basicFeature->m_mode, (uint32_t *)&hucCommandsSize, (uint32_t *)&hucPatchListSize, &stateCmdSizeParams);
+        ENCODE_CHK_STATUS_RETURN(m_hwInterface->GetHucStateCommandSize(
+            m_basicFeature->m_mode, (uint32_t *)&hucCommandsSize, (uint32_t *)&hucPatchListSize, &stateCmdSizeParams));
 
         m_defaultPictureStatesSize    = hcpCommandsSize + hucCommandsSize + (uint32_t)cpCmdsize;
         m_defaultPicturePatchListSize = hcpPatchListSize + hucPatchListSize + (uint32_t)cpPatchListSize;
@@ -1382,12 +1380,6 @@ MOS_STATUS HevcVdencPkt::AddAllCmds_HCP_PAK_INSERT_OBJECT_BRC(PMOS_COMMAND_BUFFE
     PBSBuffer pBsBuffer = &(m_basicFeature->m_bsBuffer);
     uint32_t  bitSize   = 0;
     uint32_t  offSet    = 0;
-
-    if (cmdBuffer == nullptr)
-    {
-        ENCODE_ASSERTMESSAGE("There was no valid buffer to add the HW command to.");
-        return MOS_STATUS_NULL_POINTER;
-    }
 
     //insert AU, SPS, PSP headers before first slice header
     if (m_basicFeature->m_curNumSlices == 0)
@@ -1663,15 +1655,22 @@ MOS_STATUS HevcVdencPkt::AddAllCmds_HCP_PAK_INSERT_OBJECT_BRC(PMOS_COMMAND_BUFFE
         return eStatus;
     }
 
-    void HevcVdencPkt::SetPerfTag(uint16_t type, uint16_t mode, uint16_t picCodingType)
+    void HevcVdencPkt::SetPerfTag()
     {
         ENCODE_FUNC_CALL();
 
+        uint16_t callType = m_pipeline->IsFirstPass() ? CODECHAL_ENCODE_PERFTAG_CALL_PAK_ENGINE : CODECHAL_ENCODE_PERFTAG_CALL_PAK_ENGINE_SECOND_PASS;
+        uint16_t picType  = m_basicFeature->m_pictureCodingType;
+        if (m_basicFeature->m_pictureCodingType == B_TYPE && m_basicFeature->m_ref.IsLowDelay())
+        {
+            picType = 0;
+        }
+
         PerfTagSetting perfTag;
         perfTag.Value             = 0;
-        perfTag.Mode              = mode & CODECHAL_ENCODE_MODE_BIT_MASK;
-        perfTag.CallType          = type;
-        perfTag.PictureCodingType = picCodingType > 3 ? 0 : picCodingType;
+        perfTag.Mode              = (uint16_t)m_basicFeature->m_mode & CODECHAL_ENCODE_MODE_BIT_MASK;
+        perfTag.CallType          = callType;
+        perfTag.PictureCodingType = picType;
         m_osInterface->pfnSetPerfTag(m_osInterface, perfTag.Value);
         m_osInterface->pfnIncPerfBufferID(m_osInterface);
     }
@@ -2918,12 +2917,6 @@ MOS_STATUS HevcVdencPkt::AddAllCmds_HCP_PAK_INSERT_OBJECT_BRC(PMOS_COMMAND_BUFFE
             PBSBuffer         pBsBuffer   = &(m_basicFeature->m_bsBuffer);
             uint32_t          bitSize     = 0;
             uint32_t          offSet      = 0;
-
-            if (cmdBuffer == nullptr && batchBuffer == nullptr)
-            {
-                ENCODE_ASSERTMESSAGE("There was no valid buffer to add the HW command to.");
-                return MOS_STATUS_NULL_POINTER;
-            }
 
             //insert AU, SPS, PSP headers before first slice header
             if (m_basicFeature->m_curNumSlices == 0)

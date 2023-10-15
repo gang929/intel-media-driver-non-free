@@ -382,7 +382,7 @@ namespace encode
         //! \return MOS_STATUS
         //!         MOS_STATUS_SUCCESS if success, else fail reason
         //!
-        MOS_STATUS EnsureAllCommandsExecuted(MOS_COMMAND_BUFFER &cmdBuffer);
+        virtual MOS_STATUS EnsureAllCommandsExecuted(MOS_COMMAND_BUFFER &cmdBuffer);
 
         virtual MOS_STATUS AddHcpPipeModeSelect(
             MOS_COMMAND_BUFFER &cmdBuffer);
@@ -442,7 +442,7 @@ namespace encode
         // Inline functions
         MOS_STATUS ValidateVdboxIdx(const MHW_VDBOX_NODE_IND &vdboxIndex);
 
-        void SetPerfTag(uint16_t type, uint16_t mode, uint16_t picCodingType);
+        void SetPerfTag();
 
         MOS_STATUS SetSemaphoreMem(
             MOS_RESOURCE &      semaphoreMem,

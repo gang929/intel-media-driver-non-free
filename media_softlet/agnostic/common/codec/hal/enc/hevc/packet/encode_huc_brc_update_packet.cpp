@@ -664,7 +664,12 @@ namespace encode
         ENCODE_CHK_NULL_RETURN(brcFeature);
 
         uint16_t perfTag = m_pipeline->IsFirstPass() ? CODECHAL_ENCODE_PERFTAG_CALL_BRC_UPDATE : CODECHAL_ENCODE_PERFTAG_CALL_BRC_UPDATE_SECOND_PASS;
-        SetPerfTag(perfTag, (uint16_t)m_basicFeature->m_mode, m_basicFeature->m_pictureCodingType);
+        uint16_t pictureType = m_basicFeature->m_pictureCodingType;
+        if (m_basicFeature->m_pictureCodingType == B_TYPE && m_basicFeature->m_ref.IsLowDelay())
+        {
+            pictureType = 0;
+        }
+        SetPerfTag(perfTag, (uint16_t)m_basicFeature->m_mode, pictureType);
 
         if (!m_pipeline->IsSingleTaskPhaseSupported() || firstTaskInPhase)
         {
@@ -1246,18 +1251,16 @@ namespace encode
                 tcbrcQualityBoostFromScenario = 0;
             }
 
+#if (_DEBUG || _RELEASE_INTERNAL)
             //tcbrc mode override by reg key
             uint8_t tcbrcQualityBoostFromRegkey = 3;
-            auto osInterface = m_hwInterface->GetOsInterface();
-            ENCODE_CHK_NULL_RETURN(osInterface);
-#if (_DEBUG || _RELEASE_INTERNAL)
+
             MediaUserSetting::Value outValue;
             ReadUserSetting(m_userSettingPtr,
                 outValue,
                 "TCBRC Quality Boost Mode",
                 MediaUserSetting::Group::Sequence);
             tcbrcQualityBoostFromRegkey = static_cast<uint8_t>(outValue.Get<int32_t>());
-#endif
             //if FrameSizeBoostForSceneChange is set by regkey, then override it
             if (tcbrcQualityBoostFromRegkey == 0 || tcbrcQualityBoostFromRegkey == 1 || tcbrcQualityBoostFromRegkey == 2)
             {
@@ -1265,6 +1268,7 @@ namespace encode
                 ENCODE_VERBOSEMESSAGE("TCBRC FrameSizeBoostForSceneChange is override by regkey!");
             }
             else
+#endif
             {
                 m_tcbrcQualityBoost = tcbrcQualityBoostFromScenario;
             }

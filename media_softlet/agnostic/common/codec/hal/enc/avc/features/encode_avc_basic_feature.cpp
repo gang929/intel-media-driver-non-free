@@ -440,7 +440,7 @@ MOS_STATUS AvcBasicFeature::SetPictureStructs()
     if ((m_lookaheadDepth > 0) && (m_prevTargetFrameSize > 0))
     {
         int64_t targetBufferFulness = (int64_t)m_targetBufferFulness;
-        targetBufferFulness += (int64_t)(m_prevTargetFrameSize << 3) - (int64_t)m_averageFrameSize;
+        targetBufferFulness += (((int64_t)m_prevTargetFrameSize) << 3) - (int64_t)m_averageFrameSize;
         m_targetBufferFulness = (uint32_t)MOS_CLAMP_MIN_MAX(targetBufferFulness, 0, 0xFFFFFFFF);
     }
     m_prevTargetFrameSize = picParams->TargetFrameSize;
@@ -539,10 +539,6 @@ MOS_STATUS AvcBasicFeature::SetSliceStructs()
         if ((picParams->pic_init_qp_minus26 + 26 + slcParams->slice_qp_delta) > CODECHAL_ENCODE_AVC_MAX_SLICE_QP)
         {
             slcParams->slice_qp_delta = CODECHAL_ENCODE_AVC_MAX_SLICE_QP - (picParams->pic_init_qp_minus26 + 26);
-        }
-        else
-        {
-            slcParams->slice_qp_delta = slcParams->slice_qp_delta;
         }
         slcParams->redundant_pic_cnt                  = 0;
         slcParams->sp_for_switch_flag                 = 0;
