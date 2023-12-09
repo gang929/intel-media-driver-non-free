@@ -2023,23 +2023,6 @@ MOS_STATUS MosUtilities::MosReadApoMosEnabledUserFeature(uint32_t &userfeatureVa
     MOS_USER_FEATURE_VALUE_DATA userFeatureData     = {};
     MOS_UNUSED(path);
 
-    //If apo mos enabled, to check if media solo is enabled. Disable apo mos if media solo is enabled.
-#if MOS_MEDIASOLO_SUPPORTED
-    eStatus = MosUtilities::MosUserFeatureReadValueID(
-            nullptr,
-            __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_ENABLE_ID,
-            &userFeatureData,
-            (MOS_CONTEXT_HANDLE) nullptr);
-
-    //If media solo is enabled, disable apogeios.
-    if (eStatus == MOS_STATUS_SUCCESS && userFeatureData.i32Data != 0)
-    {
-        // This error case can be hit if the user feature key does not exist.
-        MOS_OS_NORMALMESSAGE("Solo is enabled, disable apo mos");
-        userfeatureValue = 0;
-        return MOS_STATUS_SUCCESS;
-    }
-#endif
 
     uint32_t enableApoMos = 0;
     eStatus = ReadUserSetting(
@@ -2200,7 +2183,7 @@ PMOS_MUTEX MosUtilities::MosCreateMutex(uint32_t spinCount)
     return pMutex;
 }
 
-MOS_STATUS MosUtilities::MosDestroyMutex(PMOS_MUTEX pMutex)
+MOS_STATUS MosUtilities::MosDestroyMutex(PMOS_MUTEX &pMutex)
 {
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
@@ -2210,7 +2193,7 @@ MOS_STATUS MosUtilities::MosDestroyMutex(PMOS_MUTEX pMutex)
         {
             eStatus = MOS_STATUS_UNKNOWN;
         }
-        MOS_FreeMemory(pMutex);
+        MOS_FreeMemAndSetNull(pMutex);
     }
 
     return eStatus;
@@ -2264,10 +2247,9 @@ PMOS_SEMAPHORE MosUtilities::MosCreateSemaphore(
 }
 
 MOS_STATUS MosUtilities::MosDestroySemaphore(
-    PMOS_SEMAPHORE              pSemaphore)
+    PMOS_SEMAPHORE              &pSemaphore)
 {
-    MOS_SafeFreeMemory(pSemaphore);
-
+    MOS_FreeMemAndSetNull(pSemaphore);
     return MOS_STATUS_SUCCESS;
 }
 

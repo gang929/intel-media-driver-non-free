@@ -870,7 +870,7 @@ protected:
 
 #define DO_FIELDS()                                                                             \
     DO_FIELD(DW1, FrameTileId, params.tileId);                                                  \
-    DO_FIELD(DW1, TgTileNum, params.tileNum);                                                   \
+    DO_FIELD(DW1, TgTileNum, params.tgTileNum);                                                   \
     DO_FIELD(DW1, TileGroupId, params.tileGroupId);                                             \
                                                                                                 \
     DO_FIELD(DW2, TileColumnPositionInSbUnit, params.tileColPositionInSb);                      \
@@ -1021,7 +1021,7 @@ protected:
             resourceParams.dwOffset        = params.cdfTableInitBufferOffset;
             resourceParams.pdwCmd          = (cmd.CdfTablesInitializationBufferAddress.DW0_1.Value);
             resourceParams.dwLocationInCmd = _MHW_CMD_DW_LOCATION(CdfTablesInitializationBufferAddress);
-            resourceParams.bIsWritable     = true;
+            resourceParams.bIsWritable     = false;
 
             InitMocsParams(resourceParams, &cmd.CdfTablesInitializationBufferAddressAttributes.DW0.Value, 1, 6);
 

@@ -74,6 +74,29 @@ struct KRN_ARG
     void*                  pData;
     uint32_t               uSize;            // size of arg in byte
     KRN_ARG_KIND           eArgKind;
+    bool                   isOutput;
+};
+
+//for L0 use only
+struct KRN_BTI
+{
+    uint32_t               uIndex;
+    uint32_t               uBTI;
+};
+
+//for L0 use only
+struct KRN_EXECUTE_ENV
+{
+    uint32_t uBarrierCount;
+    bool     bDisableMidThreadPreemption;
+    uint32_t uGrfCount;
+    bool     bHasGlobalAtomics;
+    bool     bHasNoStatelessWrite;
+    uint32_t uInlineDataPayloadSize;
+    uint32_t uOffsetToSkipPerThreadDataLoad;
+    uint32_t uSimdSize;
+    uint32_t uSubgroupIndependentForwardProgress;
+    uint32_t uEuThreadCount;
 };
 
 using SurfaceIndex = uint32_t;

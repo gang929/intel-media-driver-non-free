@@ -1964,6 +1964,7 @@ MOS_STATUS VPHAL_VEBOX_STATE::VeboxRenderVeboxCmd(
     MOS_CONTEXT                             *pOsContext = nullptr;
     PMHW_MI_MMIOREGISTERS                   pMmioRegisters = nullptr;
 
+    VPHAL_RENDER_CHK_NULL(pRenderData);
     VPHAL_RENDER_CHK_NULL(pVeboxState);
     VPHAL_RENDER_CHK_NULL(pVeboxState->m_pRenderHal);
     VPHAL_RENDER_CHK_NULL(pVeboxState->m_pRenderHal->pMhwMiInterface);
@@ -2536,7 +2537,8 @@ void VPHAL_VEBOX_STATE::VeboxSetRenderingFlags(
                                   (GFX_IS_GEN_9_OR_LATER(pVeboxState->m_pRenderHal->Platform)) &&
                                   (IS_COLOR_SPACE_BT2020_YUV(pSrc->ColorSpace)) &&
                                   (pRenderTarget->ColorSpace != pSrc->ColorSpace) &&
-                                  (!IS_COLOR_SPACE_BT2020_RGB(pRenderTarget->ColorSpace)));
+                                  (!IS_COLOR_SPACE_BT2020_RGB(pRenderTarget->ColorSpace)) &&
+                                  (!IS_COLOR_SPACE_BT2020_YUV(pRenderTarget->ColorSpace)));
 
     pRenderData->BT2020DstColorSpace = pRenderTarget->ColorSpace;
 

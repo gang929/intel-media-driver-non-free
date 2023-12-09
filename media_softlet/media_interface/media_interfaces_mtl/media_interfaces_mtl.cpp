@@ -34,6 +34,7 @@
 
 #include "vp_pipeline_adapter_xe_lpm_plus.h"
 #include "vp_platform_interface_xe_lpm_plus.h"
+#include "vp_kernel_config_xe_hpg_base.h"
 #include "mhw_mi_xe_lpm_plus_base_next_impl.h"
 #include "mhw_blt_xe_lpm_plus_base_next_impl.h"
 #include "mhw_sfc_xe_lpm_plus_base_next_impl.h"
@@ -80,7 +81,6 @@ MOS_STATUS VphalInterfacesXe_Lpm_Plus::Initialize(
         *eStatus = MOS_STATUS_NULL_POINTER;
         return *eStatus;
     }
-
     InitPlatformKernelBinary(vpPlatformInterface);
 
     if (!bInitVphalState)
@@ -133,6 +133,8 @@ MOS_STATUS VphalInterfacesXe_Lpm_Plus::CreateVpPlatformInterface(
 void VphalInterfacesXe_Lpm_Plus::InitPlatformKernelBinary(
     vp::VpPlatformInterface  *&vpPlatformInterface)
 {
+    static vp::VpKernelConfigXe_Hpg_Base kernelConfig;
+    vpPlatformInterface->SetKernelConfig(&kernelConfig);
 #if defined(ENABLE_KERNELS)
     vpPlatformInterface->SetVpFCKernelBinary(
                         IGVPKRN_XE_HPG,
@@ -349,19 +351,6 @@ MOS_STATUS McpyDeviceXe_Lpm_Plus::Initialize(
     m_mcpyDevice = device;
 
     return MOS_STATUS_SUCCESS;
-}
-
-MhwInterfacesNext* McpyDeviceXe_Lpm_Plus::CreateMhwInterface(
-    PMOS_INTERFACE osInterface)
-{
-    MhwInterfacesNext::CreateParams params;
-    params.Flags.m_vebox = true;
-    params.Flags.m_blt   = true;
-
-    // the destroy of interfaces happens when the mcpy deviced deconstructor funcs
-    MhwInterfacesNext *mhw = MhwInterfacesNext::CreateFactory(params, osInterface);
-
-    return mhw;
 }
 
 static bool mtlRegisteredCodecHal =
