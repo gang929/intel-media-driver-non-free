@@ -20,12 +20,10 @@
 
 set(TMP_SOURCES_
     ${CMAKE_CURRENT_LIST_DIR}/vp_render_sfc_m12.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/vp_kernel_config_m12_base.cpp
 )
 
 set(TMP_HEADERS_
     ${CMAKE_CURRENT_LIST_DIR}/vp_render_sfc_m12.h
-    ${CMAKE_CURRENT_LIST_DIR}/vp_kernel_config_m12_base.h
 )
 
 

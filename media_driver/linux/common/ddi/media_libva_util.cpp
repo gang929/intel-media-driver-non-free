@@ -1047,7 +1047,8 @@ static VAStatus CreateShadowResource(DDI_MEDIA_SURFACE *surface)
         return VA_STATUS_ERROR_INVALID_SURFACE;
     }
 
-    if (surface->iWidth < 64 || surface->iRealHeight < 64 || (surface->iPitch % 64 != 0) || surface->format == Media_Format_P016)
+    // 422V fallback to SW swizzle
+    if (surface->iWidth < 64 || surface->iRealHeight < 64 || (surface->iPitch % 64 != 0) || surface->format == Media_Format_P016 || surface->format == Media_Format_422V)
     {
         return VA_STATUS_ERROR_UNSUPPORTED_RT_FORMAT;
     }
@@ -1824,18 +1825,6 @@ int32_t DdiMediaUtil_OpenGraphicsAdaptor(char *devName)
         return -1;
     }
 
-    if (-1 == stat (devName, &st))
-    {
-        DDI_ASSERTMESSAGE("Cannot identify '%s': %d, %s.", devName, errno, strerror (errno));
-        return -1;
-    }
-
-    if (!S_ISCHR (st.st_mode))
-    {
-        DDI_ASSERTMESSAGE("%s is no device.", devName);
-        return -1;
-    }
-
     hDevice = open (devName, O_RDWR);
     if (-1 == hDevice)
     {
@@ -1843,6 +1832,19 @@ int32_t DdiMediaUtil_OpenGraphicsAdaptor(char *devName)
         return -1;
     }
 
+    if (-1 == fstat (hDevice, &st))
+    {
+        DDI_ASSERTMESSAGE("Cannot identify '%s': %d, %s.", devName, errno, strerror (errno));
+        close(hDevice);
+        return -1;
+    }
+
+    if (!S_ISCHR (st.st_mode))
+    {
+        DDI_ASSERTMESSAGE("%s is no device.", devName);
+        close(hDevice);
+        return -1;
+    }
     return hDevice;
 }
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2021, Intel Corporation
+* Copyright (c) 2019-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -192,7 +192,9 @@ typedef struct _CODEC_AV1_ENCODE_SEQUENCE_PARAMS
             uint32_t    DisplayFormatSwizzle    : 1;    //[0]
             uint32_t    bLookAheadPhase         : 1; 
             uint32_t    HierarchicalFlag        : 1; 
-            uint32_t    Reserved0               : 26;
+            uint32_t    RGBInputStudioRange     : 1;    // [0, 1]
+            uint32_t    ConvertedYUVStudioRange : 1;    // [0, 1]
+            uint32_t    Reserved0               : 24;
         } fields;
         uint32_t    value;
     } SeqFlags;
@@ -650,10 +652,152 @@ struct EncodeAv1Par
 
 };
 
+struct MetadataAV1PostFeature
+{
+    struct
+    {
+        uint64_t RowCount;
+        uint64_t ColCount;
+        uint64_t RowHeights[64];
+        uint64_t ColWidths[64];
+        uint64_t ContextUpdateTileId;
+    } tilePartition;
+
+    struct
+    {
+        uint64_t CompoundPredictionType;
+        struct
+        {
+            uint64_t LoopFilterLevel[2];
+            uint64_t LoopFilterLevelU;
+            uint64_t LoopFilterLevelV;
+            uint64_t LoopFilterSharpnessLevel;
+            uint64_t LoopFilterDeltaEnabled;
+            uint64_t UpdateRefDelta;
+            int64_t  RefDeltas[8];
+            uint64_t UpdateModeDelta;
+            int64_t  ModeDeltas[2];
+        } LoopFilter;
+        struct
+        {
+            uint64_t DeltaLFPresent;
+            uint64_t DeltaLFMulti;
+            uint64_t DeltaLFRes;
+        } LoopFilterDelta;
+        struct
+        {
+            uint64_t BaseQIndex;
+            int64_t  YDCDeltaQ;
+            int64_t  UDCDeltaQ;
+            int64_t  UACDeltaQ;
+            int64_t  VDCDeltaQ;
+            int64_t  VACDeltaQ;
+            uint64_t UsingQMatrix;
+            uint64_t QMY;
+            uint64_t QMU;
+            uint64_t QMV;
+        } Quantization;
+        struct
+        {
+            uint64_t DeltaQPresent;
+            uint64_t DeltaQRes;
+        } QuantizationDelta;
+        struct
+        {
+            uint64_t CdefBits;
+            uint64_t CdefDampingMinus3;
+            uint64_t CdefYPriStrength[8];
+            uint64_t CdefUVPriStrength[8];
+            uint64_t CdefYSecStrength[8];
+            uint64_t CdefUVSecStrength[8];
+        } CDEF;
+        struct
+        {
+            uint64_t UpdateMap;
+            uint64_t TemporalUpdate;
+            uint64_t UpdateData;
+            uint64_t NumSegments;
+            struct
+            {
+                uint64_t EnabledFeatures;
+                int64_t  FeatureValue[8];
+            } SegmentsData[8];
+        } SegmentationConfig;
+        uint64_t PrimaryRefFrame;
+        uint64_t ReferenceIndices[7];
+    } postFeature;
+};
+
+struct AV1MetaDataOffset
+{
+    //tile partition
+    uint32_t dwRowCount            = 0;
+    uint32_t dwColCount            = 0;
+    uint32_t dwRowHeights          = 0;
+    uint32_t dwColWidths           = 0;
+    uint32_t dwContextUpdateTileId = 0;
+    //post feature
+    uint32_t dwCompoundPredictionType = 0;
+    uint32_t dwLoopFilter             = 0;
+    uint32_t dwLoopFilterDelta        = 0;
+    uint32_t dwQuantization           = 0;
+    uint32_t dwQuantizationDelta      = 0;
+    uint32_t dwCDEF                   = 0;
+    uint32_t dwSegmentationConfig     = 0;
+    uint32_t dwPrimaryRefFrame        = 0;
+    uint32_t dwReferenceIndices       = 0;
+    //loop filter
+    uint32_t dwLoopFilterLevel          = 0;
+    uint32_t dwLoopFilterLevelU         = 0;
+    uint32_t dwLoopFilterLevelV         = 0;
+    uint32_t dwLoopFilterSharpnessLevel = 0;
+    uint32_t dwLoopFilterDeltaEnabled   = 0;
+    uint32_t dwUpdateRefDelta           = 0;
+    uint32_t dwRefDeltas                = 0;
+    uint32_t dwUpdateModeDelta          = 0;
+    uint32_t dwModeDeltas               = 0;
+    //loop filter delta
+    uint32_t dwDeltaLFPresent = 0;
+    uint32_t dwDeltaLFMulti   = 0;
+    uint32_t dwDeltaLFRes     = 0;
+    //Quantization
+    uint32_t dwBaseQIndex   = 0;
+    uint32_t dwYDCDeltaQ    = 0;
+    uint32_t dwUDCDeltaQ    = 0;
+    uint32_t dwUACDeltaQ    = 0;
+    uint32_t dwVDCDeltaQ    = 0;
+    uint32_t dwVACDeltaQ    = 0;
+    uint32_t dwUsingQMatrix = 0;
+    uint32_t dwQMY          = 0;
+    uint32_t dwQMU          = 0;
+    uint32_t dwQMV          = 0;
+    //QuantizationDelta
+    uint32_t dwDeltaQPresent = 0;
+    uint32_t dwDeltaQRes     = 0;
+    //CDEF
+    uint32_t dwCdefBits          = 0;
+    uint32_t dwCdefDampingMinus3 = 0;
+    uint32_t dwCdefYPriStrength  = 0;
+    uint32_t dwCdefUVPriStrength = 0;
+    uint32_t dwCdefYSecStrength  = 0;
+    uint32_t dwCdefUVSecStrength = 0;
+    //SegmentationConfig
+    uint32_t dwUpdateMap      = 0;
+    uint32_t dwTemporalUpdate = 0;
+    uint32_t dwUpdateData     = 0;
+    uint32_t dwNumSegments    = 0;
+    uint32_t dwSegmentsData   = 0;
+    //dwSegmentsData
+    uint32_t dwEnabledFeatures  = 0;
+    uint32_t dwFeatureValue     = 0;
+    uint32_t dwSegmentsDataSize = 0;
+};
+
 struct EncoderParamsAV1 : EncoderParams
 {
     uint32_t segmentMapDataSize = 0;     //!< [AV1] size of data in segment map buffer
     uint8_t  *pSegmentMap = nullptr;     //!< [AV1] pointer to segment map buffer from DDI
+    AV1MetaDataOffset AV1metaDataOffset  = {};       //!< [AV1] AV1 Specific metadata offset
 };
 
 #endif  // __CODEC_DEF_ENCODE_AV1_H__

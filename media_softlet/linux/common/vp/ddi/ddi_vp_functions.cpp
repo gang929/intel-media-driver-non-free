@@ -1073,7 +1073,10 @@ VAStatus DdiVpFunctions::DdiDestroySrcParams(PDDI_VP_CONTEXT vpCtx)
             MOS_Delete(vpCtx->pVpHalRenderParams->pSrc[surfIndex]->pDenoiseParams);
             if (vpCtx->pVpHalRenderParams->pSrc[surfIndex]->pIEFParams)
             {
-                MOS_Delete(vpCtx->pVpHalRenderParams->pSrc[surfIndex]->pIEFParams->pExtParam);
+                if (!vpCtx->pVpHalRenderParams->pSrc[surfIndex]->pIEFParams->pExtParam)
+                {
+                    DDI_VP_ASSERTMESSAGE("vpCtx->pVpHalRenderParams->pSrc[surfIndex]->pIEFParams->pExtParam is nullptr.");
+                }
                 MOS_Delete(vpCtx->pVpHalRenderParams->pSrc[surfIndex]->pIEFParams);
             }
             MOS_Delete(vpCtx->pVpHalRenderParams->pSrc[surfIndex]->pBlendingParams);
@@ -1793,6 +1796,7 @@ VAStatus DdiVpFunctions::VpSetRenderTargetParams(
     if(vpHalRenderParams->uDstCount < 1)
     {
         DDI_VP_ASSERTMESSAGE("vpHalRenderParams->uDstCount is lower than 1");
+        return VA_STATUS_ERROR_INVALID_PARAMETER;
     }
     DDI_VP_CHK_NULL(vpHalRenderParams->pTarget, "nullptr vpHalRenderParams->pTarget.", VA_STATUS_ERROR_INVALID_BUFFER);
     vpHalTgtSurf = vpHalRenderParams->pTarget[vpHalRenderParams->uDstCount - 1];
@@ -2111,8 +2115,9 @@ VAStatus DdiVpFunctions::SetBackgroundColorfill(
 {
     DDI_VP_FUNC_ENTER;
     DDI_VP_CHK_NULL(vpHalRenderParams, "nullptr vpHalRenderParams.", VA_STATUS_ERROR_INVALID_PARAMETER);
+    DDI_VP_CHK_NULL(vpHalRenderParams->pTarget[0],"nullptr pTarget[0].", VA_STATUS_ERROR_INVALID_PARAMETER);
 
-    if ((outBackGroundcolor >> 24) != 0)
+    if ((outBackGroundcolor >> 24) != 0 || vpHalRenderParams->pTarget[0]->ColorSpace == CSpace_sRGB)
     {
         if (vpHalRenderParams->pColorFillParams == nullptr)
         {
@@ -2121,10 +2126,18 @@ VAStatus DdiVpFunctions::SetBackgroundColorfill(
 
         DDI_VP_CHK_NULL(vpHalRenderParams->pColorFillParams, "nullptr pColorFillParams.", VA_STATUS_ERROR_UNKNOWN);
 
-        // set background colorfill option
-        vpHalRenderParams->pColorFillParams->Color   = outBackGroundcolor;
-        vpHalRenderParams->pColorFillParams->bYCbCr  = false;
-        vpHalRenderParams->pColorFillParams->CSpace  = CSpace_sRGB;
+        if (vpHalRenderParams->pTarget[0]->ColorSpace == CSpace_sRGB && (outBackGroundcolor >> 24) == 0)
+        {
+            // set color space for sRGB output
+            vpHalRenderParams->pColorFillParams->CSpace  = CSpace_sRGB;
+        }
+        else
+        {
+            // set background colorfill option
+            vpHalRenderParams->pColorFillParams->Color   = outBackGroundcolor;
+            vpHalRenderParams->pColorFillParams->bYCbCr  = false;
+            vpHalRenderParams->pColorFillParams->CSpace  = CSpace_sRGB;
+        }
     }
     else
     {
@@ -2590,13 +2603,13 @@ void DdiVpFunctions::VpSetColorSpaceByColorStandard(
             case VAProcColorStandardGenericFilm:
             case VAProcColorStandardXVYCC601:
             case VAProcColorStandardXVYCC709:
-                vpHalSurf->ColorSpace == CSpace_None;
+                vpHalSurf->ColorSpace = CSpace_None;
                 break;
             case VAProcColorStandardExplicit:
                 VpSetColorStandardExplictly(vpHalSurf, colorStandard, colorProperties);
                 break;
             default:
-                vpHalSurf->ColorSpace == CSpace_BT601;
+                vpHalSurf->ColorSpace = CSpace_BT601;
                 break;
             }
     return;
@@ -3286,7 +3299,10 @@ VAStatus DdiVpFunctions::DdiClearFilterParamBuffer(
     {
         if (vpCtx->pVpHalRenderParams->pSrc[surfIndex]->pIEFParams)
         {
-            MOS_Delete(vpCtx->pVpHalRenderParams->pSrc[surfIndex]->pIEFParams->pExtParam);
+            if (!vpCtx->pVpHalRenderParams->pSrc[surfIndex]->pIEFParams->pExtParam)
+            {
+                DDI_VP_ASSERTMESSAGE("vpCtx->pVpHalRenderParams->pSrc[surfIndex]->pIEFParams->pExtParam is nullptr.");
+            }
             MOS_Delete(vpCtx->pVpHalRenderParams->pSrc[surfIndex]->pIEFParams);
         }
     }

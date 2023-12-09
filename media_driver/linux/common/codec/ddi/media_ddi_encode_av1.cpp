@@ -416,6 +416,7 @@ VAStatus DdiEncodeAV1::ParseSeqParams(void *ptr)
  
     switch ((uint32_t)m_encodeCtx->uiRCMethod)
     {
+    case VA_RC_TCBRC:
     case VA_RC_VBR:
         av1SeqParams->RateControlMethod = (uint8_t)RATECONTROL_VBR;
         break;
@@ -942,7 +943,10 @@ VAStatus DdiEncodeAV1::ParseMiscParamRC(void *data)
 
     if (VA_RC_CBR == m_encodeCtx->uiRCMethod)
     {
-        seqParams->TargetBitRate[temporalId] = bitRate * vaEncMiscParamRC->target_percentage / 100;
+        if(vaEncMiscParamRC->target_percentage != 0)
+            seqParams->TargetBitRate[temporalId] = bitRate * vaEncMiscParamRC->target_percentage / 100;
+        else
+            seqParams->TargetBitRate[temporalId] = bitRate; // Default 100 percent
         seqParams->MaxBitRate                = seqParams->TargetBitRate[temporalId];
         seqParams->MinBitRate                = seqParams->TargetBitRate[temporalId];
         seqParams->RateControlMethod         = RATECONTROL_CBR;
@@ -957,7 +961,10 @@ VAStatus DdiEncodeAV1::ParseMiscParamRC(void *data)
     }
     else if (VA_RC_VBR == m_encodeCtx->uiRCMethod)
     {
-        seqParams->TargetBitRate[temporalId] = bitRate * vaEncMiscParamRC->target_percentage / 100; //VBR target bits;
+        if(vaEncMiscParamRC->target_percentage != 0)
+            seqParams->TargetBitRate[temporalId] = bitRate * vaEncMiscParamRC->target_percentage / 100;
+        else
+            seqParams->TargetBitRate[temporalId] = bitRate;
         seqParams->MaxBitRate = bitRate;
         seqParams->MinBitRate = 0;
         seqParams->RateControlMethod = RATECONTROL_VBR;

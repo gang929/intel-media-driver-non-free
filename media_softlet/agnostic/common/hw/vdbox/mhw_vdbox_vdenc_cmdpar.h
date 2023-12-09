@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020 -2023, Intel Corporation
+* Copyright (c) 2020-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -167,6 +167,9 @@ struct _MHW_PAR_T(VDENC_PIPE_MODE_SELECT)
     uint8_t wirelessSessionId        = 0;
     uint8_t tailPointerReadFrequency = 0;
     uint8_t streamingBufferConfig    = 0;
+    bool    bt2020RGB2YUV            = 0;
+    uint8_t rgbInputStudioRange      = 0;
+    uint8_t convertedYUVStudioRange  = 0;
     uint8_t VdencPipeModeSelectPar0  = 0;
     uint8_t VdencPipeModeSelectPar1  = 0;
     uint8_t VdencPipeModeSelectPar2  = 0;
@@ -522,7 +525,6 @@ struct _MHW_PAR_T(VDENC_CMD2)
     uint32_t height                           = 0;
     bool     constrainedIntraPred             = false;
     uint8_t  pictureType                      = 0;
-    bool     av1IdentityTransform             = false;
     bool     temporalMvp                      = false;
     bool     collocatedFromL0                 = false;
     uint8_t  longTermReferenceFlagsL0         = 0;
@@ -583,6 +585,7 @@ struct _MHW_PAR_T(VDENC_CMD2)
     uint8_t  vdencCmd2Par130                  = 0;
     uint8_t  vdencCmd2Par131                  = 0;
     uint8_t  vdencCmd2Par132                  = 0;
+    bool     vdencCmd2Par133                  = false;
 
     __MHW_VDBOX_VDENC_WRAPPER(
         std::vector<std::function<MOS_STATUS(uint32_t *)>> extSettings);

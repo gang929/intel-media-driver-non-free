@@ -68,11 +68,6 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
     }
 
     OsContextSpecificNext *pOsContextSpecific = static_cast<OsContextSpecificNext *>(osContextPtr);
-    if (pOsContextSpecific == nullptr)
-    {
-        MOS_OS_ASSERTMESSAGE("Convert OsContextSpecific failed.");
-        return MOS_STATUS_INVALID_HANDLE;
-    }
 
     GMM_CLIENT_CONTEXT    *gmmClientContext = pOsContextSpecific->GetGmmClientContext();
     if (nullptr == gmmClientContext)
@@ -419,6 +414,7 @@ MOS_STATUS GraphicsResourceSpecificNext::ConvertToMosResource(MOS_RESOURCE* pMos
     pMosResource->Format   = m_format;
     pMosResource->iWidth   = m_width;
     pMosResource->iHeight  = m_height;
+    pMosResource->iSize    = m_size;
     pMosResource->iPitch   = m_pitch;
     pMosResource->iDepth   = m_depth;
     pMosResource->TileType = m_tileType;

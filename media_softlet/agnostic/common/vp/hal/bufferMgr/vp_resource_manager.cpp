@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2022, Intel Corporation
+* Copyright (c) 2018-2023, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -1386,6 +1386,7 @@ MOS_STATUS VpResourceManager::ReAllocateVeboxDenoiseOutputSurface(VP_EXECUTE_CAP
     bool                            bSurfCompressible   = false;
     MOS_TILE_MODE_GMM               tileModeByForce     = MOS_TILE_UNSET_GMM;
     auto *                          skuTable            = m_osInterface.pfnGetSkuTable(&m_osInterface);
+    auto *                          waTable             = m_osInterface.pfnGetWaTable(&m_osInterface);
     Mos_MemPool                     memTypeSurfVideoMem = MOS_MEMPOOL_VIDEOMEMORY;
     uint32_t                        dwHeight;
     MOS_TILE_TYPE                   TileType;
@@ -1409,16 +1410,9 @@ MOS_STATUS VpResourceManager::ReAllocateVeboxDenoiseOutputSurface(VP_EXECUTE_CAP
     }
 
     allocated = false;
-    if (IS_VP_VEBOX_DN_ONLY(caps))
-    {
-        bSurfCompressible = inputSurface->osSurface->bCompressible;
-        surfCompressionMode = inputSurface->osSurface->CompressionMode;
-    }
-    else
-    {
-        bSurfCompressible = true;
-        surfCompressionMode = MOS_MMC_MC;
-    }
+
+    bSurfCompressible   = inputSurface->osSurface->bCompressible;
+    surfCompressionMode = inputSurface->osSurface->CompressionMode;
 
     if (caps.bCappipe)
     {
@@ -1462,6 +1456,14 @@ MOS_STATUS VpResourceManager::ReAllocateVeboxDenoiseOutputSurface(VP_EXECUTE_CAP
             tileModeByForce,
             memTypeSurfVideoMem,
             VPP_INTER_RESOURCE_NOTLOCKABLE));
+
+        // DN output surface state should be able to share with vebox input surface state
+        if (m_veboxDenoiseOutput[i]->osSurface &&
+            (m_veboxDenoiseOutput[i]->osSurface->YoffsetForUplane != inputSurface->osSurface->YoffsetForUplane || m_veboxDenoiseOutput[i]->osSurface->YoffsetForVplane != inputSurface->osSurface->YoffsetForVplane))
+        {
+            VP_PUBLIC_ASSERTMESSAGE("Vebox surface state of DN output surface doesn't align with input surface!");
+            VP_PUBLIC_CHK_STATUS_RETURN(MOS_STATUS_UNKNOWN);
+        }
 
         // if allocated, pVeboxState->PastSurface is not valid for DN reference.
         if (allocated)
@@ -1809,7 +1811,7 @@ MOS_STATUS VpResourceManager::AllocateVeboxResource(VP_EXECUTE_CAPS& caps, VP_SU
 
     VP_PUBLIC_CHK_STATUS_RETURN(Allocate3DLut(caps));
 
-    if (caps.bDV)
+    if (caps.bDV || caps.bHDR3DLUT || caps.b3DLutCalc)
     {
         dwSize = Get1DLutSize();
         VP_PUBLIC_CHK_STATUS_RETURN(m_allocator.ReAllocateSurface(
@@ -2154,7 +2156,7 @@ MOS_STATUS VpResourceManager::AssignVeboxResource(VP_EXECUTE_CAPS& caps, VP_SURF
         surfGroup.insert(std::make_pair(SurfaceTypeHVSTable, m_veboxDnHVSTables));
     }
 
-    if (Vebox1DlutNeeded(caps))
+    if (Vebox1DlutNeeded(caps) || VeboxHdr3DlutNeeded(caps))
     {
         // Insert DV 1Dlut surface
         surfGroup.insert(std::make_pair(SurfaceType1k1dLut, m_vebox1DLookUpTables));

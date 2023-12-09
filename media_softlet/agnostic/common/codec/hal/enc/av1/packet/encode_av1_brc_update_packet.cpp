@@ -300,8 +300,15 @@ namespace encode
         constructedCmdBuf.pCmdBase = constructedCmdBuf.pCmdPtr = (uint32_t *)batchbufferAddr;
         constructedCmdBuf.iRemaining                           = MOS_ALIGN_CEIL(m_hwInterface->m_vdencReadBatchBufferSize, CODECHAL_PAGE_SIZE);
 
+        auto brcFeature = dynamic_cast<Av1Brc *>(m_featureManager->GetFeature(Av1FeatureIDs::av1BrcFeature));
+        ENCODE_CHK_NULL_RETURN(brcFeature);
+        auto slbData = brcFeature->GetSLBData();
+
         ENCODE_CHK_STATUS_RETURN(AddAllCmds_AVP_PAK_INSERT_OBJECT(&constructedCmdBuf));
         ENCODE_CHK_STATUS_RETURN(AddBBEnd(m_miItf, constructedCmdBuf));
+
+        slbData.pakInsertSlbSize = (uint16_t)constructedCmdBuf.iOffset;
+        RUN_FEATURE_INTERFACE_NO_RETURN(Av1Brc, Av1FeatureIDs::av1BrcFeature, SetSLBData, slbData);
 
         return MOS_STATUS_SUCCESS;
     }
@@ -402,14 +409,14 @@ namespace encode
             uint32_t nalNum = 0;
             for (uint32_t i = 0; i < MAX_NUM_OBU_TYPES && m_basicFeature->m_nalUnitParams[i]->uiSize > 0; i++)
             {
-                nalNum = i;
+                nalNum++;
             }
 
             params.bsBuffer             = &m_basicFeature->m_bsBuffer;
             params.endOfHeaderInsertion = false;
 
             // Support multiple packed header buffer
-            for (uint32_t i = 0; i <= nalNum; i++)
+            for (uint32_t i = 0; i < nalNum; i++)
             {
                 uint32_t nalUnitSize   = m_basicFeature->m_nalUnitParams[i]->uiSize;
                 uint32_t nalUnitOffset = m_basicFeature->m_nalUnitParams[i]->uiOffset;
@@ -420,7 +427,7 @@ namespace encode
                 {
                     params.bitSize    = nalUnitSize * 8;
                     params.offset     = nalUnitOffset;
-                    params.lastHeader = !tgOBUValid && (i == nalNum);
+                    params.lastHeader = !tgOBUValid && (i+1 == nalNum);
 
                     m_avpItf->MHW_ADDCMD_F(AVP_PAK_INSERT_OBJECT)(cmdBuffer);
                     m_osInterface->pfnAddCommand(cmdBuffer, GetExtraData(), GetExtraSize());
