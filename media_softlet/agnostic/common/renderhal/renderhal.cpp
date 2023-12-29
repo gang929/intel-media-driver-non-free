@@ -1449,8 +1449,15 @@ MOS_STATUS RenderHal_AllocateStateHeaps(
         {
             break;
         }
-    
-         pDshHeap = pRenderHal->pMhwStateHeap->GetDSHPointer();
+        
+        pDshHeap = pRenderHal->pMhwStateHeap->GetDSHPointer();
+        if (pRenderHal->pMhwStateHeap->GetDynamicMode() == MHW_RENDER_HAL_MODE)
+        {
+            while (pDshHeap->pNext != nullptr)
+            {
+                pDshHeap = pDshHeap->pNext;
+            }
+        }
         if (pRenderHal->pMhwStateHeap->LockStateHeap(pDshHeap) != MOS_STATUS_SUCCESS)
         {
             break;
@@ -1461,6 +1468,13 @@ MOS_STATUS RenderHal_AllocateStateHeaps(
         pStateHeap->bGshLocked    = true;
 
         pIshHeap = pRenderHal->pMhwStateHeap->GetISHPointer();
+        if (pRenderHal->pMhwStateHeap->GetDynamicMode() == MHW_RENDER_HAL_MODE)
+        {
+            while (pIshHeap->pNext != nullptr)
+            {
+                pIshHeap = pIshHeap->pNext;
+            }
+        }
         if (pRenderHal->pMhwStateHeap->LockStateHeap(pIshHeap) != MOS_STATUS_SUCCESS)
         {  
             break;
@@ -1506,7 +1520,7 @@ MOS_STATUS RenderHal_AllocateStateHeaps(
     return eStatus;
 }
 
-MOS_STATUS RenderHal_ReAllocateStateHeapsforAdvFeature(
+MOS_STATUS RenderHal_ReAllocateStateHeapsforAdvFeatureWithSshEnlarged(
     PRENDERHAL_INTERFACE           pRenderHal,
     bool                           &bAllocated)
 {
@@ -1542,8 +1556,9 @@ MOS_STATUS RenderHal_ReAllocateStateHeapsforAdvFeature(
         return MOS_STATUS_SUCCESS;
     }
 
-    if ((pSettings->iBindingTables == RENDERHAL_SSH_BINDING_TABLES_MAX) &&
-        (pSettings->iSurfaceStates == RENDERHAL_SSH_SURFACE_STATES_MAX))
+    if ((pSettings->iBindingTables == pRenderHal->enlargeStateHeapSettingsForAdv.iBindingTables) &&
+        (pSettings->iSurfaceStates == pRenderHal->enlargeStateHeapSettingsForAdv.iSurfaceStates) &&
+        (pSettings->iSurfacesPerBT == pRenderHal->enlargeStateHeapSettingsForAdv.iSurfacesPerBT))
     {
         return MOS_STATUS_SUCCESS;
     }
@@ -1568,8 +1583,9 @@ MOS_STATUS RenderHal_ReAllocateStateHeapsforAdvFeature(
     }
 
     // Enlarge the binding table size and surface state size
-    pSettings->iBindingTables = RENDERHAL_SSH_BINDING_TABLES_MAX;
-    pSettings->iSurfaceStates = RENDERHAL_SSH_SURFACE_STATES_MAX;
+    pSettings->iBindingTables = pRenderHal->enlargeStateHeapSettingsForAdv.iBindingTables;
+    pSettings->iSurfaceStates = pRenderHal->enlargeStateHeapSettingsForAdv.iSurfaceStates;
+    pSettings->iSurfacesPerBT = pRenderHal->enlargeStateHeapSettingsForAdv.iSurfacesPerBT;
 
     mediaStateSize = pRenderHal->pRenderHalPltInterface->GetRenderHalMediaStateSize();
     stateHeapSize  = pRenderHal->pRenderHalPltInterface->GetRenderHalStateHeapSize();
@@ -1685,12 +1701,12 @@ MOS_STATUS RenderHal_ReAllocateStateHeapsforAdvFeature(
     return eStatus;
 }
 
-MOS_STATUS RenderHal_ReAllocateStateHeapsforAdvFeatureWithSetting(
+MOS_STATUS RenderHal_ReAllocateStateHeapsforAdvFeatureWithAllHeapsEnlarged(
     PRENDERHAL_INTERFACE      pRenderHal,
-    PRENDERHAL_ENLARGE_PARAMS pParams,
     bool                     &bAllocated)
 {
     PRENDERHAL_STATE_HEAP_SETTINGS pRenderhalSettings = nullptr;
+    PRENDERHAL_ENLARGE_PARAMS      pParams            = nullptr;
     MOS_STATUS                     eStatus            = MOS_STATUS_SUCCESS;
     //------------------------------------------------
     MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal);
@@ -1699,6 +1715,7 @@ MOS_STATUS RenderHal_ReAllocateStateHeapsforAdvFeatureWithSetting(
     MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pRenderHalPltInterface);
     MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pStateHeap);
 
+    pParams            = &pRenderHal->enlargeStateHeapSettingsForAdv;
     pRenderhalSettings = &pRenderHal->StateHeapSettings;
     bAllocated         = false;
 
@@ -1708,7 +1725,8 @@ MOS_STATUS RenderHal_ReAllocateStateHeapsforAdvFeatureWithSetting(
         (pRenderhalSettings->iSurfaceStates  == pParams->iSurfaceStates) &&
         (pRenderhalSettings->iKernelCount    == pParams->iKernelCount) &&
         (pRenderhalSettings->iCurbeSize      == pParams->iCurbeSize) &&
-        (pRenderhalSettings->iKernelHeapSize == pParams->iKernelHeapSize))
+        (pRenderhalSettings->iKernelHeapSize == pParams->iKernelHeapSize) &&
+        (pRenderhalSettings->iSurfacesPerBT  == pParams->iSurfacesPerBT))
     {
         return MOS_STATUS_SUCCESS;
     }
@@ -1723,6 +1741,7 @@ MOS_STATUS RenderHal_ReAllocateStateHeapsforAdvFeatureWithSetting(
     pRenderhalSettings->iKernelCount    = pParams->iKernelCount;
     pRenderhalSettings->iCurbeSize      = pParams->iCurbeSize;
     pRenderhalSettings->iKernelHeapSize = pParams->iKernelHeapSize;
+    pRenderhalSettings->iSurfacesPerBT  = pParams->iSurfacesPerBT;
     eStatus                             = pRenderHal->pfnAllocateStateHeaps(pRenderHal, pRenderhalSettings);
     bAllocated                          = true;
 
@@ -4068,7 +4087,8 @@ MOS_STATUS RenderHal_GetSurfaceStateEntries(
                       PlaneDefinition == RENDERHAL_PLANES_R16_UNORM                       ||
                       PlaneDefinition == RENDERHAL_PLANES_R8                              ||
                       PlaneDefinition == RENDERHAL_PLANES_A8                              ||
-                      PlaneDefinition == RENDERHAL_PLANES_RGB16))
+                      PlaneDefinition == RENDERHAL_PLANES_RGB16                           ||
+                      PlaneDefinition == RENDERHAL_PLANES_BGRP))
             {
                 dwSurfaceWidth = dwSurfaceWidth / OutputSurfaceWidthRatio;
             }
@@ -5933,6 +5953,11 @@ MOS_STATUS RenderHal_BindSurfaceState(
     MHW_RENDERHAL_CHK_NULL_RETURN(pRenderHal->pHwSizes);
     MHW_RENDERHAL_ASSERT(iBindingTableIndex >= 0);
     MHW_RENDERHAL_ASSERT(iBindingTableEntry >= 0);
+    if (iBindingTableEntry >= pRenderHal->StateHeapSettings.iSurfacesPerBT)
+    {
+        MHW_RENDERHAL_ASSERTMESSAGE("Unable to Bind Surface State. Exceeds Maximum. BTI %d. Maximum %d", iBindingTableEntry, pRenderHal->StateHeapSettings.iSurfacesPerBT);
+        return MOS_STATUS_INVALID_PARAMETER;
+    }
     //--------------------------------------------
 
     pStateHeap = pRenderHal->pStateHeap;
@@ -6978,8 +7003,8 @@ MOS_STATUS RenderHal_InitInterface(
     // Allocate/Destroy state heaps
     pRenderHal->pfnAllocateStateHeaps                = RenderHal_AllocateStateHeaps;
     pRenderHal->pfnFreeStateHeaps                    = RenderHal_FreeStateHeaps;
-    pRenderHal->pfnReAllocateStateHeapsforAdvFeature = RenderHal_ReAllocateStateHeapsforAdvFeature;
-    pRenderHal->pfnReAllocateStateHeapsforAdvFeatureWithSetting = RenderHal_ReAllocateStateHeapsforAdvFeatureWithSetting;
+    pRenderHal->pfnReAllocateStateHeapsforAdvFeatureWithSshEnlarged      = RenderHal_ReAllocateStateHeapsforAdvFeatureWithSshEnlarged;
+    pRenderHal->pfnReAllocateStateHeapsforAdvFeatureWithAllHeapsEnlarged = RenderHal_ReAllocateStateHeapsforAdvFeatureWithAllHeapsEnlarged;
 
     // Slice Shutdown Mode
     pRenderHal->pfnSetSliceShutdownMode       = RenderHal_SetSliceShutdownMode;
@@ -7067,6 +7092,7 @@ MOS_STATUS RenderHal_InitInterface(
 
     // Set the platform-specific fields in renderhal
     // Set State Heap settings
+    MOS_ZeroMemory(&pRenderHal->enlargeStateHeapSettingsForAdv, sizeof(pRenderHal->enlargeStateHeapSettingsForAdv));
     pRenderHal->pRenderHalPltInterface->InitStateHeapSettings(pRenderHal);
 
     // Set default / advanced surface types

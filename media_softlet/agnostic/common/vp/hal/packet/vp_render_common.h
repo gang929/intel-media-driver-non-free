@@ -97,6 +97,8 @@ struct KRN_EXECUTE_ENV
     uint32_t uSimdSize;
     uint32_t uSubgroupIndependentForwardProgress;
     uint32_t uEuThreadCount;
+    bool     bHasFenceForImageAccess;
+    bool     bHasSample;
 };
 
 using SurfaceIndex = uint32_t;
@@ -105,14 +107,9 @@ using KernelIndex  = uint32_t;              // index of current kernel in KERNEL
 
 enum KERNEL_SUBMISSION_MODE
 {
-    MULTI_KERNELS_WITH_MULTI_MEDIA_STATES = 0,
-    MULTI_KERNELS_WITH_ONE_MEDIA_STATE
-};
-
-enum KERNEL_BINDINGTABLE_MODE
-{
-    MULTI_KERNELS_WITH_MULTI_BINDINGTABLES = 0,
-    MULTI_KERNELS_WITH_ONE_BINDINGTABLE
+    SINGLE_KERNEL_ONLY = 0,
+    MULTI_KERNELS_SINGLE_MEDIA_STATE,
+    MULTI_KERNELS_MULTI_MEDIA_STATES
 };
 
 typedef struct _VP_RENDER_CACHE_CNTL
