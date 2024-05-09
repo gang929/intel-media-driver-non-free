@@ -1,3 +1,13 @@
+intel-media-driver-non-free (24.2.2+ds1-1) unstable; urgency=medium
+
+  * New upstream version 24.2.2+ds1
+  * debian/copyright: Bump copyright years
+  * debian/control:
+    - Bump Standards-Version
+    - Use pkgconf
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Thu, 09 May 2024 18:04:23 +0200
+
 intel-media-driver-non-free (24.1.0+ds1-1) unstable; urgency=medium
 
   * New upstream version 24.1.0+ds1
