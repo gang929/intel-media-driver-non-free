@@ -84,7 +84,7 @@ void VpVeboxCmdPacket::UpdateCpPrepareResources()
     VP_FUNC_CALL();
 
     VpVeboxRenderData *pRenderData = GetLastExecRenderData();
-    VP_RENDER_ASSERT(pRenderData);
+    VP_PUBLIC_CHK_NULL_NO_STATUS_RETURN(pRenderData);
     // For 3DLut usage, it update in CpPrepareResources() for kernel usage, should
     // reupdate here. For other feature usage, it already update in vp_pipeline
     if (pRenderData->HDR3DLUT.is3DLutTableUpdatedByKernel == true)
@@ -121,6 +121,62 @@ MOS_STATUS VpVeboxCmdPacket::Init3DLutTable(PVP_SURFACE surf3DLut)
     }
 
     VP_RENDER_NORMALMESSAGE("3DLut table is calculated by kernel.");
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpVeboxCmdPacket::SetupVeboxExternal3DLutforHDR(
+    mhw::vebox::VEBOX_STATE_PAR &veboxStateCmdParams)
+{
+    VP_RENDER_NORMALMESSAGE("Init 3DLut table surface by external API.");
+    PMHW_VEBOX_MODE    pVeboxMode   = nullptr;
+    PMHW_VEBOX_3D_LUT  pLUT3D       = nullptr;
+    PMHW_3DLUT_PARAMS  external3DLutParams = nullptr;
+    PMOS_INTERFACE     osInterface  = nullptr;
+    VpVeboxRenderData *pRenderData  = GetLastExecRenderData();
+    external3DLutParams                    = &(pRenderData->GetIECPParams().s3DLutParams);
+
+    VP_RENDER_CHK_NULL_RETURN(m_surfMemCacheCtl);
+    VP_RENDER_CHK_NULL_RETURN(pRenderData);
+
+    VP_PUBLIC_CHK_NULL_RETURN(external3DLutParams);
+    VP_PUBLIC_CHK_NULL_RETURN(m_hwInterface->m_osInterface);
+    osInterface = m_hwInterface->m_osInterface;
+
+    pVeboxMode = &veboxStateCmdParams.VeboxMode;
+    pLUT3D     = &veboxStateCmdParams.LUT3D;
+
+    VP_PUBLIC_CHK_NULL_RETURN(pLUT3D);
+    pLUT3D->ArbitrationPriorityControl    = 0;
+    pLUT3D->Lut3dEnable                   = true;
+    pVeboxMode->ColorGamutExpansionEnable = true;
+
+    pLUT3D->Lut3dSize = 0;
+    switch (external3DLutParams->LUTSize)
+    {
+    case 17:
+        pLUT3D->Lut3dSize = 1;
+        break;
+    case 65:
+        pLUT3D->Lut3dSize = 2;
+        break;
+    case 45:
+        pLUT3D->Lut3dSize = 3;
+        break;
+    case 33:
+    default:
+        pLUT3D->Lut3dSize = 0;
+        break;
+    }
+    VP_RENDER_CHK_STATUS_RETURN(osInterface->pfnRegisterResource(
+        osInterface,
+        &(pRenderData->HDR3DLUT.external3DLutSurfResource),
+        false,
+        true));
+
+    veboxStateCmdParams.Vebox3DLookUpTablesSurfCtrl.Value =
+        m_surfMemCacheCtl->DnDi.Vebox3DLookUpTablesSurfMemObjCtl;
+    veboxStateCmdParams.pVebox3DLookUpTables = &(pRenderData->HDR3DLUT.external3DLutSurfResource);
 
     return MOS_STATUS_SUCCESS;
 }
@@ -168,6 +224,13 @@ MOS_STATUS VpVeboxCmdPacket::SetupHDRLuts(
     VP_FUNC_CALL();
     VpVeboxRenderData *renderData = GetLastExecRenderData();
     VP_RENDER_CHK_NULL_RETURN(renderData);
+
+    if (renderData->HDR3DLUT.isExternal3DLutTable)
+    {
+        VP_RENDER_CHK_STATUS_RETURN(SetupVeboxExternal3DLutforHDR(veboxStateCmdParams));
+        VP_PUBLIC_NORMALMESSAGE("3DLUT table setup by API.");
+        return MOS_STATUS_SUCCESS;
+    }
 
     if (renderData->HDR3DLUT.bHdr3DLut)
     {
@@ -242,6 +305,12 @@ MOS_STATUS VpVeboxCmdPacket::SetupVeboxState(mhw::vebox::VEBOX_STATE_PAR& veboxS
     VP_RENDER_CHK_STATUS_RETURN(SetupDNTableForHVS(veboxStateCmdParams));
 
     veboxStateCmdParams.bCmBuffer = false;
+
+    MHW_VEBOX_IECP_PARAMS& veboxIecpParams = pRenderData->GetIECPParams();
+    // CCM for CSC needs HDR state
+    pVeboxMode->Hdr1DLutEnable |= veboxIecpParams.bCcmCscEnable;
+    // Only fp16 output needs CCM for CSC
+    pVeboxMode->Fp16ModeEnable |= veboxIecpParams.bCcmCscEnable;
 
     return MOS_STATUS_SUCCESS;
 }
@@ -530,7 +599,7 @@ MOS_STATUS VpVeboxCmdPacket::SetVeboxBeCSCParams(PVEBOX_CSC_PARAMS cscParams)
     VP_RENDER_CHK_NULL_RETURN(cscParams);
 
     VpVeboxRenderData* pRenderData = GetLastExecRenderData();
-    VP_RENDER_ASSERT(pRenderData);
+    VP_RENDER_CHK_NULL_RETURN(pRenderData);
 
     pRenderData->IECP.BeCSC.bBeCSCEnabled = cscParams->bCSCEnabled;
 
@@ -558,6 +627,12 @@ MOS_STATUS VpVeboxCmdPacket::SetVeboxBeCSCParams(PVEBOX_CSC_PARAMS cscParams)
         veboxIecpParams.pfCscCoeff     = m_fCscCoeff;
         veboxIecpParams.pfCscInOffset  = m_fCscInOffset;
         veboxIecpParams.pfCscOutOffset = m_fCscOutOffset;
+        if ((cscParams->outputFormat == Format_A16B16G16R16F) || (cscParams->outputFormat == Format_A16R16G16B16F))
+        {
+            // Use CCM to do CSC for FP16 VEBOX output
+            veboxIecpParams.bCSCEnable    = false;
+            veboxIecpParams.bCcmCscEnable = true;
+        }
     }
 
     VP_RENDER_CHK_STATUS_RETURN(SetVeboxOutputAlphaParams(cscParams));
@@ -573,7 +648,7 @@ MOS_STATUS VpVeboxCmdPacket::SetVeboxOutputAlphaParams(PVEBOX_CSC_PARAMS cscPara
     VP_RENDER_CHK_NULL_RETURN(cscParams);
 
     VpVeboxRenderData* pRenderData = GetLastExecRenderData();
-    VP_RENDER_ASSERT(pRenderData);
+    VP_RENDER_CHK_NULL_RETURN(pRenderData);
 
     MHW_VEBOX_IECP_PARAMS& veboxIecpParams = pRenderData->GetIECPParams();
 
@@ -654,7 +729,7 @@ MOS_STATUS VpVeboxCmdPacket::SetVeboxChromasitingParams(PVEBOX_CSC_PARAMS cscPar
     VP_RENDER_CHK_NULL_RETURN(cscParams);
 
     VpVeboxRenderData* pRenderData = GetLastExecRenderData();
-    VP_RENDER_ASSERT(pRenderData);
+    VP_RENDER_CHK_NULL_RETURN(pRenderData);
 
     MHW_VEBOX_CHROMA_SAMPLING& veboxChromaSamplingParams = pRenderData->GetChromaSubSamplingParams();
 
@@ -1045,6 +1120,7 @@ MOS_STATUS VpVeboxCmdPacket::SetHdrParams(PVEBOX_HDR_PARAMS hdrParams)
     VP_PUBLIC_CHK_NULL_RETURN(hdrParams);
     VP_RENDER_ASSERT(pRenderData);
 
+    MHW_VEBOX_IECP_PARAMS  &mhwVeboxIecpParams  = pRenderData->GetIECPParams();
     MHW_VEBOX_GAMUT_PARAMS &mhwVeboxGamutParams = pRenderData->GetGamutParams();
     pOsInterface                       = m_hwInterface->m_osInterface;
     pRenderData->HDR3DLUT.bHdr3DLut    = true;
@@ -1052,13 +1128,16 @@ MOS_STATUS VpVeboxCmdPacket::SetHdrParams(PVEBOX_HDR_PARAMS hdrParams)
     pRenderData->HDR3DLUT.is3DLutTableFilled   = HDR_STAGE::HDR_STAGE_VEBOX_3DLUT_UPDATE == hdrParams->stage ||
                                                     HDR_STAGE::HDR_STAGE_VEBOX_3DLUT_NO_UPDATE == hdrParams->stage;
     pRenderData->HDR3DLUT.is3DLutTableUpdatedByKernel = HDR_STAGE::HDR_STAGE_VEBOX_3DLUT_UPDATE == hdrParams->stage;
+    pRenderData->HDR3DLUT.isExternal3DLutTable    = HDR_STAGE::HDR_STAGE_VEBOX_EXTERNAL_3DLUT == hdrParams->stage;
     pRenderData->HDR3DLUT.uiMaxDisplayLum      = hdrParams->uiMaxDisplayLum;
     pRenderData->HDR3DLUT.uiMaxContentLevelLum = hdrParams->uiMaxContentLevelLum;
     pRenderData->HDR3DLUT.hdrMode              = hdrParams->hdrMode;
-    pRenderData->HDR3DLUT.uiLutSize            = 65;
+    pRenderData->HDR3DLUT.uiLutSize            = hdrParams->lutSize;
 
-    VP_RENDER_CHK_STATUS_RETURN(ValidateHDR3DLutParameters(pRenderData->HDR3DLUT.is3DLutTableFilled));
-
+    if (!(hdrParams->stage == HDR_STAGE_VEBOX_EXTERNAL_3DLUT))
+    {
+        VP_RENDER_CHK_STATUS_RETURN(ValidateHDR3DLutParameters(pRenderData->HDR3DLUT.is3DLutTableFilled));
+    }
     // Use Gamut
     mhwVeboxGamutParams.ColorSpace       = VpHalCspace2MhwCspace(hdrParams->srcColorSpace);
     mhwVeboxGamutParams.dstColorSpace    = VpHalCspace2MhwCspace(hdrParams->dstColorSpace);
@@ -1077,13 +1156,40 @@ MOS_STATUS VpVeboxCmdPacket::SetHdrParams(PVEBOX_HDR_PARAMS hdrParams)
         mhwVeboxGamutParams.uiMaxCLL = 0;
     }
 
-    MHW_VEBOX_IECP_PARAMS &mhwVeboxIecpParams = pRenderData->GetIECPParams();
     mhwVeboxIecpParams.s3DLutParams.bActive   = true;
+
+    if (hdrParams->isFp16Enable)
+    {
+        // When FP16 enable, it doesn't need Pre CSC, so set GammaCorr and H2S false.
+        mhwVeboxGamutParams.bGammaCorr          = false;
+        mhwVeboxGamutParams.bH2S                = false;
+        mhwVeboxIecpParams.fp16Params.isActive  = true;
+    }
+
+    if (hdrParams->stage = HDR_STAGE_VEBOX_EXTERNAL_3DLUT)
+    {
+        if (hdrParams->external3DLutParams)
+        {
+            mhwVeboxIecpParams.s3DLutParams.LUTSize = hdrParams->external3DLutParams->LutSize;
+            pRenderData->HDR3DLUT.external3DLutSurfResource = hdrParams->external3DLutParams->pExt3DLutSurface->OsResource;
+        }
+        else
+        {
+            VP_RENDER_ASSERTMESSAGE("hdrParams external3DLutParams is null.");
+        }
+    }
 
     //Report
     if (m_hwInterface->m_reporting)
     {
-        m_hwInterface->m_reporting->GetFeatures().hdrMode = (pRenderData->HDR3DLUT.hdrMode == VPHAL_HDR_MODE_H2H) ? VPHAL_HDR_MODE_H2H_VEBOX_3DLUT : VPHAL_HDR_MODE_TONE_MAPPING_VEBOX_3DLUT;
+        if (pRenderData->HDR3DLUT.uiLutSize == LUT33_SEG_SIZE)
+        {
+            m_hwInterface->m_reporting->GetFeatures().hdrMode = (pRenderData->HDR3DLUT.hdrMode == VPHAL_HDR_MODE_H2H) ? VPHAL_HDR_MODE_H2H_VEBOX_3DLUT33 : VPHAL_HDR_MODE_TONE_MAPPING_VEBOX_3DLUT33;
+        }
+        else
+        {
+            m_hwInterface->m_reporting->GetFeatures().hdrMode = (pRenderData->HDR3DLUT.hdrMode == VPHAL_HDR_MODE_H2H) ? VPHAL_HDR_MODE_H2H_VEBOX_3DLUT : VPHAL_HDR_MODE_TONE_MAPPING_VEBOX_3DLUT;
+        }
     }
 
     return MOS_STATUS_SUCCESS;
@@ -1588,6 +1694,7 @@ MOS_STATUS VpVeboxCmdPacket::PrepareVeboxCmd(
     VP_RENDER_CHK_NULL_RETURN(pOsInterface);
     VP_RENDER_CHK_NULL_RETURN(m_currentSurface);
     VP_RENDER_CHK_NULL_RETURN(m_currentSurface->osSurface);
+    VP_RENDER_CHK_NULL_RETURN(pRenderData);
 
     // Set initial state
     iRemaining = CmdBuffer->iRemaining;
@@ -3045,6 +3152,8 @@ MOS_STATUS VpVeboxCmdPacket::VeboxSetPerfTagNv12()
                     case Format_Y8:
                     case Format_Y16S:
                     case Format_Y16U:
+                    case Format_A16B16G16R16F:
+                    case Format_A16R16G16B16F:
                         *pPerfTag = VPHAL_NONE;
                         break;
                     default:
@@ -3092,6 +3201,8 @@ MOS_STATUS VpVeboxCmdPacket::VeboxSetPerfTagNv12()
                     case Format_Y8:
                     case Format_Y16S:
                     case Format_Y16U:
+                    case Format_A16B16G16R16F:
+                    case Format_A16R16G16B16F:
                         *pPerfTag = VPHAL_NONE;
                         break;
                     default:
@@ -3184,6 +3295,8 @@ MOS_STATUS VpVeboxCmdPacket::VeboxSetPerfTagPaFormat()
                     case Format_Y8:
                     case Format_Y16S:
                     case Format_Y16U:
+                    case Format_A16B16G16R16F:
+                    case Format_A16R16G16B16F:
                         *pPerfTag = VPHAL_NONE;
                         break;
                     default:
@@ -3231,6 +3344,8 @@ MOS_STATUS VpVeboxCmdPacket::VeboxSetPerfTagPaFormat()
                     case Format_Y8:
                     case Format_Y16S:
                     case Format_Y16U:
+                    case Format_A16B16G16R16F:
+                    case Format_A16R16G16B16F:
                         *pPerfTag = VPHAL_NONE;
                         break;
                     default:

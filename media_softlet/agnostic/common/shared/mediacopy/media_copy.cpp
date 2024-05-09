@@ -50,8 +50,6 @@ MediaCopyBaseState::MediaCopyBaseState():
 
 MediaCopyBaseState::~MediaCopyBaseState()
 {
-    MOS_STATUS              eStatus;
-
     if (m_osInterface)
     {
         m_osInterface->pfnDestroy(m_osInterface, false);
@@ -92,7 +90,7 @@ MOS_STATUS MediaCopyBaseState::Initialize(PMOS_INTERFACE osInterface)
     Mos_SetVirtualEngineSupported(m_osInterface, true);
     m_osInterface->pfnVirtualEngineSupported(m_osInterface, true, true);
 
-   #if (_DEBUG || _RELEASE_INTERNAL)
+#if (_DEBUG || _RELEASE_INTERNAL)
     if (m_surfaceDumper == nullptr)
     {
        m_surfaceDumper = MOS_New(CommonSurfaceDumper, osInterface);
@@ -108,9 +106,14 @@ MOS_STATUS MediaCopyBaseState::Initialize(PMOS_INTERFACE osInterface)
             m_MCPYForceMode,
             __MEDIA_USER_FEATURE_SET_MCPY_FORCE_MODE,
             MediaUserSetting::Group::Device);
-    }
 
-   #endif
+        ReadUserSettingForDebug(
+            userSettingPtr,
+            m_enableVeCopySmallRes,
+            __MEDIA_USER_FEATURE_ENABLE_VECOPY_SMALL_RESOLUTION,
+            MediaUserSetting::Group::Device);
+    }
+#endif
     return MOS_STATUS_SUCCESS;
 }
 
@@ -180,19 +183,19 @@ MOS_STATUS MediaCopyBaseState::PreCheckCpCopy(
 //! \return   MOS_STATUS
 //!           Return MOS_STATUS_SUCCESS if support, otherwise return unspoort.
 //!
-MOS_STATUS MediaCopyBaseState::CopyEnigneSelect(MCPY_METHOD preferMethod, MCPY_ENGINE& mcpyEngine, MCPY_ENGINE_CAPS& caps)
+MOS_STATUS MediaCopyBaseState::CopyEnigneSelect(MCPY_METHOD& preferMethod, MCPY_ENGINE& mcpyEngine, MCPY_ENGINE_CAPS& caps)
 {
     // driver should make sure there is at least one he can process copy even customer choice doesn't match caps.
     switch (preferMethod)
     {
         case MCPY_METHOD_PERFORMANCE:
-        case MCPY_METHOD_DEFAULT:
             mcpyEngine = caps.engineRender?MCPY_ENGINE_RENDER:(caps.engineBlt ? MCPY_ENGINE_BLT : MCPY_ENGINE_VEBOX);
             break;
         case MCPY_METHOD_BALANCE:
             mcpyEngine = caps.engineVebox?MCPY_ENGINE_VEBOX:(caps.engineBlt?MCPY_ENGINE_BLT:MCPY_ENGINE_RENDER);
             break;
         case MCPY_METHOD_POWERSAVING:
+        case MCPY_METHOD_DEFAULT:
             mcpyEngine = caps.engineBlt?MCPY_ENGINE_BLT:(caps.engineVebox?MCPY_ENGINE_VEBOX:MCPY_ENGINE_RENDER);
             break;
         default:
@@ -211,7 +214,7 @@ MOS_STATUS MediaCopyBaseState::CopyEnigneSelect(MCPY_METHOD preferMethod, MCPY_E
     {
         mcpyEngine = MCPY_ENGINE_VEBOX;
     }
-    else if (4 == m_MCPYForceMode)
+    else if (MCPY_METHOD_DEFAULT != m_MCPYForceMode)
     {
         return MOS_STATUS_INVALID_PARAMETER; // bypass copy engine, just let APP handle it.
     }
@@ -252,6 +255,7 @@ uint32_t GetMinRequiredSurfaceSizeInBytes(uint32_t pitch, uint32_t height, MOS_F
     case Format_P8:
     case Format_L8:
     case Format_A8:
+    case Format_Y16U:
         nBytes = pitch * height;
         break;
     default:
@@ -261,7 +265,7 @@ uint32_t GetMinRequiredSurfaceSizeInBytes(uint32_t pitch, uint32_t height, MOS_F
     return nBytes;
 }
 
-MOS_STATUS CheckResourceSizeValidForCopy(MOS_SURFACE &res, MCPY_ENGINE method)
+MOS_STATUS MediaCopyBaseState::CheckResourceSizeValidForCopy(const MOS_SURFACE &res, const MCPY_ENGINE method)
 {
     if (res.TileType != MOS_TILE_LINEAR)
     {
@@ -295,7 +299,7 @@ MOS_STATUS CheckResourceSizeValidForCopy(MOS_SURFACE &res, MCPY_ENGINE method)
         }
     }
 
-    if (method == MCPY_ENGINE_BLT || method == MCPY_ENGINE_RENDER)
+    if (method == MCPY_ENGINE_RENDER)
     {
         if (res.dwHeight < RENDER_MIN_HEIGHT || res.dwWidth < RENDER_MIN_WIDTH)
         {
@@ -309,15 +313,36 @@ MOS_STATUS CheckResourceSizeValidForCopy(MOS_SURFACE &res, MCPY_ENGINE method)
 
     if (method == MCPY_ENGINE_VEBOX)
     {
-        if (res.dwHeight < VE_MIN_HEIGHT || res.dwWidth < VE_MIN_WIDTH)
+#if (_DEBUG || _RELEASE_INTERNAL)
+        if (!m_enableVeCopySmallRes)
+#endif
         {
-            MT_ERR2(MT_MEDIA_COPY,
-                MT_SURF_WIDTH, res.dwWidth,
-                MT_SURF_HEIGHT, res.dwHeight);
-            MCPY_ASSERTMESSAGE("Surface size not meet min requirement! height %d, width %d", res.dwHeight, res.dwWidth);
-            return MOS_STATUS_INVALID_PARAMETER;
+            if (res.dwHeight < VE_MIN_HEIGHT || res.dwWidth < VE_MIN_WIDTH)
+            {
+                MT_ERR2(MT_MEDIA_COPY,
+                    MT_SURF_WIDTH, res.dwWidth,
+                    MT_SURF_HEIGHT, res.dwHeight);
+                MCPY_ASSERTMESSAGE("Surface size not meet min requirement! height %d, width %d", res.dwHeight, res.dwWidth);
+                return MOS_STATUS_INVALID_PARAMETER;
+            }
         }
     }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS MediaCopyBaseState::ValidateResource(const MOS_SURFACE &src, const MOS_SURFACE &dst, MCPY_ENGINE method)
+{
+    // For CP buffer copy, CP will handle the overflown size, skip size check
+    if (src.OsResource.pGmmResInfo->GetResourceType() == RESOURCE_BUFFER &&
+        dst.OsResource.pGmmResInfo->GetResourceType() == RESOURCE_BUFFER &&
+        method == MCPY_ENGINE_BLT)
+    {
+        return MOS_STATUS_SUCCESS;
+    }
+
+    MCPY_CHK_STATUS_RETURN(CheckResourceSizeValidForCopy(src, method));
+    MCPY_CHK_STATUS_RETURN(CheckResourceSizeValidForCopy(dst, method));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -339,8 +364,10 @@ MOS_STATUS MediaCopyBaseState::SurfaceCopy(PMOS_RESOURCE src, PMOS_RESOURCE dst,
     MOS_SURFACE SrcResDetails, DstResDetails;
     MOS_ZeroMemory(&SrcResDetails, sizeof(MOS_SURFACE));
     MOS_ZeroMemory(&DstResDetails, sizeof(MOS_SURFACE));
-    SrcResDetails.Format = Format_Invalid;
-    DstResDetails.Format = Format_Invalid;
+    SrcResDetails.Format     = Format_Invalid;
+    SrcResDetails.OsResource = *src;
+    DstResDetails.Format     = Format_Invalid;
+    DstResDetails.OsResource = *dst;
 
     MCPY_STATE_PARAMS     mcpySrc = {nullptr, MOS_MMC_DISABLED, MOS_TILE_LINEAR, MCPY_CPMODE_CLEAR, false};
     MCPY_STATE_PARAMS     mcpyDst = {nullptr, MOS_MMC_DISABLED, MOS_TILE_LINEAR, MCPY_CPMODE_CLEAR, false};
@@ -395,8 +422,7 @@ MOS_STATUS MediaCopyBaseState::SurfaceCopy(PMOS_RESOURCE src, PMOS_RESOURCE dst,
 
     CopyEnigneSelect(preferMethod, mcpyEngine, mcpyEngineCaps);
 
-    MCPY_CHK_STATUS_RETURN(CheckResourceSizeValidForCopy(SrcResDetails, mcpyEngine));
-    MCPY_CHK_STATUS_RETURN(CheckResourceSizeValidForCopy(DstResDetails, mcpyEngine));
+    MCPY_CHK_STATUS_RETURN(ValidateResource(SrcResDetails, DstResDetails, mcpyEngine));
 
     MCPY_CHK_STATUS_RETURN(TaskDispatch(mcpySrc, mcpyDst, mcpyEngine));
 
@@ -433,7 +459,8 @@ MOS_STATUS MediaCopyBaseState::TaskDispatch(MCPY_STATE_PARAMS mcpySrc, MCPY_STAT
 
     // Set the dump location like "dumpLocation before MCPY=path_to_dump_folder" in user feature configure file
     // Otherwise, the surface may not be dumped
-    if (m_surfaceDumper)
+    // Only dump linear surface
+    if (m_surfaceDumper && mcpySrc.TileMode == MOS_TILE_LINEAR)
     {
         m_surfaceDumper->GetSurfaceDumpLocation(dumpLocation_in, mcpy_in);
 
@@ -486,17 +513,21 @@ MOS_STATUS MediaCopyBaseState::TaskDispatch(MCPY_STATE_PARAMS mcpySrc, MCPY_STAT
     MosUtilities::MosUnlockMutex(m_inUseGPUMutex);
 
 #if (_DEBUG || _RELEASE_INTERNAL)
-    std::string copyEngine = mcpyEngine ?(mcpyEngine == MCPY_ENGINE_BLT?"BLT":"Render"):"VeBox";
-    MediaUserSettingSharedPtr userSettingPtr = m_osInterface->pfnGetUserSettingInstance(m_osInterface);
-    ReportUserSettingForDebug(
-        userSettingPtr,
-        __MEDIA_USER_FEATURE_MCPY_MODE,
-        copyEngine,
-        MediaUserSetting::Group::Device);
+    if (m_bRegReport)
+    {
+        std::string copyEngine = mcpyEngine ?(mcpyEngine == MCPY_ENGINE_BLT?"BLT":"Render"):"VeBox";
+        MediaUserSettingSharedPtr userSettingPtr = m_osInterface->pfnGetUserSettingInstance(m_osInterface);
+        ReportUserSettingForDebug(
+            userSettingPtr,
+            __MEDIA_USER_FEATURE_MCPY_MODE,
+            copyEngine,
+            MediaUserSetting::Group::Device);
+    }
 
     // Set the dump location like "dumpLocation after MCPY=path_to_dump_folder" in user feature configure file
     // Otherwise, the surface may not be dumped
-    if (m_surfaceDumper)
+    // Only dump linear surface
+    if (m_surfaceDumper && mcpyDst.TileMode == MOS_TILE_LINEAR)
     {
         m_surfaceDumper->GetSurfaceDumpLocation(dumpLocation_out, mcpy_out);
 
@@ -533,3 +564,7 @@ MOS_STATUS MediaCopyBaseState::AuxCopy(PMOS_RESOURCE src, PMOS_RESOURCE dst)
     return MOS_STATUS_INVALID_HANDLE;
 }
 
+PMOS_INTERFACE MediaCopyBaseState::GetMosInterface()
+{
+    return m_osInterface;
+}

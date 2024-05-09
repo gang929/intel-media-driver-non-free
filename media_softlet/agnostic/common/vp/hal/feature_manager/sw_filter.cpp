@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2021, Intel Corporation
+* Copyright (c) 2019-2024, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -174,6 +174,7 @@ MOS_STATUS SwFilterCsc::Configure(VP_PIPELINE_PARAMS &params, bool isInputSurf, 
     m_Params.output.chromaSiting    = surfOutput->ChromaSiting;
     m_Params.input.tileMode         = surfInput->TileModeGMM;
     m_Params.output.tileMode        = surfOutput->TileModeGMM;
+    m_Params.isFullRgbG10P709       = surfOutput->pGamutParams ? surfOutput->pGamutParams->GammaValue == GAMMA_1P0 : 0 && surfOutput->ColorSpace == CSpace_sRGB && IS_RGB64_FLOAT_FORMAT(surfOutput->Format);
     // Alpha should be handled in input pipe to avoid alpha data lost from image.
     m_Params.pAlphaParams           = params.pCompAlpha;
     // formatForCUS will be set on demand in Policy::GetCSCExecutionCapsBT2020ToRGB.
@@ -1307,6 +1308,10 @@ MOS_STATUS SwFilterHdr::Configure(VP_PIPELINE_PARAMS &params, bool isInputSurf, 
     m_Params.formatOutput = surfOutput->Format;
     m_Params.widthInput   = surfInput->dwWidth;
     m_Params.heightInput  = surfInput->dwHeight;
+    if (surfInput->p3DLutParams)
+    {
+        m_Params.external3DLutParams = surfInput->p3DLutParams;
+    }
 
     // For H2S, it is possible that there is no HDR params for render target.
     m_Params.uiMaxContentLevelLum = 4000;
@@ -1676,6 +1681,20 @@ MOS_STATUS SwFilterBlending::Configure(VP_PIPELINE_PARAMS& params, bool isInputS
     m_Params.formatOutput   = surfInput->Format;
     m_Params.blendingParams = surfInput->pBlendingParams;
 
+    //Skip Blend PARTIAL for alpha input non alpha output
+    if (m_Params.blendingParams && m_Params.blendingParams->BlendType == BLEND_PARTIAL)
+    {
+        auto surfOutput = params.pTarget[0];
+        if (surfOutput)
+        {
+            if (IS_ALPHA_FORMAT(m_Params.formatInput) &&
+                !IS_ALPHA_FORMAT(surfOutput->Format))
+            {
+                VP_PUBLIC_NORMALMESSAGE("Force to use Blend Source instead of Blend Partial");
+                m_Params.blendingParams->BlendType = BLEND_SOURCE;
+            }
+        }
+    }
     return MOS_STATUS_SUCCESS;
 }
 

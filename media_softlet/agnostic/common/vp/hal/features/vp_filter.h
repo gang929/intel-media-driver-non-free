@@ -1,5 +1,5 @@
 ﻿/*
-* Copyright (c) 2018-2022, Intel Corporation
+* Copyright (c) 2018-2024, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -178,6 +178,7 @@ struct _SFC_CSC_PARAMS
     uint32_t                        sfcSrcChromaSiting;                          // SFC Source Chroma Siting location
     uint32_t                        chromaDownSamplingVerticalCoef;              // Chroma DownSampling Vertical Coeff
     uint32_t                        chromaDownSamplingHorizontalCoef;            // Chroma DownSampling Horizontal Coeff
+    bool                            isFullRgbG10P709;                            // Whether output colorspace is DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709
 };
 
 struct _SFC_ROT_MIR_PARAMS
@@ -303,6 +304,9 @@ struct _VEBOX_HDR_PARAMS
     VPHAL_CSPACE                    dstColorSpace;
     MOS_FORMAT                      dstFormat;
     HDR_STAGE                       stage;
+    uint32_t                        lutSize;
+    bool                            isFp16Enable;
+    PVPHAL_3DLUT_PARAMS             external3DLutParams;
 };
 
 using SFC_SCALING_PARAMS    = _SFC_SCALING_PARAMS;
@@ -330,6 +334,8 @@ using PVEBOX_CSC_PARAMS     = VEBOX_CSC_PARAMS *;
 
 using KERNEL_ARGS = std::vector<KRN_ARG>;
 using KERNEL_BTIS = std::map<uint32_t,uint32_t>;
+using KERNEL_INDEX_ARG_MAP              = std::map<uint32_t,KRN_ARG>;
+using MULTI_LAYERS_KERNEL_INDEX_ARG_MAP = std::map<uint32_t,KERNEL_INDEX_ARG_MAP>;
 
 struct _VEBOX_UPDATE_PARAMS
 {

@@ -2032,37 +2032,40 @@ VAStatus DdiMedia_InitMediaContext (
     }
 
     //Caps need platform and sku table, especially in MediaLibvaCapsCp::IsDecEncryptionSupported
-    mediaCtx->m_caps = MediaLibvaCaps::CreateMediaLibvaCaps(mediaCtx);
-    if (!mediaCtx->m_caps)
-    {
-        DDI_ASSERTMESSAGE("Caps create failed. Not supported GFX device.");
-        DestroyMediaContextMutex(mediaCtx);
-        FreeForMediaContext(mediaCtx);
-        return VA_STATUS_ERROR_ALLOCATION_FAILED;
-    }
-
-    if (mediaCtx->m_caps->Init() != VA_STATUS_SUCCESS)
-    {
-        DDI_ASSERTMESSAGE("Caps init failed. Not supported GFX device.");
-        DdiMedia_CleanUp(mediaCtx);
-        DestroyMediaContextMutex(mediaCtx);
-        FreeForMediaContext(mediaCtx);
-        return VA_STATUS_ERROR_ALLOCATION_FAILED;
-    }
-    ctx->max_image_formats = mediaCtx->m_caps->GetImageFormatsMaxNum();
-
 #ifdef _MANUAL_SOFTLET_
     apoDdiEnabled = MediaLibvaApoDecision::InitDdiApoState(devicefd, mediaCtx->m_userSettingPtr);
-    if(apoDdiEnabled)
+    mediaCtx->m_apoDdiEnabled = apoDdiEnabled;
+    if(mediaCtx->m_apoDdiEnabled)
     {
         if (DdiMedia__InitializeSoftlet(mediaCtx, apoDdiEnabled) != VA_STATUS_SUCCESS)
         {
             DDI_ASSERTMESSAGE("Softlet initialize failed");
             return VA_STATUS_ERROR_ALLOCATION_FAILED;
         }
+        ctx->max_image_formats = mediaCtx->m_capsNext->GetImageFormatsMaxNum();
     }
-    mediaCtx->m_apoDdiEnabled = apoDdiEnabled;
+    else
 #endif
+    {
+        mediaCtx->m_caps = MediaLibvaCaps::CreateMediaLibvaCaps(mediaCtx);
+        if (!mediaCtx->m_caps)
+        {
+            DDI_ASSERTMESSAGE("Caps create failed. Not supported GFX device.");
+            DestroyMediaContextMutex(mediaCtx);
+            FreeForMediaContext(mediaCtx);
+            return VA_STATUS_ERROR_ALLOCATION_FAILED;
+        }
+
+        if (mediaCtx->m_caps->Init() != VA_STATUS_SUCCESS)
+        {
+            DDI_ASSERTMESSAGE("Caps init failed. Not supported GFX device.");
+            DdiMedia_CleanUp(mediaCtx);
+            DestroyMediaContextMutex(mediaCtx);
+            FreeForMediaContext(mediaCtx);
+            return VA_STATUS_ERROR_ALLOCATION_FAILED;
+        }
+        ctx->max_image_formats = mediaCtx->m_caps->GetImageFormatsMaxNum();
+    }
 
 #if !defined(ANDROID) && defined(X11_FOUND)
     DdiMediaUtil_InitMutex(&mediaCtx->PutSurfaceRenderMutex);
@@ -2743,6 +2746,10 @@ VAStatus DdiMedia_CreateSurfaces2(
     VADRMPRIMESurfaceDescriptor drmPrimeSurfaceDescriptor;
     MOS_ZeroMemory(&externalBufDescripor, sizeof(VASurfaceAttribExternalBuffers));
     MOS_ZeroMemory(&drmPrimeSurfaceDescriptor, sizeof(VADRMPRIMESurfaceDescriptor));
+#if VA_CHECK_VERSION(1, 21, 0)
+    VADRMPRIME3SurfaceDescriptor drmPrime3SurfaceDescriptor;
+    MOS_ZeroMemory(&drmPrime3SurfaceDescriptor, sizeof(VADRMPRIME3SurfaceDescriptor));
+#endif
 
     int32_t  memTypeFlag      = VA_SURFACE_ATTRIB_MEM_TYPE_VA;
     int32_t  descFlag         = 0;
@@ -2770,6 +2777,9 @@ VAStatus DdiMedia_CreateSurfaces2(
                     (attrib_list[i].value.value.i == VA_SURFACE_ATTRIB_MEM_TYPE_KERNEL_DRM)  ||
                     (attrib_list[i].value.value.i == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME)   ||
                     (attrib_list[i].value.value.i == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2) ||
+#if VA_CHECK_VERSION(1, 21, 0)
+                    (attrib_list[i].value.value.i == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_3) ||
+#endif
                     (attrib_list[i].value.value.i == VA_SURFACE_ATTRIB_MEM_TYPE_USER_PTR))
                 {
                     memTypeFlag = attrib_list[i].value.value.i;
@@ -2798,6 +2808,17 @@ VAStatus DdiMedia_CreateSurfaces2(
                     width            = drmPrimeSurfaceDescriptor.width;
                     height           = drmPrimeSurfaceDescriptor.height;
                 }
+#if VA_CHECK_VERSION(1, 21, 0)
+                else if (memTypeFlag == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_3 )
+                {
+                    MosUtilities::MosSecureMemcpy(&drmPrime3SurfaceDescriptor, sizeof(VADRMPRIME3SurfaceDescriptor), attrib_list[i].value.value.p, sizeof(VADRMPRIME3SurfaceDescriptor));
+                    expected_fourcc           = drmPrime3SurfaceDescriptor.fourcc;
+                    width                     = drmPrime3SurfaceDescriptor.width;
+                    height                    = drmPrime3SurfaceDescriptor.height;
+                    drmPrimeSurfaceDescriptor = *((VADRMPRIMESurfaceDescriptor *)&drmPrime3SurfaceDescriptor);
+                    descFlag                  = drmPrime3SurfaceDescriptor.flags;
+                }
+#endif
                 else
                 {
                     MOS_SecureMemcpy(&externalBufDescripor, sizeof(VASurfaceAttribExternalBuffers),  attrib_list[i].value.value.p, sizeof(VASurfaceAttribExternalBuffers));
@@ -2856,7 +2877,11 @@ VAStatus DdiMedia_CreateSurfaces2(
             surfDesc->uiFlags        = descFlag;
             surfDesc->uiVaMemType    = memTypeFlag;
 
-            if (memTypeFlag == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2)
+            if (
+#if VA_CHECK_VERSION(1, 21, 0)
+                memTypeFlag == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_3 ||
+#endif
+                memTypeFlag == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2)
             {
                 surfDesc->ulBuffer       = drmPrimeSurfaceDescriptor.objects[0].fd;
                 surfDesc->modifier       = drmPrimeSurfaceDescriptor.objects[0].drm_format_modifier;
@@ -7182,7 +7207,12 @@ VAStatus DdiMedia_ExportSurfaceHandle(
     DDI_CHK_NULL(mediaSurface->bo,               "nullptr mediaSurface->bo",               VA_STATUS_ERROR_INVALID_SURFACE);
     DDI_CHK_NULL(mediaSurface->pGmmResourceInfo, "nullptr mediaSurface->pGmmResourceInfo", VA_STATUS_ERROR_INVALID_SURFACE);
 
-    if (mem_type != VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2) {
+    if (
+#if VA_CHECK_VERSION(1, 21, 0)
+        mem_type != VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_3 &&
+#endif
+        mem_type != VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2) 
+    {
         DDI_ASSERTMESSAGE("vaExportSurfaceHandle: memory type %08x is not supported.\n", mem_type);
         return VA_STATUS_ERROR_UNSUPPORTED_MEMORY_TYPE;
     }
@@ -7194,6 +7224,18 @@ VAStatus DdiMedia_ExportSurfaceHandle(
     }
 
     VADRMPRIMESurfaceDescriptor *desc = (VADRMPRIMESurfaceDescriptor *)descriptor;
+
+#if VA_CHECK_VERSION(1, 21, 0)
+    if(mem_type == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_3)
+    {
+        VADRMPRIME3SurfaceDescriptor *desc = (VADRMPRIME3SurfaceDescriptor *)descriptor;
+        if(mediaSurface->pGmmResourceInfo->GetSetCpSurfTag(false, 0))
+        {
+            desc->flags |= VA_SURFACE_EXTBUF_DESC_PROTECTED;
+        }
+    }
+#endif
+
     desc->fourcc = DdiMedia_MediaFormatToOsFormat(mediaSurface->format);
     if(desc->fourcc == VA_STATUS_ERROR_UNSUPPORTED_RT_FORMAT)
     {

@@ -631,6 +631,7 @@ public:
                                             bTopField      = false;
                                             bBeCsc         = false;
                                             bFeCsc         = false;
+                                            bCcmCsc        = false;
                                             bVeboxBypass   = false;
                                             b60fpsDi       = false;
                                             bQueryVariance = false;
@@ -725,6 +726,7 @@ public:
     bool                                bTopField;
     bool                                bBeCsc;
     bool                                bFeCsc;
+    bool                                bCcmCsc;
     bool                                bVeboxBypass;
     bool                                b60fpsDi;
     bool                                bQueryVariance;

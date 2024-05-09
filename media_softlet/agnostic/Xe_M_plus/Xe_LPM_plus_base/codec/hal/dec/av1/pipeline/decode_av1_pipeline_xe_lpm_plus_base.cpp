@@ -147,6 +147,13 @@ namespace decode
                 inputParameters.currOriginalPic            = basicFeature->m_curRenderPic;
                 inputParameters.currDecodedPicRes          = basicFeature->m_destSurface.OsResource;
                 inputParameters.numUsedVdbox               = m_numVdbox;
+                
+            CODECHAL_DEBUG_TOOL(
+                if (m_streamout != nullptr)  
+                {  
+                    DECODE_CHK_STATUS(m_streamout->InitStatusReportParam(inputParameters));  
+                }  
+            );
 #ifdef _DECODE_PROCESSING_SUPPORTED
                 CODECHAL_DEBUG_TOOL(
                     DecodeDownSamplingFeature *downSamplingFeature = dynamic_cast<DecodeDownSamplingFeature *>(
@@ -185,6 +192,7 @@ namespace decode
 
         auto basicFeature = dynamic_cast<Av1BasicFeature *>(m_featureManager->GetFeature(FeatureIDs::basicFeature));
         DECODE_CHK_NULL(basicFeature);
+        DECODE_CHK_NULL(basicFeature->m_av1PicParams);
         if (basicFeature->m_av1PicParams->m_anchorFrameInsertion)
         {
             return MOS_STATUS_SUCCESS;

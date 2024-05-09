@@ -1024,6 +1024,8 @@ typedef struct _RENDERHAL_SURFACE_STATE_PARAMS
     uint32_t                        bBufferUse                : 1;              // Flags for 1D buffer use
     uint32_t                        bSurfaceTypeDefined       : 1;
     uint32_t                                                  : 2;
+    uint32_t                        surfaceType               : 11;
+    MOS_COMPONENT                   Component                 : 4;
     RENDERHAL_MEMORY_OBJECT_CONTROL MemObjCtl;                                  // Caching attributes
 } RENDERHAL_SURFACE_STATE_PARAMS, *PRENDERHAL_SURFACE_STATE_PARAMS;
 
@@ -1176,6 +1178,7 @@ typedef struct _RENDERHAL_INTERFACE
     MHW_STATE_BASE_ADDR_PARAMS   StateBaseAddressParams;
     MHW_SIP_STATE_PARAMS         SipStateParams;
     MHW_WALKER_MODE              MediaWalkerMode;                               // Media object walker mode from Regkey: repel, dual mode, quad mode
+    uint32_t                     euThreadSchedulingMode;
 
     RENDERHAL_SURFACE_STATE_TYPE SurfaceTypeDefault;                            // Surface State type default
     RENDERHAL_SURFACE_STATE_TYPE SurfaceTypeAdvanced;                           // Surface State type advanced

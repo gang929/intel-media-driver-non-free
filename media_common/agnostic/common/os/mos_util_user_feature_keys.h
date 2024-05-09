@@ -87,6 +87,7 @@
 #define __MEDIA_USER_FEATURE_MCPY_MODE                                  "MediaCopy Mode"
 #define __MEDIA_USER_FEATURE_VALUE_VEBOX_SPLIT_RATIO                    "Vebox Split Ratio"
 #define __MEDIA_USER_FEATURE_SET_MCPY_FORCE_MODE                        "MCPY Force Mode"
+#define __MEDIA_USER_FEATURE_ENABLE_VECOPY_SMALL_RESOLUTION             "Enable VE copy small resolution"  // resolution smaller than 64x32
 
 //!
 //! \brief Keys for mmc
@@ -105,8 +106,6 @@
 #define __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_ENABLE                             "MediaSolo Enable"
 #define __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_PLATFORM                           "MediaSolo Platform"
 #define __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_STEPPING                           "MediaSolo Stepping"
-#define __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_TILE_Y_2_TILE_4_ADAPTER            "MediaSolo Tile Y 2 Tile 4 Adapter"
-#define __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_LOCK_TILED_AS_TILED                "MediaSolo Lock Tiled As Tiled"
 #define __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_ENABLE_MEM_TRACE                   "MediaSolo Enable Mem Trace"
 #define __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_ENABLE_LOCAL_MEM                   "MediaSolo Enable Local Mem"
 #define __MEDIA_USER_FEATURE_VALUE_MEDIASOLO_AUBLOAD_DIRECTORY                  "MediaSolo AubLoad Directory"
@@ -429,6 +428,7 @@
 //User feature key for media perf profile
 #define __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_ENABLE              "Perf Profiler Enable"
 #define __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_ENABLE_MUL_PROC     "Perf Profiler Multi Process Support"
+#define __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_ENABLE_MER_HEADER   "Perf Profiler Merge by Header Support"
 #define __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_OUTPUT_FILE_NAME    "Perf Profiler Output File Name"
 #define __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_BUFFER_SIZE_KEY     "Perf Profiler Buffer Size"
 #define __MEDIA_USER_FEATURE_VALUE_PERF_PROFILER_MUL_PROC_SINGLE_BIN "Perf Profiler Multi Process Single Binary"

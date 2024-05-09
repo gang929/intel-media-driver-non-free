@@ -226,6 +226,11 @@ MOS_STATUS GpuContextSpecificNextXe::InitBltCtx(PMOS_CONTEXT osParameters,
         return MOS_STATUS_UNKNOWN;
     }
     numPlacement = *nengine;
+    if (numPlacement >= 2)
+    {
+        // only use BCS0. BCS8 is paging copy
+        numPlacement = 1;
+    }
 
     m_i915Context[0] = mos_context_create_shared(osParameters->bufmgr,
                                              nullptr,
@@ -588,20 +593,6 @@ void GpuContextSpecificNextXe::UpdatePriority(int32_t priority)
     MOS_OS_FUNCTION_ENTER;
     //Note: need to implement this bufmgr api to set exec queue property
 }
-
-#if (_DEBUG || _RELEASE_INTERNAL)
-//Note: combind these two functions in both class in furture
-bool GpuContextSpecificNextXe::SelectEngineInstanceByUser(void *engine_map,
-        uint32_t *engineNum, uint32_t userEngineInstance, MOS_GPU_NODE gpuNode)
-{
-    MOS_UNUSED(engine_map);
-    MOS_UNUSED(engineNum);
-    MOS_UNUSED(userEngineInstance);
-    MOS_UNUSED(gpuNode);
-    uint32_t engineInstance     = 0x0;
-    return engineInstance;
-}
-#endif
 
 MOS_STATUS GpuContextSpecificNextXe::ReportEngineInfo(
         void *engine_map,

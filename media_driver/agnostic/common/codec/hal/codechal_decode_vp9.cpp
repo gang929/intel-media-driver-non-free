@@ -1296,6 +1296,9 @@ MOS_STATUS CodechalDecodeVp9::SetFrameStates ()
         CODECHAL_DECODE_CHK_STATUS_RETURN(DumpDecodePicParams(
             m_vp9PicParams));
 
+        CODECHAL_DECODE_CHK_STATUS_RETURN(DumpDecodeSliceParams(
+            m_vp9SliceParams));
+
         if (m_vp9SegmentParams) {
             CODECHAL_DECODE_CHK_STATUS_RETURN(DumpDecodeSegmentParams(
                 m_vp9SegmentParams));
@@ -1573,6 +1576,49 @@ MOS_STATUS CodechalDecodeVp9 :: InitPicStateMhwParams()
 
     m_picMhwParams.Vp9SegmentState->Mode                = m_mode;
     m_picMhwParams.Vp9SegmentState->pVp9SegmentParams   = m_vp9SegmentParams;
+
+    CODECHAL_DEBUG_TOOL(
+        if (m_vp9PicParams->PicFlags.fields.frame_type == CODEC_VP9_INTER_FRAME)
+        {
+            for (uint16_t n = 0; n < CODECHAL_MAX_CUR_NUM_REF_FRAME_VP9; n++)
+            {
+                if (m_picMhwParams.PipeBufAddrParams->presReferences[n])
+                {
+                    MOS_SURFACE dstSurface;
+                    MOS_ZeroMemory(&dstSurface, sizeof(MOS_SURFACE));
+                    dstSurface.OsResource = *(m_picMhwParams.PipeBufAddrParams->presReferences[n]);
+                    CODECHAL_DECODE_CHK_STATUS_RETURN(CodecHalGetResourceInfo(
+                        m_osInterface,
+                        &dstSurface));
+
+                    m_debugInterface->m_refIndex = n;
+                    std::string refSurfName      = "RefSurf[" + std::to_string(static_cast<uint32_t>(m_debugInterface->m_refIndex)) + "]";
+                    CODECHAL_DECODE_CHK_STATUS_RETURN(m_debugInterface->DumpYUVSurface(
+                        &dstSurface,
+                        CodechalDbgAttr::attrDecodeReferenceSurfaces,
+                        refSurfName.c_str()));
+                }
+            }
+        }
+
+        if (m_picMhwParams.PipeBufAddrParams->presColMvTempBuffer[0])
+        {
+            CODECHAL_DECODE_CHK_STATUS_RETURN(m_debugInterface->DumpBuffer(
+                m_picMhwParams.PipeBufAddrParams->presColMvTempBuffer[0],
+                CodechalDbgAttr::attrMvData,
+                "DEC_Col_MV_",
+                m_mvBufferSize));
+        }
+
+        if (m_picMhwParams.PipeBufAddrParams->presCurMvTempBuffer)
+        {
+            CODECHAL_DECODE_CHK_STATUS_RETURN(m_debugInterface->DumpBuffer(
+                m_picMhwParams.PipeBufAddrParams->presCurMvTempBuffer,
+                CodechalDbgAttr::attrMvData,
+                "DEC_Cur_MV_",
+                m_mvBufferSize));
+        };
+    );
 
     return eStatus;
 }
@@ -2102,6 +2148,28 @@ MOS_STATUS CodechalDecodeVp9::DumpDecodePicParams(
     std::ofstream ofs(fileName, std::ios::out);
     ofs << oss.str();
     ofs.close();
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS CodechalDecodeVp9::DumpDecodeSliceParams(CODEC_VP9_SLICE_PARAMS *slcParams)
+{
+    CODECHAL_DEBUG_FUNCTION_ENTER;
+
+    if (slcParams == nullptr)
+    {
+        return MOS_STATUS_SUCCESS;
+    }
+
+    if (m_debugInterface->DumpIsEnabled(CodechalDbgAttr::attrSlcParams))
+    {
+        const char *fileName = m_debugInterface->CreateFileName(
+            "_DEC",
+            CodechalDbgBufferType::bufSlcParams,
+            CodechalDbgExtType::txt);
+
+        DumpDecodeVp9SliceParams(slcParams, fileName);
+    }
 
     return MOS_STATUS_SUCCESS;
 }

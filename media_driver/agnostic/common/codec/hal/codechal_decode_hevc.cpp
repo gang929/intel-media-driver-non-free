@@ -1599,6 +1599,9 @@ MOS_STATUS CodechalDecodeHevc::AddPictureS2LCmds(
         cmdBufferInUse,
         &hucDmemStateParams));
 
+    CODECHAL_DEBUG_TOOL(
+        CODECHAL_DECODE_CHK_STATUS_RETURN(DumpHucS2l(&hucDmemStateParams));)
+
     return eStatus;
 }
 
@@ -1761,6 +1764,7 @@ MOS_STATUS CodechalDecodeHevc::InitPicLongFormatMhwParams()
         // Return error if reference surface's pitch * height is less than dest surface.
         MOS_SURFACE destSurfaceDetails;
         MOS_SURFACE refSurfaceDetails;
+        bool hasRefs = false;
 
         MOS_ZeroMemory(&destSurfaceDetails, sizeof(destSurfaceDetails));
         destSurfaceDetails.Format = Format_Invalid;
@@ -1793,7 +1797,16 @@ MOS_STATUS CodechalDecodeHevc::InitPicLongFormatMhwParams()
                     CODECHAL_DECODE_ASSERTMESSAGE("Reference surface's pitch * height is less than Dest surface.");
                     return MOS_STATUS_INVALID_PARAMETER;
                 }
+
+                hasRefs = true;
             }
+        }
+
+        if (!m_curPicIntra && !hasRefs)
+        {
+            MOS_ZeroMemory(&m_hevcRefList[m_hevcPicParams->CurrPic.FrameIdx]->resRefPic, sizeof(MOS_RESOURCE));
+            CODECHAL_DECODE_ASSERTMESSAGE("No any Ref frame for Current Frame. Current frame will be skipped. Thus, clear current frame Ref List.");
+            return MOS_STATUS_INVALID_PARAMETER;
         }
 
         if (firstValidFrame == nullptr)
@@ -3223,6 +3236,21 @@ MOS_STATUS CodechalDecodeHevc::DumpIQParams(
     std::ofstream ofs(fileName, std::ios::out);
     ofs << oss.str();
     ofs.close();
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS CodechalDecodeHevc::DumpHucS2l(PMHW_VDBOX_HUC_DMEM_STATE_PARAMS hucDmemStateParams)
+{
+    CODECHAL_DEBUG_FUNCTION_ENTER;
+
+    CODECHAL_DEBUG_CHK_NULL(m_debugInterface);
+
+    CODECHAL_DECODE_CHK_STATUS_RETURN(m_debugInterface->DumpHucDmem(
+        hucDmemStateParams->presHucDataSource,
+        m_dmemTransferSize,
+        0,
+        hucRegionDumpDefault));
 
     return MOS_STATUS_SUCCESS;
 }

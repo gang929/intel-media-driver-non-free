@@ -263,6 +263,7 @@ MOS_STATUS GraphicsResourceSpecificNext::Allocate(OsContextNext* osContextPtr, C
         alloc_uptr.tiling_mode = tileFormatLinux;
         alloc_uptr.stride = bufPitch;
         alloc_uptr.size = bufSize;
+        alloc_uptr.pat_index = patIndex;
 
         boPtr = mos_bo_alloc_userptr(pOsContextSpecific->m_bufmgr, &alloc_uptr);
     }
@@ -940,7 +941,12 @@ void* GraphicsResourceSpecificNext::LockExternalResource(
             resource->pGmmResInfo->IsMediaMemoryCompressed(0)))
         {            
             MosDecompression   *mosDecompression = nullptr;
-            MosInterface::GetMosDecompressionFromStreamState(streamState, mosDecompression);
+            MOS_STATUS status = MosInterface::GetMosDecompressionFromStreamState(streamState, mosDecompression);
+            if (status != MOS_STATUS_SUCCESS)
+            {
+                MOS_OS_ASSERTMESSAGE("Get Mos Decompression From StreamState failed, skip lock");
+                return nullptr;
+            }
             if (nullptr == mosDecompression)
             {
                 MOS_OS_ASSERTMESSAGE("mosDecompression is NULL.");

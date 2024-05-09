@@ -1095,7 +1095,7 @@ public:
     //!
     virtual MOS_STATUS SubmitCommandBuffer(
         PMOS_COMMAND_BUFFER cmdBuffer,
-        bool                nullRendering);
+        bool                bNullRendering);
 
     //!
     //! \brief    Help function to verify command buffer size
@@ -1608,7 +1608,17 @@ public:
     //!
     //! \return   void
     //!
-    virtual void SetHcpReconSurfaceParams(MHW_VDBOX_SURFACE_PARAMS& reconSurfaceParams);
+    virtual void SetHcpReconSurfaceParams(MHW_VDBOX_SURFACE_PARAMS &reconSurfaceParams);
+
+    //!
+    //! \brief    Set HCP_SURFACE_PARAMS for reference picture
+    //!
+    //! \param    [in, out] refSurfaceParams
+    //!           HCP_SURFACE_PARAMS for reference picture
+    //!
+    //! \return   void
+    //!
+    virtual void SetHcpRefSurfaceParams(MHW_VDBOX_SURFACE_PARAMS &refSurfaceParams);
 
     //!
     //! \brief    Set HCP_PIPE_BUF_ADDR parameters

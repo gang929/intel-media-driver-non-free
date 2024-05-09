@@ -83,7 +83,9 @@ MOS_STATUS Av1BasicFeature::Init(void *setting)
         outValue,
         "AV1 Encode Adaptive Rounding Enable",
         MediaUserSetting::Group::Sequence);
-    m_adaptiveRounding = outValue.Get<bool>();
+    bool adaptiveRounding = outValue.Get<bool>();
+    if (adaptiveRounding)
+        m_roundingMethod = RoundingMethod::adaptiveRounding;
 #endif
     return MOS_STATUS_SUCCESS;
 }
@@ -108,7 +110,7 @@ MOS_STATUS Av1BasicFeature::Update(void *params)
     ENCODE_FUNC_CALL();
     ENCODE_CHK_NULL_RETURN(params);
 
-    EncodeBasicFeature::Update(params);
+    ENCODE_CHK_STATUS_RETURN(EncodeBasicFeature::Update(params));
 
     EncoderParamsAV1 *encodeParams = (EncoderParamsAV1 *)params;
 
@@ -137,7 +139,7 @@ MOS_STATUS Av1BasicFeature::Update(void *params)
         // The lock operation will bring functional issue under "asyc != 1" condition, as well as pref issue need to be considered.
         // So we choose to by default disable adaptive rounding for CQP, but for BRC, statistics read operation will move to HuC. it's all 
         // fine by nature. so we will open adaptive rounding for BRC all the time as it will bring quality gain.
-        m_adaptiveRounding = true;
+        m_roundingMethod = RoundingMethod::adaptiveRounding;
     }
 
     for (uint32_t i = 0; i < m_NumNalUnits; i++)
@@ -145,7 +147,7 @@ MOS_STATUS Av1BasicFeature::Update(void *params)
         m_appHdrSize += m_nalUnitParams[i]->uiSize;
         if (IsFrameHeader(*(m_bsBuffer.pBase + m_nalUnitParams[i]->uiOffset)))
         {
-            continue;
+            break;
         }
         m_appHdrSizeExcludeFrameHdr += m_nalUnitParams[i]->uiSize;
     }
@@ -351,6 +353,7 @@ MOS_STATUS Av1BasicFeature::UpdateFormat(void *params)
     switch(m_rawSurface.Format)
     {
     case Format_P010:
+    case Format_R10G10B10A2:
         m_is10Bit  = true;
         m_bitDepth = 10;
         break;
@@ -667,7 +670,7 @@ MHW_SETPAR_DECL_SRC(VDENC_PIPE_MODE_SELECT, Av1BasicFeature)
         params.tileBasedReplayMode = true;
     }
 
-    params.frameStatisticsStreamOut = IsRateControlBrc(m_av1SeqParams->RateControlMethod) || m_adaptiveRounding;
+    params.frameStatisticsStreamOut = IsRateControlBrc(m_av1SeqParams->RateControlMethod) || m_roundingMethod == RoundingMethod::adaptiveRounding;
 
     return MOS_STATUS_SUCCESS;
 }

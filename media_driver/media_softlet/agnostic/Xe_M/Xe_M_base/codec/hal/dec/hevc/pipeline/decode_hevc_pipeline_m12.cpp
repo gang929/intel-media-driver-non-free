@@ -346,6 +346,14 @@ MOS_STATUS HevcPipelineM12::Prepare(void *params)
             inputParameters.numUsedVdbox               = m_numVdbox;
             inputParameters.numSlices                  = m_basicFeature->m_numSlices;
             inputParameters.currDecodedPicRes          = m_basicFeature->m_destSurface.OsResource;
+
+            CODECHAL_DEBUG_TOOL(
+                if (m_streamout != nullptr)  
+                {  
+                    DECODE_CHK_STATUS(m_streamout->InitStatusReportParam(inputParameters));  
+                }  
+            );
+
 #if (_DEBUG || _RELEASE_INTERNAL)
 #ifdef _DECODE_PROCESSING_SUPPORTED
             DecodeDownSamplingFeature* downSamplingFeature = dynamic_cast<DecodeDownSamplingFeature*>(
@@ -682,6 +690,32 @@ MOS_STATUS HevcPipelineM12::DumpParams(HevcBasicFeature &basicFeature)
     if (!basicFeature.m_shortFormatInUse)
     {
         DECODE_CHK_STATUS(DumpSubsetsParams(basicFeature.m_hevcSubsetParams));
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS HevcPipelineM12::DumpSecondLevelBatchBuffer()
+{
+    DECODE_CHK_STATUS(HevcPipeline::DumpSecondLevelBatchBuffer());
+
+    if (m_basicFeature->m_shortFormatInUse)
+    {
+        // Dump HuC auth chained BB
+        auto hucS2LPkt = dynamic_cast<HucS2lPktM12 *>(GetOrCreate(DecodePacketId(this, hucS2lPacketId)));
+        DECODE_CHK_NULL(hucS2LPkt);
+
+        PMHW_BATCH_BUFFER batchBuffer = hucS2LPkt->GetHucAuthCmdBuffer();
+
+        if (batchBuffer != nullptr)
+        {
+            batchBuffer->iLastCurrent = batchBuffer->iSize * batchBuffer->count;
+            batchBuffer->dwOffset     = 0;
+            DECODE_CHK_STATUS(m_debugInterface->Dump2ndLvlBatch(
+                batchBuffer,
+                CODECHAL_NUM_MEDIA_STATES,
+                "HEVC_DEC_HucAuth"));
+        }
     }
 
     return MOS_STATUS_SUCCESS;

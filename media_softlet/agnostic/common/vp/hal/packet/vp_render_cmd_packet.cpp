@@ -150,6 +150,25 @@ MOS_STATUS VpRenderCmdPacket::LoadKernel()
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS VpRenderCmdPacket::SetEuThreadSchedulingMode(uint32_t mode)
+{
+    VP_FUNC_CALL();
+    VP_RENDER_CHK_NULL_RETURN(m_renderHal);
+    uint32_t curMode = m_renderHal->euThreadSchedulingMode;
+    if (curMode != mode)
+    {
+        if (curMode != 0)
+        {
+            RENDER_PACKET_ASSERTMESSAGE("Not support different modes in same kernelObjs!");
+        }
+        else
+        {
+            m_renderHal->euThreadSchedulingMode = mode;
+        }
+    }
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS VpRenderCmdPacket::Prepare()
 {
     VP_FUNC_CALL();
@@ -181,6 +200,8 @@ MOS_STATUS VpRenderCmdPacket::Prepare()
         VP_RENDER_NORMALMESSAGE("Resource Prepared, skip this time");
         return MOS_STATUS_SUCCESS;
     }
+
+    m_renderHal->euThreadSchedulingMode = 0;
 
     VP_RENDER_CHK_STATUS_RETURN(m_kernelSet->CreateKernelObjects(
         m_renderKernelParams,
@@ -227,6 +248,7 @@ MOS_STATUS VpRenderCmdPacket::Prepare()
             VP_RENDER_CHK_NULL_RETURN(m_kernel);
 
             m_kernel->SetCacheCntl(m_surfMemCacheCtl);
+            VP_RENDER_CHK_STATUS_RETURN(SetEuThreadSchedulingMode(m_kernel->GetEuThreadSchedulingMode()));
 
             // reset render Data for current kernel
             MOS_ZeroMemory(&m_renderData, sizeof(KERNEL_PACKET_RENDER_DATA));
@@ -305,6 +327,8 @@ MOS_STATUS VpRenderCmdPacket::Prepare()
             m_kernel = it->second;
             VP_RENDER_CHK_NULL_RETURN(m_kernel);
             m_kernel->SetPerfTag();
+            VP_RENDER_CHK_STATUS_RETURN(SetEuThreadSchedulingMode(m_kernel->GetEuThreadSchedulingMode()));
+
             if (it != m_kernelObjs.begin())
             {
                 // reset render Data for current kernel
@@ -1911,6 +1935,15 @@ MOS_STATUS VpRenderCmdPacket::SendMediaStates(
             pipeCtlParams.dwFlushMode             = MHW_FLUSH_CUSTOM;
             pipeCtlParams.bInvalidateTextureCache = true;
             pipeCtlParams.bFlushRenderTargetCache = true;
+
+            if (it->second.walkerParam.pipeControlParams.bUpdateNeeded)
+            {
+                pipeCtlParams.bHdcPipelineFlush = it->second.walkerParam.pipeControlParams.bEnableDataPortFlush;
+                pipeCtlParams.bUnTypedDataPortCacheFlush = it->second.walkerParam.pipeControlParams.bUnTypedDataPortCacheFlush;
+                pipeCtlParams.bFlushRenderTargetCache = it->second.walkerParam.pipeControlParams.bFlushRenderTargetCache;
+                pipeCtlParams.bInvalidateTextureCache = it->second.walkerParam.pipeControlParams.bInvalidateTextureCache;
+            }
+
             if (flushL1)
             {   //Flush L1 cache after consumer walker when there is a producer-consumer relationship walker.
                 pipeCtlParams.bUnTypedDataPortCacheFlush = true;
