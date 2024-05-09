@@ -14,7 +14,7 @@ Build-Depends:
  libx11-dev,
  ninja-build,
  pkg-config,
-Standards-Version: 4.6.2
+Standards-Version: 4.7.2
 Homepage: https://github.com/intel/media-driver
 Vcs-Browser: https://salsa.debian.org/multimedia-team/intel-media-driver-non-free
 Vcs-Git: https://salsa.debian.org/multimedia-team/intel-media-driver-non-free.git
