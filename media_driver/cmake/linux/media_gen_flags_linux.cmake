@@ -18,16 +18,6 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
-# TODO: Remove this option when all Gen options can successfully disable
-#       driver code.
-# Status:
-#   GEN8:  Done
-#   GEN9:  Done
-#   GEN11: Done
-#   GEN12: TODO
-option(ENABLE_REQUIRED_GEN_CODE "Make per-Gen options disable only media-kernels (not driver code) if driver code is known to be required for a successful build"
-    ON)
-
 option(GEN8 "Enable Gen8 support" ON)
 cmake_dependent_option(GEN8_BDW
     "Enabled BDW support (Gen8)" ON
@@ -113,14 +103,16 @@ cmake_dependent_option(PVC
 
 option(MTL "Enable MTL support" ON)
 
-option(ARL "Enable ARL support" ON)
+cmake_dependent_option(ARL
+    "Enable ARL support" ON
+    "MTL" OFF)
 
-if(MTL OR ARL)
+if(MTL)
     option(XE_LPM_PLUS_SUPPORT "Enable XE_LPM_PLUS support" ON)
     option(XE_LPG "Enable XE_LPG support" ON)
 endif()
 
-if(MTL OR ARL)
+if(MTL)
     option(Xe_M_plus "Enable Xe_M_plus support" ON)
 endif()
 

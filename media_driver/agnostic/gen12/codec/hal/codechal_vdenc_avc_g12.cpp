@@ -970,7 +970,7 @@ MOS_STATUS CodechalVdencAvcStateG12::AddMiStoreForHWOutputToHucDmem(PMOS_COMMAND
 
 MOS_STATUS CodechalVdencAvcStateG12::SubmitCommandBuffer(
     PMOS_COMMAND_BUFFER cmdBuffer,
-    int32_t             nullRendering)
+    bool             bNullRendering)
 {
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
@@ -980,7 +980,7 @@ MOS_STATUS CodechalVdencAvcStateG12::SubmitCommandBuffer(
 
     HalOcaInterface::On1stLevelBBEnd(*cmdBuffer, *m_osInterface);
     CODECHAL_ENCODE_CHK_STATUS_RETURN(SetAndPopulateVEHintParams(cmdBuffer));
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, cmdBuffer, nullRendering));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, cmdBuffer, bNullRendering));
     return eStatus;
 }
 
@@ -1566,6 +1566,25 @@ MOS_STATUS CodechalVdencAvcStateG12::InitMmcState()
     m_mmcState = MOS_New(CodechalMmcEncodeAvcG12, m_hwInterface, this);
     CODECHAL_ENCODE_CHK_NULL_RETURN(m_mmcState);
 #endif
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS CodechalVdencAvcStateG12::CheckResChangeAndCsc()
+{
+    CODECHAL_ENCODE_FUNCTION_ENTER;
+
+    if (m_cscDsState && m_rawSurface.Format == Format_A8R8G8B8)
+    {
+        uint64_t alignedSize = MOS_MAX((uint64_t)m_picWidthInMb * CODECHAL_MACROBLOCK_WIDTH * 4, (uint64_t)m_rawSurface.dwPitch) *
+                               ((uint64_t)m_picHeightInMb * CODECHAL_MACROBLOCK_HEIGHT);
+
+        if (m_rawSurface.OsResource.iSize < alignedSize)
+        {
+            CODECHAL_ENCODE_CHK_STATUS_RETURN(m_cscDsState->SurfaceNeedsExtraCopy());
+        }
+    }
+
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(CodechalEncoderState::CheckResChangeAndCsc());
     return MOS_STATUS_SUCCESS;
 }
 

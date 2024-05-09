@@ -73,6 +73,17 @@ typedef struct _KERNEL_SURFACE_STATE_PARAM
     uint32_t                             iCapcityOfSurfaceEntry = 0;
 } KERNEL_SURFACE_STATE_PARAM;
 
+typedef struct _KERNEL_TUNING_PARAMS
+{
+    uint32_t euThreadSchedulingMode;
+} KERNEL_TUNING_PARAMS, *PKERNEL_TUNING_PARAMS;
+
+typedef struct _SURFACE_PARAMS
+{
+    SurfaceType surfType;
+    bool        isOutput;
+} SURFACE_PARAMS, *PSURFACE_PARAMS;
+
 using KERNEL_CONFIGS = std::map<VpKernelID, void *>; // Only for legacy/non-cm kernels
 using KERNEL_ARGS = std::vector<KRN_ARG>;
 using KERNEL_SAMPLER_STATE_GROUP = std::map<SamplerIndex, MHW_SAMPLER_STATE_PARAM>;
@@ -80,6 +91,7 @@ using KERNEL_SAMPLER_STATES = std::vector<MHW_SAMPLER_STATE_PARAM>;
 using KERNEL_SAMPLER_INDEX = std::vector<SamplerIndex>;
 using KERNEL_SURFACE_CONFIG = std::map<SurfaceType, KERNEL_SURFACE_STATE_PARAM>;
 using KERNEL_SURFACE_BINDING_INDEX = std::map<SurfaceType, std::set<uint32_t>>;
+using KERNEL_ARG_INDEX_SURFACE_MAP = std::map<uint32_t, SURFACE_PARAMS>;
 
 typedef struct _KERNEL_PARAMS
 {
@@ -88,6 +100,7 @@ typedef struct _KERNEL_PARAMS
     KERNEL_THREAD_SPACE  kernelThreadSpace;
     bool                 syncFlag;
     bool                 flushL1;
+    KERNEL_TUNING_PARAMS kernelTuningParams;
 } KERNEL_PARAMS;
 
 struct MEDIA_OBJECT_KA2_INLINE_DATA
@@ -502,6 +515,12 @@ public:
 
     virtual void OcaDumpKernelInfo(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CONTEXT &mosContext);
 
+    virtual uint32_t GetEuThreadSchedulingMode()
+    {
+        // hw default mode
+        return 0;
+    }
+
 protected:
 
     virtual MOS_STATUS SetWalkerSetting(KERNEL_THREAD_SPACE &threadSpace, bool bSyncFlag, bool flushL1 = false);
@@ -524,6 +543,8 @@ protected:
         return MOS_STATUS_SUCCESS;
     }
 
+    virtual MOS_STATUS SetTuningFlag(PKERNEL_TUNING_PARAMS tuningParams);
+
 protected:
 
     VP_SURFACE_GROUP                                        *m_surfaceGroup = nullptr;  // input surface process surface groups
@@ -541,6 +562,8 @@ protected:
     VpKernelID                                              m_kernelId = kernelCombinedFc;
     DelayLoadedKernelType                                   m_kernelType     = KernelNone;
     KernelIndex                                             m_kernelIndex = 0;          // index of current kernel in KERNEL_PARAMS_LIST
+
+    PKERNEL_TUNING_PARAMS                                   m_kernelTuningParams = nullptr;
 
     bool                                                    m_isAdvKernel = false;      // true mean multi kernel can be submitted in one workload.
 

@@ -96,6 +96,9 @@ MOS_STATUS VpHdrFilter::CalculateEngineParams(
         m_veboxHdrParams.dstColorSpace        = hdrParams.dstColorSpace;
         m_veboxHdrParams.dstFormat            = hdrParams.formatOutput;
         m_veboxHdrParams.stage                = hdrParams.stage;
+        m_veboxHdrParams.lutSize              = hdrParams.lutSize;
+        m_veboxHdrParams.isFp16Enable         = (hdrParams.formatInput == Format_A16B16G16R16F) ? true : false;
+        m_veboxHdrParams.external3DLutParams  = hdrParams.external3DLutParams;
     }
     else if (vpExecuteCaps.bRender && HDR_STAGE_3DLUT_KERNEL == hdrParams.stage)
     {
@@ -106,8 +109,8 @@ MOS_STATUS VpHdrFilter::CalculateEngineParams(
         m_renderHdr3DLutParams.hdrMode             = hdrParams.hdrMode;
         m_renderHdr3DLutParams.kernelId            = (VpKernelID)kernelHdr3DLutCalc;
 
-        m_renderHdr3DLutParams.threadWidth  = LUT65_SEG_SIZE;
-        m_renderHdr3DLutParams.threadHeight = LUT65_SEG_SIZE;
+        m_renderHdr3DLutParams.threadWidth  = hdrParams.lutSize;
+        m_renderHdr3DLutParams.threadHeight = hdrParams.lutSize;
 
         KRN_ARG krnArg  = {};
         krnArg.uIndex   = 0;

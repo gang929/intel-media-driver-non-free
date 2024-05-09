@@ -75,7 +75,7 @@ MOS_STATUS VeboxCopyState::Initialize()
     {
         if (m_veboxInterface->m_veboxHeap == nullptr)
         {
-            m_veboxInterface->CreateHeap();
+            VEBOX_COPY_CHK_STATUS_RETURN(m_veboxInterface->CreateHeap());
         }
     }
     return MOS_STATUS_SUCCESS;
@@ -106,12 +106,12 @@ MOS_STATUS VeboxCopyState::CopyMainSurface(PMOS_RESOURCE src, PMOS_RESOURCE dst)
     // Get input resource info
     MOS_ZeroMemory(&inputSurface, sizeof(MOS_SURFACE));
     inputSurface.OsResource = *src;
-    GetResourceInfo(&inputSurface);
+    VEBOX_COPY_CHK_STATUS_RETURN(GetResourceInfo(&inputSurface));
 
     // Get output resource info
     MOS_ZeroMemory(&outputSurface, sizeof(MOS_SURFACE));
     outputSurface.OsResource = *dst;
-    GetResourceInfo(&outputSurface);
+    VEBOX_COPY_CHK_STATUS_RETURN(GetResourceInfo(&outputSurface));
 
     if (!IsFormatSupported(&inputSurface))
     {
@@ -135,16 +135,6 @@ MOS_STATUS VeboxCopyState::CopyMainSurface(PMOS_RESOURCE src, PMOS_RESOURCE dst)
     VEBOX_COPY_CHK_STATUS_RETURN(m_osInterface->pfnRegisterBBCompleteNotifyEvent(
         m_osInterface,
         MOS_GPU_CONTEXT_VEBOX));
-
-    // Sync on Vebox Input Resource, Ensure the input is ready to be read
-    // Currently, MOS RegisterResourcere cannot sync the 3d resource.
-    // Temporaly, call sync resource to do the sync explicitly.
-    // Sync need be done after switching context.
-    m_osInterface->pfnSyncOnResource(
-        m_osInterface,
-        src,
-        MOS_GPU_CONTEXT_VEBOX,
-        false);
 
     // Reset allocation list and house keeping
     m_osInterface->pfnResetOsStates(m_osInterface);

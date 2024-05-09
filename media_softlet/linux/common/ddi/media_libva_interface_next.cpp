@@ -1894,7 +1894,9 @@ VAStatus MediaLibvaInterfaceNext::PutImage(
         if (srcWidth == destWidth && srcHeight == destHeight &&
             srcWidth == vaimg->width && srcHeight == vaimg->height &&
             srcWidth == mediaSurface->iWidth && srcHeight == mediaSurface->iHeight &&
-            mediaSurface->data_size == vaimg->data_size)
+            mediaSurface->data_size == vaimg->data_size &&
+            (vaimg->num_planes == 1 ||
+            (vaimg->num_planes > 1 && vaimg->offsets[1] == mediaSurface->iPitch * mediaSurface->iHeight)))
         {
             //Copy data from image to surface
             MOS_STATUS eStatus = MOS_SecureMemcpy(surfData, vaimg->data_size, imageData, vaimg->data_size);
@@ -3213,7 +3215,11 @@ VAStatus MediaLibvaInterfaceNext::CreateSurfaces2 (
     VASurfaceAttribExternalBuffers externalBufDescripor;
     VADRMPRIMESurfaceDescriptor drmPrimeSurfaceDescriptor;
     MosUtilities::MosZeroMemory(&externalBufDescripor, sizeof(VASurfaceAttribExternalBuffers));
-    MosUtilities::MosZeroMemory(&drmPrimeSurfaceDescriptor, sizeof(VADRMPRIMESurfaceDescriptor));
+    MosUtilities::MosZeroMemory(&drmPrimeSurfaceDescriptor, sizeof(VADRMPRIMESurfaceDescriptor)); 
+#if VA_CHECK_VERSION(1, 21, 0)
+    VADRMPRIME3SurfaceDescriptor drmPrime3SurfaceDescriptor;
+    MosUtilities::MosZeroMemory(&drmPrime3SurfaceDescriptor, sizeof(VADRMPRIME3SurfaceDescriptor));
+#endif
 
     int32_t  memTypeFlag      = VA_SURFACE_ATTRIB_MEM_TYPE_VA;
     int32_t  descFlag         = 0;
@@ -3241,6 +3247,9 @@ VAStatus MediaLibvaInterfaceNext::CreateSurfaces2 (
                     (attribList[i].value.value.i == VA_SURFACE_ATTRIB_MEM_TYPE_KERNEL_DRM)  ||
                     (attribList[i].value.value.i == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME)   ||
                     (attribList[i].value.value.i == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2) ||
+#if VA_CHECK_VERSION(1, 21, 0)
+                    (attribList[i].value.value.i == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_3) ||
+#endif
                     (attribList[i].value.value.i == VA_SURFACE_ATTRIB_MEM_TYPE_USER_PTR))
                 {
                     memTypeFlag = attribList[i].value.value.i;
@@ -3269,6 +3278,17 @@ VAStatus MediaLibvaInterfaceNext::CreateSurfaces2 (
                     width            = drmPrimeSurfaceDescriptor.width;
                     height           = drmPrimeSurfaceDescriptor.height;
                 }
+#if VA_CHECK_VERSION(1, 21, 0)
+                else if (memTypeFlag == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_3)
+                {
+                    MosUtilities::MosSecureMemcpy(&drmPrime3SurfaceDescriptor, sizeof(VADRMPRIME3SurfaceDescriptor), attribList[i].value.value.p, sizeof(VADRMPRIME3SurfaceDescriptor));
+                    expectedFourcc            = drmPrime3SurfaceDescriptor.fourcc;
+                    width                     = drmPrime3SurfaceDescriptor.width;
+                    height                    = drmPrime3SurfaceDescriptor.height;
+                    drmPrimeSurfaceDescriptor = *((VADRMPRIMESurfaceDescriptor*)&drmPrime3SurfaceDescriptor);
+                    descFlag                  = drmPrime3SurfaceDescriptor.flags;
+                }
+#endif
                 else
                 {
                     MosUtilities::MosSecureMemcpy(&externalBufDescripor, sizeof(VASurfaceAttribExternalBuffers),  attribList[i].value.value.p, sizeof(VASurfaceAttribExternalBuffers));
@@ -3327,7 +3347,11 @@ VAStatus MediaLibvaInterfaceNext::CreateSurfaces2 (
             surfDesc->uiFlags        = descFlag;
             surfDesc->uiVaMemType    = memTypeFlag;
 
-            if (memTypeFlag == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2)
+            if (
+#if VA_CHECK_VERSION(1, 21, 0)
+                memTypeFlag == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_3 || 
+#endif
+                memTypeFlag == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2)
             {
                 surfDesc->ulBuffer       = drmPrimeSurfaceDescriptor.objects[0].fd;
                 surfDesc->modifier       = drmPrimeSurfaceDescriptor.objects[0].drm_format_modifier;
@@ -3598,6 +3622,10 @@ VAStatus MediaLibvaInterfaceNext::InitSurfaceDescriptorWithoutAuxTableMgr(
 
     if(compositeObject)
     {
+        desc->num_layers = 1;
+        desc->layers[0].drm_format = formats[0];
+        desc->layers[0].num_planes = planesNum;
+
         for (int i = 0; i < planesNum; i++)
         {
             desc->layers[0].object_index[i] = 0;
@@ -3782,7 +3810,12 @@ VAStatus MediaLibvaInterfaceNext::ExportSurfaceHandle(
     DDI_CHK_NULL(mediaSurface->bo,               "nullptr mediaSurface->bo",               VA_STATUS_ERROR_INVALID_SURFACE);
     DDI_CHK_NULL(mediaSurface->pGmmResourceInfo, "nullptr mediaSurface->pGmmResourceInfo", VA_STATUS_ERROR_INVALID_SURFACE);
 
-    if (memType != VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2) {
+    if (
+#if VA_CHECK_VERSION(1, 21, 0)
+        memType != VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_3 && 
+#endif
+        memType != VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2)
+    {
         DDI_ASSERTMESSAGE("vaExportSurfaceHandle: memory type %08x is not supported.\n", memType);
         return VA_STATUS_ERROR_UNSUPPORTED_MEMORY_TYPE;
     }
@@ -3794,6 +3827,17 @@ VAStatus MediaLibvaInterfaceNext::ExportSurfaceHandle(
     }
 
     VADRMPRIMESurfaceDescriptor *desc = (VADRMPRIMESurfaceDescriptor *)descriptor;
+#if VA_CHECK_VERSION(1, 21, 0)
+    if(memType == VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_3)
+    {
+        VADRMPRIME3SurfaceDescriptor *desc = (VADRMPRIME3SurfaceDescriptor *)descriptor;
+        if(mediaSurface->pGmmResourceInfo->GetSetCpSurfTag(false, 0))
+        {
+            desc->flags |= VA_SURFACE_EXTBUF_DESC_PROTECTED;
+        }
+    }
+#endif
+
     desc->fourcc = MediaFormatToOsFormat(mediaSurface->format);
     if(desc->fourcc == VA_STATUS_ERROR_UNSUPPORTED_RT_FORMAT)
     {
@@ -4997,6 +5041,11 @@ VAStatus MediaLibvaInterfaceNext::CopyInternal(
     }
 
     DDI_CHK_NULL(mediaCopyState, "Invalid mediaCopy State", VA_STATUS_ERROR_INVALID_PARAMETER);
+    
+#if (_DEBUG || _RELEASE_INTERNAL)
+    // enable reg key report to avoid conflict with media copy cases.
+    mediaCopyState->SetRegkeyReport(true);
+#endif
 
     mosStatus = mediaCopyState->SurfaceCopy(src, dst, (MCPY_METHOD)copy_mode);
     if (mosStatus != MOS_STATUS_SUCCESS)

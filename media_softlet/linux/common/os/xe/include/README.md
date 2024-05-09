@@ -13,14 +13,19 @@ $ make headers_install INSTALL_HDR_PATH=/path/to/install
 
 The last update was done at the following kernel commit:
 
-commit 4354e27efb78582ee567ba6264c79d0872a3a4e7 (HEAD -> drm-xe-next, origin/drm-xe-next)
-Author: Brian Welty <brian.welty@intel.com>
-Date:   Tue Sep 26 13:59:37 2023 -0700
+commit b2121f2bd2232cd0556b2182078d159d81497885 (HEAD -> drm-xe-next, origin/drm-xe-next)
 
-    drm/xe: Simplify xe_res_get_buddy()
+drm/xe: Extend uAPI to query HuC micro-controler firmware version
 
-    We can remove the unnecessary indirection thru xe->tiles[] to get
-    the TTM VRAM manager.  This code can be common for VRAM and STOLEN.
+The infrastructure to query GuC firmware version is already in place. It
+is extended with a new micro-controller type to query the HuC firmware
+version. It can be used from user space to know if HuC is running.
 
-    Signed-off-by: Brian Welty <brian.welty@intel.com>
-    Reviewed-by: Matthew Brost <matthew.brost@intel.com>
+Cc: John Harrison <John.C.Harrison@Intel.com>
+Cc: Francois Dugast <francois.dugast@intel.com>
+Cc: Lucas De Marchi <lucas.demarchi@intel.com>
+Signed-off-by: Francois Dugast <francois.dugast@intel.com>
+Signed-off-by: José Roberto de Souza <jose.souza@intel.com>
+Reviewed-by: Rodrigo Vivi <rodrigo.vivi@intel.com>
+Reviewed-by: John Harrison <John.C.Harrison@Intel.com>
+Link: https://patchwork.freedesktop.org/patch/msgid/20240208183539.185095-2-jose.souza@intel.com

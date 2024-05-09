@@ -1663,7 +1663,7 @@ MOS_STATUS CodechalEncodeHevcBase::ReturnCommandBuffer(PMOS_COMMAND_BUFFER cmdBu
 
 MOS_STATUS CodechalEncodeHevcBase::SubmitCommandBuffer(
     PMOS_COMMAND_BUFFER cmdBuffer,
-    bool                nullRendering)
+    bool                bNullRendering)
 {
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
@@ -1671,7 +1671,7 @@ MOS_STATUS CodechalEncodeHevcBase::SubmitCommandBuffer(
 
     CODECHAL_ENCODE_CHK_NULL_RETURN(cmdBuffer);
 
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, cmdBuffer, nullRendering));
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, cmdBuffer, bNullRendering));
     return eStatus;
 }
 
@@ -2420,6 +2420,22 @@ void CodechalEncodeHevcBase::SetHcpReconSurfaceParams(MHW_VDBOX_SURFACE_PARAMS& 
     reconSurfaceParams.dwReconSurfHeight = m_rawSurfaceToPak->dwHeight;
 #ifdef _MMC_SUPPORTED
     m_mmcState->SetSurfaceState(&reconSurfaceParams);
+#endif
+}
+
+void CodechalEncodeHevcBase::SetHcpRefSurfaceParams(MHW_VDBOX_SURFACE_PARAMS &refSurfaceParams)
+{
+    MOS_ZeroMemory(&refSurfaceParams, sizeof(refSurfaceParams));
+    refSurfaceParams.Mode                     = m_mode;
+    refSurfaceParams.psSurface                = &m_reconSurface;
+    refSurfaceParams.ucSurfaceStateId         = CODECHAL_HCP_REF_SURFACE_ID;
+    refSurfaceParams.ucBitDepthLumaMinus8     = m_hevcSeqParams->bit_depth_luma_minus8;
+    refSurfaceParams.ucBitDepthChromaMinus8   = m_hevcSeqParams->bit_depth_chroma_minus8;
+    refSurfaceParams.ChromaType               = m_outputChromaFormat;
+    refSurfaceParams.dwActualHeight           = ((m_hevcSeqParams->wFrameHeightInMinCbMinus1 + 1) << (m_hevcSeqParams->log2_min_coding_block_size_minus3 + 3));
+    refSurfaceParams.dwReconSurfHeight        = m_rawSurfaceToPak->dwHeight;
+#ifdef _MMC_SUPPORTED
+    m_mmcState->SetSurfaceState(&refSurfaceParams);
 #endif
 }
 

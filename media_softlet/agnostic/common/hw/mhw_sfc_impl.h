@@ -97,6 +97,9 @@ public:
         m_histogramBufferCtrl.Value = osItf->pfnCachePolicyGetMemoryObject(
             MOS_CODEC_RESOURCE_USAGE_SURFACE_UNCACHED,
             osItf->pfnGetGmmClientContext(osItf)).DwordValue;
+        m_sfcIndirectBufferCtrl.Value = osItf->pfnCachePolicyGetMemoryObject(
+            MOS_CODEC_RESOURCE_USAGE_SURFACE_UNCACHED,
+            osItf->pfnGetGmmClientContext(osItf)).DwordValue;
 
         m_maxWidth  = MHW_SFC_MAX_WIDTH;
         m_maxHeight = MHW_SFC_MAX_HEIGHT;
@@ -329,11 +332,24 @@ public:
 
         // Skip calculation if no changes to AVS parameters
         if (srcFormat == pAvsParams->Format &&
-            fScaleX == pAvsParams->fScaleX &&
-            fScaleY == pAvsParams->fScaleY)
+            fScaleX == pAvsParams->fScaleX  &&
+            fScaleY == pAvsParams->fScaleY  &&
+            bUse8x8Filter == pAvsParams->bUse8x8Filter)
         {
             MHW_NORMALMESSAGE("Skip calculation since no changes to AVS parameters. srcFormat %d, fScaleX %f, fScaleY %f",
                 srcFormat, fScaleX, fScaleY);
+
+            SetSfcAVSLumaTable(
+                srcFormat,
+                pLumaTable->LumaTable,
+                piYCoefsX,
+                piYCoefsY,
+                bUse8x8Filter);
+
+            SetSfcAVSChromaTable(
+                pChromaTable->ChromaTable,
+                piUVCoefsX,
+                piUVCoefsY);
             return MOS_STATUS_SUCCESS;
         }
 
@@ -749,6 +765,7 @@ protected:
     MHW_MEMORY_OBJECT_CONTROL_PARAMS   m_iefLineTileBufferCtrl = {};   // IEF Line Tile Buffer caching control bits
     MHW_MEMORY_OBJECT_CONTROL_PARAMS   m_sfdLineTileBufferCtrl = {};   // SFD Line Tile Buffer caching control bits
     MHW_MEMORY_OBJECT_CONTROL_PARAMS   m_histogramBufferCtrl   = {};   // Histogram Buffer caching control bits
+    MHW_MEMORY_OBJECT_CONTROL_PARAMS   m_sfcIndirectBufferCtrl = {};   // SfcIndirect Buffer caching control bits
     MHW_SCALING_MODE                   m_scalingMode           = MHW_SCALING_NEAREST;
 MEDIA_CLASS_DEFINE_END(mhw__sfc__Impl)
 };

@@ -64,6 +64,7 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
     uint32_t      iDeviceId = 0;
     MOS_STATUS    eStatus   = MOS_STATUS_SUCCESS;
     uint32_t      value     = 0;
+    uint32_t      mode      = 0;
     MediaUserSettingSharedPtr   userSettingPtr = nullptr;
 
     MOS_OS_FUNCTION_ENTER;
@@ -130,6 +131,27 @@ MOS_STATUS OsContextSpecificNext::Init(DDI_DEVICE_CONTEXT ddiDriverContext)
         {
             MOS_OS_ASSERTMESSAGE("Fatal error - unsuccesfull Sku/Wa/GtSystemInfo initialization");
             return eStatus;
+        }
+
+        if (m_platformInfo.eProductFamily == IGFX_METEORLAKE ||
+            m_platformInfo.eProductFamily == IGFX_ARROWLAKE)
+        {
+            ReadUserSetting(
+                userSettingPtr,
+                value,
+                "INTEL MEDIA ALLOC MODE",
+                MediaUserSetting::Group::Device);
+
+            if (value)
+            {
+                mode = (value & 0x000000ff);
+            }
+
+            // Realloc cache only if it's not mode 0
+            if (mode)
+            {
+                mos_bufmgr_realloc_cache(m_bufmgr, mode);
+            }
         }
 
         ReadUserSetting(

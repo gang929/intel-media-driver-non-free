@@ -60,6 +60,9 @@
 #include "libdrm_lists.h"
 #include "mos_bufmgr.h"
 #include "mos_bufmgr_priv.h"
+#ifdef ENABLE_XE_KMD
+#include "mos_bufmgr_xe.h"
+#endif
 #include "string.h"
 
 #include "i915_drm.h"
@@ -138,7 +141,7 @@ struct mos_bufmgr_gem {
     int exec_count;
 
     /** Array of lists of cached gem objects of power-of-two sizes */
-    struct mos_gem_bo_bucket cache_bucket[14 * 4];
+    struct mos_gem_bo_bucket cache_bucket[64];
     int num_buckets;
     time_t time;
 
@@ -1585,15 +1588,19 @@ mos_gem_bo_free(struct mos_linux_bo *bo)
     CHK_CONDITION(bufmgr_gem == nullptr, "bufmgr_gem == nullptr\n", );
 
     if (bo_gem->mem_virtual) {
-        VG(VALGRIND_FREELIKE_BLOCK(bo_gem->mem_virtual, 0));
+        VG(VALGRIND_MAKE_MEM_NOACCESS(bo_gem->mem_virtual, 0));
         drm_munmap(bo_gem->mem_virtual, bo_gem->bo.size);
+        bo_gem->mem_virtual = nullptr;
     }
     if (bo_gem->gtt_virtual) {
+        VG(VALGRIND_MAKE_MEM_NOACCESS(bo_gem->gtt_virtual, 0));
         drm_munmap(bo_gem->gtt_virtual, bo_gem->bo.size);
+        bo_gem->gtt_virtual = nullptr;
     }
     if (bo_gem->mem_wc_virtual) {
-        VG(VALGRIND_FREELIKE_BLOCK(bo_gem->mem_wc_virtual, 0));
+        VG(VALGRIND_MAKE_MEM_NOACCESS(bo_gem->mem_wc_virtual, 0));
         drm_munmap(bo_gem->mem_wc_virtual, bo_gem->bo.size);
+        bo_gem->mem_wc_virtual = nullptr;
     }
 
     if(bufmgr_gem->bufmgr.bo_wait_rendering && mos_gem_bo_busy(bo))
@@ -2426,19 +2433,9 @@ mos_gem_bo_start_gtt_access(struct mos_linux_bo *bo, int write_enable)
 }
 
 static void
-mos_bufmgr_gem_destroy(struct mos_bufmgr *bufmgr)
+mos_bufmgr_cleanup_cache(struct mos_bufmgr_gem *bufmgr_gem)
 {
-    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *) bufmgr;
-    struct drm_gem_close close_bo;
-    int i, ret;
-
-    free(bufmgr_gem->exec2_objects);
-    free(bufmgr_gem->exec_objects);
-    free(bufmgr_gem->exec_bos);
-    pthread_mutex_destroy(&bufmgr_gem->lock);
-
-    /* Free any cached buffer objects we were going to reuse */
-    for (i = 0; i < bufmgr_gem->num_buckets; i++) {
+    for (int i = 0; i < bufmgr_gem->num_buckets; i++) {
         struct mos_gem_bo_bucket *bucket =
             &bufmgr_gem->cache_bucket[i];
         struct mos_bo_gem *bo_gem;
@@ -2450,7 +2447,25 @@ mos_bufmgr_gem_destroy(struct mos_bufmgr *bufmgr)
 
             mos_gem_bo_free(&bo_gem->bo);
         }
+        bufmgr_gem->cache_bucket[i].size = 0;
     }
+    bufmgr_gem->num_buckets = 0;
+}
+
+static void
+mos_bufmgr_gem_destroy(struct mos_bufmgr *bufmgr)
+{
+    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
+    struct drm_gem_close close_bo;
+    int ret;
+
+    free(bufmgr_gem->exec2_objects);
+    free(bufmgr_gem->exec_objects);
+    free(bufmgr_gem->exec_bos);
+    pthread_mutex_destroy(&bufmgr_gem->lock);
+
+    /* Free any cached buffer objects we were going to reuse */
+    mos_bufmgr_cleanup_cache(bufmgr_gem);
 
     /* Release userptr bo kept hanging around for optimisation. */
     if (bufmgr_gem->userptr_active.ptr) {
@@ -3878,6 +3893,84 @@ init_cache_buckets(struct mos_bufmgr_gem *bufmgr_gem)
     }
 }
 
+static void
+mos_gem_realloc_cache(struct mos_bufmgr *bufmgr, uint8_t alloc_mode)
+{
+    unsigned long size, cache_max_size = 64 * 1024 * 1024, unit_size;
+    struct mos_bufmgr_gem *bufmgr_gem = (struct mos_bufmgr_gem *)bufmgr;
+
+    // Clean up the pre-allocated cache before re-allocating according
+    // to alloc_mode
+    mos_bufmgr_cleanup_cache(bufmgr_gem);
+
+    /* OK, so power of two buckets was too wasteful of memory.
+     * Give 3 other sizes between each power of two, to hopefully
+     * cover things accurately enough.  (The alternative is
+     * probably to just go for exact matching of sizes, and assume
+     * that for things like composited window resize the tiled
+     * width/height alignment and rounding of sizes to pages will
+     * get us useful cache hit rates anyway)
+     */
+    /* alloc_mode 0 is default alloc_mode
+     * alloc_mode 1 rounding up to 64K for all < 1M
+     * alloc_mode 2 rounding up to 2M for size> 1M
+     * alloc_mode 3 rounding up to 2M for size > 1M and 64K for size <= 1M */
+    if( alloc_mode > 3 )
+        alloc_mode = 0;
+
+    if ( 0 == alloc_mode || 2 == alloc_mode)
+    {
+        // < 1M normal alloc_mode
+        add_bucket(bufmgr_gem, 4096);
+        add_bucket(bufmgr_gem, 4096 * 2);
+        add_bucket(bufmgr_gem, 4096 * 3);
+        /* Initialize the linked lists for BO reuse cache. */
+        for (size = 4 * 4096; size < 1024 * 1024; size *= 2) {
+            add_bucket(bufmgr_gem, size);
+            add_bucket(bufmgr_gem, size + size * 1 / 4);
+            add_bucket(bufmgr_gem, size + size * 2 / 4);
+            add_bucket(bufmgr_gem, size + size * 3 / 4);
+        }
+
+        add_bucket(bufmgr_gem, 1024 * 1024);
+    }
+    if (1 == alloc_mode || 3 == alloc_mode)
+    {
+        // < 1M 64k alignment
+        unit_size = 64 * 1024;
+        for (size = unit_size; size <= 1024 * 1024; size += unit_size)
+        {
+            add_bucket(bufmgr_gem, size);
+        }
+    }
+    if( 0 == alloc_mode || 1 == alloc_mode)
+    {
+       //> 1M is normal alloc_mode
+        add_bucket(bufmgr_gem, 1280 * 1024);
+        add_bucket(bufmgr_gem, 1536 * 1024);
+        add_bucket(bufmgr_gem, 1792 * 1024);
+
+        for (size = 2 * 1024 * 1024; size < cache_max_size; size *= 2) {
+            add_bucket(bufmgr_gem, size);
+            add_bucket(bufmgr_gem, size + size * 1 / 4);
+            add_bucket(bufmgr_gem, size + size * 2 / 4);
+            add_bucket(bufmgr_gem, size + size * 3 / 4);
+        }
+    }
+    if( 2 == alloc_mode || 3 == alloc_mode)
+    {
+       //> 1M rolling to 2M
+       unit_size = 2 * 1024 * 1024;
+       add_bucket(bufmgr_gem, unit_size);
+       add_bucket(bufmgr_gem, 3 * 1024 * 1024);
+
+       for (size = 4 * 1024 * 1024; size <= cache_max_size; size += unit_size)
+       {
+           add_bucket(bufmgr_gem, size);
+       }
+    }
+}
+
 /**
  * Get the PCI ID for the device.  This can be overridden by setting the
  * INTEL_DEVID_OVERRIDE environment variable to the desired ID.
@@ -4711,6 +4804,47 @@ mos_bufmgr_query_sys_engines(struct mos_bufmgr *bufmgr, MEDIA_SYSTEM_INFO* gfx_i
     return 0;
 }
 
+void mos_gem_select_fixed_engine(struct mos_bufmgr *bufmgr,
+            void *engine_map,
+            uint32_t *nengine,
+            uint32_t fixed_instance_mask)
+{
+    MOS_UNUSED(bufmgr);
+#if (DEBUG || _RELEASE_INTERNAL)
+    if (fixed_instance_mask)
+    {
+        struct i915_engine_class_instance *_engine_map = (struct i915_engine_class_instance *)engine_map;
+        auto unselect_index = 0;
+        for(auto bit = 0; bit < *nengine; bit++)
+        {
+            if(((fixed_instance_mask >> bit) & 0x1) && (bit > unselect_index))
+            {
+                _engine_map[unselect_index].engine_class = _engine_map[bit].engine_class;
+                _engine_map[unselect_index].engine_instance = _engine_map[bit].engine_instance;
+                _engine_map[bit].engine_class = 0;
+                _engine_map[bit].engine_instance = 0;
+                unselect_index++;
+            }
+            else if(((fixed_instance_mask >> bit) & 0x1) && (bit == unselect_index))
+            {
+                unselect_index++;
+            }
+            else if(!((fixed_instance_mask >> bit) & 0x1))
+            {
+                _engine_map[bit].engine_class = 0;
+                _engine_map[bit].engine_instance = 0;
+            }
+        }
+        *nengine = unselect_index;
+    }
+#else
+    MOS_UNUSED(engine_map);
+    MOS_UNUSED(nengine);
+    MOS_UNUSED(fixed_instance_mask);
+#endif
+
+}
+
 static int mos_gem_set_context_param_parallel(struct mos_linux_context *ctx,
                      struct i915_engine_class_instance *ci,
                      unsigned int count)
@@ -5100,6 +5234,7 @@ mos_bufmgr_gem_init_i915(int fd, int batch_size)
     struct drm_i915_gem_get_aperture aperture;
     drm_i915_getparam_t gp;
     int ret, tmp;
+    uint8_t alloc_mode;
     bool exec2 = false;
 
     pthread_mutex_lock(&bufmgr_list_mutex);
@@ -5171,6 +5306,7 @@ mos_bufmgr_gem_init_i915(int fd, int batch_size)
     bufmgr_gem->bufmgr.disable_object_capture = mos_gem_disable_object_capture;
     bufmgr_gem->bufmgr.get_memory_info = mos_gem_get_memory_info;
     bufmgr_gem->bufmgr.get_devid = mos_gem_get_devid;
+    bufmgr_gem->bufmgr.realloc_cache = mos_gem_realloc_cache;
     bufmgr_gem->bufmgr.set_context_param = mos_gem_set_context_param;
     bufmgr_gem->bufmgr.set_context_param_parallel = mos_gem_set_context_param_parallel;
     bufmgr_gem->bufmgr.set_context_param_load_balance = mos_gem_set_context_param_load_balance;
@@ -5191,6 +5327,7 @@ mos_bufmgr_gem_init_i915(int fd, int batch_size)
     bufmgr_gem->bufmgr.query_engines_count = mos_bufmgr_query_engines_count;
     bufmgr_gem->bufmgr.query_engines = mos_bufmgr_query_engines;
     bufmgr_gem->bufmgr.get_engine_class_size = mos_bufmgr_get_engine_class_size;
+    bufmgr_gem->bufmgr.select_fixed_engine = mos_gem_select_fixed_engine;
     bufmgr_gem->bufmgr.switch_off_n_bits = mos_bufmgr_switch_off_n_bits;
     bufmgr_gem->bufmgr.hweight8 = mos_bufmgr_hweight8;
     bufmgr_gem->bufmgr.get_ts_frequency = mos_bufmgr_get_ts_frequency;
@@ -5352,6 +5489,8 @@ mos_bufmgr_gem_init_i915(int fd, int batch_size)
      *
      * Every 4 was too few for the blender benchmark.
      */
+    alloc_mode = (uint8_t)(batch_size & 0xff);
+    batch_size &= 0xffffff00;
     bufmgr_gem->max_relocs = batch_size / sizeof(uint32_t) / 2 - 2;
 
     DRMINITLISTHEAD(&bufmgr_gem->named);
@@ -5381,6 +5520,12 @@ mos_bufmgr_gem_init(int fd, int batch_size, int *device_type)
     {
         return mos_bufmgr_gem_init_i915(fd, batch_size);
     }
+#ifdef ENABLE_XE_KMD
+    else if (DEVICE_TYPE_XE == type)
+    {
+        return mos_bufmgr_gem_init_xe(fd, batch_size);
+    }
+#endif
 
     return nullptr;
 }
@@ -5508,6 +5653,11 @@ int mos_get_device_id(int fd, uint32_t *deviceId)
     {
         return mos_get_dev_id_i915(fd, deviceId);
     }
-
+#ifdef ENABLE_XE_KMD
+    else if (DEVICE_TYPE_XE == device_type)
+    {
+        return mos_get_dev_id_xe(fd, deviceId);
+    }
+#endif
     return -ENODEV;
 }

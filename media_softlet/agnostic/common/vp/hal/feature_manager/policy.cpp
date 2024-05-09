@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2023, Intel Corporation
+* Copyright (c) 2019-2024, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -290,6 +290,7 @@ MOS_STATUS Policy::CreateHwFilter(SwFilterPipe &subSwFilterPipe, HwFilter *&pFil
     HW_FILTER_PARAMS param = {};
 
     MT_LOG(MT_VP_FEATURE_GRAPH_SETUPEXECUTESWFILTER_START, MT_NORMAL);
+    VP_PUBLIC_NORMALMESSAGE("Feature Graph: Setup ExecutePipe Start");
     MOS_STATUS status = GetHwFilterParam(subSwFilterPipe, param);
 
     if (MOS_FAILED(status))
@@ -310,6 +311,7 @@ MOS_STATUS Policy::CreateHwFilter(SwFilterPipe &subSwFilterPipe, HwFilter *&pFil
         return MOS_STATUS_UNIMPLEMENTED;
     }
     MT_LOG(MT_VP_FEATURE_GRAPH_SETUPEXECUTESWFILTER_END, MT_NORMAL);
+    VP_PUBLIC_NORMALMESSAGE("Feature Graph: Setup ExecutePipe End");
     return MOS_STATUS_SUCCESS;
 }
 
@@ -522,10 +524,10 @@ MOS_STATUS Policy::GetExecutionCapsForSingleFeature(FeatureType featureType, SwF
 
     engineCapsCombined.value |= engineCaps.value;
 
-    MT_LOG7(MT_VP_HAL_POLICY_GET_EXTCAPS4FTR, MT_NORMAL, MT_VP_HAL_FEATUERTYPE, featureType,
-        MT_VP_HAL_ENGINECAPS, engineCaps.value, MT_VP_HAL_ENGINECAPS_EN, engineCaps.bEnabled, MT_VP_HAL_ENGINECAPS_VE_NEEDED,
-        engineCaps.VeboxNeeded, MT_VP_HAL_ENGINECAPS_SFC_NEEDED, engineCaps.SfcNeeded, MT_VP_HAL_ENGINECAPS_RENDER_NEEDED, engineCaps.RenderNeeded,
-        MT_VP_HAL_ENGINECAPS_FC_SUPPORT, engineCaps.fcSupported);
+    MT_LOG7(MT_VP_HAL_POLICY_GET_EXTCAPS4FTR, MT_NORMAL, MT_VP_HAL_FEATUERTYPE, featureType, MT_VP_HAL_ENGINECAPS, int64_t(engineCaps.value),
+        MT_VP_HAL_ENGINECAPS_EN, int64_t(engineCaps.bEnabled), MT_VP_HAL_ENGINECAPS_VE_NEEDED, int64_t(engineCaps.VeboxNeeded),
+        MT_VP_HAL_ENGINECAPS_SFC_NEEDED, int64_t(engineCaps.SfcNeeded), MT_VP_HAL_ENGINECAPS_RENDER_NEEDED, int64_t(engineCaps.RenderNeeded),
+        MT_VP_HAL_ENGINECAPS_FC_SUPPORT, int64_t(engineCaps.fcSupported));
 
     return MOS_STATUS_SUCCESS;
 }
@@ -693,8 +695,16 @@ MOS_STATUS Policy::GetCSCExecutionCapsHdr(SwFilter *HDR, SwFilter *CSC)
 
     MOS_FORMAT   hdrFormat  = Format_Any;
     VPHAL_CSPACE hdrCSpace  = CSpace_Any;
-    hdrCSpace               = IS_COLOR_SPACE_BT2020(cscParams->output.colorSpace) ? CSpace_BT2020_RGB : CSpace_sRGB;
-    hdrFormat               = IS_COLOR_SPACE_BT2020(cscParams->output.colorSpace) ? Format_R10G10B10A2 : Format_A8R8G8B8;
+    if (cscParams->isFullRgbG10P709 && IS_RGB64_FLOAT_FORMAT(cscParams->formatOutput))
+    {
+        hdrCSpace = CSpace_BT2020_RGB;
+        hdrFormat = Format_A16B16G16R16;
+    }
+    else
+    {
+        hdrCSpace = IS_COLOR_SPACE_BT2020(cscParams->output.colorSpace) ? CSpace_BT2020_RGB : CSpace_sRGB;
+        hdrFormat = IS_COLOR_SPACE_BT2020(cscParams->output.colorSpace) ? Format_R10G10B10A2 : Format_A8R8G8B8;
+    }
     VP_PUBLIC_CHK_STATUS_RETURN(Update3DLutoutputColorAndFormat(cscParams, hdrParams, hdrFormat, hdrCSpace));
 
     if (m_hwCaps.m_sfcHwEntry[hdrFormat].inputSupported &&
@@ -1148,6 +1158,12 @@ MOS_STATUS Policy::GetScalingExecutionCaps(SwFilter *feature, bool isHdrEnabled,
         IsAlphaSettingSupportedBySfc(scalingParams->formatInput, scalingParams->formatOutput, scalingParams->pCompAlpha);
     bool isAlphaSettingSupportedByVebox =
         IsAlphaSettingSupportedByVebox(scalingParams->formatInput, scalingParams->formatOutput, scalingParams->pCompAlpha);
+
+    if (scalingParams->formatOutput == Format_422H)
+    {
+        VP_PUBLIC_ASSERTMESSAGE("Scaling not support 422H format output.");
+        return MOS_STATUS_UNIMPLEMENTED;
+    }
 
     // Clean usedForNextPass flag.
     if (scalingEngine->usedForNextPass)
@@ -1953,7 +1969,37 @@ MOS_STATUS Policy::GetHdrExecutionCaps(SwFilter *feature)
         return MOS_STATUS_SUCCESS;
     }
 
-    if (Is3DLutKernelSupported())
+    if (IsHDR33LutSizeSupported() && (hdrParams->hdrMode == VPHAL_HDR_MODE_H2H))
+    {
+        hdrParams->lutSize = LUT33_SEG_SIZE;
+        pHDREngine->isHdr33LutSizeEnabled = true;
+        VP_RENDER_NORMALMESSAGE("3DLut table is used 33 lutsize.");
+    }
+    else
+    {
+        hdrParams->lutSize = LUT65_SEG_SIZE;
+        pHDREngine->isHdr33LutSizeEnabled = false;
+        VP_RENDER_NORMALMESSAGE("3DLut table is used 65 lutsize.");
+    }
+
+    pHDREngine->is1K1DLutSurfaceInUse = m_hwCaps.m_rules.is1K1DLutSurfaceInUse;
+    if (hdrParams->external3DLutParams && userFeatureControl->IsExternal3DLutSupport())
+    {
+        hdrParams->stage        = HDR_STAGE_VEBOX_EXTERNAL_3DLUT;
+        pHDREngine->bEnabled    = 1;
+        pHDREngine->VeboxNeeded = 1;
+        if (hdrParams->formatOutput == Format_A8B8G8R8 || hdrParams->formatOutput == Format_A8R8G8B8)
+        {
+            pHDREngine->VeboxARGBOut = 1;
+        }
+        else if (hdrParams->formatOutput == Format_B10G10R10A2 || hdrParams->formatOutput == Format_R10G10B10A2)
+        {
+            pHDREngine->VeboxARGB10bitOutput = 1;
+        }
+        VP_PUBLIC_NORMALMESSAGE("3DLUT table setup by API, use HDR_STAGE_VEBOX_EXTERNAL_3DLUT.");
+        return MOS_STATUS_SUCCESS;
+    }
+    else if (Is3DLutKernelSupported())
     {
         if (hdrParams->uiMaxContentLevelLum != m_savedMaxCLL || hdrParams->uiMaxDisplayLum != m_savedMaxDLL ||
             hdrParams->hdrMode != m_savedHdrMode)
@@ -2278,7 +2324,7 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
         caps.bIECP = engineCaps.VeboxIECPNeeded;
         caps.bDiProcess2ndField = engineCaps.diProcess2ndField;
         caps.bTemperalInputInuse = engineCaps.bTemperalInputInuse;
-
+        caps.b1K1DLutInUse       = engineCaps.is1K1DLutSurfaceInUse;
         if (engineCaps.fcOnlyFeatureExists)
         {
             // For vebox/sfc+render case, use 2nd workload (render) to do csc for better performance
@@ -2331,6 +2377,7 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
 
         caps.bDiProcess2ndField = engineCaps.diProcess2ndField;
         caps.bTemperalInputInuse = engineCaps.bTemperalInputInuse;
+        caps.b1K1DLutInUse       = engineCaps.is1K1DLutSurfaceInUse;
     }
 
     VP_PUBLIC_NORMALMESSAGE("Execute Caps, value 0x%llx (bVebox %d, bSFC %d, bRender %d, bComposite %d, bOutputPipeFeatureInuse %d, bIECP %d, bForceCscToRender %d, bDiProcess2ndField %d)",
@@ -2341,12 +2388,10 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
     
     MT_LOG7(MT_VP_HAL_POLICY_INIT_EXECCAPS, MT_NORMAL, MT_VP_HAL_EXECCAPS, (int64_t)caps.value, MT_VP_HAL_EXECCAPS_VE, (int64_t)caps.bVebox, MT_VP_HAL_EXECCAPS_SFC, (int64_t)caps.bSFC, MT_VP_HAL_EXECCAPS_RENDER,
         (int64_t)caps.bRender, MT_VP_HAL_EXECCAPS_COMP, (int64_t)caps.bComposite, MT_VP_HAL_EXECCAPS_OUTPIPE_FTRINUSE, (int64_t)caps.bOutputPipeFeatureInuse, MT_VP_HAL_EXECCAPS_IECP, (int64_t)caps.bIECP);
-    MT_LOG7(MT_VP_HAL_POLICY_GET_INPIPECAPS, MT_NORMAL, MT_VP_HAL_ENGINECAPS, engineCapsInputPipe.value, MT_VP_HAL_ENGINECAPS_EN, engineCapsInputPipe.bEnabled, MT_VP_HAL_ENGINECAPS_VE_NEEDED, 
-        engineCapsInputPipe.VeboxNeeded, MT_VP_HAL_ENGINECAPS_SFC_NEEDED, engineCapsInputPipe.SfcNeeded, MT_VP_HAL_ENGINECAPS_RENDER_NEEDED, engineCapsInputPipe.RenderNeeded,
-        MT_VP_HAL_ENGINECAPS_FC_SUPPORT, engineCapsInputPipe.fcSupported, MT_VP_HAL_ENGINECAPS_ISOLATED, engineCapsInputPipe.isolated);
-    MT_LOG7(MT_VP_HAL_POLICY_GET_OUTPIPECAPS, MT_NORMAL, MT_VP_HAL_ENGINECAPS, engineCapsOutputPipe.value, MT_VP_HAL_ENGINECAPS_EN, engineCapsOutputPipe.bEnabled, MT_VP_HAL_ENGINECAPS_VE_NEEDED,
-        engineCapsOutputPipe.VeboxNeeded, MT_VP_HAL_ENGINECAPS_SFC_NEEDED, engineCapsOutputPipe.SfcNeeded, MT_VP_HAL_ENGINECAPS_RENDER_NEEDED, engineCapsOutputPipe.RenderNeeded, 
-        MT_VP_HAL_ENGINECAPS_FC_SUPPORT, engineCapsOutputPipe.fcSupported, MT_VP_HAL_ENGINECAPS_ISOLATED, engineCapsOutputPipe.isolated);
+    MT_LOG7(MT_VP_HAL_POLICY_GET_INPIPECAPS, MT_NORMAL, MT_VP_HAL_ENGINECAPS, (int64_t)engineCapsInputPipe.value, MT_VP_HAL_ENGINECAPS_EN, (int64_t)engineCapsInputPipe.bEnabled, MT_VP_HAL_ENGINECAPS_VE_NEEDED,
+        (int64_t)engineCapsInputPipe.VeboxNeeded, MT_VP_HAL_ENGINECAPS_SFC_NEEDED, (int64_t)engineCapsInputPipe.SfcNeeded, MT_VP_HAL_ENGINECAPS_RENDER_NEEDED, (int64_t)engineCapsInputPipe.RenderNeeded, MT_VP_HAL_ENGINECAPS_FC_SUPPORT, (int64_t)engineCapsInputPipe.fcSupported, MT_VP_HAL_ENGINECAPS_ISOLATED, (int64_t)engineCapsInputPipe.isolated);
+    MT_LOG7(MT_VP_HAL_POLICY_GET_OUTPIPECAPS, MT_NORMAL, MT_VP_HAL_ENGINECAPS, (int64_t)engineCapsOutputPipe.value, MT_VP_HAL_ENGINECAPS_EN, (int64_t)engineCapsOutputPipe.bEnabled, MT_VP_HAL_ENGINECAPS_VE_NEEDED, (int64_t)engineCapsOutputPipe.VeboxNeeded, MT_VP_HAL_ENGINECAPS_SFC_NEEDED, (int64_t)engineCapsOutputPipe.SfcNeeded, MT_VP_HAL_ENGINECAPS_RENDER_NEEDED, (int64_t)engineCapsOutputPipe.RenderNeeded,
+        MT_VP_HAL_ENGINECAPS_FC_SUPPORT, (int64_t)engineCapsOutputPipe.fcSupported, MT_VP_HAL_ENGINECAPS_ISOLATED, (int64_t)engineCapsOutputPipe.isolated);
 
     return MOS_STATUS_SUCCESS;
 }
@@ -2390,9 +2435,10 @@ MOS_STATUS Policy::GetOutputPipeEngineCaps(SwFilterPipe& featurePipe, VP_EngineE
     }
 
     PrintFeatureExecutionCaps(__FUNCTION__, engineCapsOutputPipe);
-    MT_LOG7(MT_VP_HAL_POLICY_GET_OUTPIPECAPS, MT_NORMAL, MT_VP_HAL_ENGINECAPS, engineCapsOutputPipe.value, MT_VP_HAL_ENGINECAPS_EN, engineCapsOutputPipe.bEnabled, MT_VP_HAL_ENGINECAPS_VE_NEEDED,
-        engineCapsOutputPipe.VeboxNeeded, MT_VP_HAL_ENGINECAPS_SFC_NEEDED, engineCapsOutputPipe.SfcNeeded, MT_VP_HAL_ENGINECAPS_RENDER_NEEDED, engineCapsOutputPipe.RenderNeeded, 
-        MT_VP_HAL_ENGINECAPS_FC_SUPPORT, engineCapsOutputPipe.fcSupported, MT_VP_HAL_ENGINECAPS_ISOLATED, engineCapsOutputPipe.isolated);
+    MT_LOG7(MT_VP_HAL_POLICY_GET_OUTPIPECAPS, MT_NORMAL, MT_VP_HAL_ENGINECAPS, (int64_t)engineCapsOutputPipe.value, MT_VP_HAL_ENGINECAPS_EN, (int64_t)engineCapsOutputPipe.bEnabled,
+        MT_VP_HAL_ENGINECAPS_VE_NEEDED, (int64_t)engineCapsOutputPipe.VeboxNeeded, MT_VP_HAL_ENGINECAPS_SFC_NEEDED, (int64_t)engineCapsOutputPipe.SfcNeeded,
+        MT_VP_HAL_ENGINECAPS_RENDER_NEEDED, (int64_t)engineCapsOutputPipe.RenderNeeded, MT_VP_HAL_ENGINECAPS_FC_SUPPORT, (int64_t)engineCapsOutputPipe.fcSupported,
+        MT_VP_HAL_ENGINECAPS_ISOLATED, (int64_t)engineCapsOutputPipe.isolated);
 
     return MOS_STATUS_SUCCESS;
 }
@@ -2658,9 +2704,10 @@ MOS_STATUS Policy::GetInputPipeEngineCaps(SwFilterPipe& featurePipe, VP_EngineEn
     }
 
     PrintFeatureExecutionCaps(__FUNCTION__, engineCapsInputPipe);
-    MT_LOG7(MT_VP_HAL_POLICY_GET_INPIPECAPS, MT_NORMAL, MT_VP_HAL_ENGINECAPS, engineCapsInputPipe.value, MT_VP_HAL_ENGINECAPS_EN, engineCapsInputPipe.bEnabled,
-        MT_VP_HAL_ENGINECAPS_VE_NEEDED, engineCapsInputPipe.VeboxNeeded, MT_VP_HAL_ENGINECAPS_SFC_NEEDED, engineCapsInputPipe.SfcNeeded, MT_VP_HAL_ENGINECAPS_RENDER_NEEDED,
-        engineCapsInputPipe.RenderNeeded, MT_VP_HAL_ENGINECAPS_FC_SUPPORT, engineCapsInputPipe.fcSupported, MT_VP_HAL_ENGINECAPS_ISOLATED, engineCapsInputPipe.isolated);
+    MT_LOG7(MT_VP_HAL_POLICY_GET_INPIPECAPS, MT_NORMAL, MT_VP_HAL_ENGINECAPS, (int64_t)engineCapsInputPipe.value,
+        MT_VP_HAL_ENGINECAPS_EN, (int64_t)engineCapsInputPipe.bEnabled, MT_VP_HAL_ENGINECAPS_VE_NEEDED, (int64_t)engineCapsInputPipe.VeboxNeeded,
+        MT_VP_HAL_ENGINECAPS_SFC_NEEDED, (int64_t)engineCapsInputPipe.SfcNeeded, MT_VP_HAL_ENGINECAPS_RENDER_NEEDED, (int64_t)engineCapsInputPipe.RenderNeeded,
+        MT_VP_HAL_ENGINECAPS_FC_SUPPORT, (int64_t)engineCapsInputPipe.fcSupported, MT_VP_HAL_ENGINECAPS_ISOLATED, (int64_t)engineCapsInputPipe.isolated);
 
     return MOS_STATUS_SUCCESS;
 }
@@ -2821,12 +2868,12 @@ MOS_STATUS Policy::FilterFeatureCombination(SwFilterPipe &swFilterPipe, bool isI
                 {
                     feature->GetFilterEngineCaps().SfcNeeded = 0;
                     VP_PUBLIC_NORMALMESSAGE("Force feature 0x%x to render for render DI", filterID);
-                    MT_LOG2(MT_VP_HAL_POLICY_FLITER_FTR_COMBINE, MT_NORMAL, MT_VP_HAL_FEATUERTYPE, filterID, MT_VP_HAL_EXECCAPS_FORCE_DI2RENDER, feature->GetFilterEngineCaps().RenderNeeded);
+                    MT_LOG2(MT_VP_HAL_POLICY_FLITER_FTR_COMBINE, MT_NORMAL, MT_VP_HAL_FEATUERTYPE, filterID, MT_VP_HAL_EXECCAPS_FORCE_DI2RENDER, (int64_t)feature->GetFilterEngineCaps().RenderNeeded);
                     auto engineCaps = feature->GetFilterEngineCaps();
                     PrintFeatureExecutionCaps("Force feature to render for render DI", engineCaps);
-                    MT_LOG7(MT_VP_HAL_POLICY_FLITER_FTR_COMBINE, MT_NORMAL, MT_VP_HAL_FEATUERTYPE, filterID, MT_VP_HAL_ENGINECAPS, engineCaps.value, MT_VP_HAL_ENGINECAPS_EN, engineCaps.bEnabled,
-                        MT_VP_HAL_ENGINECAPS_VE_NEEDED, engineCaps.VeboxNeeded, MT_VP_HAL_ENGINECAPS_SFC_NEEDED, engineCaps.SfcNeeded, 
-                        MT_VP_HAL_ENGINECAPS_RENDER_NEEDED, engineCaps.RenderNeeded, MT_VP_HAL_ENGINECAPS_FC_SUPPORT, engineCaps.fcSupported);
+                    MT_LOG7(MT_VP_HAL_POLICY_FLITER_FTR_COMBINE, MT_NORMAL, MT_VP_HAL_FEATUERTYPE, filterID, MT_VP_HAL_ENGINECAPS, (int64_t)engineCaps.value, MT_VP_HAL_ENGINECAPS_EN, (int64_t)engineCaps.bEnabled,
+                        MT_VP_HAL_ENGINECAPS_VE_NEEDED, (int64_t)engineCaps.VeboxNeeded, MT_VP_HAL_ENGINECAPS_SFC_NEEDED, (int64_t)engineCaps.SfcNeeded,
+                        MT_VP_HAL_ENGINECAPS_RENDER_NEEDED, (int64_t)engineCaps.RenderNeeded, MT_VP_HAL_ENGINECAPS_FC_SUPPORT, (int64_t)engineCaps.fcSupported);
                 }
             }
         }
@@ -3557,10 +3604,6 @@ MOS_STATUS Policy::UpdateExeCaps(SwFilter* feature, VP_EXECUTE_CAPS& caps, Engin
             caps.bDI = 1;
             feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(Di, Vebox)));
             break;
-        case FeatureTypeAce:
-            caps.bACE = 1;
-            feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(Ace, Vebox)));
-            break;
         case FeatureTypeTcc:
             caps.bTCC = 1;
             feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(Tcc, Vebox)));
@@ -3581,15 +3624,11 @@ MOS_STATUS Policy::UpdateExeCaps(SwFilter* feature, VP_EXECUTE_CAPS& caps, Engin
         case FeatureTypeHdr:
             caps.bHDR3DLUT = 1;
             caps.b3DlutOutput |= 1;
+            if (feature->GetFilterEngineCaps().isHdr33LutSizeEnabled)
+            {
+                caps.bHdr33lutsize = 1;
+            }
             feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(Hdr, Vebox)));
-            break;
-        case FeatureTypeLace:
-            caps.bLACE = 1;
-            feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(Lace, Vebox)));
-            break;
-        case FeatureTypeSR:
-            caps.bSR = 1;
-            feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(SR, Vebox)));
             break;
         case FeatureTypeCgc:
             caps.bCGC = 1;
@@ -3620,14 +3659,6 @@ MOS_STATUS Policy::UpdateExeCaps(SwFilter* feature, VP_EXECUTE_CAPS& caps, Engin
         case FeatureTypeProcamp:
             caps.bComposite = 1;
             feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(Procamp, Render)));
-            break;
-        case FeatureTypeSR:
-            caps.bSR = 1;
-            feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(SR, Render)));
-            break;
-        case FeatureTypeLace:
-            caps.bLACE = 1;
-            feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(Lace, Render)));
             break;
         case FeatureTypeDi:
             caps.bDI          = 1;
@@ -3661,6 +3692,10 @@ MOS_STATUS Policy::UpdateExeCaps(SwFilter* feature, VP_EXECUTE_CAPS& caps, Engin
             if (feature->GetFilterEngineCaps().isolated)
             {
                 caps.b3DLutCalc = 1;
+                if (feature->GetFilterEngineCaps().isHdr33LutSizeEnabled)
+                {
+                    caps.bHdr33lutsize = 1;
+                }
                 feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(Hdr3DLutCal, Render)));
             }
             else

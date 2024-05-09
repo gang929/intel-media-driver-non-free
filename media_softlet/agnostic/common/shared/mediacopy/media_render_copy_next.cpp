@@ -302,28 +302,6 @@ MOS_STATUS RenderCopyStateNext::SubmitCMD()
     // Register the resource of GSH
     MCPY_CHK_STATUS_RETURN(pRenderHal->pfnReset(pRenderHal));
 
-    // Register the input resource;
-    MCPY_CHK_STATUS_RETURN(pOsInterface->pfnRegisterResource(
-        pOsInterface,
-        (PMOS_RESOURCE)&m_Source.OsResource,
-        true,
-        true));
-
-    // Ensure input can be read
-    pOsInterface->pfnSyncOnResource(
-        pOsInterface,
-        &m_Source.OsResource,
-        pOsInterface->CurrentGpuContextOrdinal,
-        false);
-
-    // Ensure Output can be read
-    pOsInterface->pfnSyncOnResource(
-        pOsInterface,
-        &m_Target.OsResource,
-        pOsInterface->CurrentGpuContextOrdinal,
-        false);
-
-
     // Set copy kernel
     SetupKernel(m_currKernelId);
 
@@ -525,7 +503,7 @@ MOS_STATUS RenderCopyStateNext::SetupSurfaceStates()
 
     pRenderData->SurfMemObjCtl.SourceSurfMemObjCtl =
          pRenderHal->pOsInterface->pfnCachePolicyGetMemoryObject(
-         MOS_HW_RESOURCE_USAGE_VP_INTERNAL_READ_WRITE_RENDER,
+         MOS_MP_RESOURCE_USAGE_SurfaceState_RCS,
          pRenderHal->pOsInterface->pfnGetGmmClientContext(pRenderHal->pOsInterface)).DwordValue;
 
     pRenderData->SurfMemObjCtl.TargetSurfMemObjCtl = pRenderData->SurfMemObjCtl.SourceSurfMemObjCtl;

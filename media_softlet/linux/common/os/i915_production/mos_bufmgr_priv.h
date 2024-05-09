@@ -358,6 +358,7 @@ struct mos_bufmgr {
     void (*disable_object_capture)(struct mos_bufmgr *bufmgr) = nullptr;
     int (*get_memory_info)(struct mos_bufmgr *bufmgr, char *info, uint32_t length) = nullptr;
     int (*get_devid)(struct mos_bufmgr *bufmgr) = nullptr;
+    void (*realloc_cache)(struct mos_bufmgr *bufmgr, uint8_t alloc_mode) = nullptr;
     int (*query_engines_count)(struct mos_bufmgr *bufmgr,
                           unsigned int *nengine) = nullptr;
     
@@ -368,6 +369,11 @@ struct mos_bufmgr {
                           void *ci) = nullptr;
 
     size_t (*get_engine_class_size)() = nullptr;
+
+    void (*select_fixed_engine)(struct mos_bufmgr *bufmgr,
+            void *engine_map,
+            uint32_t *nengine,
+            uint32_t fixed_instance_mask) = nullptr;
 
     int (*set_context_param)(struct mos_linux_context *ctx,
                     uint32_t size,

@@ -313,8 +313,15 @@ MOS_STATUS AvcPipelineM12::Prepare(void *params)
             inputParameters.pictureCodingType          = m_basicFeature->m_pictureCodingType;
             inputParameters.currOriginalPic            = m_basicFeature->m_curRenderPic;
             inputParameters.currDecodedPicRes          = m_basicFeature->m_destSurface.OsResource;
-            inputParameters.isSecondField              = m_basicFeature->m_isSecondField;
+            inputParameters.isSecondField              = m_basicFeature->m_secondField;
             inputParameters.numUsedVdbox               = m_numVdbox;
+
+            CODECHAL_DEBUG_TOOL(
+                if (m_streamout != nullptr)  
+                {  
+                    DECODE_CHK_STATUS(m_streamout->InitStatusReportParam(inputParameters));  
+                }  
+            );
 
 #ifdef _DECODE_PROCESSING_SUPPORTED
             CODECHAL_DEBUG_TOOL(

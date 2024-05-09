@@ -205,7 +205,7 @@ namespace encode
         dmem->UPD_CurWidth  = (uint16_t)m_basicFeature->m_oriFrameWidth;
         dmem->UPD_CurHeight = (uint16_t)m_basicFeature->m_oriFrameHeight;
         dmem->UPD_Asyn = 0;
-        dmem->UPD_EnableAdaptiveRounding = m_basicFeature->m_adaptiveRounding;
+        dmem->UPD_EnableAdaptiveRounding = (m_basicFeature->m_roundingMethod == RoundingMethod::adaptiveRounding);
 
         if (seqParams->GopRefDist == 8)
             dmem->UPD_MaxBRCLevel = 3;
@@ -289,6 +289,8 @@ namespace encode
         dmem->UPD_VDEncCmd1Offset = m_slbData.vdencCmd1Offset;
         dmem->UPD_VDEncCmd2Offset = m_slbData.vdencCmd2Offset;
         dmem->UPD_AVPPicStateOffset = m_slbData.avpPicStateOffset;
+        dmem->UPD_VDEncTileSliceStateOffset = m_slbData.vdencTileSliceStateOffset;
+        dmem->UPD_TileNum = m_slbData.tileNum;
 
         // BA start
         dmem->UPD_LoopFilterParamsBitOffset      = (uint16_t)m_basicFeature->m_av1PicParams->LoopFilterParamsBitOffset;
@@ -313,6 +315,7 @@ namespace encode
         dmem->UPD_DisableCdfUpdate               = (m_basicFeature->m_av1PicParams->primary_ref_frame != av1PrimaryRefNone);
         dmem->UPD_EnableDMAForCdf                = 1;
         dmem->UPD_AdditionalHrdSizeByteCount     = 0 - m_basicFeature->m_av1PicParams->FrameSizeReducedInBytes;
+        dmem->UPD_PaletteOn                      = m_basicFeature->m_av1PicParams->PicFlags.fields.PaletteModeEnable;
 
         if (dmem->UPD_PAKPassNum == 1)
             m_curTargetFullness += m_inputbitsperframe;

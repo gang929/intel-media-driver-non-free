@@ -1204,6 +1204,25 @@ mos_bufmgr_get_devid(struct mos_bufmgr *bufmgr)
     }
 }
 
+void
+mos_bufmgr_realloc_cache(struct mos_bufmgr *bufmgr, uint8_t alloc_mode)
+{
+    if(!bufmgr)
+    {
+        MOS_OS_CRITICALMESSAGE("Input null ptr\n");
+        return;
+    }
+
+    if (bufmgr->realloc_cache)
+    {
+        return bufmgr->realloc_cache(bufmgr, alloc_mode);
+    }
+    else
+    {
+        MOS_OS_CRITICALMESSAGE("Unsupported\n");
+    }
+}
+
 int
 mos_query_engines_count(struct mos_bufmgr *bufmgr,
                       unsigned int *nengine)
@@ -1310,6 +1329,21 @@ mos_query_device_blob(struct mos_bufmgr *bufmgr, MEDIA_SYSTEM_INFO* gfx_info)
     }
 }
 
+void
+mos_select_fixed_engine(struct mos_bufmgr *bufmgr,
+            void *engine_map,
+            uint32_t *nengine,
+            uint32_t fixed_instance_mask)
+{
+    if (bufmgr && bufmgr->select_fixed_engine)
+    {
+        return bufmgr->select_fixed_engine(bufmgr,
+                    engine_map,
+                    nengine,
+                    fixed_instance_mask);
+    }
+
+}
 
 int
 mos_get_driver_info(struct mos_bufmgr *bufmgr, struct LinuxDriverInfo *drvInfo)

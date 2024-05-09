@@ -60,6 +60,9 @@
 #include "libdrm_lists.h"
 #include "mos_bufmgr.h"
 #include "mos_bufmgr_priv.h"
+#ifdef ENABLE_XE_KMD
+#include "mos_bufmgr_xe.h"
+#endif
 #include "string.h"
 #include "i915_drm.h"
 #include "mos_vma.h"
@@ -1565,15 +1568,19 @@ mos_gem_bo_free(struct mos_linux_bo *bo)
     CHK_CONDITION(bufmgr_gem == nullptr, "bufmgr_gem == nullptr\n", );
 
     if (bo_gem->mem_virtual) {
-        VG(VALGRIND_FREELIKE_BLOCK(bo_gem->mem_virtual, 0));
+        VG(VALGRIND_MAKE_MEM_NOACCESS(bo_gem->mem_virtual, 0));
         drm_munmap(bo_gem->mem_virtual, bo_gem->bo.size);
+        bo_gem->mem_virtual = nullptr;
     }
     if (bo_gem->gtt_virtual) {
+        VG(VALGRIND_MAKE_MEM_NOACCESS(bo_gem->gtt_virtual, 0));
         drm_munmap(bo_gem->gtt_virtual, bo_gem->bo.size);
+        bo_gem->gtt_virtual = nullptr;
     }
     if (bo_gem->mem_wc_virtual) {
-        VG(VALGRIND_FREELIKE_BLOCK(bo_gem->mem_wc_virtual, 0));
+        VG(VALGRIND_MAKE_MEM_NOACCESS(bo_gem->mem_wc_virtual, 0));
         drm_munmap(bo_gem->mem_wc_virtual, bo_gem->bo.size);
+        bo_gem->mem_wc_virtual = nullptr;
     }
 
     if(bufmgr_gem->bufmgr.bo_wait_rendering && mos_gem_bo_busy(bo))
@@ -4746,6 +4753,47 @@ mos_bufmgr_query_sys_engines(struct mos_bufmgr *bufmgr, MEDIA_SYSTEM_INFO* gfx_i
     return 0;
 }
 
+void mos_gem_select_fixed_engine(struct mos_bufmgr *bufmgr,
+            void *engine_map,
+            uint32_t *nengine,
+            uint32_t fixed_instance_mask)
+{
+    MOS_UNUSED(bufmgr);
+#if (DEBUG || _RELEASE_INTERNAL)
+    if (fixed_instance_mask)
+    {
+        struct i915_engine_class_instance *_engine_map = (struct i915_engine_class_instance *)engine_map;
+        auto unselect_index = 0;
+        for(auto bit = 0; bit < *nengine; bit++)
+        {
+            if(((fixed_instance_mask >> bit) & 0x1) && (bit > unselect_index))
+            {
+                _engine_map[unselect_index].engine_class = _engine_map[bit].engine_class;
+                _engine_map[unselect_index].engine_instance = _engine_map[bit].engine_instance;
+                _engine_map[bit].engine_class = 0;
+                _engine_map[bit].engine_instance = 0;
+                unselect_index++;
+            }
+            else if(((fixed_instance_mask >> bit) & 0x1) && (bit == unselect_index))
+            {
+                unselect_index++;
+            }
+            else if(!((fixed_instance_mask >> bit) & 0x1))
+            {
+                _engine_map[bit].engine_class = 0;
+                _engine_map[bit].engine_instance = 0;
+            }
+        }
+        *nengine = unselect_index;
+    }
+#else
+    MOS_UNUSED(engine_map);
+    MOS_UNUSED(nengine);
+    MOS_UNUSED(fixed_instance_mask);
+#endif
+
+}
+
 static int mos_gem_set_context_param_parallel(struct mos_linux_context *ctx,
                      struct i915_engine_class_instance *ci,
                      unsigned int count)
@@ -5233,6 +5281,7 @@ mos_bufmgr_gem_init_i915(int fd, int batch_size)
     bufmgr_gem->bufmgr.query_engines_count = mos_bufmgr_query_engines_count;
     bufmgr_gem->bufmgr.query_engines = mos_bufmgr_query_engines;
     bufmgr_gem->bufmgr.get_engine_class_size = mos_bufmgr_get_engine_class_size;
+    bufmgr_gem->bufmgr.select_fixed_engine = mos_gem_select_fixed_engine;
     bufmgr_gem->bufmgr.switch_off_n_bits = mos_bufmgr_switch_off_n_bits;
     bufmgr_gem->bufmgr.hweight8 = mos_bufmgr_hweight8;
     bufmgr_gem->bufmgr.get_ts_frequency = mos_bufmgr_get_ts_frequency;
@@ -5403,6 +5452,7 @@ mos_bufmgr_gem_init_i915(int fd, int batch_size)
      *
      * Every 4 was too few for the blender benchmark.
      */
+    batch_size &= 0xffffff00;
     bufmgr_gem->max_relocs = batch_size / sizeof(uint32_t) / 2 - 2;
 
     DRMINITLISTHEAD(&bufmgr_gem->named);
@@ -5435,6 +5485,12 @@ mos_bufmgr_gem_init(int fd, int batch_size, int *device_type)
     {
         return mos_bufmgr_gem_init_i915(fd, batch_size);
     }
+#ifdef ENABLE_XE_KMD
+    else if (DEVICE_TYPE_XE == type)
+    {
+        return mos_bufmgr_gem_init_xe(fd, batch_size);
+    }
+#endif
 
     return nullptr;
 }
@@ -5561,6 +5617,11 @@ int mos_get_device_id(int fd, uint32_t *deviceId)
     {
         return mos_get_dev_id_i915(fd, deviceId);
     }
-
+#ifdef ENABLE_XE_KMD
+    else if (DEVICE_TYPE_XE == device_type)
+    {
+        return mos_get_dev_id_xe(fd, deviceId);
+    }
+#endif
     return -ENODEV;
 }

@@ -55,7 +55,7 @@ MOS_STATUS CodechalEncHevcStateG12::SetGpuCtxCreatOption()
 
     if (!MOS_VE_CTXBASEDSCHEDULING_SUPPORTED(m_osInterface))
     {
-        CodechalEncoderState::SetGpuCtxCreatOption();
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(CodechalEncoderState::SetGpuCtxCreatOption());
     }
     else
     {
@@ -144,8 +144,40 @@ MOS_STATUS CodechalEncHevcStateG12::AddHcpSurfaceStateCmds(MOS_COMMAND_BUFFER *c
     CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hcpInterface->AddHcpSurfaceCmd(cmdBuffer, &reconSurfaceParams));
 
     // Add the surface state for reference picture, GEN12 HW change
-    reconSurfaceParams.ucSurfaceStateId = CODECHAL_HCP_REF_SURFACE_ID;
-    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hcpInterface->AddHcpSurfaceCmd(cmdBuffer, &reconSurfaceParams));
+    MHW_VDBOX_SURFACE_PARAMS refSurfaceParams;
+    SetHcpRefSurfaceParams(refSurfaceParams);
+
+    if (m_mmcState->IsMmcEnabled())
+    {
+        refSurfaceParams.refsMmcEnable       = 0;
+        refSurfaceParams.refsMmcType         = 0;
+        refSurfaceParams.dwCompressionFormat = 0;
+
+        //add for B frame support
+        if (m_pictureCodingType != I_TYPE)
+        {
+            for (uint8_t i = 0; i < CODEC_MAX_NUM_REF_FRAME_HEVC; i++)
+            {
+                if (i < CODEC_MAX_NUM_REF_FRAME_HEVC &&
+                    m_picIdx[i].bValid && m_currUsedRefPic[i])
+                {
+                    uint8_t idx          = m_picIdx[i].ucPicIdx;
+                    uint8_t frameStoreId = m_refIdxMapping[i];
+
+                    MOS_MEMCOMP_STATE mmcState = MOS_MEMCOMP_DISABLED;
+                    ENCODE_CHK_STATUS_RETURN(m_mmcState->GetSurfaceMmcState(const_cast<PMOS_SURFACE>(&m_refList[idx]->sRefReconBuffer), &mmcState));
+                    refSurfaceParams.refsMmcEnable |= (mmcState == MOS_MEMCOMP_RC || mmcState == MOS_MEMCOMP_MC) ? (1 << frameStoreId) : 0;
+                    refSurfaceParams.refsMmcType |= (mmcState == MOS_MEMCOMP_RC) ? (1 << frameStoreId) : 0;
+                    if (mmcState == MOS_MEMCOMP_RC || mmcState == MOS_MEMCOMP_MC)
+                    {
+                        ENCODE_CHK_STATUS_RETURN(m_mmcState->GetSurfaceMmcFormat(const_cast<PMOS_SURFACE>(&m_refList[idx]->sRefReconBuffer), &refSurfaceParams.dwCompressionFormat));
+                    }
+                }
+            }
+        }
+    }
+
+    CODECHAL_ENCODE_CHK_STATUS_RETURN(m_hcpInterface->AddHcpSurfaceCmd(cmdBuffer, &refSurfaceParams));
 
     return eStatus;
 }
@@ -9790,7 +9822,7 @@ MOS_STATUS CodechalEncHevcStateG12::ReturnCommandBuffer(PMOS_COMMAND_BUFFER cmdB
 
 MOS_STATUS CodechalEncHevcStateG12::SubmitCommandBuffer(
     PMOS_COMMAND_BUFFER cmdBuffer,
-    bool                nullRendering)
+    bool                bNullRendering)
 {
     MOS_STATUS eStatus = MOS_STATUS_SUCCESS;
 
@@ -9806,7 +9838,7 @@ MOS_STATUS CodechalEncHevcStateG12::SubmitCommandBuffer(
             CODECHAL_ENCODE_CHK_STATUS_RETURN(SetAndPopulateVEHintParams(cmdBuffer));
         }
 
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, cmdBuffer, nullRendering));
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, cmdBuffer, bNullRendering));
         return eStatus;
     }
 
@@ -9848,7 +9880,7 @@ MOS_STATUS CodechalEncHevcStateG12::SubmitCommandBuffer(
     if (eStatus == MOS_STATUS_SUCCESS)
     {
         CODECHAL_ENCODE_CHK_STATUS_RETURN(SetAndPopulateVEHintParams(&m_realCmdBuffer));
-        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &m_realCmdBuffer, nullRendering));
+        CODECHAL_ENCODE_CHK_STATUS_RETURN(m_osInterface->pfnSubmitCommandBuffer(m_osInterface, &m_realCmdBuffer, bNullRendering));
     }
 
     return eStatus;

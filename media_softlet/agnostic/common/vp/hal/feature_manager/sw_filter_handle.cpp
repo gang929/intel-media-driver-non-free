@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2021, Intel Corporation
+* Copyright (c) 2020-2024, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -691,6 +691,7 @@ bool SwFilterHdrHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS &params, bool isInp
     // if  target surf is invalid, return false;
     PVPHAL_SURFACE pSrc            = params.pSrc[0];
     PVPHAL_SURFACE pRenderTarget   = params.pTarget[0];
+    auto           userFeatureControl = m_vpInterface.GetHwInterface()->m_userFeatureControl;
     if (!pSrc || !pRenderTarget)
     {
         return false;
@@ -699,7 +700,14 @@ bool SwFilterHdrHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS &params, bool isInp
     bool bBt2020Output       = false;
     bool bToneMapping        = false;
     bool bMultiLayerBt2020   = false;
-    bool bFP16               = false;
+    bool bFP16Format         = false;
+    // Not all FP16 input / output need HDR processing, e.g, FP16 by pass, FP16 csc etc.
+    bool bFP16HdrProcessing  = false;
+    bool isExternal3DLutEnabled     = false;
+    if (pSrc->p3DLutParams && userFeatureControl->IsExternal3DLutSupport())
+    {
+        isExternal3DLutEnabled = true;
+    }
     // Need to use HDR to process BT601/BT709->BT2020
     if (IS_COLOR_SPACE_BT2020(pRenderTarget->ColorSpace) &&
         !IS_COLOR_SPACE_BT2020(pSrc->ColorSpace))
@@ -715,14 +723,37 @@ bool SwFilterHdrHandler::IsFeatureEnabled(VP_PIPELINE_PARAMS &params, bool isInp
 
     if ((pSrc->Format == Format_A16B16G16R16F) || (pSrc->Format == Format_A16R16G16B16F))
     {
-        bFP16 = true;
+        bFP16Format = true;
     }
 
-    bFP16 = bFP16 || (pRenderTarget->Format == Format_A16B16G16R16F) || (pRenderTarget->Format == Format_A16R16G16B16F);
+    bFP16Format = bFP16Format || (pRenderTarget->Format == Format_A16B16G16R16F) || (pRenderTarget->Format == Format_A16R16G16B16F);
+
+    if (bFP16Format && !pSrc->p3DLutParams)
+    {
+        // Check if input/output gamma is same(TBD)
+        // Check if input/output color space is same
+        bool bColorSpaceConversion = true;
+        if (IS_COLOR_SPACE_BT2020(pRenderTarget->ColorSpace) &&
+            IS_COLOR_SPACE_BT2020(pSrc->ColorSpace))
+        {
+            bColorSpaceConversion = false;
+        }
+        if ((pRenderTarget->ColorSpace == CSpace_sRGB || pRenderTarget->ColorSpace == CSpace_stRGB) &&
+            (pSrc->ColorSpace == CSpace_BT709 || pSrc->ColorSpace == CSpace_BT709_FullRange))
+        {
+            bColorSpaceConversion = false;
+        }
+        if ((pRenderTarget->ColorSpace == CSpace_sRGB || pRenderTarget->ColorSpace == CSpace_stRGB) &&
+            (pSrc->ColorSpace == CSpace_BT601 || pSrc->ColorSpace == CSpace_BT601_FullRange))
+        {
+            bColorSpaceConversion = false;
+        }
+        bFP16HdrProcessing = bColorSpaceConversion;
+    }
 
     // Temorary solution for menu/FBI not show up : route all S2S uage to HDR kernel path, need to consider RenderBlockedFromCp
 
-    return (bBt2020Output || bToneMapping || bMultiLayerBt2020 || bFP16);
+    return (bBt2020Output || bToneMapping || bMultiLayerBt2020 || bFP16HdrProcessing || isExternal3DLutEnabled);
 }
 
 SwFilter *SwFilterHdrHandler::CreateSwFilter()
