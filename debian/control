@@ -13,7 +13,7 @@ Build-Depends:
  libva-dev (>= 2.12),
  libx11-dev,
  ninja-build,
- pkg-config,
+ pkgconf,
 Standards-Version: 4.7.2
 Homepage: https://github.com/intel/media-driver
 Vcs-Browser: https://salsa.debian.org/multimedia-team/intel-media-driver-non-free
