@@ -98,6 +98,8 @@ MOS_STATUS MediaCopyBaseState::Initialize(PMOS_INTERFACE osInterface)
     }
     MediaUserSettingSharedPtr           userSettingPtr = nullptr;
 
+    m_surfaceDumper->GetSurfaceDumpLocation(m_dumpLocation_in, mcpy_in);
+    m_surfaceDumper->GetSurfaceDumpLocation(m_dumpLocation_out, mcpy_out);
     if (m_osInterface)
     {
         userSettingPtr = m_osInterface->pfnGetUserSettingInstance(m_osInterface);
@@ -124,7 +126,12 @@ MOS_STATUS MediaCopyBaseState::Initialize(PMOS_INTERFACE osInterface)
 //! \return   MOS_STATUS
 //!           Return MOS_STATUS_SUCCESS if support, otherwise return unspoort.
 //!
-MOS_STATUS MediaCopyBaseState::CapabilityCheck(MCPY_STATE_PARAMS &mcpySrc, MCPY_STATE_PARAMS &mcpyDst, MCPY_ENGINE_CAPS &caps, MCPY_METHOD preferMethod)
+MOS_STATUS MediaCopyBaseState::CapabilityCheck(
+    MOS_FORMAT         format,
+    MCPY_STATE_PARAMS &mcpySrc,
+    MCPY_STATE_PARAMS &mcpyDst,
+    MCPY_ENGINE_CAPS  &caps,
+    MCPY_METHOD        preferMethod)
 {
     // derivate class specific check. include HW engine avaliable check.
     MCPY_CHK_STATUS_RETURN(FeatureSupport(mcpySrc.OsRes, mcpyDst.OsRes, mcpySrc, mcpyDst, caps));
@@ -143,6 +150,11 @@ MOS_STATUS MediaCopyBaseState::CapabilityCheck(MCPY_STATE_PARAMS &mcpySrc, MCPY_
         mcpySrc.bAuxSuface)
     {
         caps.engineVebox = false;
+        // temp solution for FP16 enabling on new platform
+        if (format == Format_A16B16G16R16F || format == Format_A16R16G16B16F)
+        {
+            return MOS_STATUS_UNIMPLEMENTED;
+        }
     }
 
     // Eu cap check.
@@ -256,6 +268,14 @@ uint32_t GetMinRequiredSurfaceSizeInBytes(uint32_t pitch, uint32_t height, MOS_F
     case Format_L8:
     case Format_A8:
     case Format_Y16U:
+    case Format_A16B16G16R16F:
+    case Format_A16R16G16B16F:
+    case Format_A16B16G16R16:
+    case Format_A16R16G16B16:
+    case Format_IRW0:
+    case Format_IRW1:
+    case Format_IRW2:
+    case Format_IRW3:
         nBytes = pitch * height;
         break;
     default:
@@ -418,7 +438,9 @@ MOS_STATUS MediaCopyBaseState::SurfaceCopy(PMOS_RESOURCE src, PMOS_RESOURCE dst,
 
     MCPY_CHK_STATUS_RETURN(PreCheckCpCopy(mcpySrc, mcpyDst, preferMethod));
 
-    MCPY_CHK_STATUS_RETURN(CapabilityCheck(mcpySrc, mcpyDst, mcpyEngineCaps, preferMethod));
+    MCPY_CHK_STATUS_RETURN(CapabilityCheck(SrcResDetails.Format,
+        mcpySrc, mcpyDst,
+        mcpyEngineCaps, preferMethod));
 
     CopyEnigneSelect(preferMethod, mcpyEngine, mcpyEngineCaps);
 
@@ -438,12 +460,6 @@ MOS_STATUS MediaCopyBaseState::TaskDispatch(MCPY_STATE_PARAMS mcpySrc, MCPY_STAT
     MOS_SURFACE sourceSurface = {};
     MOS_SURFACE targetSurface = {};
 
-    char  dumpLocation_in[MAX_PATH];
-    char  dumpLocation_out[MAX_PATH];
-
-    MOS_ZeroMemory(dumpLocation_in, MAX_PATH);
-    MOS_ZeroMemory(dumpLocation_out, MAX_PATH);
-
     targetSurface.Format = Format_Invalid;
     targetSurface.OsResource = *mcpyDst.OsRes;
 
@@ -462,15 +478,13 @@ MOS_STATUS MediaCopyBaseState::TaskDispatch(MCPY_STATE_PARAMS mcpySrc, MCPY_STAT
     // Only dump linear surface
     if (m_surfaceDumper && mcpySrc.TileMode == MOS_TILE_LINEAR)
     {
-        m_surfaceDumper->GetSurfaceDumpLocation(dumpLocation_in, mcpy_in);
-
-        if ((*dumpLocation_in == '\0') || (*dumpLocation_in == ' '))
+        if ((*m_dumpLocation_in == '\0') || (*m_dumpLocation_in == ' '))
         {
             MCPY_NORMALMESSAGE("Invalid dump location set, the surface will not be dumped");
         }
         else
         {
-            m_surfaceDumper->DumpSurfaceToFile(m_osInterface, &sourceSurface, dumpLocation_in, m_surfaceDumper->m_frameNum, true, false, nullptr);
+            m_surfaceDumper->DumpSurfaceToFile(m_osInterface, &sourceSurface, m_dumpLocation_in, m_surfaceDumper->m_frameNum, true, false, nullptr);
         }
     }
 #endif
@@ -482,16 +496,6 @@ MOS_STATUS MediaCopyBaseState::TaskDispatch(MCPY_STATE_PARAMS mcpySrc, MCPY_STAT
             eStatus = MediaVeboxCopy(mcpySrc.OsRes, mcpyDst.OsRes);
             break;
         case MCPY_ENGINE_BLT:
-            if ((mcpySrc.TileMode != MOS_TILE_LINEAR) && (mcpySrc.CompressionMode != MOS_MMC_DISABLED))
-            {
-                MCPY_NORMALMESSAGE("mmc on, mcpySrc.TileMode= %d, mcpySrc.CompressionMode = %d", mcpySrc.TileMode, mcpySrc.CompressionMode);
-                eStatus = m_osInterface->pfnDecompResource(m_osInterface, mcpySrc.OsRes);
-                if (MOS_STATUS_SUCCESS != eStatus)
-                {
-                    MosUtilities::MosUnlockMutex(m_inUseGPUMutex);
-                    MCPY_CHK_STATUS_RETURN(eStatus);
-                }
-            }
             if ((mcpyDst.TileMode != MOS_TILE_LINEAR) && (mcpyDst.CompressionMode == MOS_MMC_RC))
             {
                 MCPY_NORMALMESSAGE("mmc on, mcpyDst.TileMode= %d, mcpyDst.CompressionMode = %d", mcpyDst.TileMode, mcpyDst.CompressionMode);
@@ -529,15 +533,13 @@ MOS_STATUS MediaCopyBaseState::TaskDispatch(MCPY_STATE_PARAMS mcpySrc, MCPY_STAT
     // Only dump linear surface
     if (m_surfaceDumper && mcpyDst.TileMode == MOS_TILE_LINEAR)
     {
-        m_surfaceDumper->GetSurfaceDumpLocation(dumpLocation_out, mcpy_out);
-
-        if ((*dumpLocation_out == '\0') || (*dumpLocation_out == ' '))
+        if ((*m_dumpLocation_out == '\0') || (*m_dumpLocation_out == ' '))
         {
             MCPY_NORMALMESSAGE("Invalid dump location set, the surface will not be dumped");
         }
         else
         {
-            m_surfaceDumper->DumpSurfaceToFile(m_osInterface, &targetSurface, dumpLocation_out, m_surfaceDumper->m_frameNum, true, false, nullptr);
+            m_surfaceDumper->DumpSurfaceToFile(m_osInterface, &targetSurface, m_dumpLocation_out, m_surfaceDumper->m_frameNum, true, false, nullptr);
         }
         m_surfaceDumper->m_frameNum++;
     }

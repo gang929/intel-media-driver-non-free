@@ -44,6 +44,8 @@ struct KERNEL_THREAD_SPACE
 {
     uint32_t uWidth;
     uint32_t uHeight;
+    uint32_t uLocalWidth;
+    uint32_t uLocalHeight;
 };
 
 // Need to consistant with compiler
@@ -64,7 +66,18 @@ enum KRN_ARG_KIND
     ARG_KIND_IMPLICIT_LOCALID       = 0x10,
     ARG_KIND_GENERAL_DEPVEC         = 0x20,
     ARG_KIND_SURFACE_2D_SCOREBOARD  = 0x2A,
-    ARG_KIND_GENERAL_DEPCNT         = 0x30
+    ARG_KIND_GENERAL_DEPCNT         = 0x30,
+
+    //For L0 used only
+    ARG_KIND_INLINE                 = 0xa00
+};
+
+enum KRN_ARG_ADDRESSMODE
+{
+    AddressingModeStateful = 0,
+    AddressingModeStateless,
+    AddressingModeBindless,
+    AddressIngModeMax
 };
 
 struct KRN_ARG
@@ -75,6 +88,7 @@ struct KRN_ARG
     uint32_t               uSize;            // size of arg in byte
     KRN_ARG_KIND           eArgKind;
     bool                   isOutput;
+    KRN_ARG_ADDRESSMODE    addressMode;
 };
 
 //for L0 use only
@@ -99,6 +113,9 @@ struct KRN_EXECUTE_ENV
     uint32_t uEuThreadCount;
     bool     bHasFenceForImageAccess;
     bool     bHasSample;
+    bool     bHas4GBBuffers;
+    uint8_t  uiWorkGroupWalkOrderDimensions[3];
+    uint64_t uiPrivateSize;
 };
 
 using SurfaceIndex = uint32_t;

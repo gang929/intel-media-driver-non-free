@@ -24,6 +24,8 @@
 //! \brief    render packet which used in by mediapipline.
 //! \details  render packet provide the structures and generate the cmd buffer which mediapipline will used.
 //!
+#include <iomanip>
+
 #include "vp_render_cmd_packet.h"
 #include "vp_platform_interface.h"
 #include "vp_pipeline_common.h"
@@ -381,7 +383,8 @@ MOS_STATUS VpRenderCmdPacket::SetupSamplerStates()
     KERNEL_SAMPLER_STATES samplerStates = {};
 
     // For AdvKernel, SetSamplerStates is called by VpRenderKernelObj::SetKernelConfigs
-    if (!m_kernel->IsAdvKernel())
+    // For some AdvKernels, when UseIndependentSamplerGroup is true, each kernel in one media state submission uses a stand alone sampler state group
+    if (!m_kernel->IsAdvKernel() || m_kernel->UseIndependentSamplerGroup())
     {
         // Initialize m_kernelSamplerStateGroup.
         VP_RENDER_CHK_STATUS_RETURN(m_kernel->SetSamplerStates(m_kernelSamplerStateGroup));
@@ -825,6 +828,12 @@ MOS_STATUS VpRenderCmdPacket::SetupSurfaceState()
             }
         }
         VP_RENDER_CHK_STATUS_RETURN(m_kernel->UpdateCompParams());
+    }
+    else
+    {
+        // Reset status
+        m_renderHal->bCmfcCoeffUpdate  = false;
+        m_renderHal->pCmfcCoeffSurface = nullptr;
     }
 
     return MOS_STATUS_SUCCESS;
@@ -1791,6 +1800,48 @@ MOS_STATUS VpRenderCmdPacket::DumpOutput()
     return MOS_STATUS_SUCCESS;
 }
 
+void VpRenderCmdPacket::PrintWalkerParas(MHW_GPGPU_WALKER_PARAMS& WalkerParams)
+{
+#if (_DEBUG || _RELEASE_INTERNAL)
+    std::string inlineData = "";
+    if (WalkerParams.inlineDataLength > 0 && WalkerParams.inlineData != nullptr)
+    {
+        for (uint32_t i = 0; i < WalkerParams.inlineDataLength; ++i)
+        {
+            uint8_t iData = WalkerParams.inlineData[i];
+            std::stringstream hex;
+            hex << "0x" << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(iData) << " ";
+            inlineData += hex.str();
+        }
+    }
+    VP_RENDER_VERBOSEMESSAGE("GpGPU WalkerParams: InterfaceDescriptorOffset = %x, GpGpuEnable = %d, IndirectDataLength = %d, IndirectDataStartAddress = %x, BindingTableID %d, ForcePreferredSLMZero %d",
+        WalkerParams.InterfaceDescriptorOffset,
+        WalkerParams.GpGpuEnable,
+        WalkerParams.IndirectDataLength,
+        WalkerParams.IndirectDataStartAddress,
+        WalkerParams.BindingTableID,
+        WalkerParams.ForcePreferredSLMZero);
+    VP_RENDER_VERBOSEMESSAGE("GpGPU WalkerParams: ThreadWidth = %d, ThreadHeight = %d, ThreadDepth = %d, GroupWidth = %d, GroupHeight = %d, GroupDepth = %d, GroupStartingX = %d, GroupStartingY = %d, GroupStartingZ = %d, SLMSize %d",
+        WalkerParams.ThreadWidth,
+        WalkerParams.ThreadHeight,
+        WalkerParams.ThreadDepth,
+        WalkerParams.GroupWidth,
+        WalkerParams.GroupHeight,
+        WalkerParams.GroupDepth,
+        WalkerParams.GroupStartingX,
+        WalkerParams.GroupStartingY,
+        WalkerParams.GroupStartingZ,
+        WalkerParams.SLMSize);
+    VP_RENDER_VERBOSEMESSAGE("GpGPU WalkerParams: GenerateLocalId %d, EmitLocal %d, EmitInlineParameter %d",
+        WalkerParams.isGenerateLocalID,
+        WalkerParams.emitLocal,
+        WalkerParams.isEmitInlineParameter);
+    VP_RENDER_VERBOSEMESSAGE("GpGPU WalkerParams: InlineDataLength = %d, InlineData = %s",
+        WalkerParams.inlineDataLength,
+        inlineData.c_str());
+#endif
+}
+
 void VpRenderCmdPacket::PrintWalkerParas(MHW_WALKER_PARAMS &WalkerParams)
 {
 #if (_DEBUG || _RELEASE_INTERNAL)
@@ -1990,7 +2041,7 @@ MOS_STATUS VpRenderCmdPacket::SendMediaStates(
                 &m_gpgpuWalkerParams));
 
             flushL1 = it->second.walkerParam.bFlushL1;
-            PrintWalkerParas(m_mediaWalkerParams);
+            PrintWalkerParas(m_gpgpuWalkerParams);
         }
         else
         {
@@ -2010,13 +2061,6 @@ finish:
     return eStatus;
 }
 
-MOS_STATUS VpRenderCmdPacket::SetDiFmdParams(PRENDER_DI_FMD_PARAMS params)
-{
-    VP_FUNC_CALL();
-
-    return MOS_STATUS_SUCCESS;
-}
-
 MOS_STATUS VpRenderCmdPacket::SetFcParams(PRENDER_FC_PARAMS params)
 {
     VP_FUNC_CALL();
@@ -2029,6 +2073,31 @@ MOS_STATUS VpRenderCmdPacket::SetFcParams(PRENDER_FC_PARAMS params)
     m_renderKernelParams.push_back(kernelParams);
     m_isMultiBindingTables = false;
     m_submissionMode       = SINGLE_KERNEL_ONLY;
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpRenderCmdPacket::SetL0FcParams(PRENDER_L0_FC_PARAMS params)
+{
+    VP_FUNC_CALL();
+    VP_RENDER_CHK_NULL_RETURN(params);
+
+    KERNEL_PARAMS kernelParam = {};
+    for (auto &krnParams : params->fc_kernelParams)
+    {
+        kernelParam.kernelId                       = krnParams.kernelId;
+        kernelParam.kernelArgs                     = krnParams.kernelArgs;
+        kernelParam.kernelThreadSpace.uWidth       = krnParams.threadWidth;
+        kernelParam.kernelThreadSpace.uHeight      = krnParams.threadHeight;
+        kernelParam.kernelThreadSpace.uLocalWidth  = krnParams.localWidth;
+        kernelParam.kernelThreadSpace.uLocalHeight = krnParams.localHeight;
+        kernelParam.syncFlag                       = true;
+
+        m_renderKernelParams.push_back(kernelParam);
+    }
+
+    m_submissionMode            = MULTI_KERNELS_SINGLE_MEDIA_STATE;
+    m_isMultiBindingTables      = true;
+    m_isLargeSurfaceStateNeeded = true;
     return MOS_STATUS_SUCCESS;
 }
 
@@ -2046,6 +2115,8 @@ MOS_STATUS VpRenderCmdPacket::SetHdr3DLutParams(
     // kernel.GetKernelArgs().
     kernelParams.kernelThreadSpace.uWidth = params->threadWidth;
     kernelParams.kernelThreadSpace.uHeight = params->threadHeight;
+    kernelParams.kernelThreadSpace.uLocalWidth = params->localWidth;
+    kernelParams.kernelThreadSpace.uLocalHeight = params->localHeight;
     kernelParams.kernelArgs = params->kernelArgs;
     kernelParams.syncFlag = true;
     m_renderKernelParams.push_back(kernelParams);

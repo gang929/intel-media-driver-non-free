@@ -101,6 +101,8 @@ public:
     //!
     //! \brief    check copy capability.
     //! \details  to determine surface copy is supported or not.
+    //! \param    format
+    //!           [in] surface format
     //! \param    mcpySrc
     //!           [in] Pointer to source paramters
     //! \param    mcpyDst
@@ -110,7 +112,12 @@ public:
     //! \return   MOS_STATUS
     //!           Return MOS_STATUS_SUCCESS if support, otherwise return unspoort.
     //!
-    virtual MOS_STATUS CapabilityCheck(MCPY_STATE_PARAMS &mcpySrc, MCPY_STATE_PARAMS &mcpyDst, MCPY_ENGINE_CAPS &caps, MCPY_METHOD preferMethod);
+    virtual MOS_STATUS CapabilityCheck(
+        MOS_FORMAT         format,
+        MCPY_STATE_PARAMS &mcpySrc,
+        MCPY_STATE_PARAMS &mcpyDst,
+        MCPY_ENGINE_CAPS  &caps,
+        MCPY_METHOD        preferMethod);
 
     //!
     //! \brief    surface copy pre process.
@@ -297,6 +304,8 @@ protected:
     int                  m_MCPYForceMode        = 0;
     bool                 m_enableVeCopySmallRes = false;
     bool                 m_bRegReport           = true;
+    char                 m_dumpLocation_in[MAX_PATH]  = {};
+    char                 m_dumpLocation_out[MAX_PATH] = {};
 #endif
 MEDIA_CLASS_DEFINE_END(MediaCopyBaseState)
 };

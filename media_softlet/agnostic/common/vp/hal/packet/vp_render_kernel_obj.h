@@ -92,6 +92,7 @@ using KERNEL_SAMPLER_INDEX = std::vector<SamplerIndex>;
 using KERNEL_SURFACE_CONFIG = std::map<SurfaceType, KERNEL_SURFACE_STATE_PARAM>;
 using KERNEL_SURFACE_BINDING_INDEX = std::map<SurfaceType, std::set<uint32_t>>;
 using KERNEL_ARG_INDEX_SURFACE_MAP = std::map<uint32_t, SURFACE_PARAMS>;
+using KERNEL_STATELESS_BUFF_CONFIG = std::map<SurfaceType, uint64_t>;
 
 typedef struct _KERNEL_PARAMS
 {
@@ -353,6 +354,7 @@ public:
     {
         VP_PUBLIC_CHK_STATUS_RETURN(GetCurbeState(curbe, curbeLength));
         VP_PUBLIC_CHK_STATUS_RETURN(GetAlignedLength(curbeLength, curbeLengthAligned, kernelParam, dwBlockAlign));
+        PrintCurbe(static_cast<uint8_t *>(curbe), curbeLength);
         return MOS_STATUS_SUCCESS;
     }
 
@@ -401,6 +403,8 @@ public:
     }
 
     virtual void DumpSurface(VP_SURFACE *pSurface,PCCHAR fileName);
+
+    virtual void PrintCurbe(uint8_t *pCurbe, uint32_t curbeLength);
 
     // Kernel Common configs
     virtual MOS_STATUS GetKernelSettings(RENDERHAL_KERNEL_PARAM &settsings)
@@ -488,6 +492,11 @@ public:
         return m_isAdvKernel;
     }
 
+    bool UseIndependentSamplerGroup()
+    {
+        return m_useIndependentSamplerGroup;
+    }
+
     virtual MOS_STATUS SetSamplerStates(KERNEL_SAMPLER_STATE_GROUP& samplerStateGroup);
 
     virtual MOS_STATUS UpdateCompParams()
@@ -521,6 +530,8 @@ public:
         return 0;
     }
 
+    virtual MOS_STATUS InitRenderHalSurfaceCMF(MOS_SURFACE* src, PRENDERHAL_SURFACE renderHalSurface);
+
 protected:
 
     virtual MOS_STATUS SetWalkerSetting(KERNEL_THREAD_SPACE &threadSpace, bool bSyncFlag, bool flushL1 = false);
@@ -534,6 +545,10 @@ protected:
     virtual MOS_STATUS SetProcessSurfaceGroup(VP_SURFACE_GROUP &surfaces);
 
     virtual MOS_STATUS CpPrepareResources();
+
+    virtual MOS_STATUS SetupStatelessBuffer();
+
+    virtual MOS_STATUS SetupStatelessBufferResource(SurfaceType surf);
 
     virtual MOS_STATUS GetCurbeState(void *&curbe, uint32_t &curbeLength) = 0;
 
@@ -553,7 +568,7 @@ protected:
     KERNEL_SURFACE_BINDING_INDEX                            m_surfaceBindingIndex;      // store the binding index for processed surface
     PVpAllocator                                            m_allocator = nullptr;
     MediaUserSettingSharedPtr                               m_userSettingPtr = nullptr;  // usersettingInstance
-
+    KERNEL_STATELESS_BUFF_CONFIG                            m_statelessArray;
     // kernel attribute 
     std::string                                             m_kernelName = "";
     void *                                                  m_kernelBinary = nullptr;
@@ -566,6 +581,7 @@ protected:
     PKERNEL_TUNING_PARAMS                                   m_kernelTuningParams = nullptr;
 
     bool                                                    m_isAdvKernel = false;      // true mean multi kernel can be submitted in one workload.
+    bool                                                    m_useIndependentSamplerGroup = false; //true means multi kernels has their own stand alone sampler states group. only can be true when m_isAdvKernel is true.
 
     std::shared_ptr<mhw::vebox::Itf>                        m_veboxItf = nullptr;
 

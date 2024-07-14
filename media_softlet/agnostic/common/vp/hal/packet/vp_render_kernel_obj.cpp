@@ -24,6 +24,7 @@
 //! \brief    vp render kernel base object.
 //! \details  vp render kernel base object will provided interface where sub kernels processing ways
 //!
+#include <iomanip>
 #include "vp_render_kernel_obj.h"
 #include "vp_dumper.h"
 #include "hal_oca_interface_next.h"
@@ -106,6 +107,34 @@ void VpRenderKernelObj::OcaDumpKernelInfo(MOS_COMMAND_BUFFER &cmdBuffer, MOS_CON
     HalOcaInterfaceNext::DumpVpKernelInfo(cmdBuffer, (MOS_CONTEXT_HANDLE)&mosContext, m_kernelId, 0, nullptr);
 }
 
+MOS_STATUS VpRenderKernelObj::InitRenderHalSurfaceCMF(MOS_SURFACE* src, PRENDERHAL_SURFACE renderHalSurface)
+{
+    PMOS_INTERFACE        osInterface = m_hwInterface->m_osInterface;
+    VP_RENDER_CHK_NULL_RETURN(osInterface);
+#if !EMUL
+    PGMM_RESOURCE_INFO pGmmResourceInfo;
+    pGmmResourceInfo = (GMM_RESOURCE_INFO *)src->OsResource.pGmmResInfo;
+    MOS_OS_CHK_NULL_RETURN(pGmmResourceInfo);
+
+    GMM_RESOURCE_FORMAT gmmResFmt;
+    gmmResFmt = pGmmResourceInfo->GetResourceFormat();
+    uint32_t          MmcFormat = 0;
+
+    MmcFormat = static_cast<uint32_t>(osInterface->pfnGetGmmClientContext(osInterface)->GetMediaSurfaceStateCompressionFormat(gmmResFmt));
+
+    if (MmcFormat > 0x1F)
+    {
+        MOS_OS_ASSERTMESSAGE("Get a incorrect Compression format(%d) from GMM", MmcFormat);
+    }
+    else
+    {
+        renderHalSurface->OsSurface.CompressionFormat = MmcFormat;
+        MOS_OS_VERBOSEMESSAGE("Render Enigien compression format %d", MmcFormat);
+    }
+#endif
+    return MOS_STATUS_SUCCESS;
+}
+
 // Only for Adv kernels.
 MOS_STATUS VpRenderKernelObj::SetWalkerSetting(KERNEL_THREAD_SPACE &threadSpace, bool bSyncFlag, bool flushL1)
 {
@@ -145,7 +174,11 @@ MOS_STATUS VpRenderKernelObj::SetKernelConfigs(
 
     VP_RENDER_CHK_STATUS_RETURN(SetProcessSurfaceGroup(surfaces));
 
-    VP_RENDER_CHK_STATUS_RETURN(SetSamplerStates(samplerStateGroup));
+    // when UseIndependentSamplerGroup is true, each kernel will set their own sampler state group in VpRenderCmdPacket::SetupSamplerStates()
+    if (!UseIndependentSamplerGroup())
+    {
+        VP_RENDER_CHK_STATUS_RETURN(SetSamplerStates(samplerStateGroup));
+    }
 
     VP_RENDER_CHK_STATUS_RETURN(SetWalkerSetting(kernelParams.kernelThreadSpace, kernelParams.syncFlag,kernelParams.flushL1));
 
@@ -189,11 +222,43 @@ MOS_STATUS VpRenderKernelObj::CpPrepareResources()
     return MOS_STATUS_SUCCESS;
 }
 
+MOS_STATUS VpRenderKernelObj::SetupStatelessBuffer()
+{
+    m_statelessArray.clear();
+    VP_RENDER_NORMALMESSAGE("Not prepare stateless buffer in kernel %d.", m_kernelId);
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpRenderKernelObj::SetupStatelessBufferResource(SurfaceType surf)
+{
+    VP_RENDER_CHK_NULL_RETURN(m_surfaceGroup);
+    VP_RENDER_CHK_NULL_RETURN(m_hwInterface);
+    if (surf != SurfaceTypeInvalid)
+    {
+        PMOS_INTERFACE osInterface = m_hwInterface->m_osInterface;
+        VP_RENDER_CHK_NULL_RETURN(osInterface);
+        auto           it          = m_surfaceGroup->find(surf);
+        VP_SURFACE    *curSurf     = (m_surfaceGroup->end() != it) ? it->second : nullptr;
+        VP_RENDER_CHK_NULL_RETURN(curSurf);
+        uint64_t ui64GfxAddress = osInterface->pfnGetResourceGfxAddress(osInterface, &curSurf->osSurface->OsResource);
+
+        VP_RENDER_CHK_STATUS_RETURN(osInterface->pfnRegisterResource(
+            osInterface,
+            &curSurf->osSurface->OsResource,
+            false,
+            true));
+        m_statelessArray.insert(std::make_pair(surf, ui64GfxAddress));
+    }
+
+    return MOS_STATUS_SUCCESS;
+}
+
 MOS_STATUS VpRenderKernelObj::SetProcessSurfaceGroup(VP_SURFACE_GROUP &surfaces)
 {
     m_surfaceGroup = &surfaces;
     VP_RENDER_CHK_STATUS_RETURN(SetupSurfaceState());
     VP_RENDER_CHK_STATUS_RETURN(CpPrepareResources());
+    VP_RENDER_CHK_STATUS_RETURN(SetupStatelessBuffer());
     return MOS_STATUS_SUCCESS;
 }
 
@@ -545,6 +610,33 @@ finish:
     return eStatus;
 }
 
+void VpRenderKernelObj::PrintCurbe(uint8_t* pCurbe, uint32_t curbeLength)
+{
+#if (_DEBUG || _RELEASE_INTERNAL)
+    std::string curbeString = "";
+    if (curbeLength > 0 && pCurbe != nullptr)
+    {
+        for (uint32_t i = 0; i < curbeLength; ++i)
+        {
+            uint8_t           iData = pCurbe[i];
+            std::stringstream hex;
+            if (i % 8 == 0)
+            {
+                hex << "offset " << std::setw(3) << std::setfill('0') << i << ": ";
+            }
+            hex << "0x" << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(iData) << " ";
+            curbeString += hex.str();
+            if (i % 8 == 7)
+            {
+                curbeString += "\n";
+            }
+        }
+    }
+    VP_RENDER_VERBOSEMESSAGE("Curbe Data Length = %d, Content = \n%s",
+        curbeLength,
+        curbeString.c_str());
+#endif
+}
 
 void VpRenderKernelObj::DumpSurface(VP_SURFACE* pSurface, PCCHAR fileName)
 {

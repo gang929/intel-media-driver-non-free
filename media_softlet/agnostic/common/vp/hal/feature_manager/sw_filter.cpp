@@ -188,7 +188,7 @@ MOS_STATUS SwFilterCsc::Configure(VP_PIPELINE_PARAMS &params, bool isInputSurf, 
 namespace vp
 {
 MOS_STATUS GetVeboxOutputParams(VP_EXECUTE_CAPS &executeCaps, MOS_FORMAT inputFormat, MOS_TILE_TYPE inputTileType, MOS_FORMAT outputFormat,
-                                MOS_FORMAT &veboxOutputFormat, MOS_TILE_TYPE &veboxOutputTileType);
+                                MOS_FORMAT &veboxOutputFormat, MOS_TILE_TYPE &veboxOutputTileType, VPHAL_CSPACE colorSpaceOutput);
 }
 
 MOS_STATUS SwFilterCsc::Configure(PVP_SURFACE surfInput, PVP_SURFACE surfOutput, VP_EXECUTE_CAPS caps)
@@ -206,7 +206,7 @@ MOS_STATUS SwFilterCsc::Configure(PVP_SURFACE surfInput, PVP_SURFACE surfOutput,
         MOS_TILE_TYPE   veboxOutputTileType = surfInput->osSurface->TileType;
 
         GetVeboxOutputParams(caps, surfInput->osSurface->Format, surfInput->osSurface->TileType,
-                            surfOutput->osSurface->Format, veboxOutputFormat, veboxOutputTileType);
+                            surfOutput->osSurface->Format, veboxOutputFormat, veboxOutputTileType, surfOutput->ColorSpace);
         m_Params.input.colorSpace = surfInput->ColorSpace;
         m_Params.output.colorSpace = surfInput->ColorSpace;
 
@@ -1298,6 +1298,18 @@ MOS_STATUS SwFilterHdr::Configure(VP_PIPELINE_PARAMS &params, bool isInputSurf, 
     uint32_t     dwUpdateMask = 0;
     bool                        bSupported       = false;
     VPHAL_HDR_LUT_MODE          CurrentLUTMode      = VPHAL_HDR_LUT_MODE_NONE;
+    VP_PUBLIC_CHK_NULL_RETURN(m_vpInterface.GetHwInterface());
+    VP_PUBLIC_CHK_NULL_RETURN(m_vpInterface.GetHwInterface()->m_userFeatureControl);
+    VP_PUBLIC_CHK_NULL_RETURN(m_vpInterface.GetHwInterface()->m_vpPlatformInterface);
+    VP_PUBLIC_CHK_NULL_RETURN(m_vpInterface.GetHwInterface()->m_reporting);
+
+    auto userFeatureControl = m_vpInterface.GetHwInterface()->m_userFeatureControl;
+    auto vpPlatformInterface = m_vpInterface.GetHwInterface()->m_vpPlatformInterface;
+    VpFeatureReport *vpFeatureReport  = dynamic_cast<VpFeatureReport *>(m_vpInterface.GetHwInterface()->m_reporting);
+#if (_DEBUG || _RELEASE_INTERNAL)
+    m_Params.isL0KernelEnabled               = (vpPlatformInterface->IsAdvanceNativeKernelSupported() && userFeatureControl->EnableL03DLut());
+    vpFeatureReport->GetFeatures().isL03DLut = m_Params.isL0KernelEnabled;
+#endif
 
     VP_PUBLIC_CHK_NULL_RETURN(surfInput);
     VP_PUBLIC_CHK_NULL_RETURN(surfOutput);

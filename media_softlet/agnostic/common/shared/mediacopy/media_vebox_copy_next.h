@@ -89,12 +89,12 @@ public:
         PMOS_RESOURCE dst);
 
     //!
-    //! Is Vebox Tile Convert/Decompression Format supported
+    //! Is ve copy supported surface
     //! \param    [in/out]     surface
     //!           Pointer to Output Surface parameters
     //! \return   true if supported, else false.
     //!
-    bool IsFormatSupported(PMOS_RESOURCE surface);
+    bool IsSurfaceSupported(PMOS_RESOURCE surface);
 
     //!
     //! \brief    Setup Vebox_Surface_State Command parameter
@@ -133,12 +133,14 @@ protected:
         PMOS_COMMAND_BUFFER              cmdBuffer);
 
     //!
-    //! Is Vebox Tile Convert/Decompression Format supported
-    //! \param    [in/out]     surface
-    //!           Pointer to Output Surface parameters
+    //! Is ve copy supported format
+    //! \param    [in/out] surface mos format
+    //!
     //! \return   true if supported, else false.
     //!
-    bool IsFormatSupported(PMOS_SURFACE surface);
+    virtual bool IsVeCopySupportedFormat(MOS_FORMAT format);
+    
+    virtual void AdjustSurfaceFormat(MOS_SURFACE &surface);
 
 protected:
     PMOS_INTERFACE      m_osInterface   = nullptr;
