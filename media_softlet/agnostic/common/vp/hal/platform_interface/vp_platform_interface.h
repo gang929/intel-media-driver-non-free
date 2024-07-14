@@ -32,6 +32,7 @@
 #include "vp_render_common.h"
 #include "vp_kernel_config.h"
 #include "media_copy.h"
+#include "vp_frametracker.h"
 
 namespace vp
 {
@@ -405,6 +406,16 @@ public:
 
     void DisableRender();
 
+    virtual int GetModelConfig(int eu, int width, int height)
+    {
+        return 0;
+    };
+
+    virtual MOS_STATUS InitFrameTracker()
+    {
+        return MOS_STATUS_SUCCESS;
+    }
+
 protected:
     PMOS_INTERFACE m_pOsInterface = nullptr;
     VP_KERNEL_BINARY m_vpKernelBinary = {};                 //!< vp kernels
@@ -428,6 +439,7 @@ protected:
     std::map<DelayLoadedKernelType, DelayLoadedFunc> m_vpDelayLoadedNativeFunctionSet;
 
     bool m_isRenderDisabled = false;
+    VpFrameTracker *m_frameTracker     = nullptr;
 
     MEDIA_CLASS_DEFINE_END(vp__VpPlatformInterface)
 };

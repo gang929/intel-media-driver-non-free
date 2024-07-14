@@ -188,49 +188,7 @@ MOS_STATUS Policy::RegisterFeatures()
     VP_PUBLIC_CHK_NULL_RETURN(p);
     m_VeboxSfcFeatureHandlers.insert(std::make_pair(FeatureTypeAlphaOnSfc, p));
 
-    p = MOS_New(PolicyDiHandler, m_hwCaps);
-    VP_PUBLIC_CHK_NULL_RETURN(p);
-    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeDiFmdOnRender, p));
-
-    p = MOS_New(PolicyFcHandler, m_hwCaps);
-    VP_PUBLIC_CHK_NULL_RETURN(p);
-    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeFcOnRender, p));
-
-    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
-    VP_PUBLIC_CHK_NULL_RETURN(p);
-    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeLumakeyOnRender, p));
-
-    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
-    VP_PUBLIC_CHK_NULL_RETURN(p);
-    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeBlendingOnRender, p));
-
-    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
-    VP_PUBLIC_CHK_NULL_RETURN(p);
-    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeColorFillOnRender, p));
-
-    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
-    VP_PUBLIC_CHK_NULL_RETURN(p);
-    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeAlphaOnRender, p));
-
-    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
-    VP_PUBLIC_CHK_NULL_RETURN(p);
-    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeCscOnRender, p));
-
-    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
-    VP_PUBLIC_CHK_NULL_RETURN(p);
-    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeScalingOnRender, p));
-
-    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
-    VP_PUBLIC_CHK_NULL_RETURN(p);
-    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeRotMirOnRender, p));
-
-    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
-    VP_PUBLIC_CHK_NULL_RETURN(p);
-    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeDiOnRender, p));
-
-    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
-    VP_PUBLIC_CHK_NULL_RETURN(p);
-    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeProcampOnRender, p));
+    VP_PUBLIC_CHK_STATUS_RETURN(RegisterFcFeatures());
 
     p = MOS_New(PolicyVeboxCgcHandler, m_hwCaps);
     VP_PUBLIC_CHK_NULL_RETURN(p);
@@ -273,6 +231,51 @@ void Policy::UnregisterFeatures()
     }
 
     m_featurePool.clear();
+}
+
+MOS_STATUS Policy::RegisterFcFeatures()
+{
+    PolicyFeatureHandler *p = MOS_New(PolicyFcHandler, m_hwCaps);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeFcOnRender, p));
+
+    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeLumakeyOnRender, p));
+
+    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeBlendingOnRender, p));
+
+    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeColorFillOnRender, p));
+
+    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeAlphaOnRender, p));
+
+    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeCscOnRender, p));
+
+    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeScalingOnRender, p));
+
+    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeRotMirOnRender, p));
+
+    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeDiOnRender, p));
+
+    p = MOS_New(PolicyFcFeatureHandler, m_hwCaps);
+    VP_PUBLIC_CHK_NULL_RETURN(p);
+    m_RenderFeatureHandlers.insert(std::make_pair(FeatureTypeProcampOnRender, p));
+
+    return MOS_STATUS_SUCCESS;
 }
 
 /*                                    Enable SwFilterPipe                                           */
@@ -452,12 +455,12 @@ MOS_STATUS Policy::GetExecutionCapsForSingleFeature(FeatureType featureType, SwF
             }
             else
             {
-                VP_PUBLIC_CHK_STATUS_RETURN(GetCSCExecutionCaps(feature));
+                VP_PUBLIC_CHK_STATUS_RETURN(GetCSCExecutionCaps(feature, false));
             }
         }
         else
         {
-            VP_PUBLIC_CHK_STATUS_RETURN(GetCSCExecutionCaps(feature));
+            VP_PUBLIC_CHK_STATUS_RETURN(GetCSCExecutionCaps(feature, false));
         }
         break;
     case FeatureTypeScaling:
@@ -746,7 +749,7 @@ MOS_STATUS Policy::GetCSCExecutionCapsDi(SwFilter* feature)
     auto userFeatureControl = m_vpInterface.GetHwInterface()->m_userFeatureControl;
     bool disableSfc         = userFeatureControl->IsSfcDisabled();
 
-    VP_PUBLIC_CHK_STATUS_RETURN(GetCSCExecutionCaps(feature));
+    VP_PUBLIC_CHK_STATUS_RETURN(GetCSCExecutionCaps(feature, false));
 
     VP_EngineEntry *cscEngine = &csc->GetFilterEngineCaps();
     VP_PUBLIC_CHK_NULL_RETURN(cscEngine);
@@ -840,6 +843,11 @@ MOS_STATUS Policy::GetCSCExecutionCapsBT2020ToRGB(SwFilter *cgc, SwFilter *csc)
 
     PrintFeatureExecutionCaps(__FUNCTION__, *cscEngine);
     return MOS_STATUS_SUCCESS;
+}
+
+bool Policy::IsDemosaicValidOutputFormat(MOS_FORMAT format)
+{
+    return (format == Format_R10G10B10A2 || format == Format_A8R8G8B8);
 }
 
 bool IsBeCscNeededForAlphaFill(MOS_FORMAT formatInput, MOS_FORMAT formatOutput, PVPHAL_ALPHA_PARAMS compAlpha)
@@ -960,7 +968,7 @@ bool Policy::IsAlphaSettingSupportedByVebox(MOS_FORMAT formatInput, MOS_FORMAT f
     }
 }
 
-MOS_STATUS Policy::GetCSCExecutionCaps(SwFilter* feature)
+MOS_STATUS Policy::GetCSCExecutionCaps(SwFilter* feature, bool isCamPipeWithBayerInput)
 {
     VP_FUNC_CALL();
     VP_PUBLIC_CHK_NULL_RETURN(feature);
@@ -1102,7 +1110,8 @@ MOS_STATUS Policy::GetCSCExecutionCaps(SwFilter* feature)
     {
         if (!cscParams->pIEFParams                                                            &&
             m_hwCaps.m_veboxHwEntry[cscParams->formatInput].inputSupported                    &&
-            m_hwCaps.m_veboxHwEntry[cscParams->formatOutput].outputSupported                  &&
+            (m_hwCaps.m_veboxHwEntry[cscParams->formatOutput].outputSupported ||
+            (isCamPipeWithBayerInput && IsDemosaicValidOutputFormat(cscParams->formatOutput))) &&
             m_hwCaps.m_veboxHwEntry[cscParams->formatInput].iecp                              &&
             m_hwCaps.m_veboxHwEntry[cscParams->formatInput].backEndCscSupported               &&
             isAlphaSettingSupportedByVebox)
@@ -1738,23 +1747,11 @@ MOS_STATUS Policy::GetDeinterlaceExecutionCaps(SwFilter* feature, bool forceDITo
         return MOS_STATUS_SUCCESS;
     }
 
-    if (m_vpInterface.GetResourceManager()->IsRefValid() &&
-        diParams.diParams && diParams.diParams->bEnableFMD)
-    {
-        diParams.bFmdExtraVariance = true;
-    }
-
     if (m_vpInterface.GetResourceManager()->IsRefValid()    &&
         m_vpInterface.GetResourceManager()->IsSameSamples())
     {
         diEngine.bypassVeboxFeatures    = 1;
         diEngine.diProcess2ndField      = 1;
-    }
-    else if (diParams.bFmdExtraVariance && diParams.bFmdKernelEnable)
-    {
-        diEngine.bEnabled     = 1;
-        diEngine.RenderNeeded = 1;
-        diEngine.isolated     = 1;
     }
     else
     {
@@ -2325,6 +2322,8 @@ MOS_STATUS Policy::InitExecuteCaps(VP_EXECUTE_CAPS &caps, VP_EngineEntry &engine
         caps.bDiProcess2ndField = engineCaps.diProcess2ndField;
         caps.bTemperalInputInuse = engineCaps.bTemperalInputInuse;
         caps.b1K1DLutInUse       = engineCaps.is1K1DLutSurfaceInUse;
+        caps.bDemosaicInUse      = engineCaps.isBayerInputInUse;
+        
         if (engineCaps.fcOnlyFeatureExists)
         {
             // For vebox/sfc+render case, use 2nd workload (render) to do csc for better performance
@@ -3662,15 +3661,7 @@ MOS_STATUS Policy::UpdateExeCaps(SwFilter* feature, VP_EXECUTE_CAPS& caps, Engin
             break;
         case FeatureTypeDi:
             caps.bDI          = 1;
-            if (feature->GetFilterEngineCaps().isolated)
-            {
-                caps.bDIFmdKernel = 1;
-                feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(DiFmd, Render)));
-            }
-            else
-            {
-                feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(Di, Render)));
-            }
+            feature->SetFeatureType(FeatureType(FEATURE_TYPE_EXECUTE(Di, Render)));
             break;
         case FeatureTypeLumakey:
             caps.bComposite = 1;
@@ -3907,7 +3898,7 @@ MOS_STATUS Policy::AddNewFilterOnVebox(
     return status;
 }
 
-MOS_STATUS GetVeboxOutputParams(VP_EXECUTE_CAPS &executeCaps, MOS_FORMAT inputFormat, MOS_TILE_TYPE inputTileType, MOS_FORMAT outputFormat, MOS_FORMAT &veboxOutputFormat, MOS_TILE_TYPE &veboxOutputTileType);
+MOS_STATUS GetVeboxOutputParams(VP_EXECUTE_CAPS &executeCaps, MOS_FORMAT inputFormat, MOS_TILE_TYPE inputTileType, MOS_FORMAT outputFormat, MOS_FORMAT &veboxOutputFormat, MOS_TILE_TYPE &veboxOutputTileType, VPHAL_CSPACE colorSpaceOutput);
 
 MOS_STATUS Policy::GetCscParamsOnCaps(PVP_SURFACE surfInput, PVP_SURFACE surfOutput, VP_EXECUTE_CAPS &caps, FeatureParamCsc &cscParams)
 {
@@ -3933,7 +3924,7 @@ MOS_STATUS Policy::GetCscParamsOnCaps(PVP_SURFACE surfInput, PVP_SURFACE surfOut
         MOS_FORMAT    veboxOutputFormat   = surfInput->osSurface->Format;
         MOS_TILE_TYPE veboxOutputTileType = surfInput->osSurface->TileType;
 
-        GetVeboxOutputParams(caps, surfInput->osSurface->Format, surfInput->osSurface->TileType, surfOutput->osSurface->Format, veboxOutputFormat, veboxOutputTileType);
+        GetVeboxOutputParams(caps, surfInput->osSurface->Format, surfInput->osSurface->TileType, surfOutput->osSurface->Format, veboxOutputFormat, veboxOutputTileType, surfOutput->ColorSpace);
         cscParams.input.colorSpace = surfInput->ColorSpace;
         cscParams.output.colorSpace = surfInput->ColorSpace;
 

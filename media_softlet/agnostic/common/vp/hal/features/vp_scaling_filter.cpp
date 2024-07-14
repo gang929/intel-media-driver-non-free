@@ -183,34 +183,54 @@ MOS_STATUS VpScalingFilter::SetColorFillParams()
     VP_PUBLIC_NORMALMESSAGE("isColorfillEnable %d", m_bColorfillEnable);
 
     if (m_bColorfillEnable)
-    {
-        VP_PUBLIC_CHK_NULL_RETURN(m_scalingParams.pColorFillParams);
-        Src.dwValue = m_scalingParams.pColorFillParams->Color;
-        src_cspace  = m_scalingParams.pColorFillParams->CSpace;
-        dst_cspace  = m_scalingParams.csc.colorSpaceOutput;
-
-        // Convert BG color only if not done so before. CSC is expensive!
-        if ((m_colorFillColorSrc.dwValue != Src.dwValue) ||
-            (m_colorFillSrcCspace != src_cspace)         ||
-            (m_colorFillRTCspace  != dst_cspace))
+    {   // for fp16 output format, if the colorfill params space is RGB, passed the float value of ARGB channels from DDI to mhw directly, no need convert.
+        if (IS_RGB_CSPACE(m_scalingParams.pColorFillParams->CSpace) && (IS_RGB64_FLOAT_FORMAT(m_scalingParams.formatOutput)))
         {
-            VP_PUBLIC_NORMALMESSAGE("colorFillColorDst need be recalculated.");
-            // Clean history Dst BG Color if hit unsupported format
-            if (!VpUtils::GetCscMatrixForRender8Bit(&m_colorFillColorDst, &Src, src_cspace, dst_cspace))
+            // Swap the channel here because HW only natively supports XBGR output
+            if (m_scalingParams.formatOutput == Format_A16B16G16R16F)
             {
-                VP_PUBLIC_NORMALMESSAGE("VpUtils::GetCscMatrixForRender8Bit failed!");
-                MOS_ZeroMemory(&m_colorFillColorDst, sizeof(m_colorFillColorDst));
+                m_sfcScalingParams->sfcColorfillParams.fColorFillYRPixel = m_scalingParams.pColorFillParams->Color1.B;
+                m_sfcScalingParams->sfcColorfillParams.fColorFillUGPixel = m_scalingParams.pColorFillParams->Color1.G;
+                m_sfcScalingParams->sfcColorfillParams.fColorFillVBPixel = m_scalingParams.pColorFillParams->Color1.R;
             }
-            // store the values for next iteration
-            m_colorFillColorSrc  = Src;
-            m_colorFillSrcCspace = src_cspace;
-            m_colorFillRTCspace  = dst_cspace;
+            else
+            {
+                m_sfcScalingParams->sfcColorfillParams.fColorFillYRPixel = m_scalingParams.pColorFillParams->Color1.R;
+                m_sfcScalingParams->sfcColorfillParams.fColorFillUGPixel = m_scalingParams.pColorFillParams->Color1.G;
+                m_sfcScalingParams->sfcColorfillParams.fColorFillVBPixel = m_scalingParams.pColorFillParams->Color1.B;
+            }
+            m_sfcScalingParams->sfcColorfillParams.fColorFillAPixel = m_scalingParams.pColorFillParams->Color1.A;
         }
+        else
+        {
+            VP_PUBLIC_CHK_NULL_RETURN(m_scalingParams.pColorFillParams);
+            Src.dwValue = m_scalingParams.pColorFillParams->Color;
+            src_cspace  = m_scalingParams.pColorFillParams->CSpace;
+            dst_cspace  = m_scalingParams.csc.colorSpaceOutput;
 
-        VP_PUBLIC_NORMALMESSAGE("colorFillSrc %x, src_cspace %d, colorFillDst %x, dst_cspace %d", Src.dwValue, src_cspace, m_colorFillColorDst.dwValue, dst_cspace);
+            // Convert BG color only if not done so before. CSC is expensive!
+            if ((m_colorFillColorSrc.dwValue != Src.dwValue) ||
+                (m_colorFillSrcCspace != src_cspace) ||
+                (m_colorFillRTCspace != dst_cspace))
+            {
+                VP_PUBLIC_NORMALMESSAGE("colorFillColorDst need be recalculated.");
+                // Clean history Dst BG Color if hit unsupported format
+                if (!VpUtils::GetCscMatrixForRender8Bit(&m_colorFillColorDst, &Src, src_cspace, dst_cspace))
+                {
+                    VP_PUBLIC_NORMALMESSAGE("VpUtils::GetCscMatrixForRender8Bit failed!");
+                    MOS_ZeroMemory(&m_colorFillColorDst, sizeof(m_colorFillColorDst));
+                }
+                // store the values for next iteration
+                m_colorFillColorSrc  = Src;
+                m_colorFillSrcCspace = src_cspace;
+                m_colorFillRTCspace  = dst_cspace;
+            }
 
-        VP_RENDER_CHK_STATUS_RETURN(SetYUVRGBPixel());
-        m_sfcScalingParams->sfcColorfillParams.fColorFillAPixel = (float)Src.A / 255.0F;
+            VP_PUBLIC_NORMALMESSAGE("colorFillSrc %x, src_cspace %d, colorFillDst %x, dst_cspace %d", Src.dwValue, src_cspace, m_colorFillColorDst.dwValue, dst_cspace);
+
+            VP_RENDER_CHK_STATUS_RETURN(SetYUVRGBPixel());
+            m_sfcScalingParams->sfcColorfillParams.fColorFillAPixel = (float)Src.A / 255.0F;
+        }
     }
 
     if (m_scalingParams.pCompAlpha)
@@ -243,7 +263,8 @@ MOS_STATUS VpScalingFilter::SetYUVRGBPixel()
         if ((m_scalingParams.formatOutput == Format_A8R8G8B8)       ||
             (m_scalingParams.formatOutput == Format_X8R8G8B8)       ||
             (m_scalingParams.formatOutput == Format_R10G10B10A2)    ||
-            (m_scalingParams.formatOutput == Format_A16R16G16B16))
+            (m_scalingParams.formatOutput == Format_A16B16G16R16)   ||
+            (m_scalingParams.formatOutput == Format_A16B16G16R16F))
         {
             m_sfcScalingParams->sfcColorfillParams.fColorFillYRPixel = (float)m_colorFillColorDst.B / 255.0F;
             m_sfcScalingParams->sfcColorfillParams.fColorFillUGPixel = (float)m_colorFillColorDst.G / 255.0F;
@@ -613,6 +634,7 @@ MOS_STATUS VpScalingFilter::CalculateEngineParams()
         m_sfcScalingParams->interlacedScalingType = m_scalingParams.interlacedScalingType;
         m_sfcScalingParams->srcSampleType         = m_scalingParams.input.sampleType;
         m_sfcScalingParams->dstSampleType         = m_scalingParams.output.sampleType;
+        m_sfcScalingParams->isDemosaicNeeded      = m_executeCaps.bDemosaicInUse;
 
         VP_RENDER_CHK_STATUS_RETURN(SetColorFillParams());
     }
@@ -895,6 +917,13 @@ MOS_STATUS PolicySfcScalingHandler::UpdateFeaturePipe(VP_EXECUTE_CAPS caps, SwFi
         params2ndPass.input.dwHeight = params1stPass.output.dwHeight;
         params2ndPass.input.rcSrc = params1stPass.input.rcDst;
         params2ndPass.input.rcMaxSrc = params2ndPass.input.rcSrc;
+
+        if (params2ndPass.interlacedScalingType == ISCALING_INTERLEAVED_TO_FIELD)
+        {
+            params2ndPass.input.dwHeight = params2ndPass.input.dwHeight / 2;
+            params2ndPass.input.rcSrc.bottom = params2ndPass.input.rcSrc.bottom / 2;
+            params2ndPass.input.rcMaxSrc.bottom = params2ndPass.input.rcMaxSrc.bottom / 2;
+        }
 
         // Set engine caps for filter in 2nd pass.
         filter2ndPass->SetFeatureType(FeatureTypeScaling);

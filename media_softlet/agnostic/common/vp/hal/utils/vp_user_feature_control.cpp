@@ -232,6 +232,7 @@ VpUserFeatureControl::VpUserFeatureControl(MOS_INTERFACE &osInterface, VpPlatfor
     MT_LOG3(MT_VP_USERFEATURE_CTRL, MT_NORMAL, MT_VP_UF_CTRL_DISABLE_VEOUT, m_ctrlValDefault.disableVeboxOutput,
         MT_VP_UF_CTRL_DISABLE_SFC, m_ctrlValDefault.disableSfc, MT_VP_UF_CTRL_CCS, m_ctrlValDefault.computeContextEnabled);
 
+#if (_DEBUG || _RELEASE_INTERNAL)
     uint32_t globalLutMode = VPHAL_HDR_LUT_MODE_NONE;
     status                 = ReadUserSetting(
         m_userSettingPtr,
@@ -270,6 +271,7 @@ VpUserFeatureControl::VpUserFeatureControl(MOS_INTERFACE &osInterface, VpPlatfor
     {
         m_ctrlValDefault.disableAutoMode = disableAutoMode;
     }
+#endif
 
     uint32_t splitFramePortions = 1;
     status                      = ReadUserSetting(
@@ -390,6 +392,22 @@ MOS_STATUS VpUserFeatureControl::CreateUserSettingForDebug()
     {
         // Default value
         m_ctrlValDefault.enableIFNCC = false;
+    }
+
+    bool bEnableL03DLut = false;
+    eRegKeyReadStatus   = ReadUserSettingForDebug(
+        m_userSettingPtr,
+        bEnableL03DLut,
+        __MEDIA_USER_FEATURE_VALUE_ENABLE_VP_L0_3DLUT,
+        MediaUserSetting::Group::Sequence);
+    if (MOS_SUCCEEDED(eRegKeyReadStatus))
+    {
+        m_ctrlValDefault.bEnableL03DLut = bEnableL03DLut;
+    }
+    else
+    {
+        // Default value
+        m_ctrlValDefault.bEnableL03DLut = false;
     }
 #endif
     return MOS_STATUS_SUCCESS;

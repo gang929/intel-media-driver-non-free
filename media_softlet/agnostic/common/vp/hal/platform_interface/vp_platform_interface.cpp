@@ -546,6 +546,12 @@ VpPlatformInterface::~VpPlatformInterface()
     {
         m_vpDelayLoadedNativeFunctionSet.clear();
     }
+
+    if (m_frameTracker)
+    {
+        MOS_Delete(m_frameTracker);
+    }
+
 }
 
 MOS_STATUS VpPlatformInterface::GetKernelParam(VpKernelID kernlId, RENDERHAL_KERNEL_PARAM &param)
@@ -719,8 +725,8 @@ void VpPlatformInterface::InitVpDelayedNativeAdvKernel(
 
     vpKernel.SetKernelBinPointer((void *)kernelBin);
     vpKernel.SetKernelName(kernelName);
-    vpKernel.SetKernelBinOffset(0x0);
-    vpKernel.SetKernelBinSize(kernelBinSize);
+    vpKernel.SetKernelBinOffset(kernelExeEnv.uOffsetToSkipPerThreadDataLoad);
+    vpKernel.SetKernelBinSize(kernelBinSize - kernelExeEnv.uOffsetToSkipPerThreadDataLoad);
     vpKernel.SetKernelExeEnv(kernelExeEnv);
     vpKernel.SetKernelCurbeSize(kernelCurbeSize);
 

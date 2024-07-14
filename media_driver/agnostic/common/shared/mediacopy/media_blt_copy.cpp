@@ -161,6 +161,8 @@ MOS_STATUS BltState::CopyMainSurface(
 //!           [in] Pointer to input surface
 //! \param    outputSurface
 //!           [in] Pointer to output surface
+//! \param    planeIndex
+//!           [in] Pointer to YUV(RGB) plane index
 //! \return   MOS_STATUS
 //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
 //!
@@ -174,7 +176,9 @@ MOS_STATUS BltState::SetupBltCopyParam(
     BLT_CHK_NULL_RETURN(inputSurface);
     BLT_CHK_NULL_RETURN(outputSurface);
     BLT_CHK_NULL_RETURN(outputSurface->pGmmResInfo);
+    BLT_CHK_NULL_RETURN(inputSurface->pGmmResInfo);
 
+    PGMM_RESOURCE_INFO TiledRsInfo  = nullptr;
     uint32_t          BytesPerTexel = 1;
     MOS_SURFACE       ResDetails;
     MOS_ZeroMemory(&ResDetails, sizeof(MOS_SURFACE));
@@ -187,12 +191,14 @@ MOS_STATUS BltState::SetupBltCopyParam(
     uint32_t inputPitch  = ResDetails.dwPitch;
 
     if (inputSurface->TileType != MOS_TILE_LINEAR)
-    { 
+    { ///for tiled surfaces, pitch is expressed in DWORDs
         pMhwBltParams->dwSrcPitch = ResDetails.dwPitch / 4;
+        TiledRsInfo               = inputSurface->pGmmResInfo;
     }
     else
     {
         pMhwBltParams->dwSrcPitch = ResDetails.dwPitch;
+        TiledRsInfo               = outputSurface->pGmmResInfo;
     }
     
     pMhwBltParams->dwSrcTop    = ResDetails.RenderOffset.YUV.Y.YOffset;
@@ -207,7 +213,7 @@ MOS_STATUS BltState::SetupBltCopyParam(
     uint32_t outputPitch  = ResDetails.dwPitch;
 
     if (outputSurface->TileType != MOS_TILE_LINEAR)
-    {
+    {// /for tiled surfaces, pitch is expressed in DWORDs
         pMhwBltParams->dwDstPitch = ResDetails.dwPitch/4;
     }
     else
@@ -218,16 +224,8 @@ MOS_STATUS BltState::SetupBltCopyParam(
     pMhwBltParams->dwDstLeft   = ResDetails.RenderOffset.YUV.Y.XOffset;
 
     int planeNum = GetPlaneNum(ResDetails.Format);
-    pMhwBltParams->dwDstRight = std::min(inputWidth, outputWidth);
-
-    if (outputSurface->pGmmResInfo->GetResourceType() != RESOURCE_BUFFER)
-    {
-        BytesPerTexel = outputSurface->pGmmResInfo->GetBitsPerPixel() / 8;  // using Bytes.
-        if (ResDetails.Format == Format_P010 || ResDetails.Format == Format_P016)
-        {
-            BytesPerTexel = 2;
-        }
-    }
+    pMhwBltParams->dwDstBottom = std::min(inputHeight, outputHeight);
+    BytesPerTexel = TiledRsInfo->GetBitsPerPixel() / 8;  // using Bytes.
 
     if (true == m_blokCopyon)
     {
@@ -237,10 +235,10 @@ MOS_STATUS BltState::SetupBltCopyParam(
     {
         pMhwBltParams->dwColorDepth = GetFastCopyColorDepth(outputSurface->pGmmResInfo->GetResourceFormat(), BytesPerTexel);
     }
-
-    if( 1 == planeNum )
+    pMhwBltParams->dwPlaneIndex = planeIndex;
+    pMhwBltParams->dwPlaneNum   = planeNum;
+    if (SINGLE_PLANE == planeNum)
     {// handle as whole memory
-       pMhwBltParams->dwDstBottom = std::min(inputHeight, outputHeight);
        if (false == m_blokCopyon)
        {// fastcopy
            pMhwBltParams->dwDstRight   = std::min(inputPitch, outputPitch) / 4;  // Regard as 32 bit per pixel format, i.e. 4 byte per pixel.
@@ -248,17 +246,15 @@ MOS_STATUS BltState::SetupBltCopyParam(
        }
        else
        {
-           // Block copy
-           pMhwBltParams->dwDstRight = std::min(inputPitch, outputPitch) / 4;  // Regard as 32 bit per pixel format, i.e. 4 byte per pixel.
-           pMhwBltParams->dwColorDepth = 2;  //0:8bit 1:16bit 2:32bit
+           pMhwBltParams->dwDstRight  = std::min(inputWidth, outputWidth);
        }
     }
     else
     {
         int bytePerTexelScaling    = GetBytesPerTexelScaling(ResDetails.Format);
-        pMhwBltParams->dwDstBottom = std::min(inputHeight, outputHeight);
+        pMhwBltParams->dwDstRight  = std::min(inputWidth, outputWidth);
 
-        if (1 == planeIndex || 2 == planeIndex)
+        if (MCPY_PLANE_U == planeIndex || MCPY_PLANE_V == planeIndex)
         {
            pMhwBltParams->dwDstBottom = pMhwBltParams->dwDstBottom / bytePerTexelScaling;
            if (ResDetails.Format == Format_I420 || ResDetails.Format == Format_YV12)
@@ -346,7 +342,7 @@ MOS_STATUS BltState::SubmitCMD(
             &fastCopyBltParam,
             pBltStateParam->pSrcSurface,
             pBltStateParam->pDstSurface,
-            0));
+            MCPY_PLANE_Y));
 
         MHW_MI_LOAD_REGISTER_IMM_PARAMS RegisterDwParams;
         MOS_ZeroMemory(&RegisterDwParams, sizeof(RegisterDwParams));
@@ -373,36 +369,31 @@ MOS_STATUS BltState::SubmitCMD(
             srcResDetails.YPlaneOffset.iSurfaceOffset,
             dstResDetails.YPlaneOffset.iSurfaceOffset));
 
-        if (planeNum >= 2)
+        if (planeNum == TWO_PLANES || planeNum == THREE_PLANES)
         {
             BLT_CHK_STATUS_RETURN(SetupBltCopyParam(
              &fastCopyBltParam,
              pBltStateParam->pSrcSurface,
              pBltStateParam->pDstSurface,
-             1));
+             MCPY_PLANE_U));
             BLT_CHK_STATUS_RETURN(m_bltInterface->AddBlockCopyBlt(
                  &cmdBuffer,
                  &fastCopyBltParam,
                  srcResDetails.UPlaneOffset.iSurfaceOffset,
                  dstResDetails.UPlaneOffset.iSurfaceOffset));
 
-              if (planeNum == 3)
+              if (planeNum == THREE_PLANES)
               {
                   BLT_CHK_STATUS_RETURN(SetupBltCopyParam(
                       &fastCopyBltParam,
                       pBltStateParam->pSrcSurface,
                       pBltStateParam->pDstSurface,
-                      2));
+                      MCPY_PLANE_V));
                   BLT_CHK_STATUS_RETURN(m_bltInterface->AddBlockCopyBlt(
                       &cmdBuffer,
                       &fastCopyBltParam,
                       srcResDetails.VPlaneOffset.iSurfaceOffset,
                       dstResDetails.VPlaneOffset.iSurfaceOffset));
-              }
-              else if (planeNum > 3)
-              {
-                  MCPY_ASSERTMESSAGE("illegal usage");
-                  return MOS_STATUS_INVALID_PARAMETER;
               }
          }
     }
@@ -424,40 +415,37 @@ uint32_t BltState::GetBlkCopyColorDepth(
     GMM_RESOURCE_FORMAT dstFormat,
     uint32_t            BytesPerTexel)
 {
-    uint32_t bitsPerTexel = BytesPerTexel * BLT_BITS_PER_BYTE;
-
-    switch (bitsPerTexel)
-    {
-     case 8:
-         return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_8BITCOLOR;
-         break;
-     case 16:
-         switch (dstFormat)
-         {
-           case GMM_FORMAT_B5G5R5A1_UNORM:
-               return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_32BITCOLOR;
-               break;
-           default:
-               return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_16BITCOLOR;;
-               break;
-         }
-         break;
-     case 64:
-         return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_64BITCOLOR;
-         break;
-     case 96:
-         return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_32BITCOLOR;
-         break;
-     case 128:
-         return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_128BITCOLOR;
-         break;
-     default:
-         return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_32BITCOLOR;
-         break;
+    uint32_t BitsPerPixel = BytesPerTexel * BLT_BITS_PER_BYTE;
+    if (dstFormat == GMM_FORMAT_YUY2_2x1 || dstFormat == GMM_FORMAT_Y216_TYPE || dstFormat == GMM_FORMAT_Y210)
+    {   // GMM_FORMAT_YUY2_2x1 32bpe 2x1 pixel blocks instead of 16bpp 1x1 block
+        // GMM_FORMAT_Y216_TYPE/Y210 64bpe pixel blocks instead of 32bpp block.
+         BitsPerPixel = BitsPerPixel / 2;
     }
 
- }
-
+    switch (BitsPerPixel)
+    {
+    case 16:
+         switch (dstFormat)
+         {
+         case GMM_FORMAT_B5G5R5A1_UNORM:
+              return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_32BITCOLOR;
+         default:
+              return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_16BITCOLOR;
+         }
+    case 32:
+         return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_32BITCOLOR;
+    case 64:
+         return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_64BITCOLOR;
+    case 96:
+         MCPY_ASSERTMESSAGE("96 BitPerPixel support limimated as Linear format %d", dstFormat);
+         return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_96BITCOLOR_ONLYLINEARCASEISSUPPORTED;
+    case 128:
+         return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_128BITCOLOR;
+    case 8:
+    default:
+         return mhw_blt_state::XY_BLOCK_COPY_BLT_CMD::COLOR_DEPTH_8BITCOLOR;
+    }
+}
 uint32_t BltState::GetFastCopyColorDepth(
      GMM_RESOURCE_FORMAT dstFormat,
      uint32_t            BytesPerTexel)
@@ -513,14 +501,14 @@ uint32_t BltState::GetFastCopyColorDepth(
 int BltState::GetPlaneNum(MOS_FORMAT format)
 {
 
-  int  planeNum = 1;
+  int planeNum = SINGLE_PLANE;
 
    switch (format)
    {
        case Format_NV12:
        case Format_P010:
        case Format_P016:
-            planeNum = 2;
+           planeNum = TWO_PLANES;
            break;
        case Format_YV12:
        case Format_I420:
@@ -531,10 +519,10 @@ int BltState::GetPlaneNum(MOS_FORMAT format)
        case Format_411P:
        case Format_422V:
        case Format_422H:
-            planeNum = 3;
+            planeNum = THREE_PLANES;
             break;
        default:
-            planeNum = 1;
+            planeNum = SINGLE_PLANE;
            break;
     }
    return planeNum;

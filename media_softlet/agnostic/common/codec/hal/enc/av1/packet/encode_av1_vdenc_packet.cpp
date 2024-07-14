@@ -29,6 +29,7 @@
 #include "codec_def_common_av1.h"
 #include "media_perf_profiler.h"
 #include "hal_oca_interface_next.h"
+#include "mos_solo_generic.h"
 
 namespace encode{
     Av1VdencPkt::Av1VdencPkt(MediaPipeline* pipeline, MediaTask* task, CodechalHwInterfaceNext* hwInterface) :
@@ -263,6 +264,62 @@ namespace encode{
         return MOS_STATUS_SUCCESS;
     }
 
+    MOS_STATUS Av1VdencPkt::PatchPictureLevelCommands(const uint8_t &packetPhase, MOS_COMMAND_BUFFER  &cmdBuffer)
+    {
+        ENCODE_FUNC_CALL();
+
+        ENCODE_CHK_STATUS_RETURN(m_miItf->SetWatchdogTimerThreshold(m_basicFeature->m_frameWidth, m_basicFeature->m_frameHeight, true));
+
+        SetPerfTag();
+
+        bool firstTaskInPhase = packetPhase & firstPacket;
+        if (!m_pipeline->IsSingleTaskPhaseSupported() || firstTaskInPhase)
+        {
+            ENCODE_CHK_STATUS_RETURN(AddForceWakeup(cmdBuffer));
+
+            // Send command buffer header at the beginning (OS dependent)
+            ENCODE_CHK_STATUS_RETURN(SendPrologCmds(cmdBuffer));
+        }
+
+        if (m_pipeline->IsDualEncEnabled())
+        {
+            auto scalability = m_pipeline->GetMediaScalability();
+            ENCODE_CHK_NULL_RETURN(scalability);
+            ENCODE_CHK_STATUS_RETURN(scalability->SyncPipe(syncOtherPipesForOne, 0, &cmdBuffer));
+        }
+
+        ENCODE_CHK_STATUS_RETURN(AddCondBBEndFor2ndPass(cmdBuffer));
+
+        if(m_pipeline->IsDualEncEnabled() && m_pipeline->IsFirstPipe())
+        {
+            PMOS_RESOURCE bsSizeBuf = m_basicFeature->m_recycleBuf->GetBuffer(PakInfo, 0);
+            ENCODE_CHK_NULL_RETURN(bsSizeBuf);
+            // clear bitstream size buffer at first tile
+            auto &miStoreDataParams            = m_miItf->MHW_GETPAR_F(MI_STORE_DATA_IMM)();
+            miStoreDataParams                  = {};
+            miStoreDataParams.pOsResource      = bsSizeBuf;
+            miStoreDataParams.dwResourceOffset = 0;
+            miStoreDataParams.dwValue          = 0;
+            ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(MI_STORE_DATA_IMM)(&cmdBuffer));
+        }
+
+        if (m_pipeline->IsFirstPipe())
+        {
+            ENCODE_CHK_STATUS_RETURN(StartStatusReport(statusReportMfx, &cmdBuffer));
+        }
+        else{
+            // add perf record for other pipes - first pipe perf record within StartStatusReport
+            MediaPerfProfiler *perfProfiler = MediaPerfProfiler::Instance();
+            ENCODE_CHK_NULL_RETURN(perfProfiler);
+            ENCODE_CHK_STATUS_RETURN(perfProfiler->AddPerfCollectStartCmd(
+                (void *)m_pipeline, m_osInterface, m_miItf, &cmdBuffer));
+        }
+
+        ENCODE_CHK_STATUS_RETURN(AddPictureVdencCommands(cmdBuffer));
+
+        return MOS_STATUS_SUCCESS;
+    }
+
     void Av1VdencPkt::SetPerfTag()
     {
         ENCODE_FUNC_CALL();
@@ -279,6 +336,137 @@ namespace encode{
         perfTag.PictureCodingType = picType;
         m_osInterface->pfnSetPerfTag(m_osInterface, perfTag.Value);
         m_osInterface->pfnIncPerfBufferID(m_osInterface);
+    }
+
+    MOS_STATUS Av1VdencPkt::PatchTileLevelCommands(MOS_COMMAND_BUFFER &cmdBuffer, uint8_t packetPhase)
+    {
+        ENCODE_FUNC_CALL();
+
+        uint16_t numTileColumns = 1;
+        uint16_t numTileRows    = 1;
+        RUN_FEATURE_INTERFACE_RETURN(Av1EncodeTile, Av1FeatureIDs::encodeTile, GetTileRowColumns, numTileRows, numTileColumns);
+
+        ENCODE_CHK_NULL_RETURN(m_pipeline);
+        if (!m_pipeline->IsDualEncEnabled())
+        {
+            for (uint32_t tileRow = 0; tileRow < numTileRows; tileRow++)
+            {
+                for (uint32_t tileCol = 0; tileCol < numTileColumns; tileCol++)
+                {
+                    ENCODE_CHK_STATUS_RETURN(AddOneTileCommands(
+                        cmdBuffer,
+                        tileRow,
+                        tileCol));
+                }
+            }
+        }
+        else
+        {
+            if (numTileRows != 1)  // dual encode only support column based workload submission
+            {
+                ENCODE_ASSERTMESSAGE("dual encode cannot support multi rows submission yet.");
+                return MOS_STATUS_INVALID_PARAMETER;
+            }
+            uint8_t dummyIdx = 0;
+            RUN_FEATURE_INTERFACE_RETURN(Av1EncodeTile, Av1FeatureIDs::encodeTile, GetDummyIdx, dummyIdx);
+            if (m_pipeline->GetCurrentPipe() == 0)
+            {
+                for (auto i = 0; i < dummyIdx; i++)
+                {
+                    ENCODE_CHK_STATUS_RETURN(AddOneTileCommands(
+                        cmdBuffer,
+                        0,
+                        i));
+                }
+                ENCODE_CHK_STATUS_RETURN(AddOneTileCommands(
+                    cmdBuffer,
+                    0,
+                    dummyIdx,
+                    1));
+            }
+            else
+            {
+                for (auto i = dummyIdx; i < numTileColumns; i++)
+                {
+                    ENCODE_CHK_STATUS_RETURN(AddOneTileCommands(
+                        cmdBuffer,
+                        0,
+                        i));
+                }
+            }
+        }
+
+        m_basicFeature->m_flushCmd = Av1BasicFeature::waitAvp;
+        SETPAR_AND_ADDCMD(VD_PIPELINE_FLUSH, m_vdencItf, &cmdBuffer);
+
+        ENCODE_CHK_STATUS_RETURN(EnsureAllCommandsExecuted(cmdBuffer));
+
+        // Wait all pipe cmds done for the packet
+        auto scalability = m_pipeline->GetMediaScalability();
+        ENCODE_CHK_NULL_RETURN(scalability);
+        ENCODE_CHK_STATUS_RETURN(scalability->SyncPipe(syncOnePipeWaitOthers, 0, &cmdBuffer));
+
+        if (m_pipeline->IsFirstPipe())
+        {
+            if (m_pipeline->IsDualEncEnabled())
+            {
+                for (auto i = 0; i < m_pipeline->GetPipeNum(); ++i)
+                {
+                    ENCODE_CHK_STATUS_RETURN(scalability->ResetSemaphore(syncOnePipeWaitOthers, i, &cmdBuffer));
+                }
+            }
+            ENCODE_CHK_STATUS_RETURN(EndStatusReport(statusReportMfx, &cmdBuffer));
+        }
+        else {
+            // add perf record for other pipes - first pipe perf record within EndStatusReport
+            MediaPerfProfiler* perfProfiler = MediaPerfProfiler::Instance();
+            ENCODE_CHK_NULL_RETURN(perfProfiler);
+            ENCODE_CHK_STATUS_RETURN(perfProfiler->AddPerfCollectEndCmd(
+                (void*)m_pipeline, m_osInterface, m_miItf, &cmdBuffer));
+        }
+
+        auto brcFeature = dynamic_cast<Av1Brc *>(m_featureManager->GetFeature(Av1FeatureIDs::av1BrcFeature));
+        ENCODE_CHK_NULL_RETURN(brcFeature);
+
+        if (Mos_Solo_Extension((MOS_CONTEXT_HANDLE)m_osInterface->pOsContext))
+        {
+            ENCODE_CHK_STATUS_RETURN(MediaPacket::UpdateStatusReportNext(statusReportGlobalCount, &cmdBuffer));
+        }
+        else if (brcFeature->IsBRCEnabled() && m_osInterface->bInlineCodecStatusUpdate)
+        {
+            ENCODE_CHK_STATUS_RETURN(UpdateStatusReport(statusReportGlobalCount, &cmdBuffer));
+        }
+        else if (m_pipeline->IsLastPass() && m_pipeline->IsFirstPipe())
+        {
+            ENCODE_CHK_STATUS_RETURN(MediaPacket::UpdateStatusReportNext(statusReportGlobalCount, &cmdBuffer));
+        }
+
+        if (m_pipeline->IsDualEncEnabled())
+        {
+            SETPAR_AND_ADDCMD(VDENC_CONTROL_STATE, m_vdencItf, &cmdBuffer);
+        }
+
+        CODECHAL_DEBUG_TOOL(
+            if (m_mmcState) {
+                m_mmcState->UpdateUserFeatureKey(&(m_basicFeature->m_reconSurface));
+            })
+
+        if (m_basicFeature->m_postCdefReconSurfaceFlag)
+        {
+            PCODEC_REF_LIST currRefList  = m_basicFeature->m_ref.GetCurrRefList();
+            ENCODE_CHK_NULL_RETURN(currRefList);
+            MOS_SURFACE *postCdefSurface = m_basicFeature->m_trackedBuf->GetSurface(
+                BufferType::postCdefReconSurface, currRefList->ucScalingIdx);
+            ENCODE_CHK_NULL_RETURN(postCdefSurface);
+            CODECHAL_DEBUG_TOOL(
+                if (m_mmcState) { 
+                    UpdateUserFeatureKey(postCdefSurface); 
+            })
+        }
+
+        UpdateParameters();
+
+        return MOS_STATUS_SUCCESS;
     }
 
     MOS_STATUS Av1VdencPkt::AddForceWakeup(MOS_COMMAND_BUFFER &cmdBuffer)
@@ -1217,6 +1405,71 @@ namespace encode{
 
         return MOS_STATUS_SUCCESS;
     }
+
+    MOS_STATUS Av1VdencPkt::AddAllCmds_AVP_PIPE_MODE_SELECT(PMOS_COMMAND_BUFFER cmdBuffer) const
+    {
+        ENCODE_FUNC_CALL();
+
+        ENCODE_CHK_NULL_RETURN(cmdBuffer);
+
+        auto &vdControlStateParams          = m_miItf->MHW_GETPAR_F(VD_CONTROL_STATE)();
+        vdControlStateParams                = {};
+        vdControlStateParams.initialization = true;
+        vdControlStateParams.avpEnabled     = true;
+        ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(VD_CONTROL_STATE)(cmdBuffer));
+
+        // for Gen11+, we need to add MFX wait for both KIN and VRT before and after AVP Pipemode select...
+        SETPAR_AND_ADDCMD(MFX_WAIT, m_miItf, cmdBuffer);
+
+        SETPAR_AND_ADDCMD(AVP_PIPE_MODE_SELECT, m_avpItf, cmdBuffer);
+
+        // for Gen11+, we need to add MFX wait for both KIN and VRT before and after AVP Pipemode select...
+        SETPAR_AND_ADDCMD(MFX_WAIT, m_miItf, cmdBuffer);
+
+        if (m_pipeline->IsDualEncEnabled())
+        {
+            vdControlStateParams = {};
+            vdControlStateParams.avpEnabled           = true;
+            vdControlStateParams.scalableModePipeLock = true;
+
+            ENCODE_CHK_STATUS_RETURN(m_miItf->MHW_ADDCMD_F(VD_CONTROL_STATE)(cmdBuffer));
+        }
+
+        return MOS_STATUS_SUCCESS;
+    }
+
+    MOS_STATUS Av1VdencPkt::AddAllCmds_AVP_SEGMENT_STATE(PMOS_COMMAND_BUFFER cmdBuffer) const
+    {
+        ENCODE_FUNC_CALL();
+
+        ENCODE_CHK_NULL_RETURN(cmdBuffer);
+        ENCODE_CHK_NULL_RETURN(m_featureManager);
+
+        auto &par           = m_avpItf->MHW_GETPAR_F(AVP_SEGMENT_STATE)();
+        par                 = {};
+        auto segmentFeature = dynamic_cast<Av1Segmentation *>(m_featureManager->GetFeature(Av1FeatureIDs::av1Segmentation));
+        ENCODE_CHK_NULL_RETURN(segmentFeature);
+
+        MHW_CHK_STATUS_RETURN(segmentFeature->MHW_SETPAR_F(AVP_SEGMENT_STATE)(par));
+
+        const bool segmentEnabled = par.av1SegmentParams.m_enabled;
+
+        for (uint8_t i = 0; i < av1MaxSegments; i++)
+        {
+            par.currentSegmentId = i;
+            m_avpItf->MHW_ADDCMD_F(AVP_SEGMENT_STATE)(cmdBuffer);
+
+            // If segmentation is not enabled, then AV1_SEGMENT_STATE must still be sent once for SegmentID = 0
+            // If i == numSegments -1, means all segments are issued, break the loop
+            if (!segmentEnabled || (i == par.numSegments - 1))
+            {
+                break;
+            }
+        }
+
+        return MOS_STATUS_SUCCESS;
+    }
+
     MOS_STATUS Av1VdencPkt::GetVdencStateCommandsDataSize(uint32_t *commandsSize, uint32_t *patchListSize) const
     {
         uint32_t            maxSize          = 0;
@@ -2145,7 +2398,45 @@ namespace encode{
 
         return MOS_STATUS_SUCCESS;
     }
+    MOS_STATUS Av1VdencPkt::DumpStatistics()
+    {
+        CodechalDebugInterface *debugInterface =  m_pipeline->GetStatusReportDebugInterface();
+        ENCODE_CHK_NULL_RETURN(debugInterface);
 
+        ENCODE_CHK_STATUS_RETURN(debugInterface->DumpBuffer(
+            m_basicFeature->m_tileStatisticsPakStreamoutBuffer,
+            CodechalDbgAttr::attrTileBasedStats,
+            "Pak_Tile_Stats",
+            512,
+            0,
+            CODECHAL_NUM_MEDIA_STATES));
+
+        MOS_RESOURCE* tileStatisticsBuffer = nullptr;
+        RUN_FEATURE_INTERFACE_RETURN(Av1EncodeTile, FeatureIDs::encodeTile, GetTileBasedStatisticsBuffer, 0, tileStatisticsBuffer);
+        ENCODE_CHK_NULL_RETURN(tileStatisticsBuffer);
+        uint32_t offset = 0;
+        RUN_FEATURE_INTERFACE_RETURN(Av1EncodeTile, Av1FeatureIDs::encodeTile, GetTileStatsOffset, offset);
+
+        ENCODE_CHK_STATUS_RETURN(debugInterface->DumpBuffer(
+            tileStatisticsBuffer,
+            CodechalDbgAttr::attrFrameState,
+            "VDEnc_Frame_Stats",
+            m_hwInterface->m_pakIntTileStatsSize,
+            offset,
+            CODECHAL_NUM_MEDIA_STATES));
+
+        MOS_RESOURCE *pakinfo = m_basicFeature->m_recycleBuf->GetBuffer(PakInfo, 0);
+        ENCODE_CHK_NULL_RETURN(pakinfo);
+        ENCODE_CHK_STATUS_RETURN(debugInterface->DumpBuffer(
+            pakinfo,
+            CodechalDbgAttr::attrFrameState,
+            "VDEnc_PAK_INFO",
+            MOS_ALIGN_CEIL(sizeof(Av1VdencPakInfo), CODECHAL_PAGE_SIZE),
+            0,
+            CODECHAL_NUM_MEDIA_STATES));
+
+        return MOS_STATUS_SUCCESS;
+    }
 #endif
 
 }  // namespace encode
