@@ -148,6 +148,9 @@
 #define __MEDIA_USER_FEATURE_VALUE_ENABLE_DECODE_VE_CTXSCHEDULING         "Enable Decode VE CtxBasedScheduling"
 #define __MEDIA_USER_FEATURE_VALUE_ENABLE_DECODE_VIRTUAL_ENGINE           "Enable Decode VE"
 #define __MEDIA_USER_FEATURE_VALUE_ENABLE_ENCODE_VIRTUAL_ENGINE           "Enable Encode VE"
+
+#define __MEDIA_USER_FEATURE_VALUE_ENABLE_MEDIA_CCS                       "Enable Media CCS"
+
 #endif // (_DEBUG || _RELEASE_INTERNAL)
 
 #if MOS_COMMAND_BUFFER_DUMP_SUPPORTED
@@ -465,5 +468,7 @@
 #define __MEDIA_USER_FEATURE_VALUE_IP_ALIGNMENT_ENCODE_TIMEOUT       "SyncSubmissionTimeOutEncode"
 #define __MEDIA_USER_FEATURE_VALUE_IP_ALIGNMENT_VPP_TIMEOUT          "SyncSubmissionTimeOutVPP"
 
+// Native Fence Mode
+#define __MEDIA_USER_FEATURE_VALUE_MEDIA_NATIVE_FENCE_MODE           "Native Fence Mode"
 
 #endif  // __MOS_UTIL_USER_FEATURE_KEYS_H__

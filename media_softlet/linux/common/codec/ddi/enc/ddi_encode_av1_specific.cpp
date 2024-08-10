@@ -113,7 +113,7 @@ VAStatus DdiEncodeAV1::ContextInitialize(
     DDI_CODEC_CHK_NULL(m_encodeCtx->pEncodeStatusReport, "nullptr m_encodeCtx->pEncodeStatusReport.", VA_STATUS_ERROR_ALLOCATION_FAILED);
 
     //Allocate Slice Header Data
-    m_encodeCtx->pSliceHeaderData = (CODEC_ENCODER_SLCDATA *)MOS_AllocAndZeroMemory(MAX_NUM_OBU_TYPES * sizeof(CODEC_ENCODER_SLCDATA));
+    m_encodeCtx->pSliceHeaderData = (CODEC_ENCODER_SLCDATA *)MOS_AllocAndZeroMemory(ENCODE_VDENC_AV1_MAX_TILE_GROUP_NUM * sizeof(CODEC_ENCODER_SLCDATA));
     DDI_CODEC_CHK_NULL(m_encodeCtx->pSliceHeaderData, "nullptr m_encodeCtx->pSliceHeaderData.", VA_STATUS_ERROR_ALLOCATION_FAILED);
 
     // Create the bit stream buffer to hold the packed headers from application
@@ -546,6 +546,7 @@ VAStatus DdiEncodeAV1::ParsePicParams(DDI_MEDIA_CONTEXT *mediaCtx, void *ptr)
     av1PicParams->PicFlags.fields.LongTermReference            = picParams->picture_flags.bits.long_term_reference;
     av1PicParams->PicFlags.fields.DisableFrameRecon            = picParams->picture_flags.bits.disable_frame_recon;
     av1PicParams->PicFlags.fields.PaletteModeEnable            = picParams->picture_flags.bits.palette_mode_enable;
+    av1PicParams->PicFlags.fields.allow_intrabc                = picParams->picture_flags.bits.allow_intrabc;
     av1PicParams->PicFlags.fields.SegIdBlockSize               = picParams->seg_id_block_size;
 
 #if VA_CHECK_VERSION(1, 16, 0)
@@ -1175,6 +1176,7 @@ CODECHAL_MODE DdiEncodeAV1::GetEncodeCodecMode(
     switch (profile)
     {
     case VAProfileAV1Profile0:
+    case VAProfileAV1Profile1:
         return CODECHAL_ENCODE_MODE_AV1;
     default:
         DDI_CODEC_ASSERTMESSAGE("Unsuported CODECHAL_MODE");

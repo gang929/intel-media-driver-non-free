@@ -119,14 +119,14 @@ public:
     //!
     //! \brief    Get Block copy color depth.
     //! \details  get different format's color depth.
-    //! \param    Gmm format and bits perf block
-    //!           [in] Gmm format, Bits per Block;
+    //! \param    Gmm format and bits per Pixel
+    //!           [in] Gmm format, Bits per Pixel;
     //! \return   color depth
     //!           Return color depth
     //!
     uint32_t GetBlkCopyColorDepth(
         GMM_RESOURCE_FORMAT dstFormat,
-        uint32_t            BitsPerBlock);
+        uint32_t            Pixel);
 
     //!
     //! \brief    Get plane's byte per texel
@@ -308,7 +308,17 @@ protected:
     MOS_STATUS BlockCopyBuffer(
         PBLT_STATE_PARAM pBltStateParam);
 
-public:
+    //!
+    //! \brief    SetPrologParamsforCmdbuffer
+    //! \details  Set PrologParams for Cmdbuffer
+    //! \param    PMOS_COMMAND_BUFFER
+    //!           [in] Pointer to PMOS_COMMAND_BUFFER
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful, otherwise failed
+    //!
+    MOS_STATUS SetPrologParamsforCmdbuffer(PMOS_COMMAND_BUFFER cmdBuffer);
+
+ public:
     PMOS_INTERFACE     m_osInterface      = nullptr;
     MhwInterfacesNext *m_mhwInterfaces    = nullptr;
     MhwCpInterface    *m_cpInterface      = nullptr;
