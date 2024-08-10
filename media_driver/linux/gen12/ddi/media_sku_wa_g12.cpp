@@ -365,6 +365,7 @@ static bool InitTglMediaWa(struct GfxDeviceInfo *devInfo,
     MEDIA_WR_WA(waTable, Wa_22010493002, 1);
 
     MEDIA_WR_WA(waTable, Wa_Vp9UnalignedHeight, 1);
+    MEDIA_WR_WA(waTable, Wa_AvcUnalignedHeight, 1);
     MEDIA_WR_WA(waTable, WaDisableSetObjectCapture, 0);
     return true;
 }
@@ -529,6 +530,8 @@ static bool InitAdlsMediaSku(struct GfxDeviceInfo *devInfo,
 
     // Disable HEVC 422 Virtual Tile Scalability
     MEDIA_WR_SKU(skuTable, FtrDecodeHEVC422VTScalaDisable, 1);
+
+    MEDIA_WR_SKU(skuTable, FtrVirtualTileScalabilityDisable, 1);
     MEDIA_WR_SKU(skuTable, FtrE2ECompression, 1);
 
     //RPL-S
@@ -598,6 +601,7 @@ static bool InitAdlpMediaSku(struct GfxDeviceInfo *devInfo,
     MEDIA_WR_SKU(skuTable, FtrAV1VLDLSTDecoding, 1);
     MEDIA_WR_SKU(skuTable, FtrGucSubmission, 1);
     MEDIA_WR_SKU(skuTable, FtrDecodeHEVC422VTScalaDisable, 1);
+    MEDIA_WR_SKU(skuTable, FtrVirtualTileScalabilityDisable, 1);
 
     return true;
 }

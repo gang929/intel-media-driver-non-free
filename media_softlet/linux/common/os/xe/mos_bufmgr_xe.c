@@ -1535,12 +1535,15 @@ mos_bo_alloc_userptr_xe(struct mos_bufmgr *bufmgr,
 }
 
 static struct mos_linux_bo *
-mos_bo_create_from_prime_xe(struct mos_bufmgr *bufmgr, int prime_fd, int size)
+mos_bo_create_from_prime_xe(struct mos_bufmgr *bufmgr, struct mos_drm_bo_alloc_prime *alloc_prime)
 {
     struct mos_xe_bufmgr_gem *bufmgr_gem = (struct mos_xe_bufmgr_gem *) bufmgr;
     int ret;
     uint32_t handle;
     struct mos_xe_bo_gem *bo_gem;
+    int prime_fd = alloc_prime->prime_fd;
+    int size = alloc_prime->size;
+    uint16_t pat_index = alloc_prime->pat_index;
     drmMMListHead *list;
 
     bufmgr_gem->m_lock.lock();
@@ -1597,16 +1600,18 @@ mos_bo_create_from_prime_xe(struct mos_bufmgr *bufmgr, int prime_fd, int size)
 
     bo_gem->bo.handle = handle;
     /*
-     * Note, currectly there is no cpu_caching and pat_index for external-imported bo, hard code for it.
-     * Need to get the pat_index by the customer_gmminfo with 1way coherency at least later.
+     * Note: Need to get the pat_index by the customer_gmminfo with 1way coherency at least.
      */
-    bo_gem->pat_index = 1; //Note need to hard code a pat_index with 1way coherency at least
+    bo_gem->pat_index = pat_index == PAT_INDEX_INVALID ? 0 : pat_index;
     bo_gem->bo.bufmgr = bufmgr;
 
     bo_gem->gem_handle = handle;
     atomic_set(&bo_gem->ref_count, 1);
 
-    memcpy(bo_gem->name, "prime", sizeof("prime"));
+    /**
+     * change bo_gem->name to const char*
+     */
+    memcpy(bo_gem->name, alloc_prime->name, sizeof("prime"));
     bo_gem->mem_region = MEMZONE_PRIME;
 
     DRMLISTADDTAIL(&bo_gem->name_list, &bufmgr_gem->named);
