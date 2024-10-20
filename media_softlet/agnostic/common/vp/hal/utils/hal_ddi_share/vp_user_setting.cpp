@@ -212,6 +212,13 @@ MOS_STATUS VpUserSetting::InitVpUserSetting(MediaUserSettingSharedPtr userSettin
             0,
             true);
 
+        DeclareUserSettingKeyForDebug(
+            userSettingPtr,
+            __VPHAL_FORCE_VP_3DLUT_KERNEL_ONLY,
+            MediaUserSetting::Group::Sequence,
+            0,
+            true);
+
         DeclareUserSettingKeyForDebug(  //Enable 1K 1DLUT
             userSettingPtr,
             __VPHAL_ENABLE_1K_1DLUT,
@@ -379,6 +386,55 @@ MOS_STATUS VpUserSetting::InitVpUserSetting(MediaUserSettingSharedPtr userSettin
     DeclareUserSettingKeyForDebug(
         userSettingPtr,
         __MEDIA_USER_FEATURE_VALUE_VP_L0_3DLUT_ENABLED,
+        MediaUserSetting::Group::Sequence,
+        0,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_ENABLE_VP_L0_FC,
+        MediaUserSetting::Group::Sequence,
+        0,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_DISABLE_VP_L0_FC_FP,
+        MediaUserSetting::Group::Sequence,
+        0,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_VP_L0_FC_ENABLED,
+        MediaUserSetting::Group::Sequence,
+        0,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_VP_L0_FC_REPORT,
+        MediaUserSetting::Group::Sequence,
+        0,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_ENABLE_VESFC_LINEAR_OUTPUT_BY_TILECONVERT,
+        MediaUserSetting::Group::Device,
+        0,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_ID_REPORT,
+        MediaUserSetting::Group::Sequence,
+        0,
+        true);
+
+    DeclareUserSettingKeyForDebug(
+        userSettingPtr,
+        __MEDIA_USER_FEATURE_VALUE_USED_VEBOX_ID,
         MediaUserSetting::Group::Sequence,
         0,
         true);

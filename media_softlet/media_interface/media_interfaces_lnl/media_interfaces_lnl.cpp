@@ -47,10 +47,14 @@
 #include "mhw_vdbox_vdenc_impl_xe_lpm_plus.h"
 #endif
 
-#ifndef _FULL_OPEN_SOURCE
+#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
 #include "igvpkrn_xe2_hpg.h"
 #include "igvpkrn_xe2_hpg_cmfcpatch.h"
 #include "igvpkrn_l0_xe2_hpg.h"
+#include "igvpfc_common_xe2.h"
+#include "igvpfc_fp_xe2.h"
+#include "igvpfc_420PL3_input_xe2.h"
+#include "igvpfc_444PL3_input_xe2.h"
 #endif
 
 using namespace mhw::vdbox::avp::xe2_lpm_base;
@@ -139,7 +143,7 @@ void VphalInterfacesXe2_Lpm::InitPlatformKernelBinary(
 {
     static vp::VpKernelConfigXe2_Hpg kernelConfig;
     vpPlatformInterface->SetKernelConfig(&kernelConfig);
-#ifndef _FULL_OPEN_SOURCE
+#if defined(ENABLE_KERNELS) && !defined(_FULL_OPEN_SOURCE)
     vpPlatformInterface->SetVpFCKernelBinary(
                         IGVPKRN_XE2_HPG,
                         IGVPKRN_XE2_HPG_SIZE,
@@ -147,7 +151,10 @@ void VphalInterfacesXe2_Lpm::InitPlatformKernelBinary(
                         IGVPKRN_XE2_HPG_CMFCPATCH_SIZE);
 
     vpPlatformInterface->AddVpNativeAdvKernelEntryToList(IGVP3DLUT_GENERATION_XE2_HPG, IGVP3DLUT_GENERATION_XE2_HPG_SIZE, "hdr_3dlut_l0");
-
+    AddVpNativeKernelEntryToListFc_commonXe2(*vpPlatformInterface);
+    AddVpNativeKernelEntryToListFc_fpXe2(*vpPlatformInterface);
+    AddVpNativeKernelEntryToListFc_420pl3_inputXe2(*vpPlatformInterface);
+    AddVpNativeKernelEntryToListFc_444pl3_inputXe2(*vpPlatformInterface);
 #endif
 }
 
@@ -406,7 +413,6 @@ MOS_STATUS CodechalInterfacesXe2_Lpm::Initialize(
     }
     else if (CodecHalIsEncode(CodecFunction))
     {
-#ifdef _MEDIA_RESERVED
 #if defined (_AVC_ENCODE_VDENC_SUPPORTED)
         if (info->Mode == CODECHAL_ENCODE_MODE_AVC)
         {
@@ -423,6 +429,7 @@ MOS_STATUS CodechalInterfacesXe2_Lpm::Initialize(
         }
         else
 #endif
+#ifdef _MEDIA_RESERVED
 #ifdef _VP9_ENCODE_VDENC_SUPPORTED
         if (info->Mode == CODECHAL_ENCODE_MODE_VP9)
         {
@@ -436,19 +443,6 @@ MOS_STATUS CodechalInterfacesXe2_Lpm::Initialize(
         }
         else
 #endif
-
-#ifdef _JPEG_ENCODE_SUPPORTED
-        if (info->Mode == CODECHAL_ENCODE_MODE_JPEG)
-        {
-            m_codechalDevice = MOS_New(EncodeJpegPipelineAdapter, hwInterface, debugInterface);
-            if (m_codechalDevice == nullptr)
-            {
-                CODECHAL_PUBLIC_ASSERTMESSAGE("Encode state creation failed!");
-                CODECHAL_PUBLIC_CHK_STATUS_WITH_DESTROY_RETURN(MOS_STATUS_INVALID_PARAMETER, release_func);
-            }
-            return MOS_STATUS_SUCCESS;
-        }
-        else
 #endif
 
 #if defined(_AV1_ENCODE_VDENC_SUPPORTED)
@@ -472,6 +466,20 @@ MOS_STATUS CodechalInterfacesXe2_Lpm::Initialize(
         else
 #endif
 
+#ifdef _JPEG_ENCODE_SUPPORTED
+        if (info->Mode == CODECHAL_ENCODE_MODE_JPEG)
+        {
+            m_codechalDevice = MOS_New(EncodeJpegPipelineAdapter, hwInterface, debugInterface);
+            if (m_codechalDevice == nullptr)
+            {
+                CODECHAL_PUBLIC_ASSERTMESSAGE("Encode state creation failed!");
+                CODECHAL_PUBLIC_CHK_STATUS_WITH_DESTROY_RETURN(MOS_STATUS_INVALID_PARAMETER, release_func);
+            }
+            return MOS_STATUS_SUCCESS;
+        }
+        else
+#endif
+
 #if defined(_HEVC_ENCODE_VDENC_SUPPORTED)
         if (info->Mode == CODECHAL_ENCODE_MODE_HEVC)
         {
@@ -487,7 +495,6 @@ MOS_STATUS CodechalInterfacesXe2_Lpm::Initialize(
             }
         }
         else
-#endif
 #endif
         {
             CODECHAL_PUBLIC_ASSERTMESSAGE("Unsupported encode function requested.");

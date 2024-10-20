@@ -185,7 +185,9 @@ enum VpKernelID
     kernelRenderCopy,
 
     kernelL0FcCommon,
-
+    kernelL0FcFP,
+    kernelL0Fc444PL3Input,
+    kernelL0Fc420PL3Input,
     baseKernelMaxNumID
 };
 
@@ -392,6 +394,9 @@ C_ASSERT(VPHAL_GAMMA_Count == 5);  //!< When adding, update assert
 #define IS_COLOR_SPACE_BT2020_RGB(_a) (_a == CSpace_BT2020_RGB || \
                                        _a == CSpace_BT2020_stRGB)
 
+#define IS_COLOR_SPACE_BT709_RGB(_a) (_a == CSpace_sRGB || \
+                                      _a == CSpace_stRGB)
+
 //!
 //! \def IS_COLOR_SPACE_BT2020(_a)
 //! Check if the color space is BT2020
@@ -399,6 +404,12 @@ C_ASSERT(VPHAL_GAMMA_Count == 5);  //!< When adding, update assert
 #define IS_COLOR_SPACE_BT2020(_a) (IS_COLOR_SPACE_BT2020_YUV(_a) || \
                                    IS_COLOR_SPACE_BT2020_RGB(_a))
 
+//!
+//! \def IS_COLOR_SPACE_RGB(_a)
+//! Check if the color space is RGB
+//!
+#define IS_COLOR_SPACE_RGB(_a) (IS_COLOR_SPACE_BT2020_RGB(_a) || \
+                                IS_COLOR_SPACE_BT709_RGB(_a))
 //!
 //! \brief Sample Type enum
 //!

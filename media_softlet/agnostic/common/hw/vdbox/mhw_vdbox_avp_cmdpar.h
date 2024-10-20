@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020-2023, Intel Corporation
+* Copyright (c) 2020-2024, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -252,7 +252,7 @@ struct _MHW_PAR_T(AVP_PIC_STATE)
 
     bool     allowScreenContentTools             = false;
     bool     allowIntraBC                        = false;
-    bool     avpPicStatePar0                     = false;
+    bool     VdaqmEnable                         = false;
 
     __MHW_VDBOX_AVP_WRAPPER_EXT(AVP_PIC_STATE_CMDPAR_EXT);
 };
@@ -390,7 +390,7 @@ struct _MHW_PAR_T(AVP_PIPE_BUF_ADDR_STATE)
     PMOS_RESOURCE     filmGrainSampleTemplateBuffer    = nullptr;
     PMOS_RESOURCE     filmGrainOutputSurface           = nullptr;
 
-    PMOS_RESOURCE     rhoDomainThresholdTableBuffer    = nullptr;
+    PMOS_RESOURCE     AvpPipeBufAddrStatePar0          = nullptr;
 };
 
 struct _MHW_PAR_T(AVP_INTER_PRED_STATE)

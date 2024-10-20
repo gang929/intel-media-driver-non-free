@@ -511,6 +511,7 @@ protected:
     VP_SURFACE *m_vebox3DLookUpTables                        = nullptr;
     VP_SURFACE *m_vebox3DLookUpTables2D                      = nullptr;
     VP_SURFACE *m_vebox1DLookUpTables                        = nullptr;
+    VP_SURFACE *m_innerTileConvertInput                      = nullptr;
     VP_SURFACE *m_veboxDnHVSTables                           = nullptr;
     VP_SURFACE *m_3DLutKernelCoefSurface                     = nullptr;       //!< Coef surface for 3DLut kernel.
     uint32_t    m_currentDnOutput                            = 0;
@@ -551,6 +552,8 @@ protected:
 
     // Fc Resource
     VP_SURFACE *m_cmfcCoeff                                   = nullptr;
+    VP_SURFACE *m_fcIntermediaSurfaceOutput                         = nullptr;
+    VP_SURFACE *m_fcIntermediaSurfaceInput[VP_COMP_MAX_LAYERS]      = {};
     //for decompreesion sync on interlace input of FC
     VP_SURFACE *m_decompressionSyncSurface                                  = nullptr;
     // Hdr Resource

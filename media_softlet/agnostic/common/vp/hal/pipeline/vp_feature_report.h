@@ -73,9 +73,12 @@ public:
 #if (_DEBUG || _RELEASE_INTERNAL)
         uint8_t                       rtOldCacheSetting   = 0;                            //!< Render Target old cache usage
         bool                          isL03DLut           = false;
+        bool                          isL0FC              = false;
+        uint32_t                      diffLogL0FC         = 0;
 #endif
         bool                          VeboxScalability    = false;                        //!< Vebox Scalability flag
         bool                          VPApogeios          = false;                        //!< VP Apogeios flag
+        bool                          sfcLinearOutputByTileConvert = false;               //!< enableSFCLinearOutputByTileConvert
     };
 
     virtual ~VpFeatureReport(){};

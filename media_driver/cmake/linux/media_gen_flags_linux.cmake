@@ -103,16 +103,16 @@ cmake_dependent_option(PVC
 
 option(MTL "Enable MTL support" ON)
 
-cmake_dependent_option(ARL
-    "Enable ARL support" ON
-    "MTL" OFF)
+option(ARL "Enable ARL support" ON)
 
-if(MTL)
+if(MTL OR ARL)
     option(XE_LPM_PLUS_SUPPORT "Enable XE_LPM_PLUS support" ON)
     option(XE_LPG "Enable XE_LPG support" ON)
 endif()
 
-if(MTL)
+option(BMG "Enable BMG support" ON)
+
+if(MTL OR BMG)
     option(Xe_M_plus "Enable Xe_M_plus support" ON)
 endif()
 
@@ -120,11 +120,18 @@ option(LNL "Enable LNL support" ON)
 
 if(LNL)
     option(XE2_LPM_SUPPORT "Enable XE2_LPM support" ON)
+endif()
+
+if(LNL OR BMG)
     option(XE2_HPG "Enable XE2_HPG support" ON)
 endif()
 
 if(LNL)
     option(Xe2_M_plus "Enable Xe2_M_plus support" ON)
+endif()
+
+if(BMG)
+    option(XE2_HPM_SUPPORT "Enable XE2_HPM support" ON)
 endif()
 
 if(GEN8)
