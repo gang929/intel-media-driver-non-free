@@ -342,6 +342,22 @@ MOS_STATUS VpUserFeatureControl::CreateUserSettingForDebug()
         m_ctrlValDefault.force3DLutInterpolation = 0;
     }
 
+    uint32_t is3DLutKernelOnly = 0;
+    eRegKeyReadStatus                = ReadUserSettingForDebug(
+        m_userSettingPtr,
+        is3DLutKernelOnly,
+        __VPHAL_FORCE_VP_3DLUT_KERNEL_ONLY,
+        MediaUserSetting::Group::Sequence);
+    if (MOS_SUCCEEDED(eRegKeyReadStatus))
+    {
+        m_ctrlValDefault.is3DLutKernelOnly = is3DLutKernelOnly;
+    }
+    else
+    {
+        // Default value
+        m_ctrlValDefault.is3DLutKernelOnly = 0;
+    }
+
     //SFC NV12/P010 Linear Output.
     uint32_t enabledSFCNv12P010LinearOutput = 0;
     eRegKeyReadStatus = ReadUserSettingForDebug(
@@ -409,7 +425,59 @@ MOS_STATUS VpUserFeatureControl::CreateUserSettingForDebug()
         // Default value
         m_ctrlValDefault.bEnableL03DLut = false;
     }
+
+    bool bForceL0FC   = false;
+    eRegKeyReadStatus = ReadUserSettingForDebug(
+        m_userSettingPtr,
+        bForceL0FC,
+        __MEDIA_USER_FEATURE_VALUE_ENABLE_VP_L0_FC,
+        MediaUserSetting::Group::Sequence);
+    if (MOS_SUCCEEDED(eRegKeyReadStatus))
+    {
+        m_ctrlValDefault.bForceL0FC = bForceL0FC;
+    }
+    else
+    {
+        // Default value
+        m_ctrlValDefault.bForceL0FC = false;
+    }
+
+    bool bDisableL0FcFp = false;
+    eRegKeyReadStatus   = ReadUserSettingForDebug(
+        m_userSettingPtr,
+        bDisableL0FcFp,
+        __MEDIA_USER_FEATURE_VALUE_DISABLE_VP_L0_FC_FP,
+        MediaUserSetting::Group::Sequence);
+    if (MOS_SUCCEEDED(eRegKeyReadStatus))
+    {
+        m_ctrlValDefault.bDisableL0FcFp = bDisableL0FcFp;
+    }
+    else
+    {
+        // Default value
+        m_ctrlValDefault.bDisableL0FcFp = false;
+    }
 #endif
+#if (_DEBUG || _RELEASE_INTERNAL)
+    bool enableSFCLinearOutputByTileConvert = 0;
+    eRegKeyReadStatus   = ReadUserSettingForDebug(
+        m_userSettingPtr,
+        enableSFCLinearOutputByTileConvert,
+        __MEDIA_USER_FEATURE_VALUE_ENABLE_VESFC_LINEAR_OUTPUT_BY_TILECONVERT,
+        MediaUserSetting::Group::Device);
+    if (MOS_SUCCEEDED(eRegKeyReadStatus))
+    {
+        m_ctrlValDefault.enableSFCLinearOutputByTileConvert = enableSFCLinearOutputByTileConvert;
+    }
+    else
+#endif
+    {
+        auto *waTable = m_osInterface->pfnGetWaTable(m_osInterface);
+        // Default value
+        m_ctrlValDefault.enableSFCLinearOutputByTileConvert = MEDIA_IS_WA(waTable, Wa_15016458807);
+    }
+    VP_PUBLIC_NORMALMESSAGE("enableSFCLinearOutputByTileConvert value is set as %d.", m_ctrlValDefault.enableSFCLinearOutputByTileConvert);
+
     return MOS_STATUS_SUCCESS;
 }
 
@@ -436,4 +504,14 @@ PMOS_OCA_LOG_USER_FEATURE_CONTROL_INFO VpUserFeatureControl::GetOcaFeautreContro
         m_pOcaFeatureControlInfo = (PMOS_OCA_LOG_USER_FEATURE_CONTROL_INFO)MOS_AllocAndZeroMemory(sizeof(MOS_OCA_LOG_USER_FEATURE_CONTROL_INFO));
     }
     return m_pOcaFeatureControlInfo;
+}
+
+
+bool VpUserFeatureControl::EnableL0FC()
+{
+    bool bEnableL0FC = (m_vpPlatformInterface && m_vpPlatformInterface->SupportL0FC());
+#if (_DEBUG || _RELEASE_INTERNAL)
+    bEnableL0FC |= m_ctrlVal.bForceL0FC;
+#endif
+    return bEnableL0FC;
 }

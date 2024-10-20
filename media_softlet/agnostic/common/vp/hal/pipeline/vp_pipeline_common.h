@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2022, Intel Corporation
+* Copyright (c) 2018-2024, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -183,6 +183,7 @@ struct _VP_EXECUTE_CAPS
             uint64_t b1K1DLutInUse  : 1;
             uint64_t bCcmCsc        : 1;
             uint64_t bDemosaicInUse : 1;
+            uint64_t enableSFCLinearOutputByTileConvert : 1;  //true if do tileconvert from tileF to linear for SFC linear output
 
             // SFC features
             uint64_t bSfcCsc        : 1;   // Sfc Csc enabled
@@ -198,6 +199,8 @@ struct _VP_EXECUTE_CAPS
             uint64_t bHVSCalc       : 1;
             uint64_t bSegmentation  : 1;
             uint64_t bHdr           : 1;
+            uint64_t bFallbackLegacyFC : 1;     // only valid when vpUserFeatureControl->EnableL0FC() is true
+            uint64_t forceBypassWorkload : 1;  // If true, force to bypass workload.
         };
         uint64_t value;
     };
@@ -224,6 +227,7 @@ typedef struct _VP_EngineEntry
             uint64_t is1K1DLutSurfaceInUse : 1;  // 1K1DLut surface in use
             uint64_t isHdr33LutSizeEnabled : 1;
             uint64_t isBayerInputInUse : 1;
+            uint64_t forceLegacyFC : 1;          // true if L0 FC not support the format, fall back to legacy FC
 
             // set by GetXxxPipeEnginCaps
             uint64_t bypassIfVeboxSfcInUse : 1;  // Bypass the feature if vebox or sfc in use. In such case, VeboxNeeded and
@@ -249,6 +253,8 @@ typedef struct _VP_EngineEntry
             uint64_t sfcOnlyFeatureExists : 1;  // The feature exists, which only support sfc.
             uint64_t bTemperalInputInuse : 1;   // true if replace input
             uint64_t outputWithLumaKey : 1;
+            uint64_t enableSFCLinearOutputByTileConvert : 1;  //true if do tileconvert from tileF to linear for SFC linear output
+            uint64_t forceBypassWorkload : 1;   // If true, force to bypass workload.
         };
         uint64_t value;
     };
@@ -291,7 +297,6 @@ union RESOURCE_ASSIGNMENT_HINT
     uint32_t value[RESOURCE_ASSIGNMENT_HINT_SIZE];
 };
 
-using PVP_MHWINTERFACE = VP_MHWINTERFACE * ;
 using VP_EXECUTE_CAPS  = _VP_EXECUTE_CAPS;
 using VP_PACKET_ENGINE = _VP_PACKET_ENGINE;
 using PVP_SURFACE      = VP_SURFACE*;

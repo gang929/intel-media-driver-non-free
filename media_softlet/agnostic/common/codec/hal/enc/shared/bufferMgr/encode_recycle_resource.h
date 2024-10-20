@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2023, Intel Corporation
+* Copyright (c) 2018-2024, Intel Corporation
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -35,6 +35,9 @@
 #include <stdint.h>
 #include <map>
 #include <utility>
+#if _MEDIA_RESERVED
+#include "encode_recycle_resource_ext.h"
+#endif
 
 namespace encode
 {
@@ -54,12 +57,16 @@ namespace encode
         BrcPakStatisticBuffer,
         BrcPakStatisticBufferFull,
         PakSliceSizeStreamOutBuffer,
-        RhoDomainStreamoutBuffer,
         CuRecordStreamOutBuffer,
         CuCountBuffer,
         PreEncRawSurface,
         PreEncRef0,
         PreEncRef1,
+        VdaqmBuffer0,
+        VdaqmBuffer1,
+        VdaqmBuffer2,
+        VdaqmBuffer3,
+        VdaqmBuffer4,
 #if _MEDIA_RESERVED
 #define RECYCLE_IDS_EXT
 #include "encode_recycle_resource_ext.h"

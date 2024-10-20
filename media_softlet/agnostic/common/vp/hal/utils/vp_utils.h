@@ -306,6 +306,7 @@ protected:
 #define __VPHAL_HDR_ENABLE_KERNEL_DUMP                                  "VPHAL HDR Enable Kernel Dump"
 #define __VPHAL_HDR_H2S_RGB_TM                                          "VPHAL H2S TM RGB Based"
 #define __VPHAL_HDR_3DLUT_CPU_PATH                                      "HDR 3DLut Table Use CPU Caculate"
+#define __VPHAL_FORCE_VP_3DLUT_KERNEL_ONLY                              "Force VP 3DLut Kernel Only"
 
 // Compression
 #define __VPHAL_MMC_ENABLE                                              "VP MMC In Use"
@@ -330,6 +331,17 @@ protected:
 // For L0 3DLut
 #define __MEDIA_USER_FEATURE_VALUE_ENABLE_VP_L0_3DLUT                   "Enable L0 3DLUT"
 #define __MEDIA_USER_FEATURE_VALUE_VP_L0_3DLUT_ENABLED                  "L0 3DLUT Enabled"
+
+// For L0 FC
+#define __MEDIA_USER_FEATURE_VALUE_ENABLE_VP_L0_FC                      "Enable L0 FC"
+#define __MEDIA_USER_FEATURE_VALUE_DISABLE_VP_L0_FC_FP                  "Disable L0 FC FP"
+#define __MEDIA_USER_FEATURE_VALUE_VP_L0_FC_ENABLED                     "L0 FC Enabled"
+#define __MEDIA_USER_FEATURE_VALUE_VP_L0_FC_REPORT                      "L0 FC Diff Report"
+
+#define __MEDIA_USER_FEATURE_VALUE_ENABLE_VESFC_LINEAR_OUTPUT_BY_TILECONVERT "Enable VESFC Linearoutput By TileConvert"
+
+#define  __MEDIA_USER_FEATURE_VALUE_ENABLE_VEBOX_ID_REPORT              "Enable VEBOX ID REPORT"
+#define  __MEDIA_USER_FEATURE_VALUE_USED_VEBOX_ID                       "USED VEBOX ID"
 #endif  //(_DEBUG || _RELEASE_INTERNAL)
 
 class VpUtils
@@ -435,6 +447,26 @@ public:
     static bool IsSyncFreeNeededForMMCSurface(PVPHAL_SURFACE surface, PMOS_INTERFACE osInterface);
 
     static bool IsVerticalRotation(VPHAL_ROTATION rotation);
+
+    //!
+    //! \brief    Performs Color Space Convert for Sample Pixel
+    //! \details  Performs Color Space Convert from Src Color Spase to Dst Color Spase
+    //! \param    [out] pOutput
+    //!           Pointer to float
+    //! \param    [in] pInput
+    //!           Pointer to VPHAL_COLOR_SAMPLE_8
+    //! \param    [in] srcCspace
+    //!           Source Color Space
+    //! \param    [in] dstCspace
+    //!           Dest Color Space
+    //! \return   MOS_STATUS
+    //!           Return MOS_STATUS_SUCCESS if successful
+    //!
+    static MOS_STATUS GetPixelWithCSCForColorFill(
+        VPHAL_COLOR_SAMPLE_8 &input,
+        float                 output[4],
+        VPHAL_CSPACE          srcCspace,
+        VPHAL_CSPACE          dstCspace);
 
 private:
     //!

@@ -92,6 +92,7 @@ enum SurfaceType
     SurfaceTypeFcTarget1                 = 0x2300,
     SurfaceTypeFcCscCoeff                = 0x2400,
     SurfaceTypeDecompressionSync         = 0x2500,
+    SurfaceTypeFcIntermediaInput         = 0x2510,
 
     // 3DLut Kernel
     SurfaceType3DLut2D   = 0x2600,
@@ -111,7 +112,9 @@ enum SurfaceType
     SurfaceTypeHdrCoeff                  = 0x2d00,
     SurfaceTypeHdrAutoModeCoeff          = 0x2e00,
     SurfaceTypeHdrAutoModeIirTempSurface = 0x2f00,
-    NumberOfSurfaceTypeBase              = 0x3000,
+    SurfaceTypeInnerTileConvertInput     = 0x3000,    // Intermedia surface between VESFC states and tile convert states inside single batchbuffer.
+    NumberOfSurfaceTypeBase              = 0x3100,
+
 #ifdef _MEDIA_RESERVED
     #include "surface_type_ext.h"
 #endif

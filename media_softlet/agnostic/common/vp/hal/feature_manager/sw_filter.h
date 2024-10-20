@@ -374,6 +374,8 @@ public:
         m_isInExePipe = isInExePipe;
     }
 
+    VP_MHWINTERFACE* GetHwInterface();
+
 protected:
     VpInterface &m_vpInterface;
     FeatureType m_type = FeatureTypeInvalid;
@@ -444,6 +446,7 @@ struct FeatureParamScaling : public FeatureParam
     {
         uint32_t                dwWidth  = 0;
         uint32_t                dwHeight = 0;
+        uint32_t                dwPitch  = 0;
         RECT                    rcSrc    = {0, 0, 0, 0};
         RECT                    rcDst    = {0, 0, 0, 0};  //!< Input dst rect without rotate being applied.
         RECT                    rcMaxSrc = {0, 0, 0, 0};
@@ -874,6 +877,7 @@ struct FeatureParamHdr : public FeatureParam
     VPHAL_HDR_LUT_MODE lutMode                                              = VPHAL_HDR_LUT_MODE_NONE; //!< LUT Mode
     VPHAL_HDR_LUT_MODE globalLutMode                                        = VPHAL_HDR_LUT_MODE_NONE; //!< Global LUT mode control for debugging purpose
     bool               bGpuGenerate3DLUT                                    = false;               //!< Flag for per frame GPU generation of 3DLUT
+    bool               is3DLutKernelOnly                                    = false;
 
     PVPHAL_COLORFILL_PARAMS pColorFillParams                     = nullptr;               //!< ColorFill - BG only
     bool                    bDisableAutoMode                     = false;                 //!< Force to disable Hdr auto mode tone mapping for debugging purpose

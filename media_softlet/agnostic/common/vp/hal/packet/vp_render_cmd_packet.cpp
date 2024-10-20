@@ -1044,7 +1044,25 @@ MOS_STATUS VpRenderCmdPacket::InitRenderHalSurface(VP_SURFACE &surface, RENDERHA
 {
     VP_FUNC_CALL();
     VP_RENDER_CHK_NULL_RETURN(surface.osSurface);
-    VP_RENDER_CHK_STATUS_RETURN(RenderCmdPacket::InitRenderHalSurface(*surface.osSurface, &renderSurface));
+    PMOS_INTERFACE pOsInterface = nullptr;
+    RENDER_PACKET_CHK_NULL_RETURN(m_renderHal->pOsInterface);
+    pOsInterface = m_renderHal->pOsInterface;
+    RENDER_PACKET_CHK_NULL_RETURN(pOsInterface->pfnGetMemoryCompressionMode);
+    RENDER_PACKET_CHK_NULL_RETURN(pOsInterface->pfnGetMemoryCompressionFormat);
+
+    // Update compression status
+    VP_PUBLIC_CHK_STATUS_RETURN(pOsInterface->pfnGetMemoryCompressionMode(pOsInterface,
+        &surface.osSurface->OsResource,
+        &surface.osSurface->MmcState));
+
+    VP_PUBLIC_CHK_STATUS_RETURN(pOsInterface->pfnGetMemoryCompressionFormat(pOsInterface,
+        &surface.osSurface->OsResource,
+        &surface.osSurface->CompressionFormat));
+
+    if (Mos_ResourceIsNull(&renderSurface.OsSurface.OsResource))
+    {
+        renderSurface.OsSurface = *surface.osSurface;
+    }
 
     renderSurface.rcSrc    = surface.rcSrc;
     renderSurface.rcDst    = surface.rcDst;
@@ -2056,6 +2074,34 @@ MOS_STATUS VpRenderCmdPacket::SetFcParams(PRENDER_FC_PARAMS params)
     m_renderKernelParams.push_back(kernelParams);
     m_isMultiBindingTables = false;
     m_submissionMode       = SINGLE_KERNEL_ONLY;
+    return MOS_STATUS_SUCCESS;
+}
+
+MOS_STATUS VpRenderCmdPacket::SetL0FcParams(PRENDER_L0_FC_PARAMS params)
+{
+    VP_FUNC_CALL();
+    VP_RENDER_CHK_NULL_RETURN(params);
+
+    KERNEL_PARAMS kernelParam = {};
+    for (auto &krnParams : params->fc_kernelParams)
+    {
+        kernelParam.kernelId                       = krnParams.kernelId;
+        kernelParam.kernelArgs                     = krnParams.kernelArgs;
+        kernelParam.kernelThreadSpace.uWidth       = krnParams.threadWidth;
+        kernelParam.kernelThreadSpace.uHeight      = krnParams.threadHeight;
+        kernelParam.kernelThreadSpace.uLocalWidth  = krnParams.localWidth;
+        kernelParam.kernelThreadSpace.uLocalHeight = krnParams.localHeight;
+        kernelParam.syncFlag                       = true;
+        kernelParam.kernelStatefulSurfaces         = krnParams.kernelStatefulSurfaces;
+
+        m_renderKernelParams.push_back(kernelParam);
+
+        m_kernelConfigs.insert(std::make_pair(krnParams.kernelId, (void *)(&krnParams.kernelConfig)));
+    }
+
+    m_submissionMode            = MULTI_KERNELS_SINGLE_MEDIA_STATE;
+    m_isMultiBindingTables      = true;
+    m_isLargeSurfaceStateNeeded = true;
     return MOS_STATUS_SUCCESS;
 }
 

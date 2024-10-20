@@ -24,4 +24,6 @@ option(ARL "Enable ARL support" ON)
 
 option(LNL "Enable LNL support" ON)
 
+option(BMG "Enable BMG support" ON)
+
 include(${MEDIA_SOFTLET_EXT_CMAKE}/linux/media_gen_flags_linux_ext.cmake OPTIONAL)
